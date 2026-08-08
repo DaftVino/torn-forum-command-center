@@ -501,14 +501,19 @@
     if (id <= 0) return null;
     var author = isPlainObject(raw.author) ? raw.author : {};
     var posts = isPlainObject(raw.posts) ? raw.posts : {};
+    // This reads two shapes: Torn's nested response, and the flat row this
+    // function itself returns and the feed cache stores. Without the flat
+    // fallback the nested lookups miss on every reload, the four fields below
+    // reset to zero, and loadKey sees the difference and tells the user their
+    // cache was damaged when the only thing that damaged it was reading it.
     return {
       id: id,
       forumId: Math.max(0, toInt(raw.forum_id === undefined ? raw.forumId : raw.forum_id, 0)),
       title: safeString(raw.title, 300),
-      authorId: Math.max(0, toInt(author.id, 0)),
-      authorName: safeString(author.username, 60),
-      postsNew: Math.max(0, toInt(posts['new'] === undefined ? posts.postsNew : posts['new'], 0)),
-      postsTotal: Math.max(0, toInt(posts.total, 0)),
+      authorId: Math.max(0, toInt(author.id === undefined ? raw.authorId : author.id, 0)),
+      authorName: safeString(author.username === undefined ? raw.authorName : author.username, 60),
+      postsNew: Math.max(0, toInt(posts['new'] === undefined ? raw.postsNew : posts['new'], 0)),
+      postsTotal: Math.max(0, toInt(posts.total === undefined ? raw.postsTotal : posts.total, 0)),
     };
   }
 

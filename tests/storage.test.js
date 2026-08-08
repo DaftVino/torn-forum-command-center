@@ -20,6 +20,46 @@ test('each key round-trips through script storage', () => {
   assert.deepStrictEqual(api.loadKey(api.STORAGE_KEYS.organizer, api.normaliseOrganizer, 0).value, org);
 });
 
+test('what a normaliser writes, it can read back unchanged', () => {
+  // A normaliser that accepts the API's nested shape but stores a flat one has
+  // to accept the flat shape too, or every reload silently zeroes the fields it
+  // cannot find and then reports the user's own cache as damaged.
+  const { exports: api } = loadUserscript();
+
+  const feed = api.freshFeed();
+  feed.fetchedAt = 1000;
+  feed.categoriesAt = 900;
+  feed.subscribed = [api.normaliseSubscribedRow({
+    id: 7, forum_id: 2, title: 'Thread', author: { id: 99, username: 'Bob' }, posts: { new: 3, total: 40 },
+  })];
+  feed.activity = [api.normaliseActivityRow({
+    thread_id: 7, post_id: 12, title: 'Thread', user: { username: 'Bob' }, timestamp: 60, is_seen: false, type: 1,
+  })];
+  feed.categories = [api.normaliseCategoryRow({ id: 2, title: 'Cat', acronym: 'C' })];
+
+  const org = api.normaliseOrganizer({
+    v: api.SCHEMA_VERSION,
+    folders: [{ id: 'f1', name: 'Work', order: 0, forumIds: [2] }],
+    threads: { 7: { pinned: true, tags: ['red'], note: 'n', title: 'Thread', forumId: 2 } },
+  }, 1000);
+  const drafts = api.normaliseDrafts({ v: api.SCHEMA_VERSION, byThread: { 7: { text: 'hi', updatedAt: 5, title: 'T' } } });
+
+  const cases = [
+    ['feed', api.STORAGE_KEYS.feed, api.normaliseFeed, feed],
+    ['organizer', api.STORAGE_KEYS.organizer, api.normaliseOrganizer, org],
+    ['drafts', api.STORAGE_KEYS.drafts, api.normaliseDrafts, drafts],
+    ['settings', api.STORAGE_KEYS.settings, api.normaliseSettings, api.freshSettings()],
+    ['postCache', api.STORAGE_KEYS.postCache, api.normalisePostCache, api.freshPostCache()],
+  ];
+
+  for (const [name, key, normaliser, value] of cases) {
+    api.saveKey(key, value);
+    const back = api.loadKey(key, normaliser, 2000);
+    assert.deepStrictEqual(back.value, value, name + ' lost data on its own round trip');
+    assert.strictEqual(back.recovered, false, name + ' called its own output damaged');
+  }
+});
+
 test('a corrupt value resets only its own key', () => {
   const { exports: api } = loadUserscript({
     gmStore: [

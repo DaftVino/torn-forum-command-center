@@ -121,6 +121,14 @@ const MUTATIONS = [
     apply: (s) => s.replace('return PARSE_FAILED;', 'return null;'),
   },
   {
+    name: 'the cached feed cannot read back the shape it wrote',
+    suite: 'tests/storage.test.js',
+    apply: (s) => s.replace(
+      'author.username === undefined ? raw.authorName : author.username',
+      'author.username',
+    ),
+  },
+  {
     name: 'a thread title is written to the panel without escaping',
     suite: 'tests/panel.test.js',
     apply: (s) => s.replace(
