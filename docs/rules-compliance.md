@@ -132,3 +132,12 @@ breaks each one in turn and confirms the suite notices.
 The two things to turn off first, in order, are auto-refresh (already off by
 default) and the draft insert. Neither is load-bearing: the workspace, the
 organiser, catch-up and search all work without them.
+
+## Archived source
+
+`docs/reference/torn-api-docs-2026-08-08.html` is the Torn API documentation
+page as it stood on 2026-08-08, saved from a signed-in browser because the live
+page refuses automated requests. Every API-terms quotation above comes from it.
+
+The scripting rule itself was supplied verbatim by the project owner from Torn's
+rules page. Re-check both when Torn revises either.
