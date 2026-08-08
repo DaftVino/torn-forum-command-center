@@ -17,3 +17,6 @@ mut-out.txt
 
 # Render previews are generated output
 preview/
+
+# gstack browse audit log
+.gstack/
