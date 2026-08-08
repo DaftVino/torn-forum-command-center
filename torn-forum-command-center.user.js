@@ -1750,6 +1750,7 @@
     searchResults: null,
     deepBusy: false,
     deepProgress: null,
+    draftFocusId: null,
     generation: 0,
     mounted: false,
     route: null,
@@ -2165,6 +2166,36 @@
     ].join('\n');
   }
 
+  // The one feature that has to name Torn's own elements, and the only one
+  // allowed to. It is done as a stylesheet rather than by removing a node: a
+  // wrong guess then costs nothing at all, where a wrong querySelector plus
+  // .remove() could take a piece of Torn's page with it. If none of these
+  // selectors match, the box simply stays visible, which is the documented
+  // behaviour rather than a silent failure.
+  var TORN_BOX_SELECTORS = Object.freeze([
+    '#forums-page-wrap .subscribed-threads-wrap',
+    '.subscribed-threads-wrap',
+    '#subscribed-threads',
+  ]);
+
+  var HIDE_STYLE_ID = 'tfcc-hide-torn-box';
+
+  function applyHideTornBox(doc) {
+    if (!doc || typeof doc.getElementById !== 'function') return;
+    var existing = doc.getElementById(HIDE_STYLE_ID);
+    if (!state.settings.hideTornBox) {
+      if (existing && typeof existing.remove === 'function') existing.remove();
+      return;
+    }
+    if (existing) return;
+    var style = doc.createElement('style');
+    style.id = HIDE_STYLE_ID;
+    style.setAttribute('id', HIDE_STYLE_ID);
+    style.textContent = TORN_BOX_SELECTORS.join(',\n') + ' { display: none !important; }';
+    var host = doc.head || doc.documentElement || doc.body;
+    if (host && typeof host.appendChild === 'function') host.appendChild(style);
+  }
+
   function injectStyleOnce(doc) {
     if (!doc || typeof doc.getElementById !== 'function') return;
     if (doc.getElementById(STYLE_ID)) return;
@@ -2261,6 +2292,7 @@
       deepProgress: state.deepProgress,
       cacheSize: postCacheSize(state.postCache),
       route: state.route,
+      draftFocusId: state.draftFocusId,
       replyBoxFound: state.replyBoxFound,
       settings: {
         autoRefreshMs: s.autoRefreshMs,
@@ -2341,8 +2373,12 @@
     out.push('</select>');
     out.push('<input type="text" data-act="tag-input" data-id="' + escapeHtml(row.id)
       + '" placeholder="add tag" size="8">');
-    out.push(btn('note', 'Note', ' data-id="' + escapeHtml(row.id) + '"'));
-    out.push(btn('draft', 'Draft', ' data-id="' + escapeHtml(row.id) + '"'));
+    // A note is edited in place rather than behind a button, because a button
+    // needs somewhere to put the editor and every such place is another piece
+    // of view state to get wrong.
+    out.push('<input type="text" data-act="note-input" data-id="' + escapeHtml(row.id)
+      + '" value="' + escapeHtml(row.note) + '" placeholder="note" size="14">');
+    out.push(btn('draft', row.hasDraft ? 'Edit draft' : 'Draft', ' data-id="' + escapeHtml(row.id) + '"'));
     out.push(btn('archive', row.archived ? 'Unarchive' : 'Archive', ' data-id="' + escapeHtml(row.id) + '"'));
     out.push('</div>');
     out.push('</div>');
@@ -2477,7 +2513,10 @@
 
   function renderDraftsView(model) {
     var out = [];
-    var current = model.route && model.route.isThread ? String(model.route.threadId) : null;
+    // The thread the user asked to write about wins over the one they happen to
+    // be looking at, so the Draft button on a row works from anywhere.
+    var current = model.draftFocusId
+      || (model.route && model.route.isThread ? String(model.route.threadId) : null);
     if (current) {
       out.push('<div class="tfcc-section"><h4>Draft for this thread</h4>');
       var existing = '';
@@ -2978,7 +3017,11 @@
           return;
         }
         if (act === 'deep') {
-          var ids = state.rows.slice(0, DEEP_SEARCH_MAX_THREADS).map(function (r) { return r.numericId; });
+          // The rows the user is looking at, not every row we hold: the search
+          // view says "the threads currently listed", and fetching more than
+          // that would spend their request budget on threads they filtered out.
+          var listed = buildPanelModel(now).rows;
+          var ids = listed.slice(0, DEEP_SEARCH_MAX_THREADS).map(function (r) { return r.numericId; });
           runDeepSearch(ids, state.searchQuery, now).then(redraw);
           redraw(); return;
         }
@@ -2989,6 +3032,12 @@
           redraw(); return;
         }
         if (act === 'key-clear') { saveApiKey(''); notice('Key cleared.', 'info'); redraw(); return; }
+        if (act === 'draft' && id) {
+          state.draftFocusId = id;
+          state.settings.view = 'drafts';
+          persist('settings');
+          redraw(); return;
+        }
         if (act === 'draft-save' && id) {
           state.drafts = saveDraft(state.drafts, id, valueOf('draft-text'), now, '');
           persist('drafts'); recompute(now); notice('Draft saved.', 'info'); redraw(); return;
@@ -3055,13 +3104,29 @@
         if (act === 'folder-filter') { state.settings.folderFilter = value || null; persist('settings'); redraw(); return; }
         if (act === 'tag-filter') { state.settings.tagFilter = value || null; persist('settings'); redraw(); return; }
         if (act === 'folder' && id) { state.organizer = setFolder(state.organizer, id, value || null); persist('organizer'); recompute(now); redraw(); return; }
+        if (act === 'note-input' && id) {
+          var noteNext = cloneOrganizer(state.organizer);
+          entryOf(noteNext, id).note = safeString(value, 2000);
+          state.organizer = noteNext;
+          persist('organizer'); recompute(now); redraw(); return;
+        }
         if (act === 'tag-input' && id && value.trim()) {
           state.organizer = toggleTag(state.organizer, id, value.trim());
           persist('organizer'); recompute(now); redraw(); return;
         }
-        if (act === 'auto-refresh') { state.settings = normaliseSettings(Object.assign({}, state.settings, { autoRefreshMs: Number(value) })); persist('settings'); redraw(); return; }
+        if (act === 'auto-refresh') {
+          state.settings = normaliseSettings(Object.assign({}, state.settings, { autoRefreshMs: Number(value) }));
+          persist('settings');
+          // Rescheduling here is the whole point. Setting it up once at startup
+          // would mean the choice did nothing until the next page load.
+          scheduleAutoRefresh(doc, win);
+          redraw(); return;
+        }
         if (act === 'enrich-budget') { state.settings.enrichBudget = clamp(toInt(value, DEFAULT_ENRICH_BUDGET), 0, MAX_ENRICH_BUDGET); persist('settings'); redraw(); return; }
-        if (act === 'hide-torn-box') { state.settings.hideTornBox = !!el.checked; persist('settings'); redraw(); return; }
+        if (act === 'hide-torn-box') {
+          state.settings.hideTornBox = !!el.checked;
+          persist('settings'); applyHideTornBox(doc); redraw(); return;
+        }
         if (act === 'autosave') { state.settings.autosaveDrafts = !!el.checked; persist('settings'); redraw(); return; }
         if (act === 'folder-forum' && id) {
           var fid = toInt(value, 0);
@@ -3124,6 +3189,7 @@
     state.route = parseForumRoute(win.location);
     renderPanel(doc, win, loadingModel(now), noopHandlers);
 
+    applyHideTornBox(doc);
     var handlers = makeHandlers(doc, win);
     syncToRoute(doc, win);
 

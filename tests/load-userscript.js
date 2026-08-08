@@ -39,7 +39,7 @@ const EXPORT_NAMES = [
   'state', 'init', 'syncToRoute', 'refreshAll', 'enrichThreads', 'runDeepSearch',
   'loadAll', 'persist', 'recompute', 'makeHandlers', 'readRaw', 'writeRaw',
   'ambientTransports', 'transportName', 'injectStyleOnce', 'copyText', 'threadUrl',
-  'REPLY_SELECTORS', 'draw',
+  'REPLY_SELECTORS', 'draw', 'applyHideTornBox', 'TORN_BOX_SELECTORS',
   // pure view renderers
   'panelHtml', 'renderNav', 'renderRow', 'renderThreadsView', 'renderCatchUpView',
   'renderSearchView', 'renderDraftsView', 'renderSettingsView',
