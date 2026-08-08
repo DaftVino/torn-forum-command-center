@@ -31,10 +31,39 @@ Deviating from a standard requires an ADR here **and** a note queued to `~/.daft
 ## Repo-specific constraints
 
 1. **The userscript is one large file and must never be read whole.** Grep `docs/code-map.md` for the symbol, then read only the lines around the anchor. A session that opens it wholesale has failed regardless of what it produced.
-2. **Selectors against the host site are fragile by nature.** Every DOM query needs a null guard and a visible failure path; a silent `undefined` in a userscript looks like the host site broke. Record the selector's purpose next to it, so the repair is possible when the site changes.
-3. **`@version`, the newest `CHANGELOG.md` heading, and the git tag move together in one commit.** Users update by version string; a bumped script with an unbumped header ships invisibly.
-4. **`@match`, `@grant`, and `@connect` are the security surface.** Widening any of them needs a stated reason in the PR description. `@grant none` is the default to argue against, not for.
-5. **No secret reaches the script.** Everything in a userscript is readable by every user. API keys are entered by the user and held in script storage, never committed — `api-key-setup-readme.md` is the pattern.
+2. **No data path may touch Torn's markup.** See ADR 0001. Research could not confirm a single current forums selector, so all data comes from the API and the capture layer reads `location` and `document.title` only. DOM access exists in exactly two places — the mount container and the reply textarea — and both must degrade visibly. Adding a third is an architectural change, not a convenience.
+3. **Selectors against the host site are fragile by nature.** Every DOM query needs a null guard and a visible failure path; a silent `undefined` in a userscript looks like the host site broke. Record the selector's purpose next to it, so the repair is possible when the site changes.
+4. **The source is ASCII only, and `tests/metadata.test.js` enforces it.** Torn PDA rewrites typographic quotes across the whole file before injection. In the sibling Education Scheduler that turned four curly apostrophes into syntax errors and nothing ran at all. Never paste prose with smart quotes into this file.
+5. **The engine section is pure and `tests/purity.test.js` enforces it.** No DOM, no network, no `GM_*`, no ambient clock. A function that needs the time takes it as an argument.
+6. **The API key must never leave the device.** Not in an export, not in a log, not in a debug report, not in an error detail. Every detail string goes through `scrubDetail`, because a browser's own network error text quotes the request URL that this script never built.
+7. **The request budget is a promise the panel makes to the user.** A default refresh is at most 13 requests, and the limiter holds 40 per rolling minute. Changing either means changing what the Settings view says.
+8. **`@version`, the newest `CHANGELOG.md` heading, and the git tag move together in one commit.** Users update by version string; a bumped script with an unbumped header ships invisibly.
+9. **`@match`, `@grant`, and `@connect` are the security surface.** Widening any of them needs a stated reason in the PR description. `@connect` names exactly one host.
+10. **No secret reaches the script.** Everything in a userscript is readable by every user. API keys are entered by the user and held in script storage, never committed.
+
+## Verification
+
+```
+npm test
+npm run test:syntax
+node tests/mutation-check.mjs
+```
+
+The mutation check breaks each user-visible promise in turn and asserts the
+matching suite notices. It found six tests that passed for the wrong reason,
+four of them self-referential — a timeout test that advanced the clock by the
+constant it was testing, and limiter tests that looped that constant's own
+value. Run it after adding a test that guards something important, not just
+before a release.
+
+It edits the production file in place and restores it, including on a signal.
+**Do not pipe its output into `head`** or anything else that closes the pipe
+early: a SIGPIPE once killed it mid-mutation, and the next run read the mutated
+file as its pristine baseline. Redirect to a file and read that.
+
+Release is blocked on `docs/qa-checklist.md`, walked on a real signed-in
+account on real hardware. Automated tests cannot prove Torn PDA's injection or
+Torn's live API.
 
 ## Pipeline
 
