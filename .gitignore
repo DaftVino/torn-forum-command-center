@@ -13,3 +13,7 @@ scratch/
 # Mutation check working files
 .mutation-backup
 mut-out.txt
+.gstack/
+
+# Render previews are generated output
+preview/

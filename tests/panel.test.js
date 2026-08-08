@@ -236,3 +236,16 @@ test('a damaged storage key is reported in the panel rather than silently reset'
   assert.match(notices, /Folders and tags were damaged/);
   assert.match(panelHtmlOf(env), /damaged/);
 });
+
+test('a cache that holds something never reports zero', () => {
+  // Rounding to whole kilobytes reported a real cache as "0 KB", which reads as
+  // broken rather than small.
+  const { exports: api } = loadUserscript();
+  assert.strictEqual(api.formatBytes(0), '0 B');
+  assert.strictEqual(api.formatBytes(512), '512 B');
+  assert.strictEqual(api.formatBytes(1024), '1.0 KB');
+  assert.strictEqual(api.formatBytes(20480), '20 KB');
+  assert.strictEqual(api.formatBytes(1024 * 1024 * 3), '3.0 MB');
+  assert.strictEqual(api.formatBytes(-5), '0 B');
+  assert.strictEqual(api.formatBytes('nonsense'), '0 B');
+});

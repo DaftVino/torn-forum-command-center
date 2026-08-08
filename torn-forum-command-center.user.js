@@ -1469,6 +1469,15 @@
     return String(v);
   }
 
+  // Math.round(bytes / 1024) reports a cache that genuinely holds something as
+  // "0 KB", which reads as broken rather than small.
+  function formatBytes(n) {
+    var v = Math.max(0, toInt(n, 0));
+    if (v < 1024) return v + ' B';
+    if (v < 1024 * 1024) return (v / 1024).toFixed(v < 10240 ? 1 : 0) + ' KB';
+    return (v / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
   function formatRelativeTime(at, now) {
     if (at === null || at === undefined || at <= 0) return 'unknown';
     var delta = toInt(now, 0) - toInt(at, 0);
@@ -2199,7 +2208,12 @@
       '  background: var(--tm-bg-2); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-row-main { display: flex; align-items: baseline; gap: var(--tfcc-gap-sm);',
       '  flex-wrap: wrap; }',
-      '#' + PANEL_ID + ' .tfcc-row-title { font-weight: bold; overflow-wrap: anywhere; min-width: 0; }',
+      '#' + PANEL_ID + ' .tfcc-row-title { font-weight: bold; overflow-wrap: anywhere;',
+      // A zero flex-basis, not auto. flex-wrap decides line breaks from the
+      // base size, BEFORE any shrinking, so `auto` (the title's full content
+      // width) wraps the title onto a line of its own and strands the pin
+      // marker above it. Zero always fits, then grows into what is left.
+      '  flex: 1 1 0; min-width: 0; }',
       '#' + PANEL_ID + ' .tfcc-row-title a { color: var(--tm-text); text-decoration: none; }',
       '#' + PANEL_ID + ' .tfcc-row-title a:hover { text-decoration: underline; }',
       '#' + PANEL_ID + ' .tfcc-pinned { color: var(--tm-warn-text); }',
@@ -2236,6 +2250,12 @@
       '  #' + PANEL_ID + ' { padding: 8px; }',
       '  #' + PANEL_ID + ' .tfcc-kv label { min-width: 0; flex-basis: 100%; }',
       '  #' + PANEL_ID + ' .tfcc-grow { flex-basis: 100%; }',
+      '  #' + PANEL_ID + ' .tfcc-row { padding: var(--tfcc-gap-xs) var(--tfcc-gap-sm); }',
+      '  #' + PANEL_ID + ' .tfcc-actions { gap: 3px; }',
+      '  #' + PANEL_ID + ' .tfcc-actions button { padding: 1px 5px; }',
+      '  #' + PANEL_ID + ' .tfcc-actions input, #' + PANEL_ID + ' .tfcc-actions select {',
+      '    padding: 1px 4px; font-size: var(--tfcc-text-sm); max-width: 46%; }',
+      '  #' + PANEL_ID + ' .tfcc-meta { gap: var(--tfcc-gap-sm); }',
       '}',
     ].join('\n');
   }
@@ -2581,7 +2601,7 @@
       out.push('</div>');
     }
     out.push('<p class="tfcc-note">Cached posts: ' + model.cacheSize.posts + ' across '
-      + model.cacheSize.threads + ' threads, about ' + Math.round(model.cacheSize.bytes / 1024) + ' KB.</p>');
+      + model.cacheSize.threads + ' threads, about ' + escapeHtml(formatBytes(model.cacheSize.bytes)) + '.</p>');
     return out.join('');
   }
 
@@ -2717,7 +2737,7 @@
 
     out.push('<div class="tfcc-section"><h4>Storage</h4>');
     out.push('<p class="tfcc-note">Post cache: ' + model.cacheSize.posts + ' posts, '
-      + Math.round(model.cacheSize.bytes / 1024) + ' KB.</p>');
+      + escapeHtml(formatBytes(model.cacheSize.bytes)) + '.</p>');
     out.push('<div class="tfcc-actions">'
       + btn('clear-cache', 'Clear post cache')
       + btn('reset-organizer', 'Reset folders and tags', ' class="tfcc-danger"')

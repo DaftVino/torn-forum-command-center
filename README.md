@@ -150,9 +150,10 @@ It never reads a forum page you are not on.
 ## Development
 
 ```text
-npm test                        # unit tests, Node only, no browser
+npm test                        # 249 tests, Node only, no browser
 npm run test:syntax
 node tests/mutation-check.mjs   # breaks each promise, checks a test notices
+node tests/render-preview.mjs   # every view as standalone HTML, for looking at
 ```
 
 Tests never modify the userscript on disk; see `tests/load-userscript.js`. The

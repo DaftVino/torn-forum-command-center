@@ -156,10 +156,17 @@ Node only, no browser. `tests/load-userscript.js` reads the production file,
 injects an export statement in memory only, and runs it in a `vm` context with
 mocked globals. The file on disk is never modified by a test.
 
-`tests/mutation-check.mjs` is run by hand. It breaks each user-visible promise
-in turn and asserts the matching suite notices. It found six tests that passed
-for the wrong reason and is the reason several of them now assert absolute
-values rather than the constant they were testing.
+`tests/mutation-check.mjs` is run by hand. It breaks each of 23 user-visible
+promises in turn and asserts the matching suite notices. It found six tests
+that passed for the wrong reason and is the reason several of them now assert
+absolute values rather than the constant they were testing.
+
+`tests/render-preview.mjs` writes every view to standalone HTML using the real
+stylesheet and the real markup. String assertions cannot see an unclosed tag,
+a control with no contrast, or a layout that collapses at 375px; this is for
+looking at those. It caught a long thread title wrapping onto its own line and
+stranding the pin marker above it, which was a flex-basis of `auto` where
+`flex-wrap` needs `0`.
 
 Automated tests establish non-regression of these contracts. They cannot prove
 Torn PDA's real injection or Torn's live API, so release stays blocked on

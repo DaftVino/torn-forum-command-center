@@ -149,3 +149,20 @@ test('a missing Torn theme class falls back to the system, then to dark', () => 
   assert.strictEqual(hostile.exports.resolveTheme('match', hostile.doc, hostile.win), 'dark');
   assert.strictEqual(hostile.exports.resolveTheme('match', null, null), 'dark');
 });
+
+test('a long title shrinks beside the pin marker instead of wrapping below it', () => {
+  // The basis has to be zero, not auto. flex-wrap picks its line breaks from
+  // the base size BEFORE shrinking, so an auto basis - the title's full content
+  // width - pushes the title onto its own line and strands the pin marker above
+  // it. This was visible at 375px before it was fixed.
+  const block = blockFor('#tfcc-panel .tfcc-row-title');
+  assert.match(block, /flex:\s*1\s+1\s+0(?!\w)/, 'a non-zero basis reintroduces the wrap');
+  assert.match(block, /min-width:\s*0/);
+  assert.match(block, /overflow-wrap:\s*anywhere/);
+});
+
+test('row controls are tightened on a phone, where the same nine appear per row', () => {
+  const mq = css.slice(css.indexOf('@media (max-width: 600px)'));
+  assert.match(mq, /\.tfcc-actions button \{ padding: 1px 5px; \}/);
+  assert.match(mq, /max-width:\s*46%/, 'a full-width input per row makes the list endless');
+});

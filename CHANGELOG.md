@@ -46,8 +46,11 @@ First release. Blocked on the signed-in QA gate in `docs/qa-checklist.md`.
   `GM_xmlhttpRequest`, then `fetch`. It never rejects.
 - A client-side rate limiter: a 650 ms minimum gap and 40 requests per rolling
   minute. A default refresh is at most 13 requests.
-- 223 tests and `tests/mutation-check.mjs`, which breaks each user-visible
-  promise and asserts a test notices.
+- Autosave of the reply box into a draft, debounced, and never deleting a
+  saved draft when the box is empty.
+- 249 tests, `tests/mutation-check.mjs`, which breaks each of 23 user-visible
+  promises and asserts a test notices, and `tests/render-preview.mjs`, which
+  writes every view to standalone HTML for a look at the real markup.
 
 ### Security
 
