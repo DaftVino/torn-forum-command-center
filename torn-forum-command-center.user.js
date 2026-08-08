@@ -71,6 +71,7 @@
   var DOM_READY_POLL_MS = 250;
   var DOM_READY_MAX_POLLS = 40;
   var NAV_DEBOUNCE_MS = 150;
+  var AUTOSAVE_DEBOUNCE_MS = 1200;
 
   // Torn PDA substitutes this literal in the source at injection time. The
   // sentinel it is compared against is assembled from fragments, so that same
@@ -1757,6 +1758,16 @@
     replyBoxFound: false,
   };
 
+  // Anything that makes an in-flight request's answer no longer wanted goes
+  // through here: a reset, a cleared key, leaving the page. refreshAll captures
+  // the generation when it starts and checks it before every write, so a result
+  // that arrives after one of those events is dropped instead of quietly
+  // rebuilding data the user just told the script to throw away.
+  function invalidateInFlight() {
+    state.generation += 1;
+    state.refreshing = false;
+  }
+
   function notice(text, kind) {
     state.notices.push({ text: safeString(text, 300), kind: kind || 'info' });
     if (state.notices.length > 5) state.notices.shift();
@@ -1816,8 +1827,11 @@
     var generation = state.generation;
     var budget = clamp(toInt(state.settings.enrichBudget, DEFAULT_ENRICH_BUDGET), 0, MAX_ENRICH_BUDGET);
 
+    function stale() { return generation !== state.generation; }
+
     var work = tornApiGet('user/forumsubscribedthreads', {}, options)
       .then(function (res) {
+        if (stale()) return { ok: false, reason: 'stale' };
         if (!res.ok) return res;
         var list = res.data.forumSubscribedThreads || res.data.forumSbuscribedThreads || [];
         state.feed.subscribed = [];
@@ -1830,6 +1844,7 @@
         return tornApiGet('user/forumfeed', {}, options);
       })
       .then(function (res) {
+        if (stale()) return { ok: false, reason: 'stale' };
         if (!res || !res.ok) return res;
         var list = res.data.forumFeed || [];
         state.feed.activity = [];
@@ -1841,6 +1856,7 @@
           return { ok: true, skipped: true };
         }
         return tornApiGet('forum/categories', {}, options).then(function (cres) {
+          if (stale()) return { ok: false, reason: 'stale' };
           if (cres.ok) {
             var cats = cres.data.categories || [];
             state.feed.categories = [];
@@ -1856,7 +1872,11 @@
         });
       })
       .then(function (res) {
+        if (stale()) return { ok: false, reason: 'stale' };
         if (!res || !res.ok) {
+          // A stale result is not a failure the user needs to read about; they
+          // caused it by resetting, clearing the key, or leaving the page.
+          if (res && res.reason === 'stale') return res;
           state.lastError = { reason: res ? res.reason : 'network', detail: res ? res.detail : 'Refresh failed.' };
           return res;
         }
@@ -1869,7 +1889,7 @@
         return enrichThreads(targets.map(function (r) { return r.numericId; }), now, options);
       })
       .then(function (res) {
-        if (generation === state.generation) {
+        if (!stale()) {
           recompute(now);
           persist('feed');
           persist('organizer');
@@ -1891,10 +1911,12 @@
     var list = (ids || []).slice(0, MAX_ENRICH_BUDGET);
     if (!list.length) return Promise.resolve({ ok: true, enriched: 0 });
     var done = 0;
+    var generation = state.generation;
 
     function step(i) {
       if (i >= list.length) return Promise.resolve({ ok: true, enriched: done });
       return tornApiGet('forum/' + list[i] + '/thread', {}, opts).then(function (res) {
+        if (generation !== state.generation) return { ok: true, enriched: done, stale: true };
         if (res.ok && isPlainObject(res.data.thread)) {
           var t = res.data.thread;
           var id = String(list[i]);
@@ -1923,6 +1945,13 @@
     var query = parseQuery(queryText);
     if (query.isEmpty) {
       return Promise.resolve({ ok: false, reason: 'empty', detail: 'Type something to search for.' });
+    }
+    // Two concurrent searches both read-modify-write state.postCache, so
+    // whichever finished last would silently discard the other's fetched posts
+    // - and the first to finish would re-enable the button while the other was
+    // still running.
+    if (state.deepBusy) {
+      return Promise.resolve({ ok: false, reason: 'inflight', detail: 'A search is already running.' });
     }
     var ids = (threadIds || []).slice(0, DEEP_SEARCH_MAX_THREADS);
     var maxPages = clamp(toInt(state.settings.deepSearchPages, DEEP_SEARCH_MAX_PAGES), 1, DEEP_SEARCH_MAX_PAGES);
@@ -2048,6 +2077,51 @@
     } catch (e) {
       return { ok: false, reason: 'insert', detail: 'Could not write into the reply box.' };
     }
+  }
+
+  // Autosave keeps its own record of which element it is listening to. The
+  // panel redraws on every interaction, so attaching per draw would pile up a
+  // listener each time and write the same draft over and over.
+  var autosaveBox = null;
+  var autosaveTimer = null;
+
+  function attachAutosave(doc, win) {
+    if (!state.settings.autosaveDrafts || !state.route || !state.route.isThread) {
+      autosaveBox = null;
+      return false;
+    }
+    var box = findReplyBox(doc);
+    if (!box || typeof box.addEventListener !== 'function') {
+      autosaveBox = null;
+      return false;
+    }
+    if (autosaveBox === box) return true;
+    autosaveBox = box;
+
+    box.addEventListener('input', function () {
+      if (autosaveTimer !== null) clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(function () {
+        autosaveTimer = null;
+        try {
+          if (!state.settings.autosaveDrafts) return;
+          if (!state.route || !state.route.isThread) return;
+          var text = box.value === undefined || box.value === null ? '' : String(box.value);
+          // An empty box never deletes a saved draft. Torn clears the reply box
+          // after a successful post, and can hand back an empty textarea during
+          // a re-render; either would otherwise wipe work the user still wants.
+          // Deleting a draft is what the Delete button is for.
+          if (!text.trim()) return;
+          state.drafts = saveDraft(state.drafts, state.route.threadId, text, Date.now(), '');
+          persist('drafts');
+        } catch (e) { /* autosave must never throw onto Torn's page */ }
+      }, AUTOSAVE_DEBOUNCE_MS);
+    });
+    return true;
+  }
+
+  function detachAutosave() {
+    autosaveBox = null;
+    if (autosaveTimer !== null) { clearTimeout(autosaveTimer); autosaveTimer = null; }
   }
 
   // ---- theme and styles --------------------------------------------------
@@ -2950,10 +3024,19 @@
     }
   }
 
+  // Every asynchronous redraw goes through here. A refresh takes seconds, and
+  // the user can leave the forums in that time; drawing unconditionally would
+  // mount the panel onto whatever page they went to.
+  function drawIfStillHere(doc, win, handlers) {
+    if (!isForumsPage(win.location)) return;
+    draw(doc, win, handlers);
+  }
+
   function draw(doc, win, handlers) {
     var now = Date.now();
     state.route = parseForumRoute(win.location);
     state.replyBoxFound = !!findReplyBox(doc);
+    attachAutosave(doc, win);
     renderPanel(doc, win, buildPanelModel(now), handlers);
     state.mounted = true;
   }
@@ -2975,7 +3058,7 @@
         var id = idOf(el);
         if (act === 'refresh') {
           state.notices = [];
-          refreshAll(now).then(redraw);
+          refreshAll(now).then(function () { if (isForumsPage(win.location)) redraw(); });
           redraw();
           return;
         }
@@ -3022,16 +3105,24 @@
           // that would spend their request budget on threads they filtered out.
           var listed = buildPanelModel(now).rows;
           var ids = listed.slice(0, DEEP_SEARCH_MAX_THREADS).map(function (r) { return r.numericId; });
-          runDeepSearch(ids, state.searchQuery, now).then(redraw);
+          runDeepSearch(ids, state.searchQuery, now).then(function (res) {
+            // Every other fallible action here reports its outcome. Dropping
+            // this one made an empty query look identical to a broken feature.
+            if (res && !res.ok && res.detail) notice(res.detail, 'warn');
+            redraw();
+          });
           redraw(); return;
         }
         if (act === 'key-save') {
           var res = saveApiKey(valueOf('key-input').trim());
           notice(res.ok ? 'Key saved.' : (res.detail || 'That key was not accepted.'), res.ok ? 'info' : 'error');
-          if (res.ok) refreshAll(Date.now()).then(redraw);
+          if (res.ok) refreshAll(Date.now()).then(function () { if (isForumsPage(win.location)) redraw(); });
           redraw(); return;
         }
-        if (act === 'key-clear') { saveApiKey(''); notice('Key cleared.', 'info'); redraw(); return; }
+        if (act === 'key-clear') {
+          saveApiKey(''); invalidateInFlight();
+          notice('Key cleared.', 'info'); redraw(); return;
+        }
         if (act === 'draft' && id) {
           state.draftFocusId = id;
           state.settings.view = 'drafts';
@@ -3084,8 +3175,13 @@
           redraw(); return;
         }
         if (act === 'clear-cache') { state.postCache = freshPostCache(); persist('postCache'); notice('Post cache cleared.', 'info'); redraw(); return; }
-        if (act === 'reset-organizer') { state.organizer = freshOrganizer(now); persist('organizer'); recompute(now); notice('Folders and tags reset.', 'info'); redraw(); return; }
+        if (act === 'reset-organizer') {
+          invalidateInFlight();
+          state.organizer = freshOrganizer(now); persist('organizer'); recompute(now);
+          notice('Folders and tags reset.', 'info'); redraw(); return;
+        }
         if (act === 'reset-all') {
+          invalidateInFlight();
           state.settings = freshSettings(); state.organizer = freshOrganizer(now);
           state.drafts = freshDrafts(); state.feed = freshFeed(); state.postCache = freshPostCache();
           persist('settings'); persist('organizer'); persist('drafts'); persist('feed'); persist('postCache');
@@ -3127,7 +3223,12 @@
           state.settings.hideTornBox = !!el.checked;
           persist('settings'); applyHideTornBox(doc); redraw(); return;
         }
-        if (act === 'autosave') { state.settings.autosaveDrafts = !!el.checked; persist('settings'); redraw(); return; }
+        if (act === 'autosave') {
+          state.settings.autosaveDrafts = !!el.checked;
+          persist('settings');
+          if (!state.settings.autosaveDrafts) detachAutosave();
+          redraw(); return;
+        }
         if (act === 'folder-forum' && id) {
           var fid = toInt(value, 0);
           var folder = state.organizer.folders.filter(function (f) { return f.id === id; })[0];
@@ -3154,6 +3255,11 @@
   function syncToRoute(doc, win) {
     if (!isForumsPage(win.location)) {
       if (state.mounted) unmountPanel(doc);
+      // A result that arrives after the user has left must not redraw a panel
+      // onto another page, or write data gathered for a page they have gone.
+      invalidateInFlight();
+      detachAutosave();
+      state.route = null;
       return;
     }
     var now = Date.now();
@@ -3171,7 +3277,7 @@
       try {
         if (doc.hidden === true) return;
         if (!isForumsPage(win.location)) return;
-        refreshAll(Date.now()).then(function () { draw(doc, win, makeHandlers(doc, win)); });
+        refreshAll(Date.now()).then(function () { drawIfStillHere(doc, win, makeHandlers(doc, win)); });
       } catch (e) { /* an auto refresh must never throw onto the page */ }
     }, ms);
   }
@@ -3196,7 +3302,7 @@
     observeNavigation(doc, win, function () { syncToRoute(doc, win); });
 
     if (isKeyShaped(loadApiKey())) {
-      refreshAll(Date.now()).then(function () { draw(doc, win, handlers); });
+      refreshAll(Date.now()).then(function () { drawIfStillHere(doc, win, handlers); });
     }
     scheduleAutoRefresh(doc, win);
   }

@@ -40,6 +40,7 @@ const EXPORT_NAMES = [
   'loadAll', 'persist', 'recompute', 'makeHandlers', 'readRaw', 'writeRaw',
   'ambientTransports', 'transportName', 'injectStyleOnce', 'copyText', 'threadUrl',
   'REPLY_SELECTORS', 'draw', 'applyHideTornBox', 'TORN_BOX_SELECTORS',
+  'attachAutosave', 'detachAutosave', 'invalidateInFlight', 'AUTOSAVE_DEBOUNCE_MS',
   // pure view renderers
   'panelHtml', 'renderNav', 'renderRow', 'renderThreadsView', 'renderCatchUpView',
   'renderSearchView', 'renderDraftsView', 'renderSettingsView',

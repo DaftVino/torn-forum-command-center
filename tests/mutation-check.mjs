@@ -156,6 +156,54 @@ const MUTATIONS = [
     ),
   },
   {
+    name: 'the staleness guard is removed, so a reset can be undone',
+    suite: 'tests/staleness.test.js',
+    apply: (s) => s.replace('function stale() { return generation !== state.generation; }',
+      'function stale() { return false; }'),
+  },
+  {
+    name: 'a reset no longer invalidates work already in flight',
+    suite: 'tests/staleness.test.js',
+    apply: (s) => s.replace(
+      '  function invalidateInFlight() {\n    state.generation += 1;',
+      '  function invalidateInFlight() {\n    state.generation += 0;',
+    ),
+  },
+  {
+    name: 'deep search loses its re-entrancy guard',
+    suite: 'tests/staleness.test.js',
+    apply: (s) => s.replace(
+      "    if (state.deepBusy) {\n      return Promise.resolve({ ok: false, reason: 'inflight', detail: 'A search is already running.' });\n    }",
+      '',
+    ),
+  },
+  {
+    name: 'autosave stops writing anything',
+    suite: 'tests/staleness.test.js',
+    apply: (s) => s.replace(
+      "          state.drafts = saveDraft(state.drafts, state.route.threadId, text, Date.now(), '');",
+      '          void text;',
+    ),
+  },
+  {
+    name: 'an emptied reply box is autosaved over the draft',
+    suite: 'tests/staleness.test.js',
+    apply: (s) => s.replace('          if (!text.trim()) return;', ''),
+  },
+  {
+    name: 'a late refresh redraws onto whatever page the user went to',
+    suite: 'tests/staleness.test.js',
+    apply: (s) => s.replace(
+      '  function drawIfStillHere(doc, win, handlers) {\n    if (!isForumsPage(win.location)) return;\n    draw(doc, win, handlers);\n  }',
+      '  function drawIfStillHere(doc, win, handlers) {\n    draw(doc, win, handlers);\n  }',
+    ),
+  },
+  {
+    name: 'the Note control loses its handler',
+    suite: 'tests/handlers.test.js',
+    apply: (s) => s.replace("        if (act === 'note-input' && id) {", "        if (false && id) {"),
+  },
+  {
     name: 'the page guard accepts any host ending in torn.com',
     suite: 'tests/route.test.js',
     apply: (s) => s.replace(
