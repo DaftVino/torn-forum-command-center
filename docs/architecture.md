@@ -175,6 +175,42 @@ held in `state.pendingRedraw` and flushed on `focusout`, once focus has settled
 outside the panel. A redraw caused by the user pressing something is forced
 through, because they need to see the result.
 
+### Surviving the host stylesheet
+
+The panel lives inside Torn's page, so Torn's CSS is competing with ours on
+every element we emit. Two rules make that survivable.
+
+`#tfcc-panel * { color: inherit; background: transparent; }` is the floor.
+Inheritance is the weakest source in CSS - a value is inherited only when no
+rule matches - so a bare `td { color: #000 }` on the host beats an inherited
+colour and paints black text on the dark panel, which is exactly what happened
+to the API key disclosure table. `background` needs its own reset because it is
+not inherited at all, which is how a host `code { background: #eee }` survived
+the colour fix and left grey text on a grey block. Both declarations are
+(1,0,0) specificity, so every class rule and every explicit element rule below
+still wins.
+
+Elements a host page is most likely to have opinions about - table cells, `code`
+- state their colour and background outright rather than relying on that floor.
+
+`tests/render-preview.mjs` renders every view twice, once plain and once under a
+stylesheet that sets bare element rules the way a real host does. The plain
+previews were too clean to catch either bug; the hostile ones catch both.
+
+### Following Torn's theme
+
+Match Torn measures the background the page actually paints and reads its
+luminance, rather than looking for a class name. The class names it used before
+were a guess that was never confirmed, and Match Torn did not in fact follow
+Torn's web theme. Measurement cannot go stale that way; the class names and
+`prefers-color-scheme` remain as fallbacks, and an unreadable style resolves to
+"unknown" rather than to white.
+
+A second, narrow observer watches `class` on `body` and `documentElement`,
+because Torn's theme toggle is an attribute mutation and the navigation observer
+only watches `childList`. Applying a theme changes two class names and no
+markup, so following Torn costs no redraw and takes nobody's caret.
+
 The two structural guards overlap on purpose: either alone stops the loop.
 `tests/redraw.test.js` therefore tests `isOwnMutation` directly and counts route
 callbacks rather than renders, or the overlap would hide whichever one broke.

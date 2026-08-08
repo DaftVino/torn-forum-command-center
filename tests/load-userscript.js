@@ -79,7 +79,7 @@ const EXPORT_NAMES = [
   'captureVisit', 'titleToThreadName',
   // runtime: panel
   'VIEWS', 'buildPanelModel', 'loadingModel', 'errorModel', 'noopHandlers',
-  'renderPanel', 'panelStyleText', 'THEMES', 'resolveTheme',
+  'renderPanel', 'panelStyleText', 'THEMES', 'resolveTheme', 'measurePageTheme', 'applyThemeClass', 'observeTheme',
   // runtime: drafts insertion
   'findReplyBox', 'insertDraft',
   // runtime: debug
@@ -293,7 +293,17 @@ function makeSandbox(options = {}) {
     Event: class FakeEvent {
       constructor(type, init) { this.type = type; this.bubbles = !!(init && init.bubbles); }
     },
-    getComputedStyle: () => ({ getPropertyValue: () => '' }),
+    // Controllable, because resolveTheme now measures what the page paints
+    // rather than guessing at a class name. `computedStyles` maps a stub
+    // element to the style object getComputedStyle should return for it.
+    getComputedStyle: (el) => {
+      const table = options.computedStyles || {};
+      if (el === body && table.body) return Object.assign({ getPropertyValue: () => '' }, table.body);
+      if (el === documentElement && table.documentElement) {
+        return Object.assign({ getPropertyValue: () => '' }, table.documentElement);
+      }
+      return { getPropertyValue: () => '', backgroundColor: '' };
+    },
     matchMedia: options.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {} })),
   };
 

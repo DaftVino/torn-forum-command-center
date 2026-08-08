@@ -54,6 +54,20 @@ First release. Blocked on the signed-in QA gate in `docs/qa-checklist.md`.
 
 ### Fixed before release
 
+- **The API key disclosure table was black text on the dark panel.** Its cells
+  took their colour by inheritance, and inheritance is the weakest source in
+  CSS: a value is inherited only when no rule matches, so any bare `td` rule on
+  Torn's own stylesheet beat it. The panel now resets `color` and `background`
+  on every descendant, and states both outright on the cells. `background`
+  needed its own reset because it is not inherited at all.
+- **Match Torn did not follow Torn's web theme.** It looked for a `dark-mode`
+  class that was a guess and was never confirmed. It now measures the background
+  the page actually paints and reads its luminance, falling back to the class
+  names and then to `prefers-color-scheme`. A second, narrow observer watches
+  for a class change, because Torn's toggle is an attribute mutation and the
+  navigation observer only watches `childList`. Applying a theme changes two
+  class names and no markup, so following Torn costs no redraw.
+
 - **The panel redrew itself in a loop, roughly seven times a second.** The
   navigation observer watched `documentElement` with `subtree: true`, and
   rendering writes the panel's own `innerHTML` from inside that subtree, so

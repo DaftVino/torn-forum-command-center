@@ -123,6 +123,7 @@ test('every rule is scoped to something this script owns', () => {
 });
 
 test('the theme resolves from Torn own class, then the system, then dark', () => {
+  // No measurable background, so the class names are what is left to go on.
   const env = loadUserscript();
   assert.strictEqual(env.exports.resolveTheme('light', env.doc, env.win), 'light', 'an explicit choice wins');
   assert.strictEqual(env.exports.resolveTheme('dark', env.doc, env.win), 'dark');
@@ -136,7 +137,7 @@ test('the theme resolves from Torn own class, then the system, then dark', () =>
 
 test('a missing Torn theme class falls back to the system, then to dark', () => {
   // Torn's class name is a convenience and unconfirmed. It must never be a
-  // requirement.
+  // requirement. Nothing measurable here either, so the media query decides.
   const light = loadUserscript({ matchMedia: () => ({ matches: true }) });
   assert.strictEqual(light.exports.resolveTheme('match', light.doc, light.win), 'light');
 
@@ -202,4 +203,120 @@ test('the panel never names an access level Torn does not offer', () => {
 
   assert.doesNotMatch(api.TORN_ERRORS[16], /Minimal/);
   assert.match(api.TORN_ERRORS[16], /forumsubscribedthreads/);
+});
+
+test('nothing in the panel takes its colour or background from the host page', () => {
+  // Inheritance is the weakest source in CSS: a value is inherited only when NO
+  // rule matches. Torn styles bare elements, so `td { color: #000 }` on the host
+  // beat our panel's inherited colour and painted the API-key table black.
+  // background needs its own reset because it is not inherited at all, which is
+  // how a host `code { background: #eee }` survived the colour fix.
+  assert.match(css, /#tfcc-panel \* \{ color: inherit; background: transparent; \}/);
+
+  // The reset must come before the rules it is meant to lose to, so a same
+  // specificity rule later in the sheet still wins on source order.
+  const reset = css.indexOf('#tfcc-panel * { color: inherit');
+  const controls = css.indexOf('#tfcc-panel button, #tfcc-panel select');
+  assert.ok(reset < controls, 'the reset must not override the control colours');
+});
+
+test('table cells and code state their own colours outright', () => {
+  // The two element types a host page is most likely to have opinions about.
+  const cells = blockFor('#tfcc-panel .tfcc-tos th, #tfcc-panel .tfcc-tos td');
+  assert.match(cells, /color:\s*var\(--tm-text\)/);
+  assert.match(cells, /background:\s*transparent/);
+
+  const code = blockFor('#tfcc-panel code, #tfcc-panel pre');
+  assert.match(code, /color:\s*var\(--tm-accent-text\)/);
+  assert.match(code, /background:\s*var\(--tm-bg-3\)/);
+});
+
+test('Match Torn reads the page it is on rather than a class name', () => {
+  // The class names were never confirmed and Match Torn did not follow Torn's
+  // web theme. Measuring what the page paints cannot go stale that way.
+  const dark = loadUserscript({ computedStyles: { body: { backgroundColor: 'rgb(20, 20, 20)' } } });
+  assert.strictEqual(dark.exports.measurePageTheme(dark.doc, dark.win), 'dark');
+  assert.strictEqual(dark.exports.resolveTheme('match', dark.doc, dark.win), 'dark');
+
+  const light = loadUserscript({ computedStyles: { body: { backgroundColor: 'rgb(242, 242, 242)' } } });
+  assert.strictEqual(light.exports.measurePageTheme(light.doc, light.win), 'light');
+  assert.strictEqual(light.exports.resolveTheme('match', light.doc, light.win), 'light');
+});
+
+test('a transparent body is not read as black', () => {
+  // body is very often transparent with the real colour on html. Reading
+  // rgba(0,0,0,0) as black would make every light page resolve to dark.
+  const env = loadUserscript({
+    computedStyles: {
+      body: { backgroundColor: 'rgba(0, 0, 0, 0)' },
+      documentElement: { backgroundColor: 'rgb(255, 255, 255)' },
+    },
+  });
+  assert.strictEqual(env.exports.measurePageTheme(env.doc, env.win), 'light');
+});
+
+test('both transparent means the browser canvas, which is white', () => {
+  const env = loadUserscript({
+    computedStyles: {
+      body: { backgroundColor: 'rgba(0, 0, 0, 0)' },
+      documentElement: { backgroundColor: 'transparent' },
+    },
+  });
+  assert.strictEqual(env.exports.measurePageTheme(env.doc, env.win), 'light');
+});
+
+test('an explicit theme choice still beats the measurement', () => {
+  const env = loadUserscript({ computedStyles: { body: { backgroundColor: 'rgb(255, 255, 255)' } } });
+  assert.strictEqual(env.exports.resolveTheme('dark', env.doc, env.win), 'dark');
+  assert.strictEqual(env.exports.resolveTheme('light', env.doc, env.win), 'light');
+});
+
+test('measuring never throws, whatever the page hands back', () => {
+  const env = loadUserscript();
+  env.win.getComputedStyle = () => { throw new Error('detached'); };
+  assert.doesNotThrow(() => env.exports.measurePageTheme(env.doc, env.win));
+  assert.strictEqual(env.exports.measurePageTheme(env.doc, env.win), null);
+  assert.strictEqual(env.exports.resolveTheme('match', env.doc, env.win), 'dark', 'and still resolves');
+
+  assert.strictEqual(env.exports.measurePageTheme(null, null), null);
+});
+
+test('the theme is re-applied when Torn switches its own', () => {
+  // Torn's toggle changes a class, which is an attribute mutation. The
+  // navigation observer only watches childList, so without a second observer
+  // the panel kept whichever theme it resolved on the page it loaded into.
+  const env = loadUserscript({
+    location: { hostname: 'www.torn.com', pathname: '/forums.php', hash: '', search: '' },
+    computedStyles: { body: { backgroundColor: 'rgb(20, 20, 20)' } },
+    gmStore: [['tfcc:settings', JSON.stringify({ v: 1, theme: 'match' })]],
+  });
+  const panel = env.doc.getElementById('tfcc-panel');
+  assert.strictEqual(panel.classList.contains('tfcc-theme-dark'), true);
+
+  // Torn switches to its light theme, and the observer notices.
+  env.win.getComputedStyle = () => ({ getPropertyValue: () => '', backgroundColor: 'rgb(245, 245, 245)' });
+  const themeObserver = env.observers.find((o) => o.options && o.options.attributes);
+  assert.ok(themeObserver, 'no observer is watching for a theme change');
+  themeObserver.cb([{ type: 'attributes', attributeName: 'class' }], themeObserver);
+
+  assert.strictEqual(panel.classList.contains('tfcc-theme-light'), true, 'the panel did not follow');
+  assert.strictEqual(panel.classList.contains('tfcc-theme-dark'), false);
+});
+
+test('following the theme costs no redraw', () => {
+  // It changes two class names and no markup, so it can run as often as needed
+  // without taking anyone's caret with it.
+  const env = loadUserscript({
+    location: { hostname: 'www.torn.com', pathname: '/forums.php', hash: '', search: '' },
+    computedStyles: { body: { backgroundColor: 'rgb(20, 20, 20)' } },
+    gmStore: [['tfcc:settings', JSON.stringify({ v: 1, theme: 'match' })]],
+  });
+  const panel = env.doc.getElementById('tfcc-panel');
+  const before = panel.renderCount || 0;
+
+  env.win.getComputedStyle = () => ({ getPropertyValue: () => '', backgroundColor: 'rgb(245, 245, 245)' });
+  env.exports.applyThemeClass(env.doc, env.win);
+
+  assert.strictEqual(panel.renderCount || 0, before, 'applying a theme rewrote the panel');
+  assert.strictEqual(panel.classList.contains('tfcc-theme-light'), true);
 });

@@ -151,10 +151,17 @@ Tampermonkey, on the same build.
       readable background. No dark-on-dark, no white-on-white in any input.
 - [ ] Open every dropdown. The options must be readable: on some platforms the
       popup is drawn by the OS and defaults to black on white.
+- [ ] Set the theme to **Match Torn**, then switch Torn's own theme between
+      light and dark from Torn's settings. The panel must follow immediately,
+      without a reload and without losing whatever you had typed.
+- [ ] Read the API key table in dark mode. Every answer must be readable; those
+      cells used to take Torn's black.
 - [ ] Run `node tests/render-preview.mjs` then `node tests/contrast-audit.mjs`.
       Every preview must pass WCAG AA. This is what caught links in the Search
       and Drafts views falling back to the browser default blue, which reads as
-      black against the dark panel.
+      black against the dark panel. It renders each view twice, the second time
+      under a stylesheet that fights ours the way Torn's does; the plain
+      previews were too clean to catch either colour bug.
 - [ ] Keyboard only: tab through the panel. Focus is always visible.
 - [ ] Import an export made on the other browser. The summary counts are right
       and existing local work is merged, not replaced.

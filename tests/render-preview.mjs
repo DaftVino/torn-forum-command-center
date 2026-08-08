@@ -102,7 +102,26 @@ api.recompute(NOW);
 
 const css = api.panelStyleText();
 
-function page(title, theme, body, width) {
+// A stand-in for Torn's own stylesheet. Every one of these is the kind of bare
+// element rule a large site really does ship, and every one of them beats an
+// inherited colour, because inheritance only applies when NO rule matches.
+// Without this the previews were far too clean to catch the bug they were
+// meant to catch: the disclosure table's cells were readable here and black on
+// the real site.
+const HOSTILE_HOST_CSS = [
+  'td, th { color: #000; background: #fff; }',
+  'table { color: #000; border-collapse: separate; }',
+  'h1, h2, h3, h4, h5, h6 { color: #111; }',
+  'p { color: #222; }',
+  'code, pre { color: #333; background: #eee; }',
+  'div, span, li { color: #1a1a1a; }',
+  'strong, b { color: #000; }',
+  'a { color: #0645ad; }',
+  'button, input, select, textarea { color: #000; background: #fff; }',
+  'option { color: #000; background: #fff; }',
+].join('\n');
+
+function page(title, theme, body, width, hostile) {
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8">',
@@ -116,6 +135,9 @@ function page(title, theme, body, width) {
     '.frame { max-width: ' + width + 'px; margin: 0 auto; }',
     '.label { color: ' + (theme === 'light' ? '#333' : '#888') + '; font-size: 12px;',
     '  margin: 0 0 8px; font-family: monospace; }',
+    // The host's rules come FIRST, exactly as they would on Torn, so our panel
+    // stylesheet has to win on its own merits rather than on source order.
+    hostile ? HOSTILE_HOST_CSS : '',
     css,
     '</style></head><body><div class="frame">',
     '<p class="label">' + title + '</p>',
@@ -134,6 +156,15 @@ for (const view of api.VIEWS) {
     const name = `${view}-${theme}.html`;
     fs.writeFileSync(path.join(outDir, name), page(`${view} / ${theme}`, theme, body, 1100));
     written.push(name);
+
+    // The same view again, under a stylesheet that fights ours the way a real
+    // host page does.
+    const hostileName = `${view}-${theme}-hostile.html`;
+    fs.writeFileSync(
+      path.join(outDir, hostileName),
+      page(`${view} / ${theme} / hostile host`, theme, body, 1100, true),
+    );
+    written.push(hostileName);
   }
 }
 

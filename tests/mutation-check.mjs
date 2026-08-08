@@ -368,6 +368,43 @@ const MUTATIONS = [
     ),
   },
   {
+    name: 'panel content takes its colour from the host page again',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace(
+      "      '#' + PANEL_ID + ' * { color: inherit; background: transparent; }',",
+      '',
+    ),
+  },
+  {
+    name: 'table cells go back to inheriting their colour',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace(
+      "      '  color: var(--tm-text); background: transparent; }',",
+      "      '  }',",
+    ),
+  },
+  {
+    name: 'Match Torn goes back to guessing at a class name',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace(
+      '    var measured = measurePageTheme(doc, win);\n    if (measured) return measured;',
+      '',
+    ),
+  },
+  {
+    name: 'a transparent body is read as black',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace(
+      '        if (m[4] !== undefined && Number(m[4]) < 0.5) continue;',
+      '',
+    ),
+  },
+  {
+    name: 'nothing watches for Torn changing its theme',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace('    observeTheme(doc, win);', ''),
+  },
+  {
     name: 'the page guard accepts any host ending in torn.com',
     suite: 'tests/route.test.js',
     apply: (s) => s.replace(

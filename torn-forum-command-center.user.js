@@ -44,6 +44,7 @@
   var FALLBACK_ID = 'tfcc-fallback-mount';
   var STYLE_ID = 'tfcc-style';
   var NAV_FLAG = '__tfccNavInstalled';
+  var THEME_FLAG = '__tfccThemeObserved';
 
   var SCHEMA_VERSION = 1;
   var STORAGE_KEYS = Object.freeze({
@@ -2201,8 +2202,46 @@
 
   // ---- theme and styles --------------------------------------------------
 
+  // What the page is actually painted, rather than what we guess it is called.
+  // Torn's theme class name was never confirmed, and Match Torn did not in fact
+  // follow Torn's web theme. A measured background cannot go stale that way.
+  function measurePageTheme(doc, win) {
+    try {
+      if (!win || typeof win.getComputedStyle !== 'function') return null;
+      var candidates = [doc && doc.body, doc && doc.documentElement];
+      // "Could not read a colour" and "read a transparent colour" are different
+      // answers. Only the second means the browser is painting its own white
+      // canvas; the first has to fall through to the other signals.
+      var readAny = false;
+      for (var i = 0; i < candidates.length; i += 1) {
+        if (!candidates[i]) continue;
+        var style = win.getComputedStyle(candidates[i]);
+        if (!style) continue;
+        var raw = style.backgroundColor;
+        if (typeof raw !== 'string' || !raw) continue;
+        if (raw === 'transparent') { readAny = true; continue; }
+        var m = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/.exec(raw);
+        if (!m) continue;
+        readAny = true;
+        // A transparent element paints nothing, so the colour comes from
+        // further out. Keep looking rather than reading it as black.
+        if (m[4] !== undefined && Number(m[4]) < 0.5) continue;
+        var lum = 0.2126 * Number(m[1]) + 0.7152 * Number(m[2]) + 0.0722 * Number(m[3]);
+        return lum < 128 ? 'dark' : 'light';
+      }
+      // Everything readable was transparent, so the browser paints white.
+      return readAny ? 'light' : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function resolveTheme(setting, doc, win) {
     if (setting === 'dark' || setting === 'light') return setting;
+
+    var measured = measurePageTheme(doc, win);
+    if (measured) return measured;
+
     try {
       var body = doc && doc.body;
       if (body && body.classList && typeof body.classList.contains === 'function') {
@@ -2216,6 +2255,47 @@
       }
     } catch (e2) { /* fall through to the default */ }
     return 'dark';
+  }
+
+  // Applying the theme touches two class names and no markup, so it can run as
+  // often as needed without costing anyone their caret.
+  function applyThemeClass(doc, win) {
+    try {
+      var panel = doc.getElementById(PANEL_ID);
+      if (!panel || !panel.classList) return null;
+      var theme = resolveTheme(state.settings.theme, doc, win);
+      panel.classList.remove('tfcc-theme-dark');
+      panel.classList.remove('tfcc-theme-light');
+      panel.classList.add('tfcc-theme-' + theme);
+      return theme;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Torn's theme toggle changes a class, which is an attribute mutation. The
+  // navigation observer only watches childList, so without this the panel kept
+  // whichever theme it resolved on the page it first loaded into.
+  function observeTheme(doc, win) {
+    if (!doc || !win || win[THEME_FLAG]) return;
+    win[THEME_FLAG] = true;
+    try {
+      if (typeof MutationObserver === 'function') {
+        var mo = new MutationObserver(function () { applyThemeClass(doc, win); });
+        if (doc.body) mo.observe(doc.body, { attributes: true, attributeFilter: ['class'] });
+        if (doc.documentElement) {
+          mo.observe(doc.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+        }
+      }
+    } catch (e) { /* the panel keeps its current theme; nothing else breaks */ }
+    try {
+      if (typeof win.matchMedia === 'function') {
+        var mq = win.matchMedia('(prefers-color-scheme: light)');
+        if (mq && typeof mq.addEventListener === 'function') {
+          mq.addEventListener('change', function () { applyThemeClass(doc, win); });
+        }
+      }
+    } catch (e2) { /* same */ }
   }
 
   function panelStyleText() {
@@ -2248,6 +2328,18 @@
       '  background: var(--tm-bg); color: var(--tm-text); border-radius: 6px;',
       '  padding: 10px 12px; margin: 12px 0; font-size: var(--tfcc-text); line-height: 1.5; }',
       '#' + PANEL_ID + ' * { box-sizing: border-box; }',
+      // Inheritance is the weakest source in CSS: a value is inherited only
+      // when NO rule matches. Torn styles bare elements - td, h4, p, code - so
+      // any such rule of theirs beat our panel's inherited colour and painted
+      // black text on the dark panel. background needs its own reset because it
+      // is not inherited at all, which is how a host `code { background: #eee }`
+      // survived the colour fix and left grey text on a grey block.
+      // Both declarations are (1,0,0), so every rule below still wins.
+      '#' + PANEL_ID + ' * { color: inherit; background: transparent; }',
+      '#' + PANEL_ID + ' code, #' + PANEL_ID + ' pre {',
+      '  font-family: ui-monospace, Consolas, monospace; font-size: var(--tfcc-text-sm);',
+      '  color: var(--tm-accent-text); background: var(--tm-bg-3);',
+      '  border-radius: 3px; padding: 0 4px; }',
       '#' + PANEL_ID + '.tfcc-takeover { position: fixed; inset: 0; margin: 0; border-radius: 0;',
       '  z-index: 2147483000; height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh;',
       '  overflow-y: auto; overflow-x: hidden; padding: 12px; }',
@@ -2330,7 +2422,11 @@
       '#' + PANEL_ID + ' .tfcc-tos { border-collapse: collapse; width: 100%; margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-tos th, #' + PANEL_ID + ' .tfcc-tos td {',
       '  border: 1px solid var(--tm-border); padding: 4px 8px; text-align: left;',
-      '  font-size: var(--tfcc-text-sm); vertical-align: top; }',
+      '  font-size: var(--tfcc-text-sm); vertical-align: top;',
+      // Stated outright rather than inherited. Table cells are the most
+      // heavily styled elements on any host page, so this is where a bare
+      // element rule of Torn's is most likely to reach in.
+      '  color: var(--tm-text); background: transparent; }',
       '#' + PANEL_ID + ' .tfcc-tos th { color: var(--tm-meta); font-weight: normal; white-space: nowrap; }',
       // Narrow screens are the primary target: this runs inside Torn PDA.
       '@media (max-width: 600px) {',
@@ -2980,10 +3076,7 @@
       }
     }
 
-    var theme = resolveTheme(model.theme, doc, win);
-    panel.classList.remove('tfcc-theme-dark');
-    panel.classList.remove('tfcc-theme-light');
-    panel.classList.add('tfcc-theme-' + theme);
+    applyThemeClass(doc, win);
     panel.classList.toggle('tfcc-takeover', !!model.takeover);
 
     var html = panelHtml(model);
@@ -3514,6 +3607,7 @@
     syncToRoute(doc, win);
 
     observeNavigation(doc, win, function () { syncToRoute(doc, win); });
+    observeTheme(doc, win);
 
     if (isKeyShaped(loadApiKey())) {
       refreshAll(Date.now()).then(function () { drawIfStillHere(doc, win, handlers); });
