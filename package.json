@@ -1,0 +1,13 @@
+{
+  "name": "torn-forum-command-center",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Development tooling for the Torn Forum Command Center userscript. Not shipped; adds no runtime dependencies.",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "test:syntax": "node --check torn-forum-command-center.user.js"
+  },
+  "devDependencies": {},
+  "license": "MIT"
+}
