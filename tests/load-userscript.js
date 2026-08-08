@@ -39,7 +39,7 @@ const EXPORT_NAMES = [
   'state', 'init', 'syncToRoute', 'refreshAll', 'enrichThreads', 'runDeepSearch',
   'loadAll', 'persist', 'recompute', 'makeHandlers', 'readRaw', 'writeRaw',
   'ambientTransports', 'transportName', 'injectStyleOnce', 'copyText', 'threadUrl',
-  'REPLY_SELECTORS', 'draw', 'applyHideTornBox', 'TORN_BOX_SELECTORS',
+  'REPLY_SELECTORS', 'draw', 'applyHideTornBox', 'TORN_BOX_SELECTORS', 'isOwnMutation', 'panelHasEditableFocus',
   'attachAutosave', 'detachAutosave', 'invalidateInFlight', 'AUTOSAVE_DEBOUNCE_MS',
   // pure view renderers
   'panelHtml', 'renderNav', 'renderRow', 'renderThreadsView', 'renderCatchUpView',
@@ -144,6 +144,25 @@ function makeSandbox(options = {}) {
   const documentListeners = {};
   const createdElements = [];
 
+  // Observers registered by the script, so the fake innerHTML setter can fire
+  // them the way a real MutationObserver would. Without this the harness cannot
+  // see a render that re-triggers the observer watching it, which is exactly
+  // the loop that shipped: renderPanel writes panel.innerHTML, the panel is
+  // inside the observed subtree, and the observer schedules another render.
+  const observers = [];
+
+  function notifyObservers(target) {
+    for (const o of observers.slice()) {
+      if (o.disconnected || !o.options || !o.options.childList) continue;
+      // subtree: true means anything under the root counts, which is what the
+      // script asks for and why its own writes came back to it.
+      if (!o.options.subtree && o.target !== target) continue;
+      sandbox.setTimeout(() => {
+        if (!o.disconnected) o.cb([{ type: 'childList', target }], o);
+      }, 0);
+    }
+  }
+
   function makeElement(tag) {
     const el = {
       tagName: String(tag || 'div').toUpperCase(),
@@ -153,7 +172,7 @@ function makeSandbox(options = {}) {
       attributes: {},
       isConnected: true,
       parentNode: null,
-      innerHTML: '',
+      _innerHTML: '',
       textContent: '',
       value: '',
       classList: {
@@ -196,6 +215,16 @@ function makeSandbox(options = {}) {
       },
       get firstChild() { return this.children[0] || null; },
     };
+    Object.defineProperty(el, 'innerHTML', {
+      configurable: true,
+      enumerable: true,
+      get() { return this._innerHTML; },
+      set(v) {
+        this._innerHTML = String(v);
+        this.renderCount = (this.renderCount || 0) + 1;
+        notifyObservers(this);
+      },
+    });
     createdElements.push(el);
     return el;
   }
@@ -242,7 +271,6 @@ function makeSandbox(options = {}) {
     replaceState(...a) { historyCalls.push(['replaceState', a]); },
   };
 
-  const observers = [];
   const windowStub = {
     location: Object.assign({}, DEFAULT_LOCATION, options.location || {}),
     history: historyStub,
@@ -256,7 +284,7 @@ function makeSandbox(options = {}) {
     fire(type, ev) { for (const fn of (windowStub.listeners[type] || []).slice()) fn(ev || { type }); },
     MutationObserver: class {
       constructor(cb) { this.cb = cb; this.disconnected = false; observers.push(this); }
-      observe(target, opts) { this.target = target; this.options = opts; }
+      observe(target, opts) { this.target = target; this.options = opts || {}; this.disconnected = false; }
       disconnect() { this.disconnected = true; }
     },
     // The native setter path insertDraft() must use so React notices a change.

@@ -150,6 +150,35 @@ Mount selection tries an ordered list of containers, accepts one only while it
 is connected, and otherwise creates an owned `#tfcc-fallback-mount`. A wrong
 guess costs placement, never the script.
 
+### Rendering, and why it is guarded three ways
+
+The panel renders by replacing its own `innerHTML`. That is simple and keeps the
+view a pure function of the model, but it destroys every node underneath it,
+including the caret, the selection and any half-typed value. Three guards make
+that safe.
+
+**The navigation observer ignores our own writes.** It watches
+`documentElement` with `subtree: true`, and the panel is inside that subtree, so
+without a filter every render scheduled another one, forever, at the debounce
+interval. The visible result was that no text box could hold a caret and clicks
+landed on nodes that had already been replaced. `isOwnMutation` drops a batch
+only when every record came from a node this script owns; a mixed batch contains
+a real change and still gets through.
+
+**An identical render is not written at all.** The last emitted HTML is kept on
+the panel node and compared before assignment, because a browser normalises what
+`innerHTML` reads back. Torn's own React churn therefore costs nothing.
+
+**A background redraw never lands under a caret.** When an input, textarea or
+select inside the panel has focus, a redraw that the user did not ask for is
+held in `state.pendingRedraw` and flushed on `focusout`, once focus has settled
+outside the panel. A redraw caused by the user pressing something is forced
+through, because they need to see the result.
+
+The two structural guards overlap on purpose: either alone stops the loop.
+`tests/redraw.test.js` therefore tests `isOwnMutation` directly and counts route
+callbacks rather than renders, or the overlap would hide whichever one broke.
+
 ## Capture
 
 The capture layer reads `location` and `document.title` and nothing else. It

@@ -336,6 +336,38 @@ const MUTATIONS = [
     ),
   },
   {
+    name: 'the observer reads our own renders as page navigation again',
+    suite: 'tests/redraw.test.js',
+    apply: (s) => s.replace(
+      '          if (isOwnMutation(doc, records)) return;',
+      '',
+    ),
+  },
+  {
+    name: 'an identical render is written to the DOM anyway',
+    suite: 'tests/redraw.test.js',
+    apply: (s) => s.replace(
+      '    if (panel.__tfccHtml !== html) {',
+      '    if (true) {',
+    ),
+  },
+  {
+    name: 'a background redraw interrupts typing',
+    suite: 'tests/redraw.test.js',
+    apply: (s) => s.replace(
+      '      if (!force && panelHasEditableFocus(doc)) {',
+      '      if (false) {',
+    ),
+  },
+  {
+    name: 'a held update is never flushed when focus leaves',
+    suite: 'tests/redraw.test.js',
+    apply: (s) => s.replace(
+      "      panel.addEventListener('focusout', function () {",
+      "      panel.addEventListener('never-fires', function () {",
+    ),
+  },
+  {
     name: 'the page guard accepts any host ending in torn.com',
     suite: 'tests/route.test.js',
     apply: (s) => s.replace(

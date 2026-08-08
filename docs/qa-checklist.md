@@ -110,6 +110,18 @@ time **END**.
 - [ ] Search on Torn is a link, not a button. Middle-click it: it should open a new tab, which a scripted navigation could not do.
 - [ ] Clear the post cache. The size drops to zero and folders are untouched.
 
+### Interaction
+
+- [ ] Click into the API key box and leave it. The caret stays. Type a full key
+      without it disappearing. This is the regression that made the script
+      unusable: the panel was redrawing about seven times a second.
+- [ ] Type into a tag box and a note box on a thread row. Both hold the caret.
+- [ ] Press every button twice in a row. None of them silently does nothing.
+- [ ] Leave the panel open on a busy forum page for a minute without touching
+      it. The panel must not visibly flicker or reflow.
+- [ ] With auto refresh on, start typing in a box and wait past the interval.
+      Your text survives, and the update appears once you click away.
+
 ### Failure behaviour
 
 - [ ] Turn off connectivity and refresh. A named error appears with a retry, and

@@ -54,6 +54,16 @@ First release. Blocked on the signed-in QA gate in `docs/qa-checklist.md`.
 
 ### Fixed before release
 
+- **The panel redrew itself in a loop, roughly seven times a second.** The
+  navigation observer watched `documentElement` with `subtree: true`, and
+  rendering writes the panel's own `innerHTML` from inside that subtree, so
+  every render scheduled another one. Text boxes could not hold a caret, so the
+  API key could not be typed, and clicks landed on nodes that had already been
+  replaced, so buttons intermittently did nothing. Three guards now: the
+  observer ignores mutations from nodes this script owns, an identical render is
+  not written at all, and a redraw the user did not ask for is deferred while an
+  input inside the panel has focus and flushed when focus leaves.
+
 - Links in the Search and Drafts views had no colour rule of their own and fell
   back to the browser default `rgb(0, 0, 238)`, which reads as black against the
   dark panel. Every anchor is now coloured in every state, including `:visited`,

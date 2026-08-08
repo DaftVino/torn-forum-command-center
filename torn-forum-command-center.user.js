@@ -1798,6 +1798,7 @@
     deepBusy: false,
     deepProgress: null,
     draftFocusId: null,
+    pendingRedraw: false,
     generation: 0,
     mounted: false,
     route: null,
@@ -2944,7 +2945,24 @@
 
   var delegated = null;
 
-  function renderPanel(doc, win, model, handlers) {
+  // An editable element inside the panel currently has the caret. The value the
+  // user is typing is not in the model yet, so re-rendering would throw away
+  // both the caret and the half-typed text.
+  function panelHasEditableFocus(doc) {
+    try {
+      var active = doc.activeElement;
+      if (!active) return false;
+      var tag = String(active.tagName || '').toLowerCase();
+      if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') return false;
+      var panel = doc.getElementById(PANEL_ID);
+      if (!panel || typeof panel.contains !== 'function') return false;
+      return panel.contains(active);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function renderPanel(doc, win, model, handlers, force) {
     injectStyleOnce(doc);
     var mount = findMountPoint(doc);
     if (!mount) return null;
@@ -2968,7 +2986,21 @@
     panel.classList.add('tfcc-theme-' + theme);
     panel.classList.toggle('tfcc-takeover', !!model.takeover);
 
-    panel.innerHTML = panelHtml(model);
+    var html = panelHtml(model);
+
+    // Writing the same string still destroys every node under it, taking the
+    // caret, the selection and any half-typed value with them. innerHTML is not
+    // read back for the comparison because a browser normalises what it returns.
+    if (panel.__tfccHtml !== html) {
+      if (!force && panelHasEditableFocus(doc)) {
+        // Deferred, not dropped: the next draw renders current state anyway.
+        state.pendingRedraw = true;
+      } else {
+        panel.__tfccHtml = html;
+        panel.innerHTML = html;
+        state.pendingRedraw = false;
+      }
+    }
 
     // One delegated listener for the whole panel: innerHTML replaces every node
     // on each render, so per-element listeners would leak on every redraw.
@@ -2985,6 +3017,17 @@
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
         if (!act || typeof handlers.onChange !== 'function') return;
         handlers.onChange(act, t);
+      });
+      // An update deferred while the user was typing has to arrive eventually.
+      // Waiting a tick lets focus settle first, so this does not fire while the
+      // caret is simply moving from one field to the next.
+      panel.addEventListener('focusout', function () {
+        if (!state.pendingRedraw) return;
+        setTimeout(function () {
+          if (!state.pendingRedraw) return;
+          if (panelHasEditableFocus(doc)) return;
+          draw(doc, win, handlers, true);
+        }, 0);
       });
     }
     return panel;
@@ -3093,6 +3136,35 @@
     check();
   }
 
+  // True when every record came from something this script owns. Anything from
+  // Torn's own tree is real navigation and must still get through.
+  function isOwnMutation(doc, records) {
+    try {
+      if (!records || !records.length) return false;
+      var owned = [PANEL_ID, FALLBACK_ID, STYLE_ID, HIDE_STYLE_ID]
+        .map(function (id) { return doc.getElementById(id); })
+        .filter(Boolean);
+      if (!owned.length) return false;
+
+      for (var i = 0; i < records.length; i += 1) {
+        var target = records[i] && records[i].target;
+        if (!target) return false;
+        var inside = false;
+        for (var j = 0; j < owned.length; j += 1) {
+          if (owned[j] === target
+            || (typeof owned[j].contains === 'function' && owned[j].contains(target))) {
+            inside = true;
+            break;
+          }
+        }
+        if (!inside) return false;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   function observeNavigation(doc, win, onRoute) {
     if (!win || win[NAV_FLAG]) return;
     if (!doc || !doc.documentElement) return;
@@ -3125,7 +3197,16 @@
 
     try {
       if (typeof MutationObserver === 'function') {
-        var mo = new MutationObserver(schedule);
+        var mo = new MutationObserver(function (records) {
+          // Without this filter the script feeds itself: the observer watches
+          // documentElement with subtree true, renderPanel writes
+          // panel.innerHTML, the panel is inside that subtree, so every render
+          // schedules another one - forever, every debounce interval. The
+          // visible result is that no text box can hold a caret and a click
+          // lands on a node that has already been replaced.
+          if (isOwnMutation(doc, records)) return;
+          schedule();
+        });
         mo.observe(doc.documentElement, { childList: true, subtree: true });
       }
     } catch (e2) { /* keep going without the observer */ }
@@ -3161,17 +3242,17 @@
     draw(doc, win, handlers);
   }
 
-  function draw(doc, win, handlers) {
+  function draw(doc, win, handlers, force) {
     var now = Date.now();
     state.route = parseForumRoute(win.location);
     state.replyBoxFound = !!findReplyBox(doc);
     attachAutosave(doc, win);
-    renderPanel(doc, win, buildPanelModel(now), handlers);
+    renderPanel(doc, win, buildPanelModel(now), handlers, force);
     state.mounted = true;
   }
 
   function makeHandlers(doc, win) {
-    function redraw() { draw(doc, win, handlers); }
+    function redraw() { draw(doc, win, handlers, true); }
 
     function idOf(el) { return el && el.getAttribute ? el.getAttribute('data-id') : null; }
 
