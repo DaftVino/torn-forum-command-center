@@ -1,0 +1,212 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert');
+const { loadUserscript, FORUMS_LOCATION } = require('./load-userscript');
+
+function forums(extra) {
+  return Object.assign({}, FORUMS_LOCATION, extra || {});
+}
+
+function panelsIn(env) {
+  return env.createdElements.filter((el) => el.id === 'tfcc-panel' && el.isConnected !== false);
+}
+
+test('a usable DOM at evaluation starts the script straight away', () => {
+  const env = loadUserscript({ location: forums() });
+  let ran = 0;
+  env.exports.whenDocumentReady(env.doc, env.win, () => { ran += 1; });
+  assert.strictEqual(ran, 1);
+});
+
+test('a DOM that arrives later still starts the script, with no navigation event', () => {
+  // This is the Torn PDA failure shape: the webview evaluates the script before
+  // body and documentElement exist, and nothing ever fires a route event.
+  const env = loadUserscript({ location: forums() });
+  const doc = {
+    documentElement: null,
+    body: null,
+    addEventListener: env.doc.addEventListener,
+    removeEventListener: env.doc.removeEventListener,
+  };
+
+  let ran = 0;
+  env.exports.whenDocumentReady(doc, env.win, () => { ran += 1; });
+  assert.strictEqual(ran, 0, 'nothing should run against a page that is not there');
+
+  doc.documentElement = {};
+  doc.body = {};
+  env.advanceTimersBy(300);
+  assert.strictEqual(ran, 1, 'the bounded poll is what rescues this case');
+});
+
+test('every readiness path firing together still starts the script exactly once', () => {
+  const env = loadUserscript({ location: forums() });
+  let ran = 0;
+  env.exports.whenDocumentReady(env.doc, env.win, () => { ran += 1; });
+  env.doc.fire('DOMContentLoaded');
+  env.win.fire('load');
+  env.advanceTimersBy(5000);
+  assert.strictEqual(ran, 1);
+});
+
+test('a DOM that never arrives leaves no unbounded timer and never throws', () => {
+  const env = loadUserscript({ location: forums() });
+  const doc = { documentElement: null, body: null, addEventListener() {}, removeEventListener() {} };
+  let ran = 0;
+  assert.doesNotThrow(() => env.exports.whenDocumentReady(doc, env.win, () => { ran += 1; }));
+
+  env.advanceTimersBy(1000 * 60 * 5);
+  assert.strictEqual(ran, 0);
+  assert.strictEqual(env.pendingTimerCount(), 0, 'the poll must give up rather than spin forever');
+});
+
+test('a callback that throws does not escape onto Torn page', () => {
+  const env = loadUserscript({ location: forums() });
+  assert.doesNotThrow(() => {
+    env.exports.whenDocumentReady(env.doc, env.win, () => { throw new Error('boom'); });
+  });
+});
+
+test('readiness listeners are cleaned up once it has started', () => {
+  const env = loadUserscript({ location: forums() });
+  const doc = { documentElement: null, body: null, ...{} };
+  const listeners = {};
+  doc.addEventListener = (t, fn) => { (listeners[t] = listeners[t] || []).push(fn); };
+  doc.removeEventListener = (t, fn) => {
+    const i = (listeners[t] || []).indexOf(fn);
+    if (i !== -1) listeners[t].splice(i, 1);
+  };
+
+  env.exports.whenDocumentReady(doc, env.win, () => {});
+  assert.strictEqual(listeners.DOMContentLoaded.length, 1);
+
+  doc.documentElement = {};
+  doc.body = {};
+  env.advanceTimersBy(300);
+  assert.strictEqual(listeners.DOMContentLoaded.length, 0, 'a started script should not keep listening');
+});
+
+test('navigation is observed once, however many times it is installed', () => {
+  // Loaded off the forums route on purpose: on a forums URL the bootstrap has
+  // already installed the observer, so a manual call would correctly be a
+  // no-op and this test would prove nothing about the guard itself.
+  const env = loadUserscript();
+  let routes = 0;
+  const onRoute = () => { routes += 1; };
+
+  env.exports.observeNavigation(env.doc, env.win, onRoute);
+  env.exports.observeNavigation(env.doc, env.win, onRoute);
+  env.exports.observeNavigation(env.doc, env.win, onRoute);
+
+  assert.strictEqual(env.observers.length, 1, 'a second install would double every redraw');
+  assert.strictEqual((env.win.listeners.hashchange || []).length, 1);
+});
+
+test('a hash change, a popstate and a history call all reach the route handler', () => {
+  const env = loadUserscript();
+  let routes = 0;
+  env.exports.observeNavigation(env.doc, env.win, () => { routes += 1; });
+
+  env.win.fire('hashchange');
+  env.advanceTimersBy(200);
+  assert.strictEqual(routes, 1, 'hashchange is how the forum SPA moves');
+
+  env.win.fire('popstate');
+  env.advanceTimersBy(200);
+  assert.strictEqual(routes, 2);
+
+  env.win.history.pushState({}, '', '/forums.php#/p=threads&t=5');
+  env.advanceTimersBy(200);
+  assert.strictEqual(routes, 3);
+});
+
+test('a burst of mutations is debounced into one redraw', () => {
+  const env = loadUserscript();
+  let routes = 0;
+  env.exports.observeNavigation(env.doc, env.win, () => { routes += 1; });
+
+  for (let i = 0; i < 20; i += 1) env.observers[0].cb([], env.observers[0]);
+  env.advanceTimersBy(500);
+  assert.strictEqual(routes, 1, "Torn's React tree churns; one redraw is the answer");
+});
+
+test('a route handler that throws does not escape', () => {
+  const env = loadUserscript({ location: forums() });
+  env.exports.observeNavigation(env.doc, env.win, () => { throw new Error('boom'); });
+  env.win.fire('hashchange');
+  assert.doesNotThrow(() => env.advanceTimersBy(500));
+});
+
+test('a frozen history does not stop navigation being observed', () => {
+  // History patching is defensive hardening. It must never be the reason the
+  // panel fails to appear.
+  const env = loadUserscript({
+    history: Object.freeze({ pushState() {}, replaceState() {} }),
+  });
+  let routes = 0;
+  assert.doesNotThrow(() => env.exports.observeNavigation(env.doc, env.win, () => { routes += 1; }));
+
+  env.win.fire('hashchange');
+  env.advanceTimersBy(200);
+  assert.strictEqual(routes, 1, 'the direct route still works without history hooks');
+});
+
+test('the script mounts exactly one panel on the forums page', () => {
+  const env = loadUserscript({ location: forums() });
+  assert.strictEqual(panelsIn(env).length, 1);
+  assert.strictEqual(env.exports.state.mounted, true);
+});
+
+test('repeated route syncs never stack a second panel', () => {
+  const env = loadUserscript({ location: forums({ hash: '#/p=threads&t=1' }) });
+  for (let i = 0; i < 5; i += 1) env.exports.syncToRoute(env.doc, env.win);
+  assert.strictEqual(panelsIn(env).length, 1);
+});
+
+test('leaving forums.php unmounts the panel and its fallback', () => {
+  const env = loadUserscript({ location: forums() });
+  assert.strictEqual(panelsIn(env).length, 1);
+
+  env.win.location.pathname = '/index.php';
+  env.exports.syncToRoute(env.doc, env.win);
+
+  assert.strictEqual(panelsIn(env).length, 0);
+  assert.strictEqual(env.doc.getElementById('tfcc-fallback-mount'), null);
+});
+
+test('with no known container the panel goes into an owned fallback, never stacked', () => {
+  const env = loadUserscript({ location: forums() });
+  assert.ok(env.doc.getElementById('tfcc-fallback-mount'), 'no Torn container was offered, so we own one');
+
+  for (let i = 0; i < 3; i += 1) env.exports.syncToRoute(env.doc, env.win);
+  const fallbacks = env.createdElements.filter((el) => el.id === 'tfcc-fallback-mount' && el.isConnected !== false);
+  assert.strictEqual(fallbacks.length, 1);
+});
+
+test('a known Torn container is preferred over the fallback', () => {
+  const host = { isConnected: true, children: [], appendChild(c) { this.children.push(c); return c; }, insertBefore(c) { this.children.unshift(c); return c; } };
+  const env = loadUserscript({ location: forums(), selectors: { '#forums-page-wrap': host } });
+  assert.strictEqual(env.exports.findMountPoint(env.doc).host, host);
+  assert.strictEqual(env.exports.findMountPoint(env.doc).owned, false);
+});
+
+test('a detached container is rejected in favour of the fallback', () => {
+  const host = { isConnected: false };
+  const env = loadUserscript({ location: forums(), selectors: { '#forums-page-wrap': host } });
+  const mount = env.exports.findMountPoint(env.doc);
+  assert.strictEqual(mount.owned, true, 'Torn replaced its own node mid-render');
+});
+
+test('a querySelector that throws falls through to the fallback rather than failing', () => {
+  const env = loadUserscript({ location: forums() });
+  env.doc.querySelector = () => { throw new Error('Torn changed something'); };
+  assert.doesNotThrow(() => env.exports.findMountPoint(env.doc));
+  assert.strictEqual(env.exports.findMountPoint(env.doc).owned, true);
+});
+
+test('the mount selector list is ordered most specific first', () => {
+  const { exports: api } = loadUserscript();
+  assert.strictEqual(api.MOUNT_SELECTORS[0], '#forums-page-wrap');
+  assert.ok(api.MOUNT_SELECTORS.length >= 3, 'one guess is not a fallback strategy');
+});

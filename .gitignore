@@ -9,3 +9,7 @@ Thumbs.db
 scratch/
 *.user.js.bak
 .tampermonkey/
+
+# Mutation check working files
+.mutation-backup
+mut-out.txt

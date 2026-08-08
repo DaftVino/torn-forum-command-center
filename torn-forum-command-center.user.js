@@ -1498,13 +1498,23 @@
 
   // -- storage runtime -----------------------------------------------------
 
+  // A distinct sentinel for "there was something stored and it could not be
+  // read". Collapsing that into null would make a damaged key look exactly like
+  // an absent one, and the user would lose their folders in silence.
+  var PARSE_FAILED = { tfccParseFailed: true };
+
   function readRaw(name) {
+    var v;
     try {
-      var v = GM_getValue(name, null);
-      if (typeof v !== 'string' || !v) return null;
-      return JSON.parse(v);
+      v = GM_getValue(name, null);
     } catch (e) {
       return null;
+    }
+    if (typeof v !== 'string' || !v) return null;
+    try {
+      return JSON.parse(v);
+    } catch (e2) {
+      return PARSE_FAILED;
     }
   }
 
@@ -1519,9 +1529,12 @@
 
   function loadKey(name, normaliser, now) {
     var raw = readRaw(name);
+    if (raw === PARSE_FAILED) {
+      return { value: normaliser(null, now), recovered: true, hadRaw: true };
+    }
     var value = normaliser(raw, now);
     var recovered = raw !== null && JSON.stringify(raw) !== JSON.stringify(value);
-    return { value: value, recovered: recovered && raw !== null, hadRaw: raw !== null };
+    return { value: value, recovered: recovered, hadRaw: raw !== null };
   }
 
   function saveKey(name, value) {

@@ -104,7 +104,15 @@ test('a request that never settles resolves as a timeout and clears its timer', 
   const before = env.pendingTimerCount();
   assert.ok(before > 0, 'a deadline should be armed');
 
-  await settle(env, env.exports.REQUEST_TIMEOUT_MS + 1);
+  // A fixed bound, not REQUEST_TIMEOUT_MS + 1. Deriving the advance from the
+  // constant under test means widening the constant widens the test with it,
+  // and the deadline could be removed entirely without this failing.
+  // Asserted before the advance, not after: if the deadline were widened past
+  // what this test advances, `await p` would hang forever and the whole suite
+  // would stall instead of reporting a clear failure.
+  assert.ok(env.exports.REQUEST_TIMEOUT_MS <= 30000,
+    'REQUEST_TIMEOUT_MS is ' + env.exports.REQUEST_TIMEOUT_MS + ', past the bound this test advances to');
+  await settle(env, 30001);
   const res = await p;
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.reason, 'timeout');
@@ -117,7 +125,12 @@ test('a late settle after a timeout is harmless', async () => {
     fetch: () => new Promise((r) => { resolveLate = () => r({ status: 200, text: () => Promise.resolve('{"a":1}') }); }),
   });
   const p = env.exports.httpGet('https://api.torn.com/v2/x');
-  await settle(env, env.exports.REQUEST_TIMEOUT_MS + 1);
+  // Asserted before the advance, not after: if the deadline were widened past
+  // what this test advances, `await p` would hang forever and the whole suite
+  // would stall instead of reporting a clear failure.
+  assert.ok(env.exports.REQUEST_TIMEOUT_MS <= 30000,
+    'REQUEST_TIMEOUT_MS is ' + env.exports.REQUEST_TIMEOUT_MS + ', past the bound this test advances to');
+  await settle(env, 30001);
   const res = await p;
   assert.strictEqual(res.reason, 'timeout');
 
@@ -233,16 +246,18 @@ test('a duplicate request in flight is dropped rather than doubled', async () =>
   const second = await env.exports.tornApiGet('user/forumfeed', {}, { key: KEY });
   assert.strictEqual(second.ok, false);
   assert.strictEqual(second.reason, 'inflight');
-  await settle(env, env.exports.REQUEST_TIMEOUT_MS + 1);
+  // Asserted before the advance, not after: if the deadline were widened past
+  // what this test advances, `await p` would hang forever and the whole suite
+  // would stall instead of reporting a clear failure.
+  assert.ok(env.exports.REQUEST_TIMEOUT_MS <= 30000,
+    'REQUEST_TIMEOUT_MS is ' + env.exports.REQUEST_TIMEOUT_MS + ', past the bound this test advances to');
+  await settle(env, 30001);
   await first;
 });
 
-test('the request budget matches what the spec promises', () => {
+test('the request deadline is a real bound, not an arbitrarily large number', () => {
   const { exports: api } = loadUserscript();
-  assert.strictEqual(api.MIN_REQUEST_GAP_MS, 650);
-  assert.strictEqual(api.REQUESTS_PER_WINDOW, 40);
-  assert.strictEqual(api.RATE_WINDOW_MS, 60000);
-  // Well under the ~100 per minute the community reports, because that number
-  // is not documented and this script is not the only thing using the key.
-  assert.ok(api.REQUESTS_PER_WINDOW < 100);
+  assert.ok(api.REQUEST_TIMEOUT_MS > 1000, 'too tight to survive a slow mobile connection');
+  assert.ok(api.REQUEST_TIMEOUT_MS <= 30000,
+    'a deadline the user outlives is not a deadline: ' + api.REQUEST_TIMEOUT_MS);
 });

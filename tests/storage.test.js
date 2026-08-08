@@ -37,6 +37,19 @@ test('a corrupt value resets only its own key', () => {
   assert.strictEqual(drafts.value.byThread['42'].text, 'kept');
 });
 
+test('a value that will not parse is reported, not mistaken for an absent key', () => {
+  // Collapsing "damaged" into "never set" is how a user silently loses every
+  // folder they built and is told nothing at all about it.
+  const { exports: api } = loadUserscript({ gmStore: [['tfcc:organizer', '{ this is not json']] });
+  const res = api.loadKey(api.STORAGE_KEYS.organizer, api.normaliseOrganizer, 0);
+  assert.strictEqual(res.hadRaw, true);
+  assert.strictEqual(res.recovered, true);
+
+  const absent = api.loadKey(api.STORAGE_KEYS.drafts, api.normaliseDrafts, 0);
+  assert.strictEqual(absent.hadRaw, false);
+  assert.strictEqual(absent.recovered, false, 'a key that was never set is not a recovery');
+});
+
 test('a damaged key is reported rather than silently reset', () => {
   const { exports: api } = loadUserscript({
     gmStore: [['tfcc:organizer', JSON.stringify({ v: 1, folders: 'not an array', threads: { 7: { pinned: 'yes' } } })]],

@@ -422,7 +422,19 @@ function loadUserscript(options = {}) {
     if (proto === vmProtos.arrayProto) return Array.from(value, transformFromVM);
     if (proto === vmProtos.objectProto) {
       const out = {};
-      for (const key of Object.keys(value)) out[key] = transformFromVM(value[key]);
+      for (const key of Object.keys(value)) {
+        const member = value[key];
+        if (typeof member === 'function') {
+          // A returned object can carry methods of its own - makeRateLimiter
+          // hands back reserve/used/reset. Without wrapping them here, their
+          // results come back as VM-realm objects and deepStrictEqual fails on
+          // prototype identity for values that are structurally identical.
+          // `this` stays bound to the VM object so its closure state still works.
+          out[key] = (...args) => transformFromVM(member.apply(value, args));
+        } else {
+          out[key] = transformFromVM(member);
+        }
+      }
       return out;
     }
     return value;
