@@ -213,3 +213,38 @@ test('a key Torn has rejected is never sent again', () => {
   assert.match(SOURCE, /if \(state\.settings\.keyRejected\) \{/,
     'the gate must be in tornApiGet so every caller is covered');
 });
+
+test('the script generates no alerts and draws no attention to any window', () => {
+  // Torn's rule: software must not "generate alerts, or draw attention to
+  // itself or another window". Everything here is banned outright.
+  const forbidden = [
+    [/\balert\s*\(/, 'alert()'],
+    [/\bconfirm\s*\(/, 'confirm()'],
+    [/\bprompt\s*\(/, 'prompt()'],
+    [/\bNotification\b/, 'the Notification API'],
+    [/new\s+Audio/, 'an Audio object'],
+    [/\bvibrate\s*\(/, 'vibrate()'],
+    [/window\s*\.\s*focus\s*\(/, 'window.focus()'],
+    [/win\s*\.\s*focus\s*\(/, 'window.focus() via the win parameter'],
+    [/\bmoveTo\s*\(|\bresizeTo\s*\(/, 'moving or resizing the window'],
+    [/document\s*\.\s*title\s*=|doc\s*\.\s*title\s*=/, 'rewriting the page title'],
+    [/rel\s*=\s*["']?icon/, 'changing the favicon'],
+    [/scrollIntoView/, 'scrolling the page on its own'],
+  ];
+
+  const found = [];
+  for (const [re, label] of forbidden) if (re.test(SOURCE)) found.push(label);
+  assert.deepStrictEqual(found, [], 'the script draws attention to itself: ' + found.join(', '));
+});
+
+test('the only focus call is on the reply box, after the user asked for it', () => {
+  // element.focus() puts the caret in a textarea inside the page the user is
+  // already looking at, as a direct result of clicking Insert. That is not
+  // window-level attention, and the test above bans the window-level kind.
+  const focusCalls = SOURCE.match(/\.focus\s*\(\s*\)/g) || [];
+  assert.strictEqual(focusCalls.length, 1, 'unexpected focus() calls: ' + focusCalls.length);
+
+  const insert = SOURCE.slice(SOURCE.indexOf('function insertDraft'), SOURCE.indexOf('// ---- theme'));
+  assert.match(insert, /if \(typeof box\.focus === 'function'\) box\.focus\(\);/,
+    'the one focus call must be the reply box inside insertDraft');
+});

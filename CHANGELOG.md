@@ -64,8 +64,13 @@ First release. Blocked on the signed-in QA gate in `docs/qa-checklist.md`.
   which is where the terms require it: who can see the data, what it is for,
   storage, access level, and what requests are made.
 - Auto refresh stops when the page is hidden or unfocused, not merely hidden.
-- No alerts, no notifications, no title or favicon changes, no window opening
-  and no focus stealing anywhere in the script.
+- No alerts, confirms or prompts, no Notification API, no Audio, no vibrate, no
+  title or favicon writes, no window opening, no `window.focus`, no
+  `scrollIntoView`. The one `focus()` call puts the caret in the reply box after
+  the user clicks Insert, which is element focus inside the page they are on.
+- The README leads with a read-only statement rather than burying it after the
+  feature list, because it is the first thing anyone installing a script that
+  asks for an API key should be able to read.
 
 ### Security
 

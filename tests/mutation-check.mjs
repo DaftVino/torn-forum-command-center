@@ -280,6 +280,30 @@ const MUTATIONS = [
     ),
   },
   {
+    name: 'the script generates an alert',
+    suite: 'tests/read-only.test.js',
+    apply: (s) => s.replace(
+      '  function notice(text, kind) {',
+      '  function notice(text, kind) {\n    if (kind === "never") alert(text);',
+    ),
+  },
+  {
+    name: 'the script rewrites the page title to draw attention',
+    suite: 'tests/read-only.test.js',
+    apply: (s) => s.replace(
+      '    state.mounted = true;',
+      '    doc.title = "(" + state.rows.length + ") " + doc.title;\n    state.mounted = true;',
+    ),
+  },
+  {
+    name: 'the script pulls the window into focus',
+    suite: 'tests/read-only.test.js',
+    apply: (s) => s.replace(
+      "      if (typeof box.focus === 'function') box.focus();",
+      "      if (typeof box.focus === 'function') { win.focus(); box.focus(); }",
+    ),
+  },
+  {
     name: 'the page guard accepts any host ending in torn.com',
     suite: 'tests/route.test.js',
     apply: (s) => s.replace(

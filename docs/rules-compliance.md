@@ -63,7 +63,7 @@ the API terms, and the API terms contain a requirement this script did not meet.
 | No bypassing CAPTCHA | Never touches it | Nothing in the source references it |
 | No extracting data from unfocused pages to send elsewhere | Nothing is ever sent anywhere but `api.torn.com`, and auto-refresh stops when the page is hidden **or unfocused** | `read-only.test.js` asserts both the `hidden` and `hasFocus` guards |
 | No generating alerts | No `alert`, no notification, no sound. `GM_notification` is not granted | grant list is asserted exactly |
-| No drawing attention to itself or another window | No title or favicon changes, no flashing, no focus stealing, no second window. The panel is static markup on the page you are looking at | no `window.open`, no title writes |
+| No drawing attention to itself or another window | No title or favicon changes, no flashing, no second window, no `window.focus`, no notifications, no sound. The panel is static markup on the page you are looking at. The single `focus()` call puts the caret in the reply box after the user clicks Insert, which is element focus inside the current page rather than window-level attention | `read-only.test.js` bans every window-level attention API by name and asserts the one element focus call is the reply box |
 | Non-API requests must be manually initiated | There are none to initiate | mutation-checked: reintroducing `location.href =` fails the suite |
 | No malicious or undisclosed functionality | See below | |
 
@@ -119,9 +119,11 @@ would send the user to replace something that was never wrong.
 ## What the script cannot do, by construction
 
 No POST, PUT, PATCH or DELETE. No `.click()`, no `.submit()`, no synthetic
-mouse, pointer, key or touch event. No `window.open`, no `GM_openInTab`, no
-scripted navigation, no notifications. The grant list is exactly `GM_getValue`,
-`GM_setValue` and `GM_xmlhttpRequest`, and `@connect` names one host.
+mouse, pointer, key or touch event. No `window.open`, no `window.focus`, no
+`GM_openInTab`, no scripted navigation, no `alert`, `confirm` or `prompt`, no
+Notification API, no Audio, no vibrate, no title or favicon writes, no
+`scrollIntoView`. The grant list is exactly `GM_getValue`, `GM_setValue` and
+`GM_xmlhttpRequest`, and `@connect` names one host.
 
 None of that is a promise in prose. `tests/read-only.test.js` and
 `tests/key-rejection.test.js` assert each of it, and `tests/mutation-check.mjs`

@@ -15,6 +15,24 @@ author-plus-text search Torn's own interface never gives you a box for.
 Needs a Torn API key with **Minimal** access. Nothing else, and nothing leaves
 your browser except the API calls themselves.
 
+## Read-only, and it stays that way
+
+This script **never acts on your account**. It cannot post, reply, subscribe,
+unsubscribe, vote, or change anything at all. There is no POST, PUT or DELETE
+anywhere in it, no simulated click, no form submission, and no page it loads on
+its own.
+
+It makes **no non-API requests to Torn**. Every request is a GET to
+`api.torn.com`, and the only thing it reads from the page is the address bar and
+the title of the page you are already looking at. It generates no alerts, opens
+no windows, and changes no page title or favicon.
+
+That is checked clause by clause against Torn's scripting rule and the API
+acceptable usage terms in [`docs/rules-compliance.md`](docs/rules-compliance.md),
+and it is held there by tests rather than by good intentions: a suite asserts
+each property and a mutation check breaks each one in turn to prove the suite
+notices.
+
 ## Features
 
 ### The workspace
@@ -144,12 +162,17 @@ Inserting a saved draft types into the reply box and stops; you press Post.
 
 A refresh is one action and at most 13 requests: two fixed calls, one forum-name
 call at most once a day, and up to ten last-activity lookups for threads with
-unread posts. It holds itself to 40 requests a minute against the roughly 100
-the community reports, leaving room for whatever else uses your key. Auto
-refresh is off by default and pauses whenever the page is not visible.
+unread posts. Torn's API docs allow "up to 100 individual requests per minute
+across all of their keys"; this holds itself to **40**, leaving room for whatever
+else uses your key.
 
-It generates no alerts, changes no title or favicon, opens no window and steals
-no focus. Auto refresh stops when the page is hidden **or unfocused**.
+Auto refresh is off by default. When on, the shortest interval is two minutes and
+it stops whenever the page is hidden **or unfocused**, so it never runs against a
+window you are not using.
+
+It generates no alerts, changes no title or favicon and opens no window. The one
+focus call puts the caret in the reply box after you click Insert, inside the
+page you are already on.
 
 Torn's API terms also require that a disabled or invalid key is removed on
 error, because retrying one risks a temporary IP ban. If Torn rejects the key,
