@@ -51,7 +51,7 @@ const EXPORT_NAMES = [
   'freshPostCache', 'normalisePostCache',
   'loadKey', 'saveKey', 'loadApiKey', 'saveApiKey', 'isKeyShaped',
   // api adapter
-  'API_BASE', 'REQUEST_TIMEOUT_MS', 'TORN_ERRORS', 'mapTornError', 'redactUrl', 'scrubDetail',
+  'API_BASE', 'REQUEST_TIMEOUT_MS', 'TORN_ERRORS', 'KEY_REJECTED_CODES', 'rejectKey', 'clearKeyRejection', 'mapTornError', 'redactUrl', 'scrubDetail',
   'buildApiUrl', 'httpGet', 'tornApiGet', 'makeRateLimiter',
   'MIN_REQUEST_GAP_MS', 'REQUESTS_PER_WINDOW', 'RATE_WINDOW_MS',
   'PDA_KEY_SENTINEL', 'PDA_KEY_SLOT', 'pdaInjectedKey',
@@ -446,6 +446,13 @@ function loadUserscript(options = {}) {
     for (const [key, value] of Object.entries(raw)) {
       if (typeof value === 'function') {
         wrapped[key] = function (...args) { return transformFromVM(value.apply(this, args)); };
+      } else if (Array.isArray(value)) {
+        // Exported constants are frozen arrays created inside the vm, so
+        // deepStrictEqual against a plain array in this realm fails on
+        // prototype identity for values that are structurally identical.
+        // Only arrays are converted: objects are left alone because the
+        // production code compares some of them (noopHandlers) by identity.
+        wrapped[key] = transformFromVM(value);
       } else {
         wrapped[key] = value;
       }

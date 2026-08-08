@@ -52,6 +52,21 @@ First release. Blocked on the signed-in QA gate in `docs/qa-checklist.md`.
   promises and asserts a test notices, and `tests/render-preview.mjs`, which
   writes every view to standalone HTML for a look at the real markup.
 
+### Compliance
+
+- Checked clause by clause against Torn's verbatim scripting rule and the API
+  acceptable usage terms; see `docs/rules-compliance.md`.
+- A key Torn rejects (codes 2, 13, 16, 18) is dropped on error and never sent
+  again, persisted across reloads. The API terms require this and name a
+  temporary IP ban as the penalty for retrying an invalid key. Temporary errors
+  (5, 9, 10, 11, 17) deliberately do not condemn the key.
+- The API terms disclosure table is rendered next to the key input in Settings,
+  which is where the terms require it: who can see the data, what it is for,
+  storage, access level, and what requests are made.
+- Auto refresh stops when the page is hidden or unfocused, not merely hidden.
+- No alerts, no notifications, no title or favicon changes, no window opening
+  and no focus stealing anywhere in the script.
+
 ### Security
 
 - The API key is never exported, logged, or included in a debug report. Every

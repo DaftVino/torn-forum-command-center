@@ -243,6 +243,43 @@ const MUTATIONS = [
     ),
   },
   {
+    name: 'a key Torn rejected keeps being retried',
+    suite: 'tests/key-rejection.test.js',
+    apply: (s) => s.replace(
+      '    if (state.settings.keyRejected) {',
+      '    if (false && state.settings.keyRejected) {',
+    ),
+  },
+  {
+    name: 'the rejection is not remembered across a reload',
+    suite: 'tests/key-rejection.test.js',
+    apply: (s) => s.replace(
+      "    out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1\n      ? 0 : toInt(raw.keyRejected, 0);",
+      '    out.keyRejected = 0;',
+    ),
+  },
+  {
+    name: 'a temporary Torn error is treated as a dead key',
+    suite: 'tests/key-rejection.test.js',
+    apply: (s) => s.replace(
+      'var KEY_REJECTED_CODES = Object.freeze([2, 13, 16, 18]);',
+      'var KEY_REJECTED_CODES = Object.freeze([2, 5, 13, 16, 17, 18]);',
+    ),
+  },
+  {
+    name: 'the API terms disclosure is dropped from the key screen',
+    suite: 'tests/read-only.test.js',
+    apply: (s) => s.replace("out.push('<table class=\"tfcc-tos\"><tbody>');", "out.push('');"),
+  },
+  {
+    name: 'automatic requests keep firing on an unfocused window',
+    suite: 'tests/read-only.test.js',
+    apply: (s) => s.replace(
+      "        if (typeof doc.hasFocus === 'function' && !doc.hasFocus()) return;",
+      '',
+    ),
+  },
+  {
     name: 'the page guard accepts any host ending in torn.com',
     suite: 'tests/route.test.js',
     apply: (s) => s.replace(

@@ -168,3 +168,48 @@ test('nothing in the source reads as an action on the account', () => {
   const found = words.filter((w) => new RegExp('\\b' + w + '\\b', 'i').test(SOURCE));
   assert.deepStrictEqual(found, [], 'action-shaped identifiers found: ' + found.join(', '));
 });
+
+test('the API terms disclosure is rendered where the key is entered', () => {
+  // Torn's API terms: if a service stores or shares the key or the data, the
+  // terms "need to be clearly and visibly stated in any place where user is
+  // providing their API key in the table format highlighted above". This is
+  // that table, in the Settings view, beside the key input.
+  const { exports: api } = loadUserscript();
+  api.state.settings.view = 'settings';
+  const html = api.panelHtml(api.buildPanelModel(1700000000000));
+
+  assert.match(html, /class="tfcc-tos"/, 'the disclosure table is missing');
+  for (const row of [/Who can see your data/, /What it is used for/, /Storage/, /Access level required/, /Requests made/]) {
+    assert.match(html, row, 'the disclosure is missing a row: ' + row);
+  }
+  assert.match(html, /Nobody\. It never leaves this device/);
+  assert.match(html, /Minimal/);
+
+  // And it is in the same section as the input, not somewhere else entirely.
+  const keySection = html.slice(html.indexOf('Torn API key'), html.indexOf('Refreshing'));
+  assert.match(keySection, /data-act="key-input"/);
+  assert.match(keySection, /class="tfcc-tos"/);
+});
+
+test('automatic requests stop when the page is not the one being used', () => {
+  // The rule speaks of unfocused pages. document.hidden only covers a
+  // backgrounded tab; a visible but unfocused window needs hasFocus too.
+  assert.match(SOURCE, /if \(doc\.hidden === true\) return;/);
+  assert.match(SOURCE, /if \(typeof doc\.hasFocus === 'function' && !doc\.hasFocus\(\)\) return;/);
+});
+
+test('a key Torn has rejected is never sent again', () => {
+  // "you must account for this by removing disabled or invalid keys upon error"
+  // - Torn's acceptable usage terms. The penalty named there is an IP ban.
+  const { exports: api } = loadUserscript();
+  assert.deepStrictEqual(api.KEY_REJECTED_CODES.slice().sort((a, b) => a - b), [2, 13, 16, 18]);
+
+  // Codes that are temporary must not be in that list, or a user would be told
+  // to replace a key that was never wrong.
+  for (const temporary of [5, 9, 10, 11, 17]) {
+    assert.strictEqual(api.KEY_REJECTED_CODES.indexOf(temporary), -1,
+      'code ' + temporary + ' is temporary and must not condemn the key');
+  }
+  assert.match(SOURCE, /if \(state\.settings\.keyRejected\) \{/,
+    'the gate must be in tornApiGet so every caller is covered');
+});

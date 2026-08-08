@@ -117,6 +117,17 @@
     Object.freeze({ id: 'faction', name: 'Faction', order: 2, forumIds: Object.freeze([]) }),
   ]);
 
+  // Torn's acceptable usage terms are explicit: "Multiple requests using invalid
+  // keys may result in a temporary IP ban - you must account for this by
+  // removing disabled or invalid keys upon error." These are the codes that mean
+  // the key itself is no good, so retrying it can only earn that ban.
+  //
+  // Deliberately NOT here: 5 (rate limited), 9 (maintenance), 10 (owner in
+  // federal jail), 11 (key changed too recently) and 17 (Torn backend error).
+  // Every one of those passes on its own, and treating them as a dead key would
+  // make a user re-enter a key that was never wrong.
+  var KEY_REJECTED_CODES = Object.freeze([2, 13, 16, 18]);
+
   var TORN_ERRORS = Object.freeze({
     0: 'Torn reported an unknown error.',
     1: 'Torn rejected the request as empty.',
@@ -304,6 +315,11 @@
       enrichBudget: DEFAULT_ENRICH_BUDGET,
       autosaveDrafts: true,
       hideTornBox: false,
+      // The Torn error code that condemned the stored key, or 0. Persisted on
+      // purpose: a userscript reloads on every navigation, so a rejection held
+      // only in memory would spend one request per page view on a dead key,
+      // which is the exact pattern the IP ban exists for.
+      keyRejected: 0,
       deepSearchPages: DEEP_SEARCH_MAX_PAGES,
     };
   }
@@ -323,6 +339,8 @@
     out.unreadOnly = raw.unreadOnly === true;
     out.autosaveDrafts = raw.autosaveDrafts !== false;
     out.hideTornBox = raw.hideTornBox === true;
+    out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1
+      ? 0 : toInt(raw.keyRejected, 0);
     out.folderFilter = typeof raw.folderFilter === 'string' ? safeString(raw.folderFilter, 64) : null;
     out.tagFilter = typeof raw.tagFilter === 'string' ? safeString(raw.tagFilter, 64) : null;
     var auto = toInt(raw.autoRefreshMs, 0);
@@ -1682,6 +1700,18 @@
     if (!isKeyShaped(key)) {
       return Promise.resolve({ ok: false, reason: 'nokey', detail: 'Add a Torn API key with Minimal access in Settings.' });
     }
+    // Nothing goes out while Torn has already refused this key. This gate is
+    // in tornApiGet rather than in refreshAll so that enrichment, deep search
+    // and any future caller are covered by it too.
+    if (state.settings.keyRejected) {
+      return Promise.resolve({
+        ok: false,
+        reason: 'keyrejected',
+        code: state.settings.keyRejected,
+        detail: mapTornError(state.settings.keyRejected, '').message
+          + ' The script has stopped using it. Save a new key in Settings.',
+      });
+    }
 
     var full = buildApiUrl(API_BASE, path, Object.assign({}, params, {
       key: key,
@@ -1726,6 +1756,9 @@
         }
         if (isPlainObject(data) && isPlainObject(data.error)) {
           var mapped = mapTornError(data.error.code, data.error.error);
+          if (KEY_REJECTED_CODES.indexOf(mapped.code) !== -1) {
+            rejectKey(mapped.code);
+          }
           return { ok: false, reason: 'torn', code: mapped.code, detail: scrubDetail(mapped.message) };
         }
         if (!isPlainObject(data)) {
@@ -1775,6 +1808,34 @@
   function invalidateInFlight() {
     state.generation += 1;
     state.refreshing = false;
+  }
+
+  // Torn has refused the stored key. Stop using it immediately and remember
+  // that across reloads.
+  //
+  // This deliberately does NOT invalidate work in flight. Doing so made the
+  // refresh treat its own rejection as stale and swallow the message, leaving
+  // the user with a panel that had silently stopped working and said nothing.
+  // Nothing needs invalidating anyway: the request failed rather than returning
+  // data, and every other caller is already gated in tornApiGet.
+  //
+  // The error is recorded here rather than left to the caller so that whichever
+  // request happened to be the one refused, the panel says the same thing.
+  function rejectKey(code) {
+    if (state.settings.keyRejected === code) return;
+    state.settings.keyRejected = code;
+    persist('settings');
+    state.lastError = {
+      reason: 'keyrejected',
+      detail: mapTornError(code, '').message
+        + ' The script has stopped using it. Save a new key in Settings.',
+    };
+  }
+
+  function clearKeyRejection() {
+    if (!state.settings.keyRejected) return;
+    state.settings.keyRejected = 0;
+    persist('settings');
   }
 
   function notice(text, kind) {
@@ -2248,6 +2309,11 @@
       '  align-items: center; margin-bottom: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + ' .tfcc-kv label { min-width: 150px; color: var(--tm-meta); }',
       '#' + PANEL_ID + ' .tfcc-danger { border-color: var(--tm-bad-text); color: var(--tm-bad-text); }',
+      '#' + PANEL_ID + ' .tfcc-tos { border-collapse: collapse; width: 100%; margin-bottom: var(--tfcc-gap); }',
+      '#' + PANEL_ID + ' .tfcc-tos th, #' + PANEL_ID + ' .tfcc-tos td {',
+      '  border: 1px solid var(--tm-border); padding: 4px 8px; text-align: left;',
+      '  font-size: var(--tfcc-text-sm); vertical-align: top; }',
+      '#' + PANEL_ID + ' .tfcc-tos th { color: var(--tm-meta); font-weight: normal; white-space: nowrap; }',
       // Narrow screens are the primary target: this runs inside Torn PDA.
       '@media (max-width: 600px) {',
       '  #' + FALLBACK_ID + ' { right: 4px; bottom: 4px; width: calc(100vw - 8px); }',
@@ -2669,8 +2735,20 @@
     var out = [];
     out.push('<div class="tfcc-section"><h4>Torn API key</h4>');
     out.push('<p class="tfcc-note">This script needs a key with <strong>Minimal</strong> access to read '
-      + 'your subscribed threads. Make one at Settings, API Key on Torn. The key is stored in script '
-      + 'storage on this device, is never exported, and is never sent anywhere except api.torn.com.</p>');
+      + 'your subscribed threads. Make one at Settings, API Key on Torn.</p>');
+    // Torn's API terms require this to be stated clearly and visibly wherever
+    // the user provides their key, in this table's form. It is rendered here
+    // rather than buried in a readme because that is where the terms put it.
+    out.push('<table class="tfcc-tos"><tbody>');
+    out.push('<tr><th>Who can see your data</th><td>Nobody. It never leaves this device.</td></tr>');
+    out.push('<tr><th>What it is used for</th><td>Public community tool: listing and organising the '
+      + 'forum threads you subscribe to.</td></tr>');
+    out.push('<tr><th>Storage</th><td>Key and cached thread data are stored in this browser only. '
+      + 'Not shared, not uploaded, not included in an export.</td></tr>');
+    out.push('<tr><th>Access level required</th><td>Minimal.</td></tr>');
+    out.push('<tr><th>Requests made</th><td>GET only, to api.torn.com only. Never posts, replies, '
+      + 'subscribes or changes anything on your account.</td></tr>');
+    out.push('</tbody></table>');
     out.push('<div class="tfcc-kv"><label for="tfcc-key">API key</label>'
       + '<input id="tfcc-key" class="tfcc-grow" type="password" data-act="key-input" placeholder="'
       + (model.hasKey ? 'saved' : '16 letters and digits') + '">'
@@ -3140,12 +3218,16 @@
         }
         if (act === 'key-save') {
           var res = saveApiKey(valueOf('key-input').trim());
+          // A new key deserves a fresh chance, whatever Torn said about the old
+          // one. Without this the script would refuse to use a key it has never
+          // tried.
+          if (res.ok) clearKeyRejection();
           notice(res.ok ? 'Key saved.' : (res.detail || 'That key was not accepted.'), res.ok ? 'info' : 'error');
           if (res.ok) refreshAll(Date.now()).then(function () { if (isForumsPage(win.location)) redraw(); });
           redraw(); return;
         }
         if (act === 'key-clear') {
-          saveApiKey(''); invalidateInFlight();
+          saveApiKey(''); clearKeyRejection(); invalidateInFlight();
           notice('Key cleared.', 'info'); redraw(); return;
         }
         if (act === 'draft' && id) {
@@ -3300,7 +3382,11 @@
     if (!ms) return;
     autoTimer = setInterval(function () {
       try {
+        // hidden covers a backgrounded tab; hasFocus covers a tab that is
+        // visible but not the one the user is working in. The rule speaks of
+        // unfocused pages, so both are checked.
         if (doc.hidden === true) return;
+        if (typeof doc.hasFocus === 'function' && !doc.hasFocus()) return;
         if (!isForumsPage(win.location)) return;
         refreshAll(Date.now()).then(function () { drawIfStillHere(doc, win, makeHandlers(doc, win)); });
       } catch (e) { /* an auto refresh must never throw onto the page */ }

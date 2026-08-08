@@ -54,7 +54,9 @@ your browser except the API calls themselves.
 - On a thread page, insert a saved draft straight into the reply box. Where the
   reply box cannot be found, you get a Copy button and an explanation instead of
   a silent failure.
-- Optional autosave of whatever is in the reply box.
+- Optional autosave of whatever is in the reply box, on by default. It reads
+  your typing and keeps it locally so a long reply survives a stray navigation;
+  one checkbox in Settings turns it off.
 
 ### Search
 
@@ -115,13 +117,22 @@ reports before they can be shown or copied.
   unsubscribes, or changes anything at all on your account.
 - Folders, tags, notes and drafts stay in userscript storage. Clearing ordinary
   Torn site data does not clear them; removing the script does.
+- **Autosave reads what you type into Torn's reply box** and saves it as a local
+  draft, so a long reply survives a stray navigation. It is on by default, it
+  writes only to storage on your device, and nothing about it is ever
+  transmitted. Turn it off with one checkbox in Settings.
+- The Settings view states, next to the key input, exactly who can see your data
+  (nobody), what it is used for, where it is stored, and what access level is
+  needed. That is Torn's API terms requirement, and it belongs on screen rather
+  than in a readme.
 
 ## How it stays inside Torn's rules
 
-Torn's rule, as quoted in the Tools and Userscripts forum, allows software that
-"uses data from our API or a page you (or your users) have loaded manually and
-are currently viewing", and prohibits making "additional non-API requests to
-Torn" or scraping "pages that you're not currently viewing".
+Torn's rule permits software only when it relies "on data from our API or from a
+page that you have manually loaded and are actively viewing", and prohibits
+making "additional non-API requests to Torn", scraping pages not currently being
+viewed, bypassing CAPTCHA, extracting data from unfocused pages, generating
+alerts, or drawing attention to itself or another window.
 
 This script makes **no non-API requests to Torn at all**. Every request is a GET
 to `api.torn.com`. The only thing it reads from the page is the address bar and
@@ -137,9 +148,16 @@ unread posts. It holds itself to 40 requests a minute against the roughly 100
 the community reports, leaving room for whatever else uses your key. Auto
 refresh is off by default and pauses whenever the page is not visible.
 
-`docs/rules-compliance.md` has the full line-by-line check, the provenance of
-that quotation, and the one thing still unverified: nobody has been able to load
-`rules.php` itself, because it refuses automated requests.
+It generates no alerts, changes no title or favicon, opens no window and steals
+no focus. Auto refresh stops when the page is hidden **or unfocused**.
+
+Torn's API terms also require that a disabled or invalid key is removed on
+error, because retrying one risks a temporary IP ban. If Torn rejects the key,
+the script stops using it immediately, remembers that across reloads, and tells
+you to save a new one.
+
+`docs/rules-compliance.md` has the full clause-by-clause check against both the
+scripting rule and the API acceptable usage terms.
 
 ## Limitations
 

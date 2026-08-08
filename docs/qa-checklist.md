@@ -142,14 +142,18 @@ Tampermonkey, on the same build.
 
 See `docs/rules-compliance.md` for the rule text and the line-by-line check.
 
-- [ ] **Read the rule yourself.** Load `torn.com/rules.php` and the pinned
-      "Rules for Scripts, Addons, Extensions & Tools" thread by Chedburn in the
-      Tools and Userscripts forum, in an ordinary signed-in browser. No
-      automated route can reach either. Paste the scripts section into
-      `docs/rules-compliance.md` verbatim and re-check the table against it.
-      Until this is done that document rests on a secondary quotation.
 - [ ] Watch the network tab through a full session. Every request goes to
       `api.torn.com` and nowhere else.
+- [ ] **Revoke or pause the key on Torn while the panel is open, then refresh.**
+      The panel must say the key was refused, and must then make no further
+      request at all: reload the page twice and confirm the network tab stays
+      empty. Torn's API terms require a bad key to be dropped on error, and name
+      a temporary IP ban as the penalty for retrying one.
+- [ ] Save a fresh valid key. Requests resume immediately.
+- [ ] With auto refresh on, switch to another window without hiding the tab
+      (split screen, or another app over the top). No request fires while the
+      window is unfocused.
+- [ ] Confirm the Settings view shows the data table next to the key input.
 - [ ] Confirm no request is made to any `torn.com` page the user is not viewing.
 - [ ] Confirm a refresh with the default settings issues at most 13 requests.
 - [ ] Confirm nothing is ever sent that would post, reply, subscribe or
