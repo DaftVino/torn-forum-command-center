@@ -118,18 +118,28 @@ reports before they can be shown or copied.
 
 ## How it stays inside Torn's rules
 
-Torn allows a script to act on the official API, or on a page you have manually
-loaded, with one input producing one request. It prohibits fetching pages you
-are not looking at.
+Torn's rule, as quoted in the Tools and Userscripts forum, allows software that
+"uses data from our API or a page you (or your users) have loaded manually and
+are currently viewing", and prohibits making "additional non-API requests to
+Torn" or scraping "pages that you're not currently viewing".
 
-This script reads the official API and nothing else. A refresh is one action and
-at most 13 requests: two fixed calls, one forum-name call at most once a day,
-and up to ten last-activity lookups for threads that have unread posts. It holds
-itself to 40 requests a minute against the roughly 100 the community reports, so
-it leaves room for whatever else is using your key. Auto refresh is off by
-default, and when on it pauses whenever the page is not visible.
+This script makes **no non-API requests to Torn at all**. Every request is a GET
+to `api.torn.com`. The only thing it reads from the page is the address bar and
+the page title, of the page you are already looking at.
 
-It never reads a forum page you are not on.
+It also takes **no action on your behalf**. There is no POST anywhere in it, no
+simulated click, no form submission, and no navigation it starts by itself.
+Inserting a saved draft types into the reply box and stops; you press Post.
+
+A refresh is one action and at most 13 requests: two fixed calls, one forum-name
+call at most once a day, and up to ten last-activity lookups for threads with
+unread posts. It holds itself to 40 requests a minute against the roughly 100
+the community reports, leaving room for whatever else uses your key. Auto
+refresh is off by default and pauses whenever the page is not visible.
+
+`docs/rules-compliance.md` has the full line-by-line check, the provenance of
+that quotation, and the one thing still unverified: nobody has been able to load
+`rules.php` itself, because it refuses automated requests.
 
 ## Limitations
 

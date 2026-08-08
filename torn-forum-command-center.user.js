@@ -2196,6 +2196,10 @@
       '  border: 1px solid var(--tm-border-2); border-radius: 4px; padding: 3px 8px; }',
       '#' + PANEL_ID + ' button { cursor: pointer; }',
       '#' + PANEL_ID + ' button:hover { background: var(--tm-hover); }',
+      '#' + PANEL_ID + ' .tfcc-linkbtn { display: inline-block; text-decoration: none;',
+      '  color: var(--tm-text); background: var(--tm-bg-3); border: 1px solid var(--tm-border-2);',
+      '  border-radius: 4px; padding: 3px 8px; }',
+      '#' + PANEL_ID + ' .tfcc-linkbtn:hover { background: var(--tm-hover); }',
       '#' + PANEL_ID + ' button[aria-pressed="true"] { background: var(--tm-good-bg); }',
       '#' + PANEL_ID + ' :focus-visible { outline: var(--tfcc-focus-ring); outline-offset: 2px; }',
       '#' + PANEL_ID + ' .tfcc-nav { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
@@ -2561,7 +2565,12 @@
       + escapeHtml(model.searchQuery)
       + '" placeholder="' + escapeHtml('words, "a phrase", by:player, tag:x, folder:y, is:unread, -exclude') + '">');
     out.push(btn('deep', model.deepBusy ? 'Searching...' : 'Search inside posts'));
-    out.push(btn('native', 'Search on Torn'));
+    // Deliberately an anchor, not a button with a handler that assigns
+    // location.href. Both load the same page, but a link makes the request
+    // unambiguously the user's own click: the script initiates no navigation
+    // and issues no non-API request to Torn at all.
+    out.push('<a class="tfcc-linkbtn" href="' + escapeHtml(buildNativeSearchUrl(model.searchQuery, 0))
+      + '">Search on Torn</a>');
     out.push('</div>');
     out.push('<p class="tfcc-note">Filtering searches titles, authors, forums, your notes and tags. '
       + 'Searching inside posts fetches up to ' + model.settings.deepSearchPages
@@ -3114,10 +3123,6 @@
         }
         if (act === 'catchup-done') {
           state.organizer.lastCatchUpAt = now; persist('organizer'); redraw(); return;
-        }
-        if (act === 'native') {
-          try { win.location.href = buildNativeSearchUrl(state.searchQuery, 0); } catch (e2) { /* blocked navigation is not fatal */ }
-          return;
         }
         if (act === 'deep') {
           // The rows the user is looking at, not every row we hold: the search

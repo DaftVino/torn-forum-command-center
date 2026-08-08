@@ -10,7 +10,7 @@ You need a Torn API key with **Minimal** access. Make one at Settings, API Key.
 
 ## Before you start
 
-- [ ] `npm test` passes, 223 or more tests, none skipped.
+- [ ] `npm test` passes, 259 or more tests, none skipped.
 - [ ] `npm run test:syntax` passes.
 - [ ] `node tests/mutation-check.mjs` reports every promise guarded, and
       `git status` is clean afterwards (the check edits the file in place).
@@ -100,7 +100,7 @@ time **END**.
       first.
 - [ ] Run the same deep search again. It is fast, because it is cached.
 - [ ] `by:player words` finds a specific person's posts inside a thread.
-- [ ] Search on Torn opens Torn's own search with the query filled in.
+- [ ] Search on Torn is a link, not a button. Middle-click it: it should open a new tab, which a scripted navigation could not do.
 - [ ] Clear the post cache. The size drops to zero and folders are untouched.
 
 ### Failure behaviour
@@ -140,6 +140,14 @@ Tampermonkey, on the same build.
 
 ## Rules compliance
 
+See `docs/rules-compliance.md` for the rule text and the line-by-line check.
+
+- [ ] **Read the rule yourself.** Load `torn.com/rules.php` and the pinned
+      "Rules for Scripts, Addons, Extensions & Tools" thread by Chedburn in the
+      Tools and Userscripts forum, in an ordinary signed-in browser. No
+      automated route can reach either. Paste the scripts section into
+      `docs/rules-compliance.md` verbatim and re-check the table against it.
+      Until this is done that document rests on a secondary quotation.
 - [ ] Watch the network tab through a full session. Every request goes to
       `api.torn.com` and nowhere else.
 - [ ] Confirm no request is made to any `torn.com` page the user is not viewing.

@@ -204,6 +204,45 @@ const MUTATIONS = [
     apply: (s) => s.replace("        if (act === 'note-input' && id) {", "        if (false && id) {"),
   },
   {
+    name: 'a request verb other than GET appears',
+    suite: 'tests/read-only.test.js',
+    apply: (s) => s.replace("            method: 'GET',", "            method: 'POST',"),
+  },
+  {
+    name: 'the script simulates a click on a Torn element',
+    suite: 'tests/read-only.test.js',
+    apply: (s) => s.replace(
+      "      if (typeof box.focus === 'function') box.focus();",
+      "      if (typeof box.click === 'function') box.click();",
+    ),
+  },
+  {
+    name: 'the script navigates on its own again',
+    suite: 'tests/read-only.test.js',
+    apply: (s) => s.replace(
+      "        if (act === 'deep') {",
+      "        if (act === 'never') { win.location.href = 'https://www.torn.com/'; }\n        if (act === 'deep') {",
+    ),
+  },
+  {
+    name: 'auto refresh defaults to on',
+    suite: 'tests/read-only.test.js',
+    apply: (s) => s.replace('      autoRefreshMs: 0,', '      autoRefreshMs: 120000,'),
+  },
+  {
+    name: 'auto refresh keeps firing while the page is hidden',
+    suite: 'tests/read-only.test.js',
+    apply: (s) => s.replace('        if (doc.hidden === true) return;', ''),
+  },
+  {
+    name: 'a second @connect host is declared',
+    suite: 'tests/read-only.test.js',
+    apply: (s) => s.replace(
+      '// @connect      api.torn.com',
+      '// @connect      api.torn.com\n// @connect      example.com',
+    ),
+  },
+  {
     name: 'the page guard accepts any host ending in torn.com',
     suite: 'tests/route.test.js',
     apply: (s) => s.replace(
