@@ -85,7 +85,7 @@ const EXPORT_NAMES = [
   // runtime: debug
   'gatherDebugContext', 'buildDebugReport',
   // formatting
-  'formatRelativeTime', 'formatAbsoluteTime', 'formatCount', 'formatBytes', 'escapeHtml',
+  'formatRelativeTime', 'formatAbsoluteTime', 'formatCount', 'formatBytes', 'plural', 'escapeHtml',
 ];
 
 function readSource() {

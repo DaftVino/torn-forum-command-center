@@ -6,7 +6,10 @@ API. Both matrices below must pass on the same build before release.
 Run `npm test`, `npm run test:syntax` and `node tests/mutation-check.mjs` first.
 Everything here assumes those are green.
 
-You need a Torn API key with **Minimal** access. Make one at Settings, API Key.
+You need a Torn API key that can read your subscribed threads. Make one at
+Settings, API Key. Use a **Custom** key with only `forumsubscribedthreads` and
+`forumfeed` ticked, which is the least access the script can work with, or a
+**Limited Access** key. **Public Only** will not work.
 
 ## Before you start
 
@@ -37,7 +40,11 @@ time **END**.
 ### The key
 
 - [ ] With no key saved, the panel says so and makes no request.
-- [ ] Paste a valid Minimal key, save. Threads load.
+- [ ] Paste a valid key, save. Threads load.
+- [ ] Try a **Custom** key with only `forumsubscribedthreads` and `forumfeed`.
+      It must work, because that is what the panel tells people to make.
+- [ ] Try a **Public Only** key. It must fail with a message naming the two
+      selections, not a raw error code.
 - [ ] Paste a 15-character key. It is refused with a message about the shape,
       and nothing is saved.
 - [ ] Paste a syntactically valid but wrong key. The error names it as an
@@ -130,6 +137,12 @@ Tampermonkey, on the same build.
       the fixed fallback.
 - [ ] Light theme, dark theme, and Match Torn all render readable text on a
       readable background. No dark-on-dark, no white-on-white in any input.
+- [ ] Open every dropdown. The options must be readable: on some platforms the
+      popup is drawn by the OS and defaults to black on white.
+- [ ] Run `node tests/render-preview.mjs` then `node tests/contrast-audit.mjs`.
+      Every preview must pass WCAG AA. This is what caught links in the Search
+      and Drafts views falling back to the browser default blue, which reads as
+      black against the dark panel.
 - [ ] Keyboard only: tab through the panel. Focus is always visible.
 - [ ] Import an export made on the other browser. The summary counts are right
       and existing local work is merged, not replaced.

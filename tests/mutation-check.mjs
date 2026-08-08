@@ -304,6 +304,38 @@ const MUTATIONS = [
     ),
   },
   {
+    name: 'anchors lose their colour and fall back to browser blue',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace(
+      "      '#' + PANEL_ID + ' a, #' + PANEL_ID + ' a:link, #' + PANEL_ID + ' a:visited,',",
+      "      '',",
+    ),
+  },
+  {
+    name: 'visited row titles are left to turn purple',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace(
+      "      '#' + PANEL_ID + ' .tfcc-row-title a, #' + PANEL_ID + ' .tfcc-row-title a:visited {',",
+      "      '#' + PANEL_ID + ' .tfcc-row-title a {',",
+    ),
+  },
+  {
+    name: 'dropdown options lose the panel colours',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace(
+      "      '#' + PANEL_ID + ' option { background: var(--tm-bg-3); color: var(--tm-text); }',",
+      "      '',",
+    ),
+  },
+  {
+    name: 'the panel tells people to pick an access level that is not offered',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace(
+      "      + '<code>forumsubscribedthreads</code> and <code>forumfeed</code> ticked; a <strong>Limited '",
+      "      + 'a <strong>Minimal</strong> access key; a <strong>Limited '",
+    ),
+  },
+  {
     name: 'the page guard accepts any host ending in torn.com',
     suite: 'tests/route.test.js',
     apply: (s) => s.replace(

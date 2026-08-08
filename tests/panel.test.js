@@ -249,3 +249,12 @@ test('a cache that holds something never reports zero', () => {
   assert.strictEqual(api.formatBytes(-5), '0 B');
   assert.strictEqual(api.formatBytes('nonsense'), '0 B');
 });
+
+test('counts read as English, not as a template', () => {
+  const { exports: api } = loadUserscript();
+  assert.strictEqual(api.plural(1, 'thread'), 'thread');
+  assert.strictEqual(api.plural(0, 'thread'), 'threads');
+  assert.strictEqual(api.plural(2, 'thread'), 'threads');
+  assert.strictEqual(api.plural(1, 'entry', 'entries'), 'entry');
+  assert.strictEqual(api.plural(3, 'entry', 'entries'), 'entries');
+});

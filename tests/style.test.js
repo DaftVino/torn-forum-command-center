@@ -166,3 +166,40 @@ test('row controls are tightened on a phone, where the same nine appear per row'
   assert.match(mq, /\.tfcc-actions button \{ padding: 1px 5px; \}/);
   assert.match(mq, /max-width:\s*46%/, 'a full-width input per row makes the list endless');
 });
+
+test('every anchor is coloured, in every state', () => {
+  // An unstyled link falls back to the browser default rgb(0, 0, 238), which is
+  // all but black against the dark panel, and :visited falls back to purple,
+  // which is worse. Only .tfcc-row-title a used to be styled, so the links in
+  // the Search and Drafts views were unreadable.
+  assert.match(css, /#tfcc-panel a, #tfcc-panel a:link, #tfcc-panel a:visited,/);
+  assert.match(css, /#tfcc-panel a:hover, #tfcc-panel a:active \{/);
+  assert.match(css, /#tfcc-panel \.tfcc-row-title a, #tfcc-panel \.tfcc-row-title a:visited \{/,
+    'the row title override must cover :visited too, or visited titles turn purple');
+  assert.match(css, /#tfcc-panel \.tfcc-linkbtn, #tfcc-panel \.tfcc-linkbtn:visited \{/);
+});
+
+test('dropdown options carry the panel colours', () => {
+  // The popup is drawn by the OS on some platforms and defaults to black on
+  // white regardless of what the select says.
+  assert.match(css, /#tfcc-panel option \{ background: var\(--tm-bg-3\); color: var\(--tm-text\); \}/);
+});
+
+test('the panel never names an access level Torn does not offer', () => {
+  // The API docs colour-code both selections as Minimal Access, but the key
+  // page does not offer Minimal as a choice, so naming the selections is both
+  // accurate and stable.
+  const { exports: api } = loadUserscript();
+  api.state.settings.view = 'settings';
+  const html = api.panelHtml(api.buildPanelModel(1700000000000));
+
+  assert.doesNotMatch(html, /Minimal/, 'the panel still tells people to pick Minimal');
+  assert.match(html, /forumsubscribedthreads/);
+  assert.match(html, /forumfeed/);
+  assert.match(html, /Custom/);
+  assert.match(html, /Limited Access/);
+  assert.match(html, /Public Only/);
+
+  assert.doesNotMatch(api.TORN_ERRORS[16], /Minimal/);
+  assert.match(api.TORN_ERRORS[16], /forumsubscribedthreads/);
+});

@@ -140,7 +140,7 @@
     10: 'That key owner is in federal jail.',
     11: 'That key has changed too recently.',
     13: 'That key has been disabled because the account is inactive.',
-    16: 'That key does not have enough access. Subscribed threads need Minimal access.',
+    16: 'That key cannot read your subscribed threads. Use a Limited Access key, or a Custom key with the forumsubscribedthreads and forumfeed selections.',
     17: 'Torn had a backend error for that request.',
     18: 'That key has been paused by its owner.',
   });
@@ -1489,6 +1489,10 @@
 
   // Math.round(bytes / 1024) reports a cache that genuinely holds something as
   // "0 KB", which reads as broken rather than small.
+  function plural(n, one, many) {
+    return toInt(n, 0) === 1 ? one : (many === undefined ? one + 's' : many);
+  }
+
   function formatBytes(n) {
     var v = Math.max(0, toInt(n, 0));
     if (v < 1024) return v + ' B';
@@ -1698,7 +1702,7 @@
     var opts = options || {};
     var key = opts.key === undefined ? loadApiKey() : opts.key;
     if (!isKeyShaped(key)) {
-      return Promise.resolve({ ok: false, reason: 'nokey', detail: 'Add a Torn API key with Minimal access in Settings.' });
+      return Promise.resolve({ ok: false, reason: 'nokey', detail: 'Add a Torn API key in Settings. It needs the forumsubscribedthreads and forumfeed selections.' });
     }
     // Nothing goes out while Torn has already refused this key. This gate is
     // in tornApiGet rather than in refreshAll so that enrichment, deep search
@@ -2255,6 +2259,7 @@
       '#' + PANEL_ID + ' textarea {',
       '  font: inherit; color: var(--tm-text); background: var(--tm-bg-3);',
       '  border: 1px solid var(--tm-border-2); border-radius: 4px; padding: 3px 8px; }',
+      '#' + PANEL_ID + ' option { background: var(--tm-bg-3); color: var(--tm-text); }',
       '#' + PANEL_ID + ' button { cursor: pointer; }',
       '#' + PANEL_ID + ' button:hover { background: var(--tm-hover); }',
       '#' + PANEL_ID + ' .tfcc-linkbtn { display: inline-block; text-decoration: none;',
@@ -2263,6 +2268,18 @@
       '#' + PANEL_ID + ' .tfcc-linkbtn:hover { background: var(--tm-hover); }',
       '#' + PANEL_ID + ' button[aria-pressed="true"] { background: var(--tm-good-bg); }',
       '#' + PANEL_ID + ' :focus-visible { outline: var(--tfcc-focus-ring); outline-offset: 2px; }',
+      // Every anchor, and every one of its states. An unstyled link falls back
+      // to the browser default of rgb(0,0,238), which is all but black against
+      // the dark panel; :visited falls back to purple, which is worse. Styling
+      // only .tfcc-row-title a left the Search and Drafts links unreadable.
+      '#' + PANEL_ID + ' a, #' + PANEL_ID + ' a:link, #' + PANEL_ID + ' a:visited,',
+      '#' + PANEL_ID + ' a:hover, #' + PANEL_ID + ' a:active {',
+      '  color: var(--tm-accent-text); }',
+      '#' + PANEL_ID + ' a:hover { text-decoration: underline; }',
+      '#' + PANEL_ID + ' .tfcc-row-title a, #' + PANEL_ID + ' .tfcc-row-title a:visited {',
+      '  color: var(--tm-text); }',
+      '#' + PANEL_ID + ' .tfcc-linkbtn, #' + PANEL_ID + ' .tfcc-linkbtn:visited {',
+      '  color: var(--tm-text); }',
       '#' + PANEL_ID + ' .tfcc-nav { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
       '  margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-bar { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
@@ -2676,7 +2693,8 @@
       out.push('</div>');
     }
     out.push('<p class="tfcc-note">Cached posts: ' + model.cacheSize.posts + ' across '
-      + model.cacheSize.threads + ' threads, about ' + escapeHtml(formatBytes(model.cacheSize.bytes)) + '.</p>');
+      + model.cacheSize.threads + ' ' + plural(model.cacheSize.threads, 'thread')
+      + ', about ' + escapeHtml(formatBytes(model.cacheSize.bytes)) + '.</p>');
     return out.join('');
   }
 
@@ -2734,8 +2752,10 @@
   function renderSettingsView(model) {
     var out = [];
     out.push('<div class="tfcc-section"><h4>Torn API key</h4>');
-    out.push('<p class="tfcc-note">This script needs a key with <strong>Minimal</strong> access to read '
-      + 'your subscribed threads. Make one at Settings, API Key on Torn.</p>');
+    out.push('<p class="tfcc-note">This script needs a key that can read your subscribed threads. On Torn, '
+      + 'go to Settings, API Key. The least access that works is a <strong>Custom</strong> key with only '
+      + '<code>forumsubscribedthreads</code> and <code>forumfeed</code> ticked; a <strong>Limited '
+      + 'Access</strong> key also works. A <strong>Public Only</strong> key does not.</p>');
     // Torn's API terms require this to be stated clearly and visibly wherever
     // the user provides their key, in this table's form. It is rendered here
     // rather than buried in a readme because that is where the terms put it.
@@ -2745,7 +2765,8 @@
       + 'forum threads you subscribe to.</td></tr>');
     out.push('<tr><th>Storage</th><td>Key and cached thread data are stored in this browser only. '
       + 'Not shared, not uploaded, not included in an export.</td></tr>');
-    out.push('<tr><th>Access level required</th><td>Minimal.</td></tr>');
+    out.push('<tr><th>Access level required</th><td>Custom, with only forumsubscribedthreads '
+      + 'and forumfeed. Limited Access also works. Public Only does not.</td></tr>');
     out.push('<tr><th>Requests made</th><td>GET only, to api.torn.com only. Never posts, replies, '
       + 'subscribes or changes anything on your account.</td></tr>');
     out.push('</tbody></table>');
@@ -2823,7 +2844,8 @@
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Storage</h4>');
-    out.push('<p class="tfcc-note">Post cache: ' + model.cacheSize.posts + ' posts, '
+    out.push('<p class="tfcc-note">Post cache: ' + model.cacheSize.posts + ' '
+      + plural(model.cacheSize.posts, 'post') + ', '
       + escapeHtml(formatBytes(model.cacheSize.bytes)) + '.</p>');
     out.push('<div class="tfcc-actions">'
       + btn('clear-cache', 'Clear post cache')

@@ -8,7 +8,15 @@ locally saved reply drafts, and search across the threads you follow.
 ## How it works
 
 The script runs on `forums.php` and reads the official Torn API v2 forum
-endpoints with a Minimal-access key. It never parses Torn's HTML for data.
+endpoints. It never parses Torn's HTML for data.
+
+It needs a key carrying two of the user's own selections, `forumsubscribedthreads`
+and `forumfeed`; everything else it touches is public. The panel asks for a
+Custom key with exactly those two, because that is the least access that works,
+and names Limited Access as the preset equivalent. It deliberately does not name
+a preset as the requirement: the docs colour-code both selections as Minimal
+Access, but the key page does not offer that as a choice, so naming the
+selections is both accurate and stable.
 
 That choice is the centre of the design, and it came out of three findings.
 Torn's own API v2 roadmap scoped a `forumUpdates` feature — new posts in
@@ -28,8 +36,8 @@ visibly rather than failing silently.
 
 | Endpoint | Access | Used for |
 |---|---|---|
-| `user/forumsubscribedthreads` | Minimal | The subscribed list and `posts.new`, the unread count |
-| `user/forumfeed` | Minimal | Recency and catch-up |
+| `user/forumsubscribedthreads` | own selection | The subscribed list and `posts.new`, the unread count |
+| `user/forumfeed` | own selection | Recency and catch-up |
 | `forum/categories` | Public | Real forum names, fetched at most once a day |
 | `forum/{id}/thread` | Public | `last_post_time` enrichment, budgeted |
 | `forum/{id}/posts` | Public | Deep search only, explicit and bounded |

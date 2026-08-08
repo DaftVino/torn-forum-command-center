@@ -12,8 +12,8 @@ tracking, a catch-up view for everything new since your last visit, reply drafts
 saved on your device, and search across the threads you follow — including the
 author-plus-text search Torn's own interface never gives you a box for.
 
-Needs a Torn API key with **Minimal** access. Nothing else, and nothing leaves
-your browser except the API calls themselves.
+Needs a Torn API key that can read your subscribed threads. Nothing else, and
+nothing leaves your browser except the API calls themselves.
 
 ## Read-only, and it stays that way
 
@@ -103,7 +103,7 @@ notices.
 1. Install [Tampermonkey](https://www.tampermonkey.net/).
 2. Install the script.
 3. Visit <https://www.torn.com/forums.php>.
-4. Open Settings in the panel and paste a Torn API key with Minimal access.
+4. Open Settings in the panel and paste your Torn API key.
 
 ### Torn PDA (mobile)
 
@@ -115,9 +115,15 @@ No separate mobile build exists. The same file runs in both places.
 
 ## Getting an API key
 
-Torn, Settings, API Key. Create a key with **Minimal** access — that is the
-lowest level that can read your own subscribed threads. Do not use a Full
-Access key; this script has no use for one.
+Torn, Settings, API Key.
+
+The script reads exactly two of your own selections, `forumsubscribedthreads`
+and `forumfeed`, plus the public forum endpoints. So the least access that works
+is a **Custom** key with only those two ticked. If you would rather use a preset,
+**Limited Access** works. **Public Only** does not.
+
+Do not give it a Full Access key. It has no use for one and will not ask again
+if you give it less.
 
 The key is stored in userscript storage on that device. It is masked in the
 panel, excluded from exports, and stripped out of error messages and debug

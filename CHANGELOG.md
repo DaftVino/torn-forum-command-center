@@ -52,6 +52,19 @@ First release. Blocked on the signed-in QA gate in `docs/qa-checklist.md`.
   promises and asserts a test notices, and `tests/render-preview.mjs`, which
   writes every view to standalone HTML for a look at the real markup.
 
+### Fixed before release
+
+- Links in the Search and Drafts views had no colour rule of their own and fell
+  back to the browser default `rgb(0, 0, 238)`, which reads as black against the
+  dark panel. Every anchor is now coloured in every state, including `:visited`,
+  which would otherwise have gone purple.
+- Dropdown options carry the panel colours. On some platforms the popup is drawn
+  by the OS and defaults to black on white regardless of the select.
+- The panel no longer tells people to create a **Minimal** access key. The API
+  docs colour-code both selections it needs as Minimal Access, but Torn's key
+  page does not offer that as a choice, so it now names the selections instead:
+  a Custom key with `forumsubscribedthreads` and `forumfeed`, or Limited Access.
+
 ### Compliance
 
 - Checked clause by clause against Torn's verbatim scripting rule and the API
