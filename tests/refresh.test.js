@@ -26,14 +26,21 @@ async function settle(env, ms) {
 
 // A transport that answers each endpoint from a table and records what was
 // asked for, so a test can assert on the request budget rather than guess it.
+// A table entry may be a function of the full URL, so one path can answer
+// page by page; seenUrls keeps each URL with its query for the tests that
+// assert on parameters.
 function router(table) {
   const seen = [];
+  const seenUrls = [];
   return {
     seen,
+    seenUrls,
     fetch(url) {
       seen.push(url.replace('https://api.torn.com/v2/', '').split('?')[0]);
+      seenUrls.push(url.replace('https://api.torn.com/v2/', ''));
       const path = url.replace('https://api.torn.com/v2/', '').split('?')[0];
-      const body = Object.prototype.hasOwnProperty.call(table, path) ? table[path] : { error: { code: 6, error: 'Unknown' } };
+      const entry = Object.prototype.hasOwnProperty.call(table, path) ? table[path] : { error: { code: 6, error: 'Unknown' } };
+      const body = typeof entry === 'function' ? entry(url) : entry;
       return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify(body)) });
     },
   };
@@ -229,4 +236,244 @@ test('a refresh writes the snapshot so the next visit paints instantly', async (
     gmStore: [...env.gmStore.entries()],
   });
   assert.strictEqual(second.exports.state.rows.length, 1);
+});
+
+// -- author-only lookups (issue #4) -----------------------------------------
+// The posts pages served here are the redacted live captures from #14 and
+// #15 (docs/reference/torn-api-live-findings-2026-10-08.md).
+
+const fs = require('node:fs');
+const path = require('node:path');
+const fixture = (name) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', name + '.json'), 'utf8'));
+
+const MARKER = NOW - 3600000;
+// from is inclusive (findings note, finding 9), so the request asks for the
+// first whole second after the marker.
+const MARKER_FROM = Math.floor(MARKER / 1000) + 1;
+const PAGE0 = fixture('forum-posts-large-from');     // thread 16561608, newest 20
+const PAGE1 = fixture('forum-posts-large-from-prev'); // its prev page (finding 15)
+const OLDEST0 = PAGE0.posts[PAGE0.posts.length - 1].created_time;
+const OLDEST1 = PAGE1.posts[PAGE1.posts.length - 1].created_time;
+const toOf = (url) => { const m = /[?&]to=(\d+)/.exec(url); return m ? Number(m[1]) : 0; };
+
+// A real-shaped page older than the fixtures reach: 20 posts cloned from a
+// real one, newest first, starting with the boundary post at `to` (to is
+// inclusive), by a player who is nobody's author here. `prev` is set, so the
+// walk would go on for ever without the cap.
+function olderPage(to, boundary) {
+  const shape = PAGE1.posts[0];
+  const posts = [boundary];
+  for (let k = 1; k < 20; k += 1) {
+    posts.push(Object.assign({}, shape, { id: 90000000 + to - k, created_time: to - k,
+      author: Object.assign({}, shape.author, { id: 1099 }) }));
+  }
+  return { posts, _metadata: { links: { prev: 'https://api.torn.com/v2/forum/x/posts?from=1&to=' + (to - 19), next: null } } };
+}
+
+// Thread 16561608 as Torn served it: page 0, then its prev page, then (no
+// fixture goes further) real-shaped older pages.
+function largeChain() {
+  return (url) => {
+    const to = toOf(url);
+    if (!to) return PAGE0;
+    if (to === OLDEST0) return PAGE1;
+    const all = PAGE0.posts.concat(PAGE1.posts);
+    const boundary = all.find((p) => p.created_time === to)
+      || Object.assign({}, PAGE1.posts[0], { id: 90000000 + to, created_time: to, author: Object.assign({}, PAGE1.posts[0].author, { id: 1099 }) });
+    return olderPage(to, boundary);
+  };
+}
+
+function authorBoot(table, ids, entryExtra, settingsExtra) {
+  const threads = {};
+  ids.forEach((id) => { threads[id] = Object.assign({ lastVisitedAt: MARKER }, entryExtra || {}); });
+  return boot(table, { gmStore: [['tfcc:key', KEY],
+    ['tfcc:settings', JSON.stringify(Object.assign({ v: 1, authorOnly: true }, settingsExtra || {}))],
+    ['tfcc:organizer', JSON.stringify({ v: 1, folders: [], lastCatchUpAt: 0, threads })]] });
+}
+const postsCalls = (env, id) => env.router.seenUrls.filter((u) => u.indexOf('forum/' + id + '/posts') === 0);
+
+test('author mode walks back with to, built from its own parameters, up to the page cap', async () => {
+  const small = fixture('forum-thread-posts-from-small');   // thread 16589908: one reply, by 1001
+  const smallAuthor = fixture('forum-thread').thread.author; // 1000
+  const largeAuthor = fixture('forum-posts-large-offset0').posts[0].author; // 1002
+  const table = {
+    'user/forumsubscribedthreads': subscribedThreadsPayload([
+      // total counts every post. forum-thread.json says posts: 1 (replies only), so total is 2.
+      { id: 16589908, new: 1, total: 2, author: smallAuthor },
+      { id: 16561608, new: 90, total: 6207, author: largeAuthor },
+      // The same real pages, read as if player 1020 were the author.
+      { id: 3, new: 90, total: 6207, author: { id: 1020, username: 'player020', karma: 0 } },
+      // And as if a player who wrote none of them were the author.
+      { id: 4, new: 90, total: 6207, author: { id: 1098, username: 'player098', karma: 0 } }]),
+    'user/forumfeed': forumFeedPayload([]),
+    'forum/categories': { categories: [] },
+    'forum/16589908/posts': small,
+    'forum/16561608/posts': largeChain(),
+    'forum/3/posts': largeChain(),
+    'forum/4/posts': largeChain(),
+  };
+  const env = authorBoot(table, [16589908, 16561608, 3, 4]);
+  await settle(env);
+
+  assert.strictEqual(env.router.seen.filter((u) => /\/thread$/.test(u)).length, 0, 'author mode does not also read the thread');
+  assert.strictEqual(postsCalls(env, 16589908).length, 1, 'a short first page ends the walk');
+  const walk = postsCalls(env, 16561608);
+  assert.strictEqual(walk.length, env.exports.AUTHOR_MAX_PAGES, 'the walk stops at the page cap');
+  assert.deepStrictEqual(walk.map(toOf), [0, OLDEST0, OLDEST1], 'each to is the oldest created_time already read');
+  for (const u of env.router.seenUrls.filter((x) => /\/posts\?/.test(x))) {
+    assert.match(u, new RegExp('[?&]from=' + MARKER_FROM + '(&|$)'), 'from is the marker + 1: ' + u);
+    assert.doesNotMatch(u, /[?&](offset|limit|sort|stripTags)=/,
+      'built from from and to only, never from the prev URL Torn sent: ' + u);
+    assert.strictEqual(u.split(/[?&]key=/).length, 2, 'exactly the one key= tornApiGet adds, none copied from a link');
+  }
+
+  const row = (id) => env.exports.state.rows.find((r) => r.id === String(id));
+  const read = PAGE0.posts.concat(PAGE1.posts);
+  const distinct = (authorId) => new Set(read.filter((p) => p.author.id === authorId).map((p) => p.id)).size;
+  assert.deepStrictEqual([row(16589908).authorState, row(16589908).unread], ['none', 0], 'only a non-author reply: no badge');
+  // The real author wrote none of page 0 but two posts on page 1, the older
+  // one being the boundary page 2 repeats: found by walking back, counted once.
+  assert.strictEqual(distinct(largeAuthor.id), 2, 'fixture: the author is on page 1 only');
+  assert.deepStrictEqual([row(16561608).authorState, row(16561608).authorNew], ['author-atleast', 2],
+    'cut off by the cap with author posts read: N+, and the boundary post once');
+  assert.deepStrictEqual([row(4).authorState, row(4).authorReason, row(4).unread],
+    ['unchecked', 'too-many', 0], 'cut off by the cap with no author post read: not a known zero');
+  assert.deepStrictEqual([row(3).authorState, row(3).authorNew], ['author-atleast', distinct(1020)], 'cut off with author posts: N+');
+
+  const e = env.exports.state.organizer.threads['16561608'];
+  assert.strictEqual(e.authorCheckComplete, false);
+  assert.strictEqual(e.authorCheckTotal, 6207, 'the check total is subscribed posts.total, never the thread\'s reply count');
+  assert.strictEqual(e.lastPostTimeCached, PAGE0.posts[0].created_time * 1000, 'newest first: page 0 gives the last post time');
+  assert.ok(env.router.seen.length <= 13);
+});
+
+test('a walk that ends inside the cap is exact, and the boundary post counts once', async () => {
+  // Page 2 is the boundary post alone with no earlier page: the walk reached
+  // the marker on its third request.
+  const last = PAGE1.posts[PAGE1.posts.length - 1];
+  const chain = (url) => {
+    const to = toOf(url);
+    if (!to) return PAGE0;
+    if (to === OLDEST0) return PAGE1;
+    return { posts: [last], _metadata: { links: { prev: null, next: null } } };
+  };
+  const boundaryAuthor = PAGE0.posts[PAGE0.posts.length - 1].author; // wrote the post both real pages hold
+  const table = {
+    'user/forumsubscribedthreads': subscribedThreadsPayload([{ id: 16561608, new: 39, total: 6207, author: boundaryAuthor }]),
+    'user/forumfeed': forumFeedPayload([]), 'forum/categories': { categories: [] },
+    'forum/16561608/posts': chain,
+  };
+  const env = authorBoot(table, [16561608]);
+  await settle(env);
+  const all = PAGE0.posts.concat(PAGE1.posts);
+  const distinct = new Set(all.filter((p) => p.author.id === boundaryAuthor.id).map((p) => p.id)).size;
+  const r = env.exports.state.rows[0];
+  assert.deepStrictEqual([r.authorState, r.authorNew], ['author', distinct], 'exact, and the shared post is not counted twice');
+  assert.strictEqual(postsCalls(env, 16561608).length, 3);
+});
+
+test('breadth before depth: with as many targets as budget, no thread gets a second page', async () => {
+  const subs = [];
+  const table = { 'user/forumfeed': forumFeedPayload([]), 'forum/categories': { categories: [] } };
+  for (let i = 1; i <= 12; i += 1) {
+    subs.push({ id: i, new: 90, total: 6207, author: { id: 1002, username: 'player002', karma: 0 } });
+    table['forum/' + i + '/posts'] = largeChain();
+  }
+  table['user/forumsubscribedthreads'] = subscribedThreadsPayload(subs);
+  const env = authorBoot(table, subs.map((s) => s.id));
+  await settle(env);
+  const posts = env.router.seenUrls.filter((u) => /\/posts\?/.test(u));
+  assert.strictEqual(posts.length, env.exports.DEFAULT_ENRICH_BUDGET);
+  assert.strictEqual(posts.filter((u) => toOf(u)).length, 0, 'every request is a first page');
+  assert.strictEqual(new Set(posts.map((u) => u.split('?')[0])).size, env.exports.DEFAULT_ENRICH_BUDGET, 'ten threads, one each');
+  assert.ok(env.router.seen.length <= 13, 'the default refresh promise is 13 requests');
+});
+
+test('further pages come out of the same budget and never exceed it', async () => {
+  // Budget 4, two targets: the first may take 3 pages only because one
+  // request stays reserved for the second.
+  const table = {
+    'user/forumsubscribedthreads': subscribedThreadsPayload([
+      { id: 1, new: 90, total: 6207, author: { id: 1002, username: 'player002', karma: 0 } },
+      { id: 2, new: 90, total: 6207, author: { id: 1002, username: 'player002', karma: 0 } }]),
+    'user/forumfeed': forumFeedPayload([]), 'forum/categories': { categories: [] },
+    'forum/1/posts': largeChain(), 'forum/2/posts': largeChain(),
+  };
+  const env = authorBoot(table, [1, 2], {}, { enrichBudget: 4 });
+  await settle(env);
+  const counts = [postsCalls(env, 1).length, postsCalls(env, 2).length].sort();
+  assert.deepStrictEqual(counts, [1, 3]);
+  assert.ok(env.router.seen.length <= 3 + 4);
+});
+
+test('the lookup budget still bounds threads, and the rest stay visibly unchecked', async () => {
+  const small = fixture('forum-thread-posts-from-small');
+  const subs = [];
+  const table = { 'user/forumfeed': forumFeedPayload([]), 'forum/categories': { categories: [] } };
+  for (let i = 1; i <= 15; i += 1) {
+    subs.push({ id: i, new: 2, total: 10 });
+    table['forum/' + i + '/posts'] = small; // a short, complete page by someone else
+  }
+  table['user/forumsubscribedthreads'] = subscribedThreadsPayload(subs);
+  const env = authorBoot(table, [1, 2]);
+  await settle(env);
+  assert.strictEqual(env.router.seen.filter((u) => /\/posts$/.test(u)).length, env.exports.DEFAULT_ENRICH_BUDGET);
+  assert.ok(env.router.seen.length <= 13, 'the default refresh promise is 13 requests');
+  const unchecked = env.exports.state.rows.filter((r) => r.authorState === 'unchecked');
+  assert.strictEqual(unchecked.length, 5);
+});
+
+test('a failed further page keeps what was read, as a lower bound', async () => {
+  const chain = (url) => (toOf(url) ? { error: { code: 6, error: 'Unknown' } } : PAGE0);
+  const table = {
+    'user/forumsubscribedthreads': subscribedThreadsPayload([
+      { id: 16561608, new: 90, total: 6207, author: { id: 1020, username: 'player020', karma: 0 } }]),
+    'user/forumfeed': forumFeedPayload([]), 'forum/categories': { categories: [] },
+    'forum/16561608/posts': chain,
+  };
+  const env = authorBoot(table, [16561608]);
+  await settle(env);
+  const r = env.exports.state.rows[0];
+  assert.deepStrictEqual([r.authorState, r.authorNew], ['author-atleast', 4], 'page 0 holds 4 posts by 1020; never exact');
+  assert.strictEqual(env.exports.state.lastError, null);
+});
+
+test('a too-many thread is not looked up again while nothing has changed', async () => {
+  const table = {
+    'user/forumsubscribedthreads': subscribedThreadsPayload([
+      { id: 16561608, new: 90, total: 6207, author: fixture('forum-posts-large-offset0').posts[0].author }]),
+    'user/forumfeed': forumFeedPayload([]), 'forum/categories': { categories: [] },
+    'forum/16561608/posts': largeChain(),
+  };
+  const env = authorBoot(table, [16561608], {
+    authorCheckedAt: NOW - 60000, authorCheckTotal: 6207, authorCheckSince: MARKER,
+    authorNewCount: 0, authorCheckComplete: false, authorCheckReason: 'too-many' });
+  await settle(env);
+  assert.strictEqual(env.router.seen.filter((u) => /\/posts$/.test(u)).length, 0, 'the same walk would read the same posts');
+  assert.strictEqual(env.exports.state.rows[0].authorReason, 'too-many');
+});
+
+test('a failed first page leaves the row unchecked and the refresh ok', async () => {
+  const table = {
+    'user/forumsubscribedthreads': subscribedThreadsPayload([{ id: 1, new: 2, total: 10 }]),
+    'user/forumfeed': forumFeedPayload([]), 'forum/categories': { categories: [] },
+  }; // forum/1/posts falls through to the router's error response
+  const env = authorBoot(table, [1]);
+  await settle(env);
+  assert.strictEqual(env.exports.state.rows.find((r) => r.id === '1').authorState, 'unchecked');
+  assert.strictEqual(env.exports.state.lastError, null);
+});
+
+test('with the setting off a refresh reads the thread, never the posts walk', async () => {
+  const table = {
+    'user/forumsubscribedthreads': subscribedThreadsPayload([{ id: 1, new: 2, total: 10 }]),
+    'user/forumfeed': forumFeedPayload([]), 'forum/categories': { categories: [] },
+    'forum/1/thread': { thread: { id: 1, last_post_time: NOW / 1000 - 60, is_locked: false, is_sticky: false } },
+    'forum/1/posts': PAGE0,
+  };
+  const env = boot(table);
+  await settle(env);
+  assert.deepStrictEqual(env.router.seen.filter((u) => /^forum\/1\//.test(u)), ['forum/1/thread']);
+  assert.strictEqual(env.exports.state.rows[0].authorState, 'off');
 });

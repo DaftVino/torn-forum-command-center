@@ -2611,10 +2611,19 @@
         state.lastError = null;
         recompute(now);
         if (budget <= 0) return { ok: true };
+        var authorMode = state.settings.authorOnly === true;
         var targets = state.rows
-          .filter(function (r) { return r.subscribed && r.unread > 0 && r.activitySource !== 'enriched'; })
+          .filter(function (r) {
+            if (!r.subscribed) return false;
+            // Author mode selects on the author state, never on unread: an
+            // unchecked row has unread 0 by design, so selecting on it would
+            // check nothing, ever.
+            if (authorMode) return r.authorState === 'unchecked' && (r.authorReason === 'never' || r.authorReason === 'stale');
+            return r.unread > 0 && r.activitySource !== 'enriched';
+          })
           .slice(0, budget);
-        return enrichThreads(targets.map(function (r) { return r.numericId; }), now, options);
+        var ids = targets.map(function (r) { return r.numericId; });
+        return authorMode ? checkAuthorPosts(ids, now, options, budget) : enrichThreads(ids, now, options);
       })
       .then(function (res) {
         if (!stale()) {
@@ -2662,6 +2671,97 @@
           // Stop the batch rather than grinding against the limit.
           return { ok: true, enriched: done, stoppedEarly: true };
         }
+        return step(i + 1);
+      });
+    }
+
+    return step(0);
+  }
+
+  // Author-only lookups (issue #4): forum/{id}/posts in place of
+  // forum/{id}/thread. With from set, Torn returns the newest 20 posts at or
+  // after it, newest first, and ignores offset; to (also inclusive) pages
+  // further back, so each further page repeats the previous page's oldest
+  // post, which summariseAuthorPosts counts once. from is marker + 1: a post
+  // at the marker was already seen. Every page is one unit of the same lookup
+  // budget, a thread gets at most AUTHOR_MAX_PAGES, and a further page is
+  // fetched only while one request stays reserved for each thread not yet
+  // started, so the refresh total never moves. URLs are built here, through
+  // tornApiGet, from from and to; the prev URL Torn returns is read only for
+  // null, never fetched, because it carries Torn's own parameters. The check
+  // total is the subscribed posts.total; a thread's own "posts" counts
+  // replies and is one less, so it must never be stored here (if one is ever
+  // needed, threadPostsTotal converts it; never add 1 again after that). The
+  // entry is re-read after the walk, because a handler may have replaced the
+  // organizer while the requests were in flight.
+  function checkAuthorPosts(ids, now, opts, budget) {
+    var list = (ids || []).slice(0, MAX_ENRICH_BUDGET);
+    if (!list.length) return Promise.resolve({ ok: true, checked: 0, requests: 0 });
+    var cap = Math.min(MAX_ENRICH_BUDGET, Math.max(list.length, toInt(budget, list.length)));
+    var spent = 0;
+    var done = 0;
+    var generation = state.generation;
+
+    function step(i) {
+      if (i >= list.length) return Promise.resolve({ ok: true, checked: done, requests: spent });
+      var id = String(list[i]);
+      var before = entryOf(state.organizer, id);
+      var since = authorSinceFor(before);
+      var row = state.rows.filter(function (r) { return r.id === id; })[0] || null;
+      var authorId = (row && row.authorId) || before.authorId;
+      var total = row ? row.postsTotal : before.postsTotal;
+      var from = Math.floor(since / 1000) + 1;
+      var posts = [];
+      var pages = 0;
+
+      function page(to) {
+        var params = { from: from };
+        if (to > 0) params.to = to;
+        spent += 1;
+        pages += 1;
+        return tornApiGet('forum/' + id + '/posts', params, opts).then(function (res) {
+          if (generation !== state.generation) return { stale: true };
+          if (!(res.ok && isPlainObject(res.data) && Array.isArray(res.data.posts))) {
+            return { failed: true, throttled: res.reason === 'throttled' };
+          }
+          var meta = isPlainObject(res.data._metadata) && isPlainObject(res.data._metadata.links) ? res.data._metadata.links : {};
+          var seenIds = posts.map(function (p) { return isPlainObject(p) ? p.id : null; });
+          var walk = authorPageStep(res.data.posts, seenIds, POSTS_PER_PAGE, meta.prev);
+          posts = posts.concat(res.data.posts);
+          if (walk.done) return { complete: walk.complete };
+          // Breadth before depth: one request stays reserved for every
+          // thread in this batch that has not had its first page yet.
+          var reserved = list.length - (i + 1);
+          if (pages >= AUTHOR_MAX_PAGES || spent + reserved >= cap) return { complete: false };
+          return page(walk.to);
+        });
+      }
+
+      return page(0).then(function (out) {
+        if (out.stale) return { ok: true, checked: done, requests: spent, stale: true };
+        if (out.failed && pages === 1) {
+          // Nothing read: write nothing, so the row stays never/stale.
+          if (out.throttled) return { ok: true, checked: done, requests: spent, stoppedEarly: true };
+          return step(i + 1);
+        }
+        // A failed further page keeps what was read, as a walk cut short.
+        var sum = summariseAuthorPosts(posts, authorId, since, out.complete === true);
+        var e = entryOf(state.organizer, id);
+        e.authorCheckedAt = now;
+        e.authorCheckTotal = total;
+        e.authorCheckSince = since;
+        e.authorNewCount = sum.count;
+        e.authorLatestAt = sum.latestAt;
+        e.authorCheckComplete = sum.complete;
+        e.authorCheckReason = !sum.complete && sum.count === 0 ? 'too-many' : '';
+        if (sum.newestAt > 0) {
+          // Newest first with no upper bound: the newest post read is the
+          // thread's last post, however the walk ended.
+          e.lastPostTimeCached = Math.max(e.lastPostTimeCached, sum.newestAt);
+          e.enrichedAt = now;
+        }
+        done += 1;
+        if (out.throttled) return { ok: true, checked: done, requests: spent, stoppedEarly: true };
         return step(i + 1);
       });
     }
