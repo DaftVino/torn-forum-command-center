@@ -2,6 +2,9 @@
 
 Issue: #4. Status: proposed, 2026-10-08.
 Related: #2 (My posts view), #3 (row cap). ADR 0001 (no DOM data paths) governs.
+Evidence: `docs/reference/torn-api-live-findings-2026-10-08.md` and the redacted
+fixtures in `tests/fixtures/` (both from #14). Revised the same day to match
+that live capture.
 
 ## Problem
 
@@ -70,16 +73,22 @@ are from that commit; the code map may lag).
   and leaves out `lastVisitedAt` and every enrichment cache field. Settings are
   not exported.
 
-### API evidence in the repo
+### API evidence (live, 2026-10-08)
+
+Finding numbers refer to `docs/reference/torn-api-live-findings-2026-10-08.md`.
 
 | Claim | Evidence | Status |
 |---|---|---|
-| `forum/{id}/posts` rows have `id`, `author{id,username}`, `created_time`, `content` | `runDeepSearch` reads them; `tests/postcache.test.js` fixture | In use, not live-verified this session |
-| `forum/{id}/posts` paginates by `offset`, 20 per page | `runDeepSearch`, `tests/api.test.js` | In use |
-| `forum/{id}/posts` accepts `from` and `to` query parameters | API changelog 22.08.2025 in `docs/reference/torn-api-docs-2026-08-08.html` | Documented. Semantics (created time? inclusive?) **unverified** |
-| Post order within a page (oldest first?) | Deep search assumes a short page is the end | **Unverified** |
-| A post edit timestamp or edited flag | None anywhere in the repo | **Not evidenced** |
-| `last_poster` on `forum/{id}/thread` | Listed in the v0.1.0 spec table; no fixture; never read | **Unverified shape** |
+| `forum/{id}/posts` rows have `id`, `author{id,username,karma}`, `created_time`, `is_topic`, `is_edited`, `edited_by`, `content` | `forum-thread-posts-from-small.json`, `forum-posts-large-from.json` | Verified |
+| Without `from`: oldest first, 20 per page, `offset` pages, topic at offset 0 | Finding 5; `forum-posts-large-offset0.json` | Verified. Deep search relies on this; this design does not |
+| `sort` and `limit` are ignored | Findings 6, 7; `forum-posts-large-sort-desc-ignored.json`, `forum-posts-large-limit50-ignored.json` | Verified |
+| With `from=t`: posts with `created_time >= t`, **newest first**, at most 20, `next` is `null` | Finding 8; `forum-posts-large-from.json` (20 posts, strictly descending) | Verified |
+| `offset` is ignored when `from` is set | Finding 8; `forum-posts-large-from-offset20-ignored.json` is identical to `forum-posts-large-from.json` | Verified. One page is all `from` can return |
+| `from` is inclusive | Finding 9; `forum-thread-posts-from-small.json` (`from` equal to the post's `created_time` returned it) | Verified |
+| A thread's `posts` counts replies (total minus 1); subscribed `posts.total` counts every post | Findings 3, 4; `forum-thread.json` (`posts: 1`) against `forum-thread-posts-asc.json` (2 posts) | Verified |
+| `last_poster { id, username, karma }` on thread objects | Finding 10; `forum-thread.json` | Verified |
+| Posts carry `is_edited` and `edited_by`, and no edit timestamp | Finding 11; `user-forumposts.json` | Verified |
+| Torn's `posts.new` can exceed `posts.total` | `user-forumsubscribedthreads.json`, thread 16583282: `new: 17, total: 10` | Observed. `posts.new` is used as a gate (`> 0`), never as a bound |
 | Feed `type` meanings | None | **Unverified** |
 | `user` log categories "Forum post", "Forum edit" | API docs log filter list | Need log access, more than this key has; and they cover only the key owner's own actions. Not usable. |
 
@@ -88,22 +97,40 @@ are from that commit; the code map may lag).
 ### Data source: one `forum/{id}/posts` page per checked thread
 
 When the setting is on, the per-thread activity lookup calls
-`forum/{id}/posts?from=<sinceSeconds>` **in place of** `forum/{id}/thread`. It
-counts the posts whose `author.id` equals the thread's `authorId` and whose
-`created_time` is later than the thread's read marker.
+`forum/{id}/posts?from=<marker seconds + 1>` **in place of**
+`forum/{id}/thread`. It counts the posts whose `author.id` equals the thread's
+`authorId` and whose `created_time` is later than the thread's read marker.
+
+Torn answers that request with the **newest** posts after the marker, newest
+first, at most 20, with no way to reach further back: `offset`, `sort` and
+`limit` are all ignored once `from` is set (findings 6-8). So the page is "the
+newest 20 since the marker", not "the first 20 since the marker". With more
+than 20 new posts, the posts nearest the marker cannot be read through `from`
+at all. The truncation rule below is built on that.
 
 Rejected:
 
-- **`last_poster`.** Zero extra cost, but it names only the last poster. If the
-  author posts and then anyone replies, the author's post is missed, and that
-  is the busy-thread case this feature exists for. Its shape is also unverified.
-  It may come back later as a free positive hint (see open questions).
+- **`last_poster` as a free first check.** Its shape is verified
+  (`{ id, username, karma }`, `forum-thread.json`), but it is not free in this
+  mode, and it says less than the lookup it would sit in front of. It is free
+  only when `forum/{id}/thread` is fetched anyway, and author-only mode
+  replaces that call with the posts page. Using it to short-circuit means two
+  calls for every thread where the author did not post last, which either
+  breaks the 13-request promise or halves the threads checked. Where it does
+  short-circuit, it buys only "the author posted last", with no count, and it
+  can never prove "the author did not post", which is the answer this feature
+  exists to give in busy threads. The posts page already carries the same fact
+  for nothing: it is newest first, so `posts[0].author.id` is the last poster
+  and `posts[0].created_time` is the last post time. So `last_poster` is not
+  used, and nothing in this mode depends on `forum/{id}/thread`.
 - **Feed `user`.** Zero cost, but the `type` values are unverified (a "like" by
   the author could read as a post), and coverage of subscribed threads is the
   open risk the v0.1.0 spec already logged. A wrong positive under an
   author-only label is the one failure this feature must not have.
 - **Two lookups per thread** (thread plus posts). This halves the threads
-  checked per refresh for a `last_post_time` the posts page mostly supplies.
+  checked per refresh for a `last_post_time` and `last_poster` the posts page
+  already supplies (newest first, so `posts[0]` is the last post). It would buy
+  only `is_locked` and `is_sticky`.
 
 ### Request cost
 
@@ -115,11 +142,10 @@ requirement does not change.
 
 Trade-off: in author-only mode, threads checked this way do not refresh
 `isLocked`/`isSticky`. They keep their last known values. Last activity is
-still fed: when the page came back complete (fewer than 20 posts), its newest
-`created_time` is written to `lastPostTimeCached` and `enrichedAt`. When the
-page came back full, that time is only a lower bound. It is written to
-`lastPostTimeCached` but not to `enrichedAt`, so the row stays `enriched-stale`
-and is not claimed as fresh.
+still fed, and exactly: `from` has no upper bound and the page is newest first,
+so the newest `created_time` on any non-empty page is the thread's last post
+time, whether or not the page is full. It is written to `lastPostTimeCached`,
+and `enrichedAt` is set. An empty page writes neither.
 
 ### The read marker
 
@@ -132,6 +158,17 @@ the script first saw it. Author posts from before the install are not flagged.
 That is an accepted gap, and the Settings text says so. When both are 0, the
 state is `unchecked` with reason `no-marker`.
 
+**One rule for "new":** a post is new when `created_time * 1000 > sinceAt`. A
+post at the marker was there when the user looked, so it counts as seen.
+`from` is inclusive (finding 9), so the request sends
+`from = floor(sinceAt / 1000) + 1`, the smallest whole second that satisfies
+the rule, and Torn returns exactly the posts the rule calls new. A post at the
+marker therefore never takes one of the 20 slots. The engine applies the same
+test to what comes back, so such a post is never counted even if the request
+were built wrong. The test uses the real `forum-thread-posts-from-small.json`:
+with the marker at its post's own second the count is 0, and one second earlier
+it is 1.
+
 ### Per-thread author state (pure)
 
 `authorStateFor(apiRow, entry, unreadInfo)` returns
@@ -141,8 +178,8 @@ state is `unchecked` with reason `no-marker`.
 |---|---|---|
 | `none` | dismissed; or Torn reports `posts.new == 0`; or a valid check found 0 author posts on a complete page | none |
 | `author` | a valid check found `count >= 1` author posts on a complete page | `N new by author` |
-| `author-atleast` | a valid check found `count >= 1` on a full page (there may be more); or an earlier check found `count >= 1` with the same marker and the thread has grown since | `N+ new by author` |
-| `unchecked` | everything else, with a `reason`: `never` (no check yet: budget, throttle or failure), `stale` (marker moved, or thread grew after a zero-count check), `full-page` (20 posts back, none by the author), `filter-ignored`, `no-author` (`authorId` unknown), `no-marker`. Lookups target only `never` and `stale`. The other reasons would give the same answer until the thread changes | `author: not checked`, with a title tooltip giving the reason and saying that Torn reports new posts from someone |
+| `author-atleast` | a valid check found `count >= 1` on a truncated page (older new posts were out of reach); or an earlier check found `count >= 1` with the same marker and the thread has grown since | `N+ new by author` |
+| `unchecked` | everything else, with a `reason`: `never` (no check yet: budget, throttle or failure), `stale` (marker moved, or thread grew after a zero-count check), `over-20` (truncated page, none of the 20 by the author), `no-author` (`authorId` unknown), `no-marker`. Lookups target only `never` and `stale`. The other reasons would give the same answer until the thread or the marker changes | `author: not checked (over 20 new)` for `over-20`, `author: not checked` otherwise. Each has a title tooltip giving the reason and saying that Torn reports new posts from someone |
 
 A check is **valid** when `check.total === postsTotal` (no posts since) and
 `check.since === sinceAt` (marker unchanged). An unchanged thread therefore
@@ -152,17 +189,38 @@ The badge never shows `tornUnread` under an author label. The `unchecked`
 tooltip may say "Torn reports new posts from someone". It does not give the
 number.
 
-### The engine never trusts `from`
+### Reading the page: the truncation rule
 
 `summariseAuthorPosts(posts, authorId, sinceMs, perPage)` works out the result
-from what came back, whatever the order:
+from what came back. It reads every post and never relies on position, so the
+order cannot change the answer:
 
-- Only posts with `created_time * 1000 > sinceMs` count.
-- If any returned post is at or before `sinceMs`, the API ignored or reinterpreted
-  `from`. The result is `{ filterIgnored: true }` and the state is `unchecked`
-  with reason `filter-ignored`. The debug report shows this, so the first live
-  refresh answers that open question.
-- `complete = posts.length < perPage`.
+- Only posts with `created_time * 1000 > sinceMs` count (the marker rule). A
+  post at or before the marker is skipped. It is not treated as an error: with
+  `from` verified, the inclusive bound is the only way one can arrive, and if
+  Torn ever stopped honouring `from`, the page would be the thread's oldest
+  posts, which the same test skips (and a full page of them reads as truncated,
+  never as `none`).
+- `complete = posts.length < perPage`. Fewer than 20 back means every post
+  after the marker is on the page, so the count is exact.
+- **20 back is truncated.** They are the newest 20 after the marker, and more
+  may lie between the marker and the oldest of them. The page would be
+  complete only if its oldest post were the first one after the marker, and
+  nothing proves that: there is no `next` link, `offset` is ignored, and
+  `posts.new` is not a reliable count (it can exceed `posts.total`). So a full
+  page is always truncated. Then:
+  - one or more author posts among the 20: `author-atleast`, badge
+    **`N+ new by author`**. N is a lower bound and the `+` says so. The newest
+    author post is exact, because any author post out of reach is older than
+    all 20, so `authorLatestAt` and the Catch-up order are right;
+  - none of the 20 by the author: `unchecked`, reason `over-20`, badge
+    **`author: not checked (over 20 new)`**. Never `none`: the author may have
+    posted in the part that cannot be reached.
+- An `over-20` row is not re-checked while nothing changes: the same request
+  would return the same 20. It becomes `stale`, and a lookup target again, when
+  the thread grows (a new post may be the author's, and the newest 20 would
+  include it) or when the marker moves (a visit or Mark read, which is the only
+  way to bring the unreachable posts back into range). The tooltip says so.
 
 ### Where the state is used, with the setting on
 
@@ -201,8 +259,10 @@ off-mode outputs to the current ones.
 
 ### Edits
 
-API v2 shows no evidence of a post edit timestamp or an edited flag. Edits are
-out of scope. The setting is labelled **Only flag new posts by the thread
+Posts carry `is_edited` and `edited_by`, but no edit timestamp (finding 11,
+`user-forumposts.json`). Without a time, an edit cannot be placed before or
+after the read marker, so "edited since you looked" cannot be told from "edited
+long ago". Edits are out of scope. The setting is labelled **Only flag new posts by the thread
 author**, and the Settings text says edits are not detected.
 
 ### My posts (#2)
@@ -232,10 +292,12 @@ rows for the cap. The nav count does not include it.
   only runs for a thread that has unread posts and no recent check. The script
   keeps itself under 40 requests a minute regardless." A second note is always
   shown, so the limits are visible before the setting is turned on: "Author-only
-  mode reads one page of the thread's newest posts per lookup instead of its
-  last-post time, so the cost is the same. Threads not checked yet show 'not
-  checked'. Posts from before you started using this script are not flagged, and
-  edits are not detected."
+  mode reads the thread's newest 20 posts since you last looked, per lookup,
+  instead of its last-post time, so the cost is the same. Torn returns no more
+  than 20, so with more new posts than that a count shows as a minimum (N+), or
+  as 'not checked (over 20 new)' when none of the 20 is by the author. Threads
+  not checked yet show 'not checked'. Posts from before you started using this
+  script are not flagged, and edits are not detected."
 
 ### Persisted state and migration
 
@@ -246,12 +308,31 @@ defaults, and `SCHEMA_VERSION` stays 1:
 | field | type | meaning |
 |---|---|---|
 | `authorCheckedAt` | ms | when the last check ran, 0 = never |
-| `authorCheckTotal` | int | `postsTotal` at that check |
+| `authorCheckTotal` | int | subscribed `posts.total` (`postsTotal`) at that check; never a thread's `posts` |
 | `authorCheckSince` | ms | `sinceAt` used by that check |
 | `authorNewCount` | int | author posts found after `since` |
 | `authorLatestAt` | ms | newest author post found |
-| `authorCheckComplete` | bool | page was not full |
-| `authorCheckReason` | string, allow-listed | `''`, `filter-ignored`, `full-page` (anything else normalises to `''`) |
+| `authorCheckComplete` | bool | page was not full (fewer than 20 back) |
+| `authorCheckReason` | string, allow-listed | `''` or `over-20` (anything else normalises to `''`) |
+
+### Counting posts: the +1
+
+Two Torn figures look alike and differ by one. Subscribed `posts.total` counts
+every post, topic included. A thread object's `posts` (`forum/{id}/thread`,
+`user/forumthreads`) counts replies only, so it is `posts.total - 1` (findings
+3, 4; `forum-thread.json` says `posts: 1` for a thread whose
+`forum-thread-posts-asc.json` holds 2 posts). This design compares subscribed
+totals only with subscribed totals: `authorCheckTotal` is written from
+`postsTotal` and compared with `postsTotal`, and dismissal compares
+`lastSeenTotal` with `postsTotal`. It never reads a thread's `posts`
+(`enrichThreads` does not either). If later code needs a total from a thread
+object, it uses #2's pure helper `threadPostsTotal(raw)` (a numeric `posts`
+becomes `posts + 1`, a `posts.total` passes through, unknown is -1), which is
+the only place the unit is converted, and adds it exactly as #2 defines it if
+#2 has not landed. A value that came through `threadPostsTotal` or #2's
+`parseThreadDetail` is already in `posts.total` units: never add 1 to it again.
+A test pins the +1 against the fixtures, so a recapture that changes it fails
+loudly.
 
 Upgrade without a false "damaged" notice. `loadKey` calls a stored value
 damaged whenever `JSON.stringify(raw)` differs from the normalised value, so a
@@ -293,11 +374,17 @@ exported. A test pins that.
 
 ## Assumptions
 
-1. `from` filters by post creation time, in unix seconds. The engine checks
-   this instead of trusting it.
-2. `created_time` is creation time, not last-edit time.
-3. `author.id` on a post is the same id space as `author.id` on a
-   subscribed-thread row.
+1. **Answered.** `from` filters by post creation time in unix seconds,
+   inclusively, and returns the newest 20 at or after it (findings 8, 9;
+   `forum-posts-large-from.json`, `forum-thread-posts-from-small.json`).
+2. `created_time` is creation time, not last-edit time. Consistent with the
+   capture (`from` matched `created_time` exactly, and posts have no edit
+   timestamp), but not tested against an edited post.
+3. `author.id` on a post is the same id space as `author.id` on a thread or
+   subscribed row. Consistent with the capture: thread 16589908's topic post in
+   `forum-thread-posts-asc.json` has the same `author.id` as the thread in
+   `forum-thread.json`. The redaction remaps ids through one table, so the
+   fixtures keep this property.
 4. A captured visit or Mark read is an adequate "seen" marker for author posts.
    It is time-based, while dismissal is count-based. In this mode the two can
    disagree: a post written before Mark read but indexed after it can be missed.
@@ -305,21 +392,33 @@ exported. A test pins that.
 5. The panel's "Mark read" stays the only local clear. Torn's own `posts.new`
    is still used only to decide whether a check is worth spending.
 
-## Open questions (verify against the live API before release)
+## Open questions
 
-1. Does `forum/{id}/posts` honour `from`, and is it inclusive? (The
-   `filter-ignored` reason answers this on the first live refresh.)
-2. What order are posts in within a page, and does `from` combine with `offset`?
-3. Is there any edit timestamp or edited flag on a `ForumPost`
-   (`torn.com/swagger/openapi.json`)? If so, a follow-up can add edits.
-4. Does `forum/{id}/thread` carry `last_poster`, and in what shape? If it is
-   `{id, username}`, it could act as a free positive hint for threads past the
-   budget.
+Answered by the 2026-10-08 capture:
+
+1. **Answered.** Does `forum/{id}/posts` honour `from`, and is it inclusive?
+   Yes and yes (findings 8, 9). The request sends marker + 1.
+2. **Answered.** Post order: newest first with `from`, oldest first without
+   (findings 5, 8). `offset` is ignored when `from` is set
+   (`forum-posts-large-from-offset20-ignored.json`). Hence the truncation rule.
+3. **Answered.** No edit timestamp; only `is_edited` and `edited_by`
+   (finding 11).
+4. **Answered.** `forum/{id}/thread` carries `last_poster { id, username,
+   karma }` (finding 10). Not used; see Decision.
+
+Still open:
+
 5. What do the `user/forumfeed` `type` values mean, and does the feed cover
    posts in subscribed threads? Feed `user.id` could become a zero-cost hint once
-   the meanings are known.
+   the meanings are known. Not probed.
 6. Are deleted posts counted in `posts.total`? (This affects whether
-   `check.total` stays a stable validity key.)
+   `check.total` stays a stable validity key.) Not probed.
+7. Can `to` reach the posts nearest the marker? The `from` response's `prev`
+   link is `from=<thread start>&to=<oldest returned>`
+   (`forum-posts-large-from.json`), which hints that `from` plus `to` pages
+   backwards. Not probed. If it works, a second request could turn some
+   `over-20` rows into exact answers, at twice the cost for those rows. Out of
+   scope here; a follow-up issue if `over-20` turns out to be common.
 
 ## Out of scope
 

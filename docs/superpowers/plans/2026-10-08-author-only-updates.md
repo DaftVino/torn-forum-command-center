@@ -4,11 +4,26 @@
 
 **Goal:** Add a global setting, default off, that flags a subscribed thread as new only when its author has posted since the user last saw it. It shows an honest "not checked" state when author activity is unknown.
 
-**Architecture:** In author-only mode the existing per-thread activity lookup calls `forum/{id}/posts?from=<marker>` instead of `forum/{id}/thread`, so the request cost does not change. The result is stored as seven additive per-thread fields. Three pure engine functions turn that into a per-row author state: `summariseAuthorPosts`, `authorSinceFor` and `authorStateFor`. `mergeThreads`, `catchUpList`, `buildPanelModel` and the renderers read that state.
+**Architecture:** In author-only mode the existing per-thread activity lookup calls `forum/{id}/posts?from=<marker seconds + 1>` instead of `forum/{id}/thread`, so the request cost does not change. Torn answers with the newest 20 posts after the marker, newest first, and cannot page further back, so a full page is a truncated one. The result is stored as seven additive per-thread fields. Three pure engine functions turn that into a per-row author state: `summariseAuthorPosts`, `authorSinceFor` and `authorStateFor`. `mergeThreads`, `catchUpList`, `buildPanelModel` and the renderers read that state.
 
 **Tech Stack:** a single-file ES5-style userscript (`torn-forum-command-center.user.js`), Node `node:test` plus the `vm` harness in `tests/load-userscript.js`, and no runtime dependencies.
 
 **Spec:** `docs/superpowers/specs/2026-10-08-author-only-updates-design.md`. Read it first. Where this plan and the spec disagree, the spec wins and this plan is amended.
+
+**API evidence:** `docs/reference/torn-api-live-findings-2026-10-08.md` (live capture, 2026-10-08). Where it disagrees with the OpenAPI document, it wins.
+
+## Prerequisites
+
+- **#14 is merged.** Tasks 3, 7 and 9 load the real redacted fixtures from `tests/fixtures/*.json`, which #14 adds: `forum-thread-posts-from-small.json`, `forum-posts-large-from.json`, `forum-posts-large-from-offset20-ignored.json`, `forum-posts-large-offset0.json`, `forum-thread.json`, `forum-thread-posts-asc.json`. Check with `ls tests/fixtures/forum-posts-large-from.json`. If it is missing, stop and rebase on `main` once #14 lands. Do not hand-write look-alike payloads in their place: the point of these tests is that they fail if Torn's recorded behaviour and the code disagree.
+- Each test file that uses them loads them with one helper, so a missing fixture fails with a clear path rather than `undefined`:
+
+```js
+const fs = require('node:fs');
+const path = require('node:path');
+const fixture = (name) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', name + '.json'), 'utf8'));
+```
+
+- Facts the tests rely on, all read from those files: thread 16561608's topic author is `1002` (`forum-posts-large-offset0.json`), and `1002` is not among the 20 posts in `forum-posts-large-from.json`; player `1020` wrote 4 of those 20, the newest at `created_time` 1787174754; thread 16589908's author is `1000` and its only reply, at 1786067226, is by `1001` (`forum-thread.json`, `forum-thread-posts-from-small.json`).
 
 ## Global Constraints
 
@@ -27,11 +42,12 @@
 
 ## Review Focus
 
-1. **A thread with more than 20 new posts and no author post in the first 20.** The user would expect "not checked", not "nothing new". Pinned in Task 3 (`full-page`) and Task 6 (badge text).
-2. **Torn ignoring `from` and returning the thread's oldest posts.** The user would expect "not checked", not "1 new by author" for the opening post. Pinned in Task 3 (`filter-ignored`).
+1. **A thread with more than 20 new posts.** With `from`, Torn returns the *newest* 20 after the marker and nothing older (`offset` is ignored), so the posts nearest the marker are out of reach. A full page is therefore always truncated. If the author wrote any of the 20, the badge is `N+ new by author`, a lower bound. If none of the 20 is by the author, the badge is `author: not checked (over 20 new)`, never "nothing new". Pinned in Task 3 against `forum-posts-large-from.json` (author `1002` absent, `over-20`; author `1020` present 4 times, lower bound) and in Task 6 (badge text).
+2. **A post exactly at the read marker.** `from` is inclusive, so a post the user has already seen could come back and be counted. The request sends marker + 1 and the engine counts only `created_time * 1000 > since`. Pinned in Task 3 against `forum-thread-posts-from-small.json` and in Task 7 (the exact `from` value sent).
 3. **Lookup targets chosen from `row.unread`, which is 0 for an unchecked row in author mode,** so nothing would ever get checked. Pinned in Task 7, with a mutation in Task 9.
 4. **Unread only plus author mode hiding unchecked rows,** so an unknown looks like known-empty. Pinned in Task 5, with a mutation in Task 9.
 5. **Mark read after an author post, then a non-author reply.** The user would expect no badge, because the marker moved past the author post. Pinned in Task 4 (`stale` after marker change, then `none` after a check).
+6. **Mixing a thread's `posts` with subscribed `posts.total`.** The first counts replies, the second every post, so they differ by 1. The check total must come from subscribed `posts.total` only. Pinned in Task 3 (the +1, against the fixtures) and Task 7 (`authorCheckTotal` equals the subscribed total). This plan needs no thread-side total. If an implementer finds one is needed, use #2's `threadPostsTotal(raw)` (numeric `posts` -> `posts + 1`, `posts.total` unchanged, unknown -> -1; add it exactly as `docs/superpowers/plans/2026-10-08-my-posts-view.md` defines it if #2 is not on main, and whichever PR merges second reconciles). **Do not apply a second +1** to a value that came through `threadPostsTotal` or `parseThreadDetail`: it is already in `posts.total` units.
 
 ---
 
@@ -94,7 +110,7 @@ Run `node --test tests/storage.test.js`. Expected: FAIL on this test only (`reco
 - Test: `tests/storage.test.js`
 
 **Interfaces:**
-- Produces these entry fields: `authorCheckedAt` (ms), `authorCheckTotal` (int), `authorCheckSince` (ms), `authorNewCount` (int), `authorLatestAt` (ms), `authorCheckComplete` (bool), `authorCheckReason` (`''|'filter-ignored'|'full-page'`)
+- Produces these entry fields: `authorCheckedAt` (ms), `authorCheckTotal` (int), `authorCheckSince` (ms), `authorNewCount` (int), `authorLatestAt` (ms), `authorCheckComplete` (bool), `authorCheckReason` (`''|'over-20'`)
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -107,11 +123,11 @@ test('author-check fields default to zero and survive normalisation', () => {
     [0, 0, 0, 0, 0, false, '']);
   const e = api.normaliseThreadEntry({
     authorCheckedAt: 5, authorCheckTotal: 12, authorCheckSince: 4, authorNewCount: 2,
-    authorLatestAt: 3, authorCheckComplete: true, authorCheckReason: 'full-page',
+    authorLatestAt: 3, authorCheckComplete: true, authorCheckReason: 'over-20',
   });
   assert.strictEqual(e.authorNewCount, 2);
   assert.strictEqual(e.authorCheckComplete, true);
-  assert.strictEqual(e.authorCheckReason, 'full-page');
+  assert.strictEqual(e.authorCheckReason, 'over-20');
   assert.strictEqual(api.normaliseThreadEntry({ authorCheckReason: 'evil<b>' }).authorCheckReason, '');
   assert.strictEqual(api.normaliseThreadEntry({ authorNewCount: -4 }).authorNewCount, 0);
 });
@@ -151,7 +167,7 @@ test('an export never carries author-check cache fields', () => {
     e.authorCheckReason = AUTHOR_CHECK_REASONS.indexOf(raw.authorCheckReason) !== -1 ? raw.authorCheckReason : '';
 ```
 
-Add this near the other frozen constants (~l.98): `var AUTHOR_CHECK_REASONS = Object.freeze(['', 'filter-ignored', 'full-page']);`. Do not bump `SCHEMA_VERSION`. The change is additive, and `normaliseOrganizer` would otherwise refuse every stored organizer.
+Add this near the other frozen constants (~l.98): `var AUTHOR_CHECK_REASONS = Object.freeze(['', 'over-20']);`. Do not bump `SCHEMA_VERSION`. The change is additive, and `normaliseOrganizer` would otherwise refuse every stored organizer.
 - [ ] **Step 4: Run `npm test`.** Expected: PASS.
 - [ ] **Step 5: Write the failing nested upgrade tests.** The seven fields above live inside `organizer.threads[id]`, one level below the top, so `isRecoveredValue` (top-level only, nested shapes deliberately not forgiven) does not cover them. A v0.1.0 organizer would report "Folders and tags were damaged and have been reset." on every upgrade. Append to `tests/storage.test.js`:
 
@@ -250,77 +266,131 @@ Add `'isRecoveredOrganizer'` to `EXPORT_NAMES` in `tests/load-userscript.js`. `t
 - Modify: the engine, next to `unreadFor` (~l.708, "merge, unread, sort")
 - Modify: `tests/load-userscript.js` `EXPORT_NAMES`. Add `'summariseAuthorPosts', 'authorSinceFor', 'authorStateFor', 'catchUpUnchecked', 'checkAuthorPosts', 'AUTHOR_REASON_TEXT'` to the "engine: merge, unread, sort" line. The harness guards each name with `typeof`, so a name that does not exist yet is `undefined` and its test fails with "not a function". Add each name in the task that creates it.
 - Create: `tests/author.test.js`
+- Read: the fixtures listed under Prerequisites (from #14)
 
 **Interfaces:**
-- Produces: `summariseAuthorPosts(posts: any, authorId: number, sinceMs: number, perPage: number) -> { count, latestAt, newestAt, complete, filterIgnored }`
+- Produces: `summariseAuthorPosts(posts: any, authorId: number, sinceMs: number, perPage: number) -> { count, latestAt, newestAt, complete }`
+
+The page this reads is the answer to `forum/{id}/posts?from=<marker + 1>`: the newest posts after the marker, newest first, at most 20, with no way to get older ones (spec, "Reading the page"). So `complete` means "fewer than 20 came back", and a full page is truncated.
 
 - [ ] **Step 1: Write the failing tests** (`tests/author.test.js`)
+
+The first block pins the API facts the design rests on, read straight from the fixtures. They pass before any code is written. That is intended: they are not tests of the script, they are the tripwire that fails if a recapture shows Torn has changed, and they keep the later assertions honest about which fixture shows what.
 
 ```js
 'use strict';
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 const { loadUserscript } = require('./load-userscript');
 
 const { exports: api } = loadUserscript();
-const SINCE = 1700000000000;
-const p = (id, authorId, secAfter) => ({ id, author: { id: authorId, username: 'u' + authorId }, created_time: SINCE / 1000 + secAfter, content: '' });
+const fixture = (name) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', name + '.json'), 'utf8'));
 
-test('counts only the author\'s posts after the marker', () => {
-  const r = api.summariseAuthorPosts([p(1, 5, 10), p(2, 9, 20), p(3, 5, 30)], 5, SINCE, 20);
-  assert.strictEqual(r.count, 2);
-  assert.strictEqual(r.latestAt, (SINCE / 1000 + 30) * 1000);
-  assert.strictEqual(r.newestAt, (SINCE / 1000 + 30) * 1000);
-  assert.strictEqual(r.complete, true);
-  assert.strictEqual(r.filterIgnored, false);
+const SMALL = fixture('forum-thread-posts-from-small').posts;   // thread 16589908, from = its one reply's created_time
+const LARGE = fixture('forum-posts-large-from').posts;          // thread 16561608, newest 20 since from
+const LARGE_AUTHOR = fixture('forum-posts-large-offset0').posts[0].author.id; // topic post: the thread author
+const SINCE = 1700000000000; // a marker before every fixture post
+
+test('API facts: from returns the newest 20, newest first, with no next page', () => {
+  assert.strictEqual(LARGE.length, 20);
+  for (let i = 1; i < LARGE.length; i += 1) {
+    assert.ok(LARGE[i - 1].created_time > LARGE[i].created_time, 'newest first at ' + i);
+  }
+  assert.strictEqual(fixture('forum-posts-large-from')._metadata.links.next, null);
+  assert.deepStrictEqual(fixture('forum-posts-large-from-offset20-ignored').posts, LARGE,
+    'offset is ignored when from is set, so there is no second page to read');
 });
 
-test('only non-author posts count zero', () => {
-  const r = api.summariseAuthorPosts([p(1, 9, 10), p(2, 8, 20)], 5, SINCE, 20);
-  assert.strictEqual(r.count, 0);
-  assert.strictEqual(r.complete, true);
+test('API facts: from is inclusive', () => {
+  // The capture sent from equal to this post's own created_time and got it back.
+  assert.strictEqual(SMALL.length, 1);
+  assert.strictEqual(SMALL[0].created_time, 1786067226);
 });
 
-test('a full page is reported incomplete', () => {
-  const posts = [];
-  for (let i = 0; i < 20; i += 1) posts.push(p(i, 9, i + 1));
-  assert.strictEqual(api.summariseAuthorPosts(posts, 5, SINCE, 20).complete, false);
+test('API facts: a thread\'s posts counts replies, one less than every post', () => {
+  const thread = fixture('forum-thread').thread;
+  const all = fixture('forum-thread-posts-asc').posts;
+  assert.strictEqual(thread.id, 16589908);
+  assert.strictEqual(all.length, thread.posts + 1, 'subscribed posts.total is thread.posts + 1');
 });
 
-test('a post at or before the marker means the from filter was not honoured', () => {
-  const r = api.summariseAuthorPosts([p(1, 5, -100), p(2, 5, 10)], 5, SINCE, 20);
-  assert.strictEqual(r.filterIgnored, true, 'the opening post must not be counted as a new author post');
+test('a post exactly at the marker was already seen and is not counted', () => {
+  const at = SMALL[0].created_time * 1000;
+  const author = SMALL[0].author.id;
+  const seen = api.summariseAuthorPosts(SMALL, author, at, 20);
+  assert.strictEqual(seen.count, 0, 'from is inclusive, so the marker itself must be excluded');
+  assert.strictEqual(seen.complete, true);
+  const fresh = api.summariseAuthorPosts(SMALL, author, at - 1000, 20);
+  assert.strictEqual(fresh.count, 1);
+  assert.strictEqual(fresh.latestAt, at);
+});
+
+test('only non-author posts on a short page count zero, and the page is complete', () => {
+  const threadAuthor = fixture('forum-thread').thread.author.id; // 1000; the reply is by 1001
+  const r = api.summariseAuthorPosts(SMALL, threadAuthor, SINCE, 20);
+  assert.deepStrictEqual([r.count, r.complete], [0, true]);
+  assert.strictEqual(r.newestAt, SMALL[0].created_time * 1000, 'last activity is still learned');
+});
+
+test('20 back is truncated: none by the author is not a known zero', () => {
+  assert.ok(!LARGE.some((p) => p.author.id === LARGE_AUTHOR), 'fixture: the thread author wrote none of the 20');
+  const r = api.summariseAuthorPosts(LARGE, LARGE_AUTHOR, SINCE, 20);
+  assert.deepStrictEqual([r.count, r.complete], [0, false]);
+});
+
+test('20 back with author posts is a lower bound with an exact latest time', () => {
+  // Treat player 1020, who wrote 4 of the 20, as the author.
+  const r = api.summariseAuthorPosts(LARGE, 1020, SINCE, 20);
+  assert.strictEqual(r.count, 4);
+  assert.strictEqual(r.complete, false);
+  assert.strictEqual(r.latestAt, 1787174754000, 'the newest author post is on the page, so this is exact');
+  assert.strictEqual(r.newestAt, LARGE[0].created_time * 1000, 'newest first: posts[0] is the last post');
 });
 
 test('order does not matter and junk is tolerated', () => {
-  const a = api.summariseAuthorPosts([p(3, 5, 30), null, 'x', p(1, 5, 10)], 5, SINCE, 20);
-  assert.strictEqual(a.count, 2);
+  const reversed = LARGE.slice().reverse();
+  assert.deepStrictEqual(api.summariseAuthorPosts(reversed, 1020, SINCE, 20), api.summariseAuthorPosts(LARGE, 1020, SINCE, 20));
+  assert.strictEqual(api.summariseAuthorPosts([null, 'x'].concat(SMALL), 1001, SINCE, 20).count, 1);
   assert.strictEqual(api.summariseAuthorPosts(undefined, 5, SINCE, 20).count, 0);
-  assert.strictEqual(api.summariseAuthorPosts([p(1, 5, 10)], 0, SINCE, 20).count, 0, 'unknown author matches nobody');
+  assert.strictEqual(api.summariseAuthorPosts(SMALL, 0, SINCE, 20).count, 0, 'unknown author matches nobody');
+});
+
+test('posts before the marker are skipped, so an ignored from can never claim the topic as new', () => {
+  // If Torn stopped honouring from, it would return the oldest page: the topic
+  // post by the author, long before the marker.
+  const oldest = fixture('forum-posts-large-offset0').posts;
+  const marker = (oldest[oldest.length - 1].created_time + 1) * 1000;
+  const r = api.summariseAuthorPosts(oldest, LARGE_AUTHOR, marker, 20);
+  assert.strictEqual(r.count, 0);
+  assert.strictEqual(r.complete, oldest.length < 20, 'a full page of old posts still reads as truncated, never as none');
 });
 ```
 
-- [ ] **Step 2: Run them and confirm they fail.** Run `node --test tests/author.test.js`. Expected: FAIL, `summariseAuthorPosts is not a function` (or a harness export error).
+- [ ] **Step 2: Run them and confirm the script tests fail.** Run `node --test tests/author.test.js`. Expected: the three `API facts` tests PASS (they read only fixtures); every other test FAILS with `summariseAuthorPosts is not a function`. If an `API facts` test fails, the fixtures are not the ones this plan was written against: stop and re-read the findings note.
 - [ ] **Step 3: Implement**
 
 ```js
-  // Trusts nothing about the request: Torn documents a "from" filter on
-  // forum/{id}/posts but its semantics are unverified, so a post at or before
-  // the marker means the page cannot be read as "posts since". The result is
-  // the same whatever order the posts come back in.
+  // Reads one forum/{id}/posts?from=<marker + 1> page. Torn returns the newest
+  // posts at or after from (inclusive), newest first, at most 20, and ignores
+  // offset, so a full page is truncated: older new posts are out of reach. A
+  // post counts as new only when it is strictly after the marker, which also
+  // keeps a post at the marker out even if the request were built wrong. Every
+  // post is read, so the order cannot change the result.
   function summariseAuthorPosts(posts, authorId, sinceMs, perPage) {
     var list = Array.isArray(posts) ? posts : [];
     var aid = toInt(authorId, 0);
     var since = Math.max(0, toInt(sinceMs, 0));
     var size = Math.max(1, toInt(perPage, POSTS_PER_PAGE));
-    var out = { count: 0, latestAt: 0, newestAt: 0, complete: list.length < size, filterIgnored: false };
+    var out = { count: 0, latestAt: 0, newestAt: 0, complete: list.length < size };
     for (var i = 0; i < list.length; i += 1) {
       var post = list[i];
       if (!isPlainObject(post)) continue;
       var at = secondsToMs(post.created_time);
+      if (at <= since) continue;
       if (at > out.newestAt) out.newestAt = at;
-      if (at <= since) { out.filterIgnored = true; continue; }
       var pid = isPlainObject(post.author) ? toInt(post.author.id, 0) : 0;
       if (aid > 0 && pid === aid) {
         out.count += 1;
@@ -345,7 +415,7 @@ test('order does not matter and junk is tolerated', () => {
 - Produces:
   - `authorSinceFor(entry) -> ms`
   - `authorStateFor(apiRow, entry, u) -> { state: 'none'|'author'|'author-atleast'|'unchecked', count, latestAt, reason }`
-  - `AUTHOR_REASON_TEXT: { never, stale, 'full-page', 'filter-ignored', 'no-author', 'no-marker' }` (ASCII strings)
+  - `AUTHOR_REASON_TEXT: { never, stale, 'over-20', 'no-author', 'no-marker' }` (ASCII strings)
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -381,12 +451,22 @@ test('a valid check with only non-author posts is none', () => {
   assert.strictEqual(state(sub(), e).state, 'none');
 });
 
-test('a full page with no author post is unchecked, not none', () => {
-  const e = entry({ authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 0, authorCheckComplete: false, authorCheckReason: 'full-page' });
-  assert.deepStrictEqual([state(sub(), e).state, state(sub(), e).reason], ['unchecked', 'full-page']);
+test('a truncated page (20 back) with no author post is unchecked over-20, not none', () => {
+  const e = entry({ authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 0, authorCheckComplete: false, authorCheckReason: 'over-20' });
+  assert.deepStrictEqual([state(sub(), e).state, state(sub(), e).reason], ['unchecked', 'over-20']);
 });
 
-test('a full page with author posts is a lower bound', () => {
+test('over-20 is re-checked only when the thread grows or the marker moves', () => {
+  // While nothing changes the same request returns the same 20, so a lookup
+  // would be wasted.
+  const base = { authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 0, authorCheckComplete: false, authorCheckReason: 'over-20' };
+  assert.strictEqual(state(sub(), entry(base)).reason, 'over-20');
+  assert.strictEqual(state(sub({ postsTotal: 13 }), entry(base)).reason, 'stale', 'a new post may be the author\'s');
+  const moved = entry(Object.assign({}, base, { lastVisitedAt: SINCE + 60000 }));
+  assert.strictEqual(state(sub(), moved).reason, 'stale', 'a visit or mark read brings the older posts back in range');
+});
+
+test('a truncated page with author posts is a lower bound', () => {
   const e = entry({ authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 1, authorLatestAt: SINCE + 5, authorCheckComplete: false });
   assert.strictEqual(state(sub(), e).state, 'author-atleast');
 });
@@ -408,13 +488,8 @@ test('an unknown author or no marker is unchecked with its own reason', () => {
   assert.strictEqual(state(sub(), api.normaliseThreadEntry(null)).reason, 'no-marker');
 });
 
-test('filter-ignored stays unchecked until the thread changes', () => {
-  const e = entry({ authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorCheckReason: 'filter-ignored', authorCheckComplete: true });
-  assert.strictEqual(state(sub(), e).reason, 'filter-ignored');
-});
-
 test('every reason has ASCII tooltip text that never quotes a count', () => {
-  for (const k of ['never', 'stale', 'full-page', 'filter-ignored', 'no-author', 'no-marker']) {
+  for (const k of ['never', 'stale', 'over-20', 'no-author', 'no-marker']) {
     assert.match(api.AUTHOR_REASON_TEXT[k], /^[\x20-\x7e]+$/);
     assert.doesNotMatch(api.AUTHOR_REASON_TEXT[k], /\d+ new/);
   }
@@ -428,8 +503,7 @@ test('every reason has ASCII tooltip text that never quotes a count', () => {
   var AUTHOR_REASON_TEXT = Object.freeze({
     never: 'Not checked for author posts yet. Torn reports new posts from someone. Refresh, or raise Activity lookups in Settings.',
     stale: 'New posts since the last check. Not rechecked yet. Refresh to check again.',
-    'full-page': 'More new posts than one page holds, and none on the page checked were by the author. The rest were not checked.',
-    'filter-ignored': 'Torn returned posts from before your read point, so the result could not be trusted.',
+    'over-20': 'More than 20 posts are new, and Torn returns only the newest 20. None of those is by the author; the older ones cannot be checked. Open the thread or mark it read to start counting again.',
     'no-author': 'The thread author is not known, so their posts cannot be picked out.',
     'no-marker': 'Open this thread or mark it read once, so there is a point to count from.',
   });
@@ -453,11 +527,12 @@ test('every reason has ASCII tooltip text that never quotes a count', () => {
     if (!e.authorCheckedAt) return unchecked('never');
     if (e.authorCheckSince !== since) return unchecked('stale');
     if (e.authorCheckTotal === u.postsTotal) {
-      if (e.authorCheckReason === 'filter-ignored') return unchecked('filter-ignored');
       if (e.authorNewCount > 0) {
         return { state: e.authorCheckComplete ? 'author' : 'author-atleast', count: e.authorNewCount, latestAt: e.authorLatestAt, reason: '' };
       }
-      return e.authorCheckComplete ? { state: 'none', count: 0, latestAt: 0, reason: '' } : unchecked('full-page');
+      // A truncated page with no author post is never a known zero: the author
+      // may have posted among the new posts Torn would not return.
+      return e.authorCheckComplete ? { state: 'none', count: 0, latestAt: 0, reason: '' } : unchecked('over-20');
     }
     if (e.authorNewCount > 0) {
       return { state: 'author-atleast', count: e.authorNewCount, latestAt: e.authorLatestAt, reason: 'grown' };
@@ -662,6 +737,15 @@ test('author mode shows N new by author, and N+ for a lower bound', () => {
   function env2html(env) { return env.exports.panelHtml(env.exports.buildPanelModel(NOW)); }
 });
 
+test('author mode says over 20 new when none of the newest 20 is by the author', () => {
+  const env = authorEnv({ authorCheckedAt: 1, authorCheckTotal: 50, authorCheckSince: NOW - 1000,
+    authorNewCount: 0, authorCheckComplete: false, authorCheckReason: 'over-20' });
+  const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  assert.match(html, /author: not checked \(over 20 new\)/);
+  assert.match(html, /only the newest 20/, 'the tooltip says why');
+  assert.doesNotMatch(html, /37 new/);
+});
+
 test('catch up lists unchecked threads under their own heading', () => {
   const env = authorEnv({});
   env.exports.state.settings.view = 'catchup';
@@ -725,7 +809,7 @@ test('the author-only toggle saves, survives a reload, and turning it off restor
     } else if (amode === 'unchecked') {
       out.push('<span class="tfcc-note tfcc-unchecked" title="'
         + escapeHtml(AUTHOR_REASON_TEXT[row.authorReason] || AUTHOR_REASON_TEXT.never)
-        + '">author: not checked</span>');
+        + '">author: not checked' + (row.authorReason === 'over-20' ? ' (over 20 new)' : '') + '</span>');
     } else if (amode === 'off' && row.unread > 0) {
       out.push('<span class="tfcc-unread">' + formatCount(row.unread) + ' new</span>');
     }
@@ -743,9 +827,11 @@ test('the author-only toggle saves, survives a reload, and turning it off restor
       + 'lookup adds one more, and only runs for a thread that has unread posts and no recent check: '
       + 'at most ' + (3 + model.settings.enrichBudget) + ' requests a refresh with your setting, at most 13 '
       + 'requests by default. The script keeps itself under 40 requests a minute regardless.</p>');
-    out.push('<p class="tfcc-note">Author-only mode reads one page of the thread\'s newest posts per lookup '
-      + 'instead of its last-post time, so the cost is the same. Threads not checked yet show '
-      + '"not checked". Posts from before you started using this script are not flagged, and '
+    out.push('<p class="tfcc-note">Author-only mode reads the thread\'s newest 20 posts since you last '
+      + 'looked, per lookup, instead of its last-post time, so the cost is the same. Torn returns no '
+      + 'more than 20, so with more new posts than that a count shows as a minimum (N+), or as '
+      + '"not checked (over 20 new)" when none of the 20 is by the author. Threads not checked yet '
+      + 'show "not checked". Posts from before you started using this script are not flagged, and '
       + 'edits are not detected.</p>');
 ```
 
@@ -763,49 +849,81 @@ test('the author-only toggle saves, survives a reload, and turning it off restor
 - Consumes: `authorSinceFor`, `summariseAuthorPosts`, `tornApiGet(path, params, opts)`, `state.rows[i].authorReason`
 - Produces: `checkAuthorPosts(ids: number[], now, opts) -> Promise<{ ok, checked, stoppedEarly? }>`
 
-- [ ] **Step 1: Write the failing tests** (`tests/refresh.test.js`, reusing `boot`, `settle`, `subscribedThreadsPayload` and `forumFeedPayload`)
+- [ ] **Step 1: Write the failing tests** (`tests/refresh.test.js`, reusing `boot`, `settle`, `subscribedThreadsPayload` and `forumFeedPayload`, and serving the real fixtures from #14 as the `forum/{id}/posts` responses)
 
 ```js
-function authorBoot(table, extraSettings) {
-  return boot(table, { gmStore: [['tfcc:key', KEY],
-    ['tfcc:settings', JSON.stringify(Object.assign({ v: 1, authorOnly: true }, extraSettings || {}))],
-    ['tfcc:organizer', JSON.stringify({ v: 1, folders: [], lastCatchUpAt: 0, threads: {
-      1: { lastVisitedAt: NOW - 3600000 }, 2: { lastVisitedAt: NOW - 3600000 } } })]] });
-}
-const post = (id, authorId, at) => ({ id, author: { id: authorId, username: 'u' }, created_time: at / 1000, content: '' });
+const fs = require('node:fs');
+const path = require('node:path');
+const fixture = (name) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', name + '.json'), 'utf8'));
 
-test('author mode reads posts, not thread, and stays inside the budget', async () => {
+const MARKER = NOW - 3600000;
+// from is inclusive (findings note, finding 9), so the request asks for the
+// first whole second after the marker.
+const MARKER_FROM = Math.floor(MARKER / 1000) + 1;
+
+function authorBoot(table, ids, entryExtra) {
+  const threads = {};
+  ids.forEach((id) => { threads[id] = Object.assign({ lastVisitedAt: MARKER }, entryExtra || {}); });
+  return boot(table, { gmStore: [['tfcc:key', KEY],
+    ['tfcc:settings', JSON.stringify({ v: 1, authorOnly: true })],
+    ['tfcc:organizer', JSON.stringify({ v: 1, folders: [], lastCatchUpAt: 0, threads })]] });
+}
+
+test('author mode reads one real posts page per thread, from the marker + 1, inside the budget', async () => {
+  const small = fixture('forum-thread-posts-from-small');   // thread 16589908: one reply, by 1001
+  const large = fixture('forum-posts-large-from');           // thread 16561608: newest 20 since from
+  const smallAuthor = fixture('forum-thread').thread.author; // 1000
+  const largeAuthor = fixture('forum-posts-large-offset0').posts[0].author; // 1002, absent from the 20
   const table = {
     'user/forumsubscribedthreads': subscribedThreadsPayload([
-      { id: 1, new: 5, total: 20, author: { id: 77, username: 'auth', karma: 1 } },
-      { id: 2, new: 3, total: 9, author: { id: 88, username: 'auth2', karma: 1 } }]),
+      // total counts every post. forum-thread.json says posts: 1 (replies only), so total is 2.
+      { id: 16589908, new: 1, total: 2, author: smallAuthor },
+      { id: 16561608, new: 30, total: 6207, author: largeAuthor },
+      // The same real page, read as if player 1020, who wrote 4 of the 20, were the author.
+      { id: 3, new: 30, total: 6207, author: { id: 1020, username: 'player020', karma: 0 } }]),
     'user/forumfeed': forumFeedPayload([]),
     'forum/categories': { categories: [] },
-    'forum/1/posts': { posts: [post(1, 12, NOW - 60000), post(2, 77, NOW - 30000)] },
-    'forum/2/posts': { posts: [post(3, 12, NOW - 60000)] },
+    'forum/16589908/posts': small,
+    'forum/16561608/posts': large,
+    'forum/3/posts': large,
   };
-  const env = authorBoot(table);
+  const env = authorBoot(table, [16589908, 16561608, 3]);
   await settle(env);
-  assert.strictEqual(env.router.seen.filter((u) => /\/thread$/.test(u)).length, 0);
-  assert.deepStrictEqual(env.router.seen.filter((u) => /\/posts$/.test(u)).sort(), ['forum/1/posts', 'forum/2/posts']);
-  assert.ok(env.router.seenUrls.some((u) => /^forum\/1\/posts\?.*from=\d+/.test(u)), 'the marker is sent as from');
-  const rows = env.exports.state.rows;
-  const r1 = rows.find((r) => r.id === '1');
-  const r2 = rows.find((r) => r.id === '2');
-  assert.deepStrictEqual([r1.authorState, r1.unread], ['author', 1]);
-  assert.deepStrictEqual([r2.authorState, r2.unread], ['none', 0], 'only non-author posts: no badge');
-  assert.ok(env.router.seen.length <= 13);
+
+  const calls = env.router.seen;
+  assert.strictEqual(calls.filter((u) => /\/thread$/.test(u)).length, 0, 'author mode does not also read the thread');
+  assert.deepStrictEqual(calls.filter((u) => /\/posts$/.test(u)).sort(),
+    ['forum/16561608/posts', 'forum/16589908/posts', 'forum/3/posts'], 'one request per thread');
+  const postUrls = env.router.seenUrls.filter((u) => /\/posts\?/.test(u));
+  assert.strictEqual(postUrls.length, 3);
+  for (const u of postUrls) {
+    assert.match(u, new RegExp('[?&]from=' + MARKER_FROM + '(&|$)'), 'from is the marker + 1: ' + u);
+    assert.doesNotMatch(u, /[?&]offset=/, 'offset is ignored with from, so the script never pages');
+  }
+
+  const row = (id) => env.exports.state.rows.find((r) => r.id === String(id));
+  assert.deepStrictEqual([row(16589908).authorState, row(16589908).unread], ['none', 0], 'only a non-author reply: no badge');
+  assert.deepStrictEqual([row(16561608).authorState, row(16561608).authorReason, row(16561608).unread],
+    ['unchecked', 'over-20', 0], '20 back and none by the author is not a known zero');
+  assert.deepStrictEqual([row(3).authorState, row(3).authorNew, row(3).unread], ['author-atleast', 4, 4]);
+
+  const e = env.exports.state.organizer.threads['16561608'];
+  assert.strictEqual(e.authorCheckTotal, 6207, 'the check total is subscribed posts.total, never the thread\'s reply count');
+  assert.strictEqual(e.lastPostTimeCached, large.posts[0].created_time * 1000,
+    'newest first: even a full page gives the exact last post time');
+  assert.ok(calls.length <= 13);
 });
 
 test('author mode respects the lookup budget and leaves the rest visibly unchecked', async () => {
+  const small = fixture('forum-thread-posts-from-small');
   const subs = [];
   const table = { 'user/forumfeed': forumFeedPayload([]), 'forum/categories': { categories: [] } };
   for (let i = 1; i <= 15; i += 1) {
     subs.push({ id: i, new: 2, total: 10 });
-    table['forum/' + i + '/posts'] = { posts: [] };
+    table['forum/' + i + '/posts'] = small; // a short, complete page by someone else
   }
   table['user/forumsubscribedthreads'] = subscribedThreadsPayload(subs);
-  const env = authorBoot(table);
+  const env = authorBoot(table, [1, 2]);
   await settle(env);
   assert.strictEqual(env.router.seen.filter((u) => /\/posts$/.test(u)).length, env.exports.DEFAULT_ENRICH_BUDGET);
   assert.ok(env.router.seen.length <= 13, 'the default refresh promise is 13 requests');
@@ -813,19 +931,34 @@ test('author mode respects the lookup budget and leaves the rest visibly uncheck
   assert.strictEqual(unchecked.length, 5);
 });
 
+test('an over-20 thread is not looked up again while nothing has changed', async () => {
+  const table = {
+    'user/forumsubscribedthreads': subscribedThreadsPayload([
+      { id: 16561608, new: 30, total: 6207, author: fixture('forum-posts-large-offset0').posts[0].author }]),
+    'user/forumfeed': forumFeedPayload([]), 'forum/categories': { categories: [] },
+    'forum/16561608/posts': fixture('forum-posts-large-from'),
+  };
+  const env = authorBoot(table, [16561608], {
+    authorCheckedAt: NOW - 60000, authorCheckTotal: 6207, authorCheckSince: MARKER,
+    authorNewCount: 0, authorCheckComplete: false, authorCheckReason: 'over-20' });
+  await settle(env);
+  assert.strictEqual(env.router.seen.filter((u) => /\/posts$/.test(u)).length, 0, 'the same request would return the same 20');
+  assert.strictEqual(env.exports.state.rows[0].authorReason, 'over-20');
+});
+
 test('a failed posts lookup leaves the row unchecked and the refresh ok', async () => {
   const table = {
     'user/forumsubscribedthreads': subscribedThreadsPayload([{ id: 1, new: 2, total: 10 }]),
     'user/forumfeed': forumFeedPayload([]), 'forum/categories': { categories: [] },
   }; // forum/1/posts falls through to the router's error response
-  const env = authorBoot(table);
+  const env = authorBoot(table, [1]);
   await settle(env);
   assert.strictEqual(env.exports.state.rows.find((r) => r.id === '1').authorState, 'unchecked');
   assert.strictEqual(env.exports.state.lastError, null);
 });
 ```
 
-  The `firstSeenAt` of threads in the subscribed list but not in the seeded organizer is set by `applyAutoAssign` at `NOW`, so those rows still have a marker. Threads 3-15 in the budget test get `since = NOW`. That is fine.
+  The `firstSeenAt` of threads in the subscribed list but not in the seeded organizer is set by `applyAutoAssign` at `NOW`, so those rows still have a marker. Threads 3-15 in the budget test get `since = NOW`, which is before every fixture post, so their pages count in full. That is fine. Thread `3` in the first test serves thread 16561608's page: the engine never reads `thread_id`, so this only reuses real posts under a different author.
 - [ ] **Step 2: Run them and confirm they fail** (`node --test tests/refresh.test.js`).
 - [ ] **Step 3: Implement.** Replace the target block in `refreshAll`. Keep the literal `.slice(0, budget);`, because an existing mutation looks for it:
 
@@ -849,9 +982,15 @@ test('a failed posts lookup leaves the row unchecked and the refresh ok', async 
 
 ```js
   // One forum/{id}/posts page per thread, in place of the forum/{id}/thread
-  // lookup, so author-only mode costs exactly what enrichment costs. The entry
-  // is re-read after the response, because a handler may have replaced the
-  // organizer while the request was in flight.
+  // lookup, so author-only mode costs exactly what enrichment costs. With from
+  // set, Torn returns the newest 20 posts at or after it, newest first, and
+  // ignores offset, so there is never a second page to ask for. from is
+  // inclusive, hence the + 1: a post at the marker was already seen. The check
+  // total is the subscribed posts.total; a thread's own "posts" counts replies
+  // and is one less, so it must never be stored here (if one is ever needed,
+  // threadPostsTotal from #2 converts it; never add 1 again after that). The entry is re-read
+  // after the response, because a handler may have replaced the organizer
+  // while the request was in flight.
   function checkAuthorPosts(ids, now, opts) {
     var list = (ids || []).slice(0, MAX_ENRICH_BUDGET);
     if (!list.length) return Promise.resolve({ ok: true, checked: 0 });
@@ -874,13 +1013,15 @@ test('a failed posts lookup leaves the row unchecked and the refresh ok', async 
           e.authorCheckedAt = now;
           e.authorCheckTotal = total;
           e.authorCheckSince = since;
-          e.authorNewCount = sum.filterIgnored ? 0 : sum.count;
-          e.authorLatestAt = sum.filterIgnored ? 0 : sum.latestAt;
+          e.authorNewCount = sum.count;
+          e.authorLatestAt = sum.latestAt;
           e.authorCheckComplete = sum.complete;
-          e.authorCheckReason = sum.filterIgnored ? 'filter-ignored' : (!sum.complete && sum.count === 0 ? 'full-page' : '');
-          if (!sum.filterIgnored && sum.newestAt > 0) {
+          e.authorCheckReason = !sum.complete && sum.count === 0 ? 'over-20' : '';
+          if (sum.newestAt > 0) {
+            // Newest first with no upper bound: the newest post on the page is
+            // the thread's last post, even when the page is full.
             e.lastPostTimeCached = Math.max(e.lastPostTimeCached, sum.newestAt);
-            if (sum.complete) e.enrichedAt = now;
+            e.enrichedAt = now;
           }
           done += 1;
         } else if (res.reason === 'throttled') {
@@ -913,19 +1054,19 @@ test('the report shows author-check health without leaking who the author is', (
   api.state.settings.authorOnly = true;
   Object.assign(api.state.organizer.threads['1'], {
     lastVisitedAt: NOW - 1000, authorCheckedAt: 1, authorCheckTotal: 9, authorCheckSince: NOW - 1000,
-    authorCheckComplete: true, authorCheckReason: 'filter-ignored',
+    authorNewCount: 0, authorCheckComplete: false, authorCheckReason: 'over-20',
   });
   api.recompute(NOW);
   const report = api.buildDebugReport();
   assert.match(report, /author only: on/);
-  assert.match(report, /author unchecked: 1 \(filter-ignored 1\)/);
+  assert.match(report, /author unchecked: 1 \(over 20 new: 1\)/);
   assert.strictEqual(report.indexOf('SecretPlanner'), -1);
   assert.strictEqual(report.indexOf('abcdefghij123456'), -1, 'the key must never appear');
 });
 ```
 
 - [ ] **Step 2: Run it and confirm it fails.**
-- [ ] **Step 3: Implement.** In `counts`, add `authorUnchecked` and `authorFilterIgnored`, counted from `state.rows` (`authorState === 'unchecked'`, `authorReason === 'filter-ignored'`), and add `authorOnly: state.settings.authorOnly === true` to the context. In the lines, add `'author only: ' + (c.authorOnly ? 'on' : 'off')` and `'author unchecked: ' + c.counts.authorUnchecked + ' (filter-ignored ' + c.counts.authorFilterIgnored + ')'`. This makes open question 1 (does Torn honour `from`) answerable from one pasted report.
+- [ ] **Step 3: Implement.** In `counts`, add `authorUnchecked` and `authorOver20`, counted from `state.rows` (`authorState === 'unchecked'`, `authorReason === 'over-20'`), and add `authorOnly: state.settings.authorOnly === true` to the context. In the lines, add `'author only: ' + (c.authorOnly ? 'on' : 'off')` and `'author unchecked: ' + c.counts.authorUnchecked + ' (over 20 new: ' + c.counts.authorOver20 + ')'`. The earlier `filter-ignored` probe line is gone: the live capture answered whether Torn honours `from` (it does, inclusively), so there is nothing left for it to detect. What remains answers the support question a pasted report most often raises, "why does it say not checked?", by splitting the unchecked rows Torn cannot answer (over 20 new) from the ones simply not reached yet.
 - [ ] **Step 4: Run `npm test`.** Expected: PASS.
 - [ ] **Step 5: Commit** with `git commit -am "feat: debug report shows author-check health (#4)"`
 
@@ -934,7 +1075,7 @@ test('the report shows author-check health without leaking who the author is', (
 **Files:**
 - Modify: `tests/mutation-check.mjs` `MUTATIONS`
 
-- [ ] **Step 1: Add the entries.** The last three guard the upgrade fix: the first reverts `loadKey` to the raw JSON comparison and expects `a settings blob saved by 0.1.0 is not reported as damaged` to fail; the second stops the organizer using the per-entry check and expects `an organizer saved by 0.1.0 is not reported as damaged` to fail; the third makes the per-entry check forgive anything and expects `a genuinely corrupt thread entry is still reported as damage` to fail.
+- [ ] **Step 1: Add the entries.** The five after the first guard the live-API facts: the marker exclusion (inclusive `from`), the truncation rule at both the page and the state level, the `+ 1` on the request, and the subscribed-total source of the check total. The marker mutation is caught by `a post exactly at the marker was already seen and is not counted`, which uses the real `forum-thread-posts-from-small.json`; the truncation mutations by `20 back is truncated` (real `forum-posts-large-from.json`) and `a truncated page (20 back) with no author post is unchecked over-20, not none`. The old `the from filter is trusted blindly` entry is gone with the `filterIgnored` flag it mutated. The last three guard the upgrade fix: the first reverts `loadKey` to the raw JSON comparison and expects `a settings blob saved by 0.1.0 is not reported as damaged` to fail; the second stops the organizer using the per-entry check and expects `an organizer saved by 0.1.0 is not reported as damaged` to fail; the third makes the per-entry check forgive anything and expects `a genuinely corrupt thread entry is still reported as damage` to fail.
 
 ```js
   {
@@ -946,9 +1087,35 @@ test('the report shows author-check health without leaking who the author is', (
     ),
   },
   {
-    name: 'the from filter is trusted blindly',
+    name: 'a post exactly at the read marker is counted as new',
     suite: 'tests/author.test.js',
-    apply: (s) => s.replace('if (at <= since) { out.filterIgnored = true; continue; }', 'if (at <= since) { continue; }'),
+    apply: (s) => s.replace('      if (at <= since) continue;', '      if (at < since) continue;'),
+  },
+  {
+    name: 'a full page of 20 is read as complete, so over-20 becomes a false none',
+    suite: 'tests/author.test.js',
+    apply: (s) => s.replace(
+      'var out = { count: 0, latestAt: 0, newestAt: 0, complete: list.length < size };',
+      'var out = { count: 0, latestAt: 0, newestAt: 0, complete: true };',
+    ),
+  },
+  {
+    name: 'a truncated page with no author post is read as a known zero',
+    suite: 'tests/author.test.js',
+    apply: (s) => s.replace(
+      "return e.authorCheckComplete ? { state: 'none', count: 0, latestAt: 0, reason: '' } : unchecked('over-20');",
+      "return { state: 'none', count: 0, latestAt: 0, reason: '' };",
+    ),
+  },
+  {
+    name: 'the request sends the marker itself, which inclusive from returns as new',
+    suite: 'tests/refresh.test.js',
+    apply: (s) => s.replace('{ from: Math.floor(since / 1000) + 1 }', '{ from: Math.floor(since / 1000) }'),
+  },
+  {
+    name: 'the check total is stored as a thread reply count (posts.total - 1)',
+    suite: 'tests/refresh.test.js',
+    apply: (s) => s.replace('e.authorCheckTotal = total;', 'e.authorCheckTotal = total - 1;'),
   },
   {
     name: 'an author check is never invalidated by new posts',
@@ -1007,7 +1174,8 @@ test('the report shows author-check health without leaking who the author is', (
   - follow a busy thread where only others post, and confirm no badge and nothing in Catch up;
   - have the author post (or find a thread where they did), and confirm "N new by author";
   - with the lookups set to 1, confirm the other threads show "author: not checked";
-  - paste the debug report and record `filter-ignored`. A non-zero count closes open question 1 against the design and blocks release.
+  - on a busy thread with more than 20 posts since the last visit, confirm the badge is "N+ new by author" or "author: not checked (over 20 new)", never a bare count or nothing; then open the thread on Torn and confirm the badge clears;
+  - open a thread, refresh at once, and confirm the last post you saw is not flagged as new (the inclusive `from` boundary).
 - Modify: `CHANGELOG.md`. Under `## [Unreleased]`, add an `### Added` entry for the setting and a `### Fixed` entry: "Settings now states the real per-refresh request count (the daily forum-names call was missing)."
 - Release (not part of this PR): #2, #3 and #4 share one convention, so they can merge in any order. Each feature PR only adds its `[Unreleased]` entry. One separate release commit on `main`, cut by the owner after `docs/qa-checklist.md`, sets `@version`, `SCRIPT_VERSION` and `package.json` `version` to the next minor after `main`'s (`0.2.0` if `main` is `0.1.0`), renames `[Unreleased]` to `[X.Y.0] - <date>` above a fresh empty `[Unreleased]`, and is tagged `vX.Y.0`. `tests/metadata.test.js` enforces the three-way match. If another feature PR already added an `### Added` list under `[Unreleased]`, append to it rather than adding a second heading.
 - Regenerate: run `/code-map` (`daftplate:code-map`). The file grew, and new symbols must have anchors (`summariseAuthorPosts`, `authorSinceFor`, `authorStateFor`, `AUTHOR_REASON_TEXT`, `AUTHOR_CHECK_REASONS`, `catchUpUnchecked`, `checkAuthorPosts`).
@@ -1023,19 +1191,20 @@ node tests/mutation-check.mjs > "${TMPDIR:-/tmp}/tfcc-mutation.txt" 2>&1
 
   Read the mutation file with the Read tool. Expected: all pass, all mutations caught.
 - [ ] **Step 3: Regenerate the code map and commit** with `git commit -am "docs: architecture, QA and changelog for author-only mode; refresh code map (#4)"`
-- [ ] **Step 4: Release gate.** Do not tag until the `docs/qa-checklist.md` author-only section has been walked on a real signed-in account and spec open questions 1, 2 and 6 have answers.
+- [ ] **Step 4: Release gate.** Do not tag until the `docs/qa-checklist.md` author-only section has been walked on a real signed-in account. Spec open questions 1 to 4 were answered by the 2026-10-08 capture (#14). Question 6 (deleted posts in `posts.total`) is still open. At worst a deleted author post stays counted until the marker moves, so it does not block the release; record any such case seen during QA.
 
 ## Self-review notes
 
 - Spec coverage. Each spec requirement maps to a task:
   - setting: Task 1
   - persisted fields and migration: Task 2
-  - not trusting `from`: Task 3
+  - the marker rule (inclusive `from`, marker + 1), the truncation rule, and the +1 between `posts` and `posts.total`, all against the real fixtures: Task 3 (engine), Task 4 (state), Task 7 (request and stored total)
   - states, marker and reasons: Task 4
   - unread, Catch up, Unread only and header model: Task 5
   - badges, unchecked group, Settings cost copy and toggle round-trip: Task 6
   - data source, budget and failure paths: Task 7
-  - debug visibility for open questions: Task 8
+  - debug visibility of unchecked and over-20 rows: Task 8
+  - `last_poster` is deliberately not used (spec, Decision): no task
   - upgrade false-damage: Task 1 (settings, via #8's `isRecoveredValue`), Task 2 (nested per-thread fields, via `isRecoveredOrganizer`)
   - mutation guards: Task 9
   - docs, version and code map: Task 10
