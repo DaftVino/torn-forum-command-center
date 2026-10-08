@@ -61,6 +61,8 @@ const EXPORT_NAMES = [
   // engine: search
   'parseQuery', 'matchThread', 'matchPost', 'searchMetadata', 'searchPosts',
   'buildNativeSearchUrl', 'stripHtml',
+  // engine: custom key link
+  'CUSTOM_KEY_SELECTIONS', 'CUSTOM_KEY_TITLE', 'CUSTOM_KEY_LINK_BASE', 'buildCustomKeyUrl',
   // engine: post cache
   'POST_CACHE_MAX_POSTS', 'POST_CACHE_MAX_BYTES',
   'postCacheAdd', 'postCacheEvict', 'postCacheSize', 'postCachePostsFor',

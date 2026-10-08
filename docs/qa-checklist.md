@@ -20,6 +20,27 @@ script can work with. A **Limited Access** key also works but is not needed.
 - [ ] `@version`, `SCRIPT_VERSION`, `package.json` and the newest `CHANGELOG.md`
       heading all agree.
 
+## Custom key link (blocks release)
+
+The link format in `CUSTOM_KEY_LINK_BASE` is UNVERIFIED: Torn builds its own
+link in a script the saved API docs do not include. Release is blocked until
+this passes on a signed-in account.
+
+- [ ] On torn.com/api.html, generate one custom key link (any selections) and
+      copy it from the new tab before confirming anything. Compare it with the
+      Settings button's link, "Create a custom key on Torn": same page, same
+      hash, same parameter names for the step, the title and each section.
+      If they differ, fix `CUSTOM_KEY_LINK_BASE` or `buildCustomKeyUrl` and
+      re-run this section.
+- [ ] Click the button. Torn's key page opens in a new tab with the name
+      "Forum Command Center" and exactly these selections pre-filled: `user`
+      forumsubscribedthreads, forumfeed; `forum` categories, thread, posts.
+      Nothing is created until you confirm it on Torn.
+- [ ] Confirm the key, paste it into Settings, and check it against every
+      endpoint: Refresh loads threads and the feed, forum names load, an
+      activity lookup on an unread thread succeeds, and a deep search fetches
+      posts. No access error anywhere.
+
 ## Torn PDA
 
 Install or update through Torn PDA's own userscript manager and select injection

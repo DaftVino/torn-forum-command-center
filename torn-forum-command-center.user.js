@@ -1048,6 +1048,40 @@
     return base;
   }
 
+  // -- custom key link ------------------------------------------------------
+
+  // Exactly the selections this script requests, and no others: the least
+  // privilege a Custom key can carry. tests/custom-key.test.js scans every
+  // API call site and fails if a requested selection is missing here, or if
+  // this lists one that is never requested. When #2 (user forumthreads,
+  // forumposts) and #10 (user profile) merge, they add theirs here.
+  var CUSTOM_KEY_SELECTIONS = Object.freeze({
+    user: Object.freeze(['forumsubscribedthreads', 'forumfeed']),
+    forum: Object.freeze(['categories', 'thread', 'posts']),
+  });
+
+  var CUSTOM_KEY_TITLE = 'Forum Command Center';
+
+  // UNVERIFIED. Torn's api.html builds its custom key link in api.js, which
+  // the saved docs/reference copy does not include; the page says only that
+  // the link "will open your settings page in a new tab". This is the format
+  // other Torn tools use. Release is gated on docs/qa-checklist.md comparing it
+  // with a link generated on torn.com/api.html. If Torn's differs, change it
+  // here and nowhere else.
+  var CUSTOM_KEY_LINK_BASE = 'https://www.torn.com/preferences.php#tab=api?step=addNewKey';
+
+  // A pure function of constants. The user clicks the result and confirms the
+  // key on Torn's page; the script never requests it, and no key is ever part
+  // of it.
+  function buildCustomKeyUrl() {
+    var url = CUSTOM_KEY_LINK_BASE + '&title=' + encodeURIComponent(CUSTOM_KEY_TITLE);
+    var sections = Object.keys(CUSTOM_KEY_SELECTIONS);
+    for (var i = 0; i < sections.length; i += 1) {
+      url += '&' + sections[i] + '=' + CUSTOM_KEY_SELECTIONS[sections[i]].join(',');
+    }
+    return url;
+  }
+
   // -- post cache ----------------------------------------------------------
 
   function postCacheSize(cache) {
@@ -2877,6 +2911,14 @@
       + (model.hasKey ? 'saved' : '16 letters and digits') + '">'
       + btn('key-save', 'Save') + btn('key-clear', 'Clear') + '</div>');
     out.push('<p class="tfcc-note">' + (model.hasKey ? 'A key is saved.' : 'No key saved yet.') + '</p>');
+    // A plain anchor the user clicks, never a scripted navigation or a
+    // request: Torn's own page creates the key, and only after the user
+    // confirms it there. noopener keeps Torn's tab from reaching back into
+    // this one.
+    out.push('<div class="tfcc-actions"><a class="tfcc-linkbtn" href="' + escapeHtml(buildCustomKeyUrl())
+      + '" target="_blank" rel="noopener noreferrer">Create a custom key on Torn</a></div>');
+    out.push('<p class="tfcc-note">This opens Torn\'s key page in a new tab with only the selections this '
+      + 'script uses. You confirm the key there, then paste it here.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Refreshing</h4>');
