@@ -1103,6 +1103,62 @@
     };
   }
 
+  // -- author-only mode (issue #4) ----------------------------------------
+  // One step of the backwards walk over forum/{id}/posts?from=..&to=... Torn
+  // returns newest first, at most perPage, and both from and to are
+  // inclusive, so the next page starts with this page's oldest post again.
+  // prevLink is the response's _metadata.links.prev, read only for null; the
+  // URL itself is never fetched (the script builds its own).
+  function authorPageStep(pagePosts, seenIds, perPage, prevLink) {
+    var list = Array.isArray(pagePosts) ? pagePosts : [];
+    var size = Math.max(1, toInt(perPage, POSTS_PER_PAGE));
+    if (list.length < size || prevLink === null) return { done: true, complete: true, to: 0 };
+    var seen = {};
+    (Array.isArray(seenIds) ? seenIds : []).forEach(function (id) { seen[String(id)] = true; });
+    var added = 0;
+    var oldest = 0;
+    for (var i = 0; i < list.length; i += 1) {
+      var post = list[i];
+      if (!isPlainObject(post)) continue;
+      var t = toInt(post.created_time, 0);
+      if (t > 0 && (oldest === 0 || t < oldest)) oldest = t;
+      if (!seen[String(post.id)]) added += 1;
+    }
+    // A full page that brought nothing new: more than a page of posts share
+    // one second, so to cannot move. Stop rather than loop; it is a lower bound.
+    if (added === 0 || oldest === 0) return { done: true, complete: false, to: 0 };
+    return { done: false, complete: false, to: oldest };
+  }
+
+  // Reads every page of one walk, concatenated. Each post id counts once, so
+  // the boundary post that the inclusive to repeats is not counted twice. A
+  // post counts as new only when it is strictly after the marker, which also
+  // keeps a post at the marker out even if the request were built wrong.
+  // complete comes from the walk (authorPageStep), not from a page length.
+  function summariseAuthorPosts(posts, authorId, sinceMs, complete) {
+    var list = Array.isArray(posts) ? posts : [];
+    var aid = toInt(authorId, 0);
+    var since = Math.max(0, toInt(sinceMs, 0));
+    var seen = {};
+    var out = { count: 0, latestAt: 0, newestAt: 0, complete: complete === true };
+    for (var i = 0; i < list.length; i += 1) {
+      var post = list[i];
+      if (!isPlainObject(post)) continue;
+      var key = post.id === undefined || post.id === null ? '' : String(post.id);
+      if (key && seen[key]) continue;
+      if (key) seen[key] = true;
+      var at = secondsToMs(post.created_time);
+      if (at <= since) continue;
+      if (at > out.newestAt) out.newestAt = at;
+      var pid = isPlainObject(post.author) ? toInt(post.author.id, 0) : 0;
+      if (aid > 0 && pid === aid) {
+        out.count += 1;
+        if (at > out.latestAt) out.latestAt = at;
+      }
+    }
+    return out;
+  }
+
   // A subscribed thread keeps Torn's own count, exactly as in Threads. Only a
   // thread Torn gives no count for is counted here, and an unknown total is
   // reported as unchecked so it can never pass for a thread checked and quiet.
