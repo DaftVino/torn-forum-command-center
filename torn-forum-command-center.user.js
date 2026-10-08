@@ -2985,9 +2985,32 @@
     return step(0);
   }
 
-  // A separate, bounded action for the My posts view only: two lists and at
-  // most enrichBudget lookups, never the category list. Threads' refresh and
-  // auto refresh never call this.
+  // Topic-post lookups for thumbs (#10): started threads only, only inside
+  // refreshMine, after #2's lookups. Stops at the first throttle, like
+  // enrichThreads. An unrecognised answer stamps nothing. Only the counts are
+  // kept: topicPostFromApi never reads a post's content.
+  function enrichReactions(ids, now, opts, generation) {
+    function step(i) {
+      if (i >= ids.length) return Promise.resolve({ ok: true });
+      var params = { offset: TOPIC_POST_PARAMS.offset };
+      return tornApiGet('forum/' + ids[i] + '/posts', params, opts).then(function (res) {
+        if (generation !== state.generation) return { ok: false, reason: 'stale' };
+        if (res.ok) {
+          var topic = topicPostFromApi(res.data, ids[i]);
+          if (topic !== undefined) state.mine = applyTopicPost(state.mine, ids[i], topic, now);
+        } else if (res.reason === 'throttled') {
+          return { ok: true, stoppedEarly: true };
+        }
+        return step(i + 1);
+      });
+    }
+    return step(0);
+  }
+
+  // A separate, bounded action for the My posts view only: two lists, at
+  // most enrichBudget lookups, then at most min(5, enrichBudget) opening-post
+  // reads (#10); never the category list. Threads' refresh and auto refresh
+  // never call this.
   function refreshMine(now, opts) {
     var options = opts || {};
     if (state.refreshingMine) return Promise.resolve({ ok: false, reason: 'inflight' });
@@ -3031,7 +3054,12 @@
           }
           state.mine = mergeMineSnapshot(state.mine, started, posts, now, complete);
           var ids = mineLookupTargets(state.mine, state.feed.subscribed, budget, now, MINE_TTL_MS);
-          return enrichMine(ids, now, options, generation).then(function () { return outcome; });
+          return enrichMine(ids, now, options, generation).then(function (er) {
+            if (stale() || (er && er.stoppedEarly)) return outcome;
+            var rn = Math.min(REACTION_LOOKUPS_PER_RUN, budget);
+            var rids = reactionLookupTargets(state.mine, now, TOPIC_TTL_MS, rn);
+            return enrichReactions(rids, now, options, generation).then(function () { return outcome; });
+          });
         });
       })
       .then(function (res) {
