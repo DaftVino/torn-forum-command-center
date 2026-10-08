@@ -54,6 +54,7 @@
     drafts: 'tfcc:drafts',
     feed: 'tfcc:feed',
     postCache: 'tfcc:postcache',
+    mine: 'tfcc:mine',
   });
 
   var API_BASE = 'https://api.torn.com/v2';
@@ -92,6 +93,7 @@
   var PRIORITY_MAX = 2;
   var DRAFT_MAX_CHARS = 20000;
   var POST_CACHE_MAX_POSTS = 2000;
+  var MINE_MAX_THREADS = 200;
   var POST_CACHE_MAX_BYTES = 1500000;
   var EXPORT_PREFIX = 'TFCC1:';
 
@@ -605,6 +607,141 @@
       }
     }
     return out;
+  }
+
+  // -- my posts ---------------------------------------------------------------
+  // Threads the key owner started (user/forumthreads) or posted in
+  // (user/forumposts). Stored under its own key, tfcc:mine, because adding a
+  // field to tfcc:feed would make loadKey report every existing user's feed
+  // cache as damaged on the first load after upgrade.
+
+  function pickList(data, names) {
+    if (!isPlainObject(data)) return null;
+    for (var i = 0; i < names.length; i += 1) {
+      if (Array.isArray(data[names[i]])) return data[names[i]];
+    }
+    return null;
+  }
+
+  function freshMine() {
+    return { v: SCHEMA_VERSION, fetchedAt: 0, selfId: 0, threads: [] };
+  }
+
+  function freshMineThread(id, now) {
+    return {
+      id: Math.max(0, toInt(id, 0)),
+      forumId: 0,
+      title: '',
+      started: false,
+      posted: false,
+      myLastPostAt: 0,
+      postsTotal: 0,
+      totalKnown: false,
+      lastPostAt: 0,
+      lastPosterId: 0,
+      infoAt: 0,
+      baselineTotal: 0,
+      firstSeenAt: Math.max(0, toInt(now, 0)),
+      isLocked: false,
+      tornNew: 0,
+      tornNewKnown: false,
+    };
+  }
+
+  // Reads only the shape freshMineThread produces. API rows go through
+  // mineThreadFromApi first, so this never has to guess between two shapes.
+  function normaliseMineThread(raw) {
+    if (!isPlainObject(raw)) return null;
+    var id = toInt(raw.id, 0);
+    if (id <= 0) return null;
+    var t = freshMineThread(id, 0);
+    t.forumId = Math.max(0, toInt(raw.forumId, 0));
+    t.title = safeString(raw.title, 300);
+    t.started = raw.started === true;
+    t.posted = raw.posted === true;
+    t.myLastPostAt = Math.max(0, toInt(raw.myLastPostAt, 0));
+    t.totalKnown = raw.totalKnown === true;
+    t.postsTotal = t.totalKnown ? Math.max(0, toInt(raw.postsTotal, 0)) : 0;
+    t.lastPostAt = Math.max(0, toInt(raw.lastPostAt, 0));
+    t.lastPosterId = Math.max(0, toInt(raw.lastPosterId, 0));
+    t.infoAt = Math.max(0, toInt(raw.infoAt, 0));
+    t.baselineTotal = Math.max(0, toInt(raw.baselineTotal, 0));
+    t.firstSeenAt = Math.max(0, toInt(raw.firstSeenAt, 0));
+    t.isLocked = raw.isLocked === true;
+    t.tornNewKnown = raw.tornNewKnown === true;
+    t.tornNew = t.tornNewKnown ? Math.max(0, toInt(raw.tornNew, 0)) : 0;
+    return t;
+  }
+
+  function normaliseMine(raw) {
+    if (!isPlainObject(raw)) return freshMine();
+    if (toInt(raw.v, 0) > SCHEMA_VERSION) return freshMine();
+    var out = freshMine();
+    out.fetchedAt = Math.max(0, toInt(raw.fetchedAt, 0));
+    out.selfId = Math.max(0, toInt(raw.selfId, 0));
+    if (Array.isArray(raw.threads)) {
+      for (var i = 0; i < raw.threads.length && out.threads.length < MINE_MAX_THREADS; i += 1) {
+        var t = normaliseMineThread(raw.threads[i]);
+        if (t) out.threads.push(t);
+      }
+    }
+    return out;
+  }
+
+  // Every postsTotal this script stores counts every post, topic included:
+  // the unit of posts.total on user/forumsubscribedthreads, and so of
+  // lastSeenTotal, which markRead writes from it. A thread object's `posts`
+  // (user/forumthreads, forum/{id}/thread) counts REPLIES, one fewer: thread
+  // 16589908 says posts: 1 and holds 2 posts. Live findings 3 and 4,
+  // docs/reference/torn-api-live-findings-2026-10-08.md. Convert here and
+  // nowhere else. -1 means unknown.
+  function threadPostsTotal(raw) {
+    if (!isPlainObject(raw)) return -1;
+    if (typeof raw.posts === 'number' && isFinite(raw.posts) && raw.posts >= 0) {
+      return Math.floor(raw.posts) + 1;
+    }
+    if (isPlainObject(raw.posts) && typeof raw.posts.total === 'number' && raw.posts.total >= 0) {
+      return Math.floor(raw.posts.total);
+    }
+    return -1;
+  }
+
+  function mineThreadFromApi(raw) {
+    if (!isPlainObject(raw)) return null;
+    var id = toInt(raw.id, 0);
+    if (id <= 0) return null;
+    var author = isPlainObject(raw.author) ? raw.author : {};
+    var last = isPlainObject(raw.last_poster) ? raw.last_poster : {};
+    var total = threadPostsTotal(raw);
+    var hasNew = typeof raw.new_posts === 'number' && isFinite(raw.new_posts);
+    return {
+      id: id,
+      forumId: Math.max(0, toInt(raw.forum_id, 0)),
+      title: safeString(raw.title, 300),
+      authorId: Math.max(0, toInt(author.id, 0)),
+      postsTotal: Math.max(0, total),
+      totalKnown: total >= 0,
+      lastPostAt: secondsToMs(raw.last_post_time),
+      lastPosterId: Math.max(0, toInt(last.id, 0)),
+      isLocked: raw.is_locked === true,
+      // Torn's own unread count for a thread the key owner started (finding 1).
+      tornNew: hasNew ? Math.max(0, Math.floor(raw.new_posts)) : 0,
+      tornNewKnown: hasNew,
+    };
+  }
+
+  // The post body arrives in `content` and is deliberately never read.
+  function minePostFromApi(raw) {
+    if (!isPlainObject(raw)) return null;
+    var threadId = toInt(raw.thread_id, 0);
+    if (threadId <= 0) return null;
+    var author = isPlainObject(raw.author) ? raw.author : {};
+    return {
+      postId: Math.max(0, toInt(raw.id, 0)),
+      threadId: threadId,
+      authorId: Math.max(0, toInt(author.id, 0)),
+      at: secondsToMs(raw.created_time === undefined ? raw.timestamp : raw.created_time),
+    };
   }
 
   function freshPostCache() { return { v: SCHEMA_VERSION, threads: {}, order: [] }; }
@@ -1862,6 +1999,9 @@
     drafts: freshDrafts(),
     feed: freshFeed(),
     postCache: freshPostCache(),
+    mine: freshMine(),
+    refreshingMine: false,
+    mineError: null,
     rows: [],
     loading: false,
     refreshing: false,
@@ -1928,14 +2068,16 @@
     var d = loadKey(STORAGE_KEYS.drafts, normaliseDrafts, now);
     var f = loadKey(STORAGE_KEYS.feed, normaliseFeed, now);
     var p = loadKey(STORAGE_KEYS.postCache, normalisePostCache, now);
+    var m = loadKey(STORAGE_KEYS.mine, normaliseMine, now);
     state.settings = s.value;
     state.organizer = o.value;
     state.drafts = d.value;
     state.feed = f.value;
     state.postCache = p.value;
+    state.mine = m.value;
     // A key that failed normalisation is reported rather than silently reset,
     // because a user who loses their folders deserves to know it happened.
-    [['Settings', s], ['Folders and tags', o], ['Drafts', d], ['Cached thread list', f], ['Post cache', p]]
+    [['Settings', s], ['Folders and tags', o], ['Drafts', d], ['Cached thread list', f], ['Post cache', p], ['My posts list', m]]
       .forEach(function (pair) {
         if (pair[1].recovered) notice(pair[0] + ' were damaged and have been reset.', 'warn');
       });
@@ -1948,6 +2090,7 @@
       drafts: [STORAGE_KEYS.drafts, state.drafts],
       feed: [STORAGE_KEYS.feed, state.feed],
       postCache: [STORAGE_KEYS.postCache, state.postCache],
+      mine: [STORAGE_KEYS.mine, state.mine],
     };
     var pair = map[which];
     if (!pair) return { ok: true };
@@ -3626,7 +3769,9 @@
           invalidateInFlight();
           state.settings = freshSettings(); state.organizer = freshOrganizer(now);
           state.drafts = freshDrafts(); state.feed = freshFeed(); state.postCache = freshPostCache();
+          state.mine = freshMine(); state.mineError = null;
           persist('settings'); persist('organizer'); persist('drafts'); persist('feed'); persist('postCache');
+          persist('mine');
           recompute(now); notice('Everything except your API key has been reset.', 'info'); redraw(); return;
         }
         if (act === 'debug') { copyText(doc, win, buildDebugReport()); notice('Debug report copied.', 'info'); redraw(); return; }

@@ -208,3 +208,19 @@ test('a stored key wins over the PDA slot', () => {
   const { exports: api } = loadUserscript({ gmStore: [['tfcc:key', 'storedkey1234567']] });
   assert.strictEqual(api.loadApiKey(), 'storedkey1234567');
 });
+
+test('an upgrade with no My posts cache reports nothing as damaged', () => {
+  const { exports: api } = loadUserscript();
+  const res = api.loadKey(api.STORAGE_KEYS.mine, api.normaliseMine, 0);
+  assert.strictEqual(res.recovered, false);
+  assert.deepStrictEqual(res.value, api.freshMine());
+});
+
+test('a corrupt My posts cache resets only itself', () => {
+  const { exports: api } = loadUserscript({ gmStore: [['tfcc:mine', '{not json']] });
+  const org = api.freshOrganizer(1000);
+  api.saveKey(api.STORAGE_KEYS.organizer, org);
+  const mine = api.loadKey(api.STORAGE_KEYS.mine, api.normaliseMine, 0);
+  assert.strictEqual(mine.recovered, true);
+  assert.deepStrictEqual(api.loadKey(api.STORAGE_KEYS.organizer, api.normaliseOrganizer, 0).value, org);
+});
