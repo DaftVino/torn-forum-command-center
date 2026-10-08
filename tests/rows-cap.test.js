@@ -264,3 +264,52 @@ test('My posts caps after the sort, says how many it hid and offers Show all', (
   assert.strictEqual(rowCount(html), 6);
   assert.match(html, /Showing all 6/);
 });
+
+test('Catch up caps its list but the nav count keeps counting everything', () => {
+  const { api } = boot();
+  seed(api, [
+    { id: 1, title: 'A', unread: 1 }, { id: 2, title: 'B', unread: 1 }, { id: 3, title: 'C', unread: 1 },
+    { id: 4, title: 'D', unread: 1 }, { id: 5, title: 'E', unread: 1 },
+  ]);
+  api.state.settings.view = 'catchup';
+  api.state.settings.rowsShown = 3;
+  const model = api.buildPanelModel(NOW);
+  assert.strictEqual(model.catchUp.length, 5, 'the model keeps the whole list');
+  const html = api.panelHtml(model);
+  assert.match(html, /Catch up \(5\)/, 'the nav count is uncapped');
+  assert.strictEqual(rowCount(html), 3);
+  assert.match(html, /Showing 3 of 5/);
+  assert.match(html, /data-act="rows-toggle" data-view="catchup"/);
+});
+
+test('Catch up caps the flat list, then groups, and headings count what they show', () => {
+  const { api } = boot();
+  seed(api, [
+    { id: 1, title: 'A', unread: 1 }, { id: 2, title: 'B', unread: 1 }, { id: 3, title: 'C', unread: 1 },
+    { id: 4, title: 'D', unread: 1 }, { id: 5, title: 'E', unread: 1 },
+  ]);
+  for (const id of ['1', '4']) api.state.organizer = api.setFolder(api.state.organizer, id, 'guides');
+  api.recompute(NOW);
+  api.state.settings.view = 'catchup';
+
+  api.state.settings.rowsShown = 3;
+  let html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /Guides \(1\)/, 'only A of the two guides is in the top 3');
+  assert.match(html, /Unfiled \(2\)/);
+
+  api.state.showAll.catchup = true;
+  html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /Guides \(2\)/);
+  assert.match(html, /Unfiled \(3\)/);
+  assert.match(html, /Showing all 5/);
+});
+
+test('Show all is per view', () => {
+  const { api } = boot();
+  seed(api, SIX.map((r) => Object.assign({ unread: 1 }, r)));
+  api.state.settings.rowsShown = 3;
+  api.state.showAll.threads = true;
+  const m = api.buildPanelModel(NOW);
+  assert.strictEqual(m.capped.threads.rows.length, 6);
+  assert.strictEqual(m.capped.catchup.rows.length, 3, 'expanding Threads leaves Catch up capped');
+});

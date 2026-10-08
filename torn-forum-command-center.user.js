@@ -3441,10 +3441,13 @@
       out.push('<div class="tfcc-empty">Nothing new. You are caught up.</div>');
       return out.join('');
     }
+    // Cap the flat, activity-sorted list first, then group what is shown.
+    // Capping per folder would show up to N rows times the folder count.
+    var shown = model.capped.catchup.rows;
     var byFolder = {};
-    for (var i = 0; i < model.catchUp.length; i += 1) {
-      var k = model.catchUp[i].folderName || 'Unfiled';
-      (byFolder[k] = byFolder[k] || []).push(model.catchUp[i]);
+    for (var i = 0; i < shown.length; i += 1) {
+      var k = shown[i].folderName || 'Unfiled';
+      (byFolder[k] = byFolder[k] || []).push(shown[i]);
     }
     var names = Object.keys(byFolder).sort();
     for (var n = 0; n < names.length; n += 1) {
@@ -3455,6 +3458,7 @@
       }
       out.push('</div></div>');
     }
+    out.push(renderCapLine(model.capped.catchup, 'catchup'));
     return out.join('');
   }
 
