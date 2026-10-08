@@ -416,10 +416,12 @@ test('pinned threads come first and take cap slots like any row', () => {
 
 test('the cap applies after Unread only, the folder filter and the filter box', () => {
   const { api } = boot();
+  // The filter word must not appear in the forum name ("Tutorials and Guides"),
+  // because the filter box searches forum names too and would match every row.
   seed(api, [
-    { id: 1, title: 'A guide', unread: 1 }, { id: 2, title: 'B guide', unread: 0 },
-    { id: 3, title: 'C guide', unread: 2 }, { id: 4, title: 'D guide', unread: 3 },
-    { id: 5, title: 'E guide', unread: 4 }, { id: 6, title: 'F other', unread: 5 },
+    { id: 1, title: 'A alpha', unread: 1 }, { id: 2, title: 'B alpha', unread: 0 },
+    { id: 3, title: 'C alpha', unread: 2 }, { id: 4, title: 'D alpha', unread: 3 },
+    { id: 5, title: 'E alpha', unread: 4 }, { id: 6, title: 'F other', unread: 5 },
   ]);
   api.state.settings.sort = 'title';
   api.state.settings.rowsShown = 3;
@@ -429,7 +431,7 @@ test('the cap applies after Unread only, the folder filter and the filter box', 
   assert.deepStrictEqual(ids(m.capped.threads.rows), ['1', '3', '4']);
   assert.strictEqual(m.capped.threads.total, 5);
 
-  api.state.searchQuery = 'guide';
+  api.state.searchQuery = 'alpha';
   m = api.buildPanelModel(NOW);
   assert.deepStrictEqual(ids(m.capped.threads.rows), ['1', '3', '4']);
   assert.strictEqual(m.capped.threads.total, 4, 'the filter box narrowed before the cap');
@@ -1096,7 +1098,7 @@ deep search and the Catch up nav count read them, and puts the capped lists in
 until the page reloads and is never stored.
 ```
 
-In "## Verification", change "It breaks each of 23 user-visible promises" to the count `MUTATIONS.length` now has. Get it with `grep -c "^    name: " tests/mutation-check.mjs`.
+In "## Verification", change "It breaks each of 23 user-visible promises" to the count `MUTATIONS.length` now has. The 23 is already stale (51 entries before this plan, 56 after). Get the number with `grep -c "^    suite:" tests/mutation-check.mjs`.
 
 - [ ] **Step 2: QA checklist**
 
