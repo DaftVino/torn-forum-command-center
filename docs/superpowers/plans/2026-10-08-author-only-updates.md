@@ -22,7 +22,7 @@
 - Never show `tornUnread` (Torn's any-poster `posts.new`) under an author-only label.
 - An unknown author state is shown as `author: not checked` and is never left blank.
 - Setting off: every existing output stays byte-identical. The existing suites prove this. Do not edit an existing assertion to make it pass.
-- `@version`, `SCRIPT_VERSION`, `package.json` `version`, the newest `CHANGELOG.md` heading, and the git tag move together in one commit (Task 10).
+- `@version`, `SCRIPT_VERSION`, `package.json` `version`, the newest `CHANGELOG.md` heading, and the git tag move together in one separate release commit. This PR only adds an `[Unreleased]` entry (Task 10).
 - `node tests/mutation-check.mjs > <file>` only. **Never pipe it into `head`** or anything else that closes the pipe early.
 
 ## Review Focus
@@ -872,7 +872,7 @@ test('the report shows author-check health without leaking who the author is', (
   - with the lookups set to 1, confirm the other threads show "author: not checked";
   - paste the debug report and record `filter-ignored`. A non-zero count closes open question 1 against the design and blocks release.
 - Modify: `CHANGELOG.md`. Under `## [Unreleased]`, add an `### Added` entry for the setting and a `### Fixed` entry: "Settings now states the real per-refresh request count (the daily forum-names call was missing)."
-- Modify at release, in one commit: `@version` and `SCRIPT_VERSION` to `0.2.0`, `package.json` `version` to `0.2.0`, rename `[Unreleased]` to `[0.2.0] - <date>`, then tag `v0.2.0`. `tests/metadata.test.js` enforces the three-way match. Do this only when the release is cut, not in the feature PR, unless the PR is the release.
+- Release (not part of this PR): #2, #3 and #4 share one convention, so they can merge in any order. Each feature PR only adds its `[Unreleased]` entry. One separate release commit on `main`, cut by the owner after `docs/qa-checklist.md`, sets `@version`, `SCRIPT_VERSION` and `package.json` `version` to the next minor after `main`'s (`0.2.0` if `main` is `0.1.0`), renames `[Unreleased]` to `[X.Y.0] - <date>` above a fresh empty `[Unreleased]`, and is tagged `vX.Y.0`. `tests/metadata.test.js` enforces the three-way match. If another feature PR already added an `### Added` list under `[Unreleased]`, append to it rather than adding a second heading.
 - Regenerate: run `/code-map` (`daftplate:code-map`). The file grew, and new symbols must have anchors (`summariseAuthorPosts`, `authorSinceFor`, `authorStateFor`, `AUTHOR_REASON_TEXT`, `AUTHOR_CHECK_REASONS`, `catchUpUnchecked`, `checkAuthorPosts`).
 
 - [ ] **Step 1: Make the doc edits above.**
