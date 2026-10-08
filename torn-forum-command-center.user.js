@@ -66,6 +66,8 @@
   var ENRICH_TTL_MS = 15 * 60 * 1000;
   var DEFAULT_ENRICH_BUDGET = 10;
   var MAX_ENRICH_BUDGET = 25;
+  var MINE_TTL_MS = 15 * 60 * 1000;
+  var MINE_PAGE_LIMIT = 100;
   var DEEP_SEARCH_MAX_PAGES = 5;
   var DEEP_SEARCH_MAX_THREADS = 10;
   var POSTS_PER_PAGE = 20;
@@ -867,6 +869,30 @@
     return out;
   }
 
+  function mineIsDue(snap, now, ttl) {
+    var f = snap ? toInt(snap.fetchedAt, 0) : 0;
+    return f <= 0 || (toInt(now, 0) - f) >= ttl;
+  }
+
+  // Lookups go only to threads Torn gives no count for, whose total is unknown
+  // or older than the TTL, newest conversation first, inside the same budget
+  // setting Threads uses.
+  function mineLookupTargets(snap, subscribed, budget, now, ttl) {
+    var n = clamp(toInt(budget, 0), 0, MAX_ENRICH_BUDGET);
+    if (!n || !snap) return [];
+    var subs = {};
+    for (var i = 0; i < (subscribed || []).length; i += 1) subs[String(subscribed[i].id)] = true;
+    var t = toInt(now, 0);
+    var out = [];
+    for (var j = 0; j < snap.threads.length && out.length < n; j += 1) {
+      var r = snap.threads[j];
+      if (subs[String(r.id)]) continue;
+      if (r.totalKnown && (t - r.infoAt) < ttl) continue;
+      out.push(r.id);
+    }
+    return out;
+  }
+
   function freshPostCache() { return { v: SCHEMA_VERSION, threads: {}, order: [] }; }
 
   function normalisePostCache(raw) {
@@ -1425,7 +1451,7 @@
   // this lists one that is never requested. When #2 (user forumthreads,
   // forumposts) and #10 (user profile) merge, they add theirs here.
   var CUSTOM_KEY_SELECTIONS = Object.freeze({
-    user: Object.freeze(['forumsubscribedthreads', 'forumfeed']),
+    user: Object.freeze(['forumsubscribedthreads', 'forumfeed', 'forumthreads', 'forumposts']),
     forum: Object.freeze(['categories', 'thread', 'posts']),
   });
 
@@ -2430,6 +2456,95 @@
     }
 
     return step(0);
+  }
+
+  var MINE_SHAPE_THREADS = 'Torn\'s answer for your threads was not in the shape this version expects.';
+  var MINE_SHAPE_POSTS = 'Torn\'s answer for your posts was not in the shape this version expects.';
+
+  function enrichMine(ids, now, opts, generation) {
+    function step(i) {
+      if (i >= ids.length) return Promise.resolve({ ok: true });
+      return tornApiGet('forum/' + ids[i] + '/thread', {}, opts).then(function (res) {
+        if (generation !== state.generation) return { ok: false, reason: 'stale' };
+        if (res.ok && res.data && isPlainObject(res.data.thread)) {
+          state.mine = applyMineDetail(state.mine, ids[i], parseThreadDetail(res.data.thread), now);
+        } else if (res.reason === 'throttled') {
+          // Stop the batch rather than grinding against the limit. The rows not
+          // reached keep saying "not checked yet".
+          return { ok: true, stoppedEarly: true };
+        }
+        return step(i + 1);
+      });
+    }
+    return step(0);
+  }
+
+  // A separate, bounded action for the My posts view only: two lists and at
+  // most enrichBudget lookups, never the category list. Threads' refresh and
+  // auto refresh never call this.
+  function refreshMine(now, opts) {
+    var options = opts || {};
+    if (state.refreshingMine) return Promise.resolve({ ok: false, reason: 'inflight' });
+    state.refreshingMine = true;
+    var generation = state.generation;
+    var budget = clamp(toInt(state.settings.enrichBudget, DEFAULT_ENRICH_BUDGET), 0, MAX_ENRICH_BUDGET);
+    var params = { limit: MINE_PAGE_LIMIT };
+    var started = null;
+
+    function stale() { return generation !== state.generation; }
+    function fail(res, fallback) {
+      state.mineError = { reason: (res && res.reason) || 'network', detail: scrubDetail((res && res.detail) || fallback) };
+      return { ok: false, reason: state.mineError.reason, detail: state.mineError.detail };
+    }
+
+    var work = tornApiGet('user/forumthreads', params, options)
+      .then(function (res) {
+        if (stale()) return { ok: false, reason: 'stale' };
+        if (!res.ok) return fail(res, 'Could not load your threads.');
+        var list = pickList(res.data, ['forumThreads', 'forum_threads', 'threads']);
+        if (!list) return fail({ reason: 'parse', detail: MINE_SHAPE_THREADS });
+        started = list.map(mineThreadFromApi).filter(Boolean);
+        return tornApiGet('user/forumposts', params, options).then(function (pres) {
+          if (stale()) return { ok: false, reason: 'stale' };
+          var complete = false;
+          var posts = [];
+          var outcome = { ok: true };
+          if (!pres.ok) {
+            outcome = fail(pres, 'Could not load your posts.');
+            state.mineError.detail = 'Threads you posted in could not be loaded: ' + state.mineError.detail;
+            outcome.detail = state.mineError.detail;
+          } else {
+            var plist = pickList(pres.data, ['forumPosts', 'forum_posts', 'posts']);
+            if (!plist) {
+              outcome = fail({ reason: 'parse', detail: MINE_SHAPE_POSTS });
+            } else {
+              posts = plist.map(minePostFromApi).filter(Boolean);
+              complete = true;
+              state.mineError = null;
+            }
+          }
+          state.mine = mergeMineSnapshot(state.mine, started, posts, now, complete);
+          var ids = mineLookupTargets(state.mine, state.feed.subscribed, budget, now, MINE_TTL_MS);
+          return enrichMine(ids, now, options, generation).then(function () { return outcome; });
+        });
+      })
+      .then(function (res) {
+        // A stale answer writes nothing: the user reset, cleared the key, or
+        // left the page while it was in flight.
+        if (!stale()) {
+          persist('mine');
+          recompute(now);
+        }
+        return res;
+      })
+      .catch(function (e) {
+        return fail({ reason: 'network', detail: e && e.message }, 'My posts could not be loaded.');
+      });
+
+    return work.then(function (r) {
+      state.refreshingMine = false;
+      return r;
+    });
   }
 
   function runDeepSearch(threadIds, queryText, now, opts) {

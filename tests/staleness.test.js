@@ -259,3 +259,41 @@ test('autosave attaches once, not once per redraw', () => {
   assert.strictEqual((box._listeners.input || []).length, 1,
     'the panel redraws constantly; a listener per redraw would pile up');
 });
+
+const { forumThreadsPayload, forumPostsPayload } = require('./load-userscript');   // built from tests/fixtures/
+
+function gatedOn(table, heldPath) {
+  let release = null;
+  const gate = new Promise((r) => { release = r; });
+  return {
+    release: () => release(),
+    fetch(url) {
+      const path = url.replace('https://api.torn.com/v2/', '').split('?')[0];
+      const body = Object.prototype.hasOwnProperty.call(table, path)
+        ? table[path] : { error: { code: 6, error: 'Unknown' } };
+      const answer = { status: 200, text: () => Promise.resolve(JSON.stringify(body)) };
+      return path === heldPath ? gate.then(() => answer) : Promise.resolve(answer);
+    },
+  };
+}
+
+test('a reset while My posts is loading drops the late answer', async () => {
+  const table = Object.assign({}, TABLE, {
+    'user/forumthreads': forumThreadsPayload([{ id: 10, replies: 3 }]),
+    'user/forumposts': forumPostsPayload([{ id: 1, threadId: 20 }]),
+  });
+  const t = gatedOn(table, 'user/forumthreads');
+  const env = loadUserscript({ location: forums(), now: NOW, gmStore: [['tfcc:key', KEY]], fetch: t.fetch });
+  const api = env.exports;
+  await settle(env);                       // init's Threads refresh completes
+
+  api.refreshMine(NOW);
+  await settle(env);                       // now held on user/forumthreads
+  api.makeHandlers(env.doc, env.win).onAction('reset-all', { getAttribute: () => null });
+
+  t.release();
+  await settle(env);
+  assert.strictEqual(api.state.mine.threads.length, 0, 'a late answer refilled what the user wiped');
+  const stored = env.gmStore.get('tfcc:mine');
+  assert.ok(!stored || JSON.parse(stored).threads.length === 0, 'and wrote it back to storage');
+});
