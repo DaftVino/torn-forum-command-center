@@ -253,6 +253,25 @@ defaults, and `SCHEMA_VERSION` stays 1:
 | `authorCheckComplete` | bool | page was not full |
 | `authorCheckReason` | string, allow-listed | `''`, `filter-ignored`, `full-page` (anything else normalises to `''`) |
 
+Upgrade without a false "damaged" notice. `loadKey` calls a stored value
+damaged whenever `JSON.stringify(raw)` differs from the normalised value, so a
+0.1.0 user, whose stored blobs lack every field added here, would be told "Settings
+were damaged and have been reset." and "Folders and tags were damaged and have
+been reset." with nothing damaged. `authorOnly` is top-level in `tfcc:settings`
+and is covered by the pure helper `isRecoveredValue(raw, value)` designed in
+#8's spec ("The upgrade trap"), which fills absent top-level keys of a
+plain-object `raw` from `value` before comparing; if #8 has not landed, this
+plan adds it exactly as #8 specifies. The seven author fields are nested inside
+`organizer.threads[id]`, which that helper deliberately does not forgive. For
+those, a second pure helper, `isRecoveredOrganizer(raw, value)`, fills absent
+keys of each raw thread entry from its normalised entry and then defers to
+`isRecoveredValue`; `loadKey` takes it as an optional fourth argument and
+`loadAll` passes it for the organizer only. This is the smaller and safer
+choice because it forgives exactly one thing (a key missing from a stored
+thread entry) in one place, and leaves the shared helper, and the nested-strict
+test #8 pins on it, alone. A present field the normaliser changes, a key it
+drops, and an entry it drops are all still damage.
+
 An existing organizer loads with every row in the `unchecked` (or `none`) state.
 The first refresh with the setting on checks up to the budget. A downgrade drops
 the fields harmlessly. `encodeState` stays an allow-list, so none of these are

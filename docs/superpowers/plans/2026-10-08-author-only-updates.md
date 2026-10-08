@@ -61,7 +61,31 @@ test('authorOnly defaults off, accepts only true, and round-trips', () => {
 - [ ] **Step 2: Run it and confirm it fails.** Run `node --test tests/storage.test.js`. Expected: FAIL, `undefined !== false`.
 - [ ] **Step 3: Implement.** In `settingsDefaults` add `authorOnly: false,` after `hideTornBox: false,`. In `normaliseSettings` add `out.authorOnly = raw.authorOnly === true;` after the `hideTornBox` line.
 - [ ] **Step 4: Run `npm test`.** Expected: all PASS.
-- [ ] **Step 5: Commit** with `git commit -am "feat: authorOnly setting, default off (#4)"`
+- [ ] **Step 5: Write the failing upgrade test.** Adding `authorOnly` re-opens the upgrade trap: `loadKey` calls a stored value damaged whenever `JSON.stringify(raw)` differs from the normalised value, and a v0.1.0 settings blob has no `authorOnly`. Every upgrading user would be told "Settings were damaged and have been reset." with nothing damaged. Append to `tests/storage.test.js`:
+
+```js
+test('a settings blob saved by 0.1.0 is not reported as damaged', () => {
+  // 0.1.0 wrote every field it knew and nothing else. authorOnly is absent
+  // from it. That is an upgrade, not damage.
+  const NOW = 1700000000000;
+  const old = api.freshSettings();
+  delete old.authorOnly;
+
+  const env = loadUserscript({ gmStore: [['tfcc:settings', JSON.stringify(old)]] });
+  const res = env.exports.loadKey('tfcc:settings', env.exports.normaliseSettings, NOW);
+  assert.strictEqual(res.recovered, false);
+  assert.strictEqual(res.value.authorOnly, false, 'the default is filled in');
+
+  env.exports.loadAll(NOW);
+  const notices = env.exports.state.notices.map((n) => n.text).join(' ');
+  assert.doesNotMatch(notices, /Settings were damaged/);
+});
+```
+
+Run `node --test tests/storage.test.js`. Expected: FAIL on this test only (`recovered` is `true`).
+- [ ] **Step 6: Make sure `isRecoveredValue` is on main.** If `isRecoveredValue` is not yet on main (it is introduced by #8), add it and wire it into `loadKey` exactly as the #8 plan specifies, including its test; if it is on main, skip. Check first with `grep -n "function isRecoveredValue" torn-forum-command-center.user.js`. The #8 plan is `docs/superpowers/plans/2026-10-08-auto-hide-on-open.md`, Task 1 Steps 1, 2 and 6. In short: the pure engine helper `isRecoveredValue(raw, value)` fills absent top-level keys of a plain-object `raw` from `value` before the `JSON.stringify` comparison, `loadKey` uses it, `'isRecoveredValue'` joins `EXPORT_NAMES` in `tests/load-userscript.js`, and the test `isRecoveredValue forgives only absent top-level fields` comes with it. Whichever PR lands second drops its copy.
+- [ ] **Step 7: Run `npm test`.** Expected: all PASS, including the upgrade test.
+- [ ] **Step 8: Commit** with `git commit -am "feat: authorOnly setting, default off (#4)"`
 
 ### Task 2: Per-thread author-check fields (persisted, additive)
 
@@ -129,7 +153,96 @@ test('an export never carries author-check cache fields', () => {
 
 Add this near the other frozen constants (~l.98): `var AUTHOR_CHECK_REASONS = Object.freeze(['', 'filter-ignored', 'full-page']);`. Do not bump `SCHEMA_VERSION`. The change is additive, and `normaliseOrganizer` would otherwise refuse every stored organizer.
 - [ ] **Step 4: Run `npm test`.** Expected: PASS.
-- [ ] **Step 5: Commit** with `git commit -am "feat: persist per-thread author-check result (#4)"`
+- [ ] **Step 5: Write the failing nested upgrade tests.** The seven fields above live inside `organizer.threads[id]`, one level below the top, so `isRecoveredValue` (top-level only, nested shapes deliberately not forgiven) does not cover them. A v0.1.0 organizer would report "Folders and tags were damaged and have been reset." on every upgrade. Append to `tests/storage.test.js`:
+
+```js
+const AUTHOR_FIELDS = ['authorCheckedAt', 'authorCheckTotal', 'authorCheckSince', 'authorNewCount',
+  'authorLatestAt', 'authorCheckComplete', 'authorCheckReason'];
+
+function organizer010(raw) {
+  // What 0.1.0 wrote: every thread entry without the seven author fields.
+  const o = api.normaliseOrganizer(raw, 1700000000000);
+  Object.keys(o.threads).forEach((id) => AUTHOR_FIELDS.forEach((k) => { delete o.threads[id][k]; }));
+  return o;
+}
+
+test('an organizer saved by 0.1.0 is not reported as damaged', () => {
+  const NOW = 1700000000000;
+  const old = organizer010({ threads: {
+    7: { pinned: true, lastSeenTotal: 9, lastVisitedAt: 100, note: 'n' },
+    8: { lastSeenTotal: 2 },
+  } });
+  assert.ok(!('authorNewCount' in old.threads['7']), 'the fixture must really lack the new fields');
+
+  const env = loadUserscript({ gmStore: [['tfcc:organizer', JSON.stringify(old)]] });
+  env.exports.loadAll(NOW);
+  const notices = env.exports.state.notices.map((n) => n.text).join(' ');
+  assert.doesNotMatch(notices, /Folders and tags were damaged/);
+  assert.strictEqual(env.exports.state.organizer.threads['7'].pinned, true, 'the stored values were kept');
+  assert.strictEqual(env.exports.state.organizer.threads['7'].authorNewCount, 0, 'the default is filled in');
+});
+
+test('a genuinely corrupt thread entry is still reported as damage', () => {
+  const NOW = 1700000000000;
+  const cases = {
+    'a present field the normaliser changed': (o) => { o.threads['7'].authorNewCount = -4; },
+    'an off-list reason': (o) => { o.threads['7'].authorCheckReason = 'evil<b>'; },
+    'a wrong-typed old field': (o) => { o.threads['7'].pinned = 'yes'; },
+    'an unknown key the normaliser drops': (o) => { o.threads['7'].stray = 1; },
+    'an entry the normaliser drops': (o) => { o.threads.abc = { pinned: true }; },
+    'a top-level field that is wrong': (o) => { o.lastCatchUpAt = 'soon'; },
+  };
+  for (const name of Object.keys(cases)) {
+    const bad = organizer010({ threads: { 7: { pinned: true, lastSeenTotal: 9 } } });
+    cases[name](bad);
+    const env = loadUserscript({ gmStore: [['tfcc:organizer', JSON.stringify(bad)]] });
+    env.exports.loadAll(NOW);
+    const notices = env.exports.state.notices.map((n) => n.text).join(' ');
+    assert.match(notices, /Folders and tags were damaged/, name);
+  }
+});
+```
+
+Run `node --test tests/storage.test.js`. Expected: `an organizer saved by 0.1.0 ...` FAILS (a false damage notice); the corrupt-entry test passes already, as a regression guard for the fix.
+- [ ] **Step 6: Implement the per-entry recovery check.** Chosen approach: the recovery comparison runs per thread entry, in a new organizer-specific pure helper. Reason: it forgives exactly one kind of difference (a key absent from a stored thread entry) at exactly one known place, and leaves `isRecoveredValue` and its pinned "nested shapes keep the strict comparison" test untouched, whereas a one-level-deeper rule inside the shared helper would change a function #8 and #3 depend on.
+
+In the engine, directly after `normaliseOrganizer`:
+
+```js
+  // An upgrade adds per-thread fields (issue #4). They are nested inside the
+  // threads map, which isRecoveredValue deliberately does not forgive, so fill
+  // each raw thread entry's absent keys from its normalised entry first. A key
+  // that is present and changed, a key the normaliser drops, and an entry it
+  // drops all still differ, so they are still damage.
+  function isRecoveredOrganizer(raw, value) {
+    if (isPlainObject(raw) && isPlainObject(raw.threads) && isPlainObject(value) && isPlainObject(value.threads)) {
+      var threads = {};
+      Object.keys(raw.threads).forEach(function (id) {
+        var r = raw.threads[id];
+        var v = value.threads[id];
+        threads[id] = isPlainObject(r) && isPlainObject(v) ? Object.assign({}, v, r) : r;
+      });
+      raw = Object.assign({}, raw, { threads: threads });
+    }
+    return isRecoveredValue(raw, value);
+  }
+```
+
+Give `loadKey` an optional fourth argument and use it for the organizer:
+
+```js
+  function loadKey(name, normaliser, now, recoveredCheck) {
+    ...
+    var recovered = (recoveredCheck || isRecoveredValue)(raw, value);
+```
+
+```js
+    var o = loadKey(STORAGE_KEYS.organizer, normaliseOrganizer, now, isRecoveredOrganizer);
+```
+
+Add `'isRecoveredOrganizer'` to `EXPORT_NAMES` in `tests/load-userscript.js`. `tests/purity.test.js` covers it by position (it takes only arguments).
+- [ ] **Step 7: Run to verify.** `node --test tests/storage.test.js` then `npm test && npm run test:syntax`. Expected: PASS, including `tests/storage.test.js` "a damaged key is reported".
+- [ ] **Step 8: Commit** with `git commit -am "feat: persist per-thread author-check result (#4)"`
 
 ### Task 3: `summariseAuthorPosts` (pure)
 
@@ -821,7 +934,7 @@ test('the report shows author-check health without leaking who the author is', (
 **Files:**
 - Modify: `tests/mutation-check.mjs` `MUTATIONS`
 
-- [ ] **Step 1: Add the entries**
+- [ ] **Step 1: Add the entries.** The last three guard the upgrade fix: the first reverts `loadKey` to the raw JSON comparison and expects `a settings blob saved by 0.1.0 is not reported as damaged` to fail; the second stops the organizer using the per-entry check and expects `an organizer saved by 0.1.0 is not reported as damaged` to fail; the third makes the per-entry check forgive anything and expects `a genuinely corrupt thread entry is still reported as damage` to fail.
 
 ```js
   {
@@ -854,6 +967,30 @@ test('the report shows author-check health without leaking who the author is', (
     name: 'Unread only hides unchecked rows',
     suite: 'tests/panel.test.js',
     apply: (s) => s.replace(" && r.authorState !== 'unchecked') return false;", ') return false;'),
+  },
+  {
+    name: 'an upgrade from 0.1.0 is reported as damaged (settings)',
+    suite: 'tests/storage.test.js',
+    apply: (s) => s.replace(
+      'var recovered = (recoveredCheck || isRecoveredValue)(raw, value);',
+      'var recovered = raw !== null && JSON.stringify(raw) !== JSON.stringify(value);',
+    ),
+  },
+  {
+    name: 'the organizer goes back to the strict comparison, so new per-thread fields read as damage',
+    suite: 'tests/storage.test.js',
+    apply: (s) => s.replace(
+      'loadKey(STORAGE_KEYS.organizer, normaliseOrganizer, now, isRecoveredOrganizer)',
+      'loadKey(STORAGE_KEYS.organizer, normaliseOrganizer, now)',
+    ),
+  },
+  {
+    name: 'the per-entry check forgives a corrupt thread entry',
+    suite: 'tests/storage.test.js',
+    apply: (s) => s.replace(
+      'threads[id] = isPlainObject(r) && isPlainObject(v) ? Object.assign({}, v, r) : r;',
+      'threads[id] = isPlainObject(v) ? v : r;',
+    ),
   },
 ```
 
@@ -899,6 +1036,7 @@ node tests/mutation-check.mjs > "${TMPDIR:-/tmp}/tfcc-mutation.txt" 2>&1
   - badges, unchecked group, Settings cost copy and toggle round-trip: Task 6
   - data source, budget and failure paths: Task 7
   - debug visibility for open questions: Task 8
+  - upgrade false-damage: Task 1 (settings, via #8's `isRecoveredValue`), Task 2 (nested per-thread fields, via `isRecoveredOrganizer`)
   - mutation guards: Task 9
   - docs, version and code map: Task 10
 
