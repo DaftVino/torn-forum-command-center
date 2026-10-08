@@ -78,7 +78,12 @@ notices.
   cleared by Mark read or by your own post, and labelled as a local count. A
   thread not looked up yet says so instead of showing zero.
 - It fetches only when you open it, at most once every 15 minutes unless you
-  press Refresh, and at most 12 requests by default.
+  press Refresh, and at most 17 requests by default.
+- A line under the panel header totals the thumbs up and thumbs down on the
+  threads you started, read from each thread's opening post inside the My posts
+  refresh, with Torn's rating shown as "net" until a thread is checked. It ends
+  with your forum karma as an endless-knot icon and a number. Torn's API has no
+  subscriber count, so none is shown.
 
 ### Drafts
 
@@ -133,7 +138,8 @@ Torn, Settings, API Key.
 
 The script reads two of your own selections, `forumsubscribedthreads` and
 `forumfeed`, plus the public forum endpoints and, for My posts, the public
-`forumthreads` and `forumposts` selections. Those two need a **Minimal
+`forumthreads` and `forumposts` selections (and `profile`, only for your forum
+karma when you have no threads or posts). Those need a **Minimal
 Access** key, which is the level to create. **Limited Access** also works but is
 not needed. **Public Only** does not.
 

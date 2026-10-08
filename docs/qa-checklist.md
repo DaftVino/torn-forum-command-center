@@ -34,7 +34,7 @@ this passes on a signed-in account.
       re-run this section.
 - [ ] Click the button. Torn's key page opens in a new tab with the name
       "Forum Command Center" and exactly these selections pre-filled: `user`
-      forumsubscribedthreads, forumfeed, forumthreads, forumposts; `forum`
+      forumsubscribedthreads, forumfeed, forumthreads, forumposts, profile; `forum`
       categories, thread, posts.
       Nothing is created until you confirm it on Torn.
 - [ ] Confirm the key, paste it into Settings, and check it against every
@@ -197,7 +197,8 @@ time **END**.
 - [ ] At the narrowest PDA width the nav wraps and My posts is still last and
       reachable.
 - [ ] Opening it the first time loads your threads; the number of requests in
-      the API key log (Torn Settings, API, key log) is at most 12.
+      the API key log (Torn Settings, API, key log) is at most 17 (12 for My
+      posts itself plus up to 5 opening posts for thumbs, #10).
 - [ ] Closing and reopening within 15 minutes makes no request (key log).
 - [ ] A thread you started and do not follow appears with `started`.
 - [ ] A thread you replied in and do not follow appears with `posted in`.
@@ -253,6 +254,43 @@ Owner checks for the live API (spec "Prerequisite"; all block release):
 - [ ] Turn it off: Torn's counts come back at once.
 - [ ] Record any deleted author post seen during QA (spec open question 6,
       deleted posts in `posts.total`, still open).
+
+### Reactions tracker
+
+Torn PDA and desktop (#10).
+
+- [ ] Fresh install, before opening My posts: the line reads
+      `Your threads: - up, - down`, never 0.
+- [ ] Open My posts. API key log: at most 17 requests for that open, and the
+      `forum/<id>/posts` ones are only for threads you started.
+- [ ] Pick a thread you started with visible thumbs. On Torn's thread page
+      note thumbs up, thumbs down. In My posts its row shows the same
+      `N up, M down`. If they differ, stop: file it against the spec (owner
+      check 1, stop condition).
+- [ ] A thread not yet checked shows `net +N` in its row, and the tracker
+      says `net ... on K more`.
+- [ ] If you have a started thread whose opening post has thumbs down: note
+      its `net` figure before it is checked and its up and down after. Record
+      whether `net` was up minus down or up alone (live finding 13, still open).
+- [ ] Sum check: tracker up and down equal the sums of the row figures.
+- [ ] Reopen My posts within 12 hours: no `forum/<id>/posts` request for a
+      thread already checked (key log).
+- [ ] Hover (desktop): the tooltip ends with the subscriber sentence.
+- [ ] Refresh, Expand and Hide stay on the header row at the narrowest PDA
+      width, portrait and landscape; the tracker wraps in its own line.
+- [ ] Collapse: the tracker is gone; Show brings it back.
+- [ ] Tapping the tracker opens My posts.
+- [ ] Dark, Light and Match Torn: readable in all three.
+- [ ] After a day without opening My posts, the line shows `(1d ago)`.
+- [ ] Karma: the endless-knot icon and a number follow the thumbs, with no word
+      "karma" on screen. Before My posts has ever loaded it shows `-`, not 0.
+- [ ] The icon takes the text colour in Dark, Light and Match Torn (visible,
+      not black on dark).
+- [ ] The karma figure equals the karma on your Torn profile (owner check 2).
+- [ ] A test account with no threads and no posts: opening My posts shows the
+      karma alone, and the key log shows exactly 3 requests for that open
+      (`user/profile` once); reopening within 12 hours shows no `user/profile`.
+- [ ] A normal refresh of Threads makes no `user/profile` request.
 
 ## Desktop regression
 
@@ -311,7 +349,7 @@ See `docs/rules-compliance.md` for the rule text and the line-by-line check.
 - [ ] Confirm the Settings view shows the data table next to the key input.
 - [ ] Confirm no request is made to any `torn.com` page the user is not viewing.
 - [ ] Confirm a refresh with the default settings issues at most 13 requests.
-- [ ] Confirm opening My posts with the default settings issues at most 12
+- [ ] Confirm opening My posts with the default settings issues at most 17
       requests, and reopening it within 15 minutes issues none.
 - [ ] Confirm nothing is ever sent that would post, reply, subscribe or
       otherwise change the account.

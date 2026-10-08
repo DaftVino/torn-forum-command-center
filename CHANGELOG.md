@@ -45,6 +45,20 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   thread, from the same lookup allowance, so a refresh is still at most 13
   requests by default. My posts ignores the setting. The debug report counts
   unchecked and too-many rows. (#4)
+- A line under the panel header totals the thumbs up and thumbs down on the
+  threads you started, read from each thread's opening post inside the My posts
+  refresh (at most 5 threads per run, each at most once every 12 hours; none
+  when activity lookups are set to 0). Until a thread is checked it shows
+  Torn's rating, labelled "net" (whether Torn's rating is net or likes only is
+  not yet confirmed, so it is never split into up and down). It shows "-" until
+  My posts has loaded and never a guessed number. Each thread you started shows
+  its own figures in My posts. Torn's API has no subscriber count, so none is
+  shown. (#10)
+- The same line shows your forum karma after the thumbs, as an endless-knot
+  icon and a number (no word), read from the author on lists My posts already
+  fetches. Only when you have started no threads and written no posts does My
+  posts read your profile once for it, at most every 12 hours (3 requests in
+  all). It shows "-" until known. (#10)
 
 ### Changed
 
@@ -55,6 +69,11 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   unless you press Refresh. (#2)
 - The custom key link also asks for `user` forumthreads and forumposts, the
   two selections My posts reads. (#2)
+- A My posts refresh is at most 17 requests at the default settings (was 12)
+  and 32 at the largest (was 27); the Settings note says so. A Threads refresh
+  is unchanged at 13. (#10)
+- The custom key link also asks for `user` profile, read only by the karma
+  fallback. (#10)
 
 ### Fixed
 
