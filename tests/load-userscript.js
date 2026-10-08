@@ -49,7 +49,7 @@ const EXPORT_NAMES = [
   'freshOrganizer', 'normaliseOrganizer', 'normaliseThreadEntry',
   'freshDrafts', 'normaliseDrafts', 'freshFeed', 'normaliseFeed',
   'freshPostCache', 'normalisePostCache',
-  'loadKey', 'saveKey', 'loadApiKey', 'saveApiKey', 'isKeyShaped',
+  'loadKey', 'saveKey', 'loadApiKey', 'saveApiKey', 'isKeyShaped', 'isRecoveredValue',
   // api adapter
   'API_BASE', 'REQUEST_TIMEOUT_MS', 'TORN_ERRORS', 'KEY_REJECTED_CODES', 'rejectKey', 'clearKeyRejection', 'mapTornError', 'redactUrl', 'scrubDetail',
   'buildApiUrl', 'httpGet', 'tornApiGet', 'makeRateLimiter',

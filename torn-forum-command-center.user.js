@@ -316,6 +316,8 @@
       enrichBudget: DEFAULT_ENRICH_BUDGET,
       autosaveDrafts: true,
       hideTornBox: false,
+      // Issue #8. Off by default: an existing user sees no change.
+      autoHideOnOpen: false,
       // The Torn error code that condemned the stored key, or 0. Persisted on
       // purpose: a userscript reloads on every navigation, so a rejection held
       // only in memory would spend one request per page view on a dead key,
@@ -340,6 +342,7 @@
     out.unreadOnly = raw.unreadOnly === true;
     out.autosaveDrafts = raw.autosaveDrafts !== false;
     out.hideTornBox = raw.hideTornBox === true;
+    out.autoHideOnOpen = raw.autoHideOnOpen === true;
     out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1
       ? 0 : toInt(raw.keyRejected, 0);
     out.folderFilter = typeof raw.folderFilter === 'string' ? safeString(raw.folderFilter, 64) : null;
@@ -349,6 +352,16 @@
     out.enrichBudget = clamp(toInt(raw.enrichBudget, DEFAULT_ENRICH_BUDGET), 0, MAX_ENRICH_BUDGET);
     out.deepSearchPages = clamp(toInt(raw.deepSearchPages, DEEP_SEARCH_MAX_PAGES), 1, DEEP_SEARCH_MAX_PAGES);
     return out;
+  }
+
+  // An upgrade adds a top-level field the stored value never had. Filling those
+  // from the normalised value before comparing keeps "damaged" meaning damaged:
+  // a field that was present and changed, or one the normaliser dropped. Nested
+  // shapes keep the strict comparison on purpose (spec: "The upgrade trap").
+  function isRecoveredValue(raw, value) {
+    if (raw === null) return false;
+    var seen = isPlainObject(raw) && isPlainObject(value) ? Object.assign({}, value, raw) : raw;
+    return JSON.stringify(seen) !== JSON.stringify(value);
   }
 
   function freshOrganizer(now) {
@@ -1605,7 +1618,7 @@
       return { value: normaliser(null, now), recovered: true, hadRaw: true };
     }
     var value = normaliser(raw, now);
-    var recovered = raw !== null && JSON.stringify(raw) !== JSON.stringify(value);
+    var recovered = isRecoveredValue(raw, value);
     return { value: value, recovered: recovered, hadRaw: raw !== null };
   }
 
@@ -2616,6 +2629,7 @@
         enrichBudget: s.enrichBudget,
         autosaveDrafts: s.autosaveDrafts,
         hideTornBox: s.hideTornBox,
+        autoHideOnOpen: s.autoHideOnOpen,
         deepSearchPages: s.deepSearchPages,
       },
       now: now,
