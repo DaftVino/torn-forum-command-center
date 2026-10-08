@@ -19,6 +19,19 @@ is what it is here for. The access-level table is colour-coded rather than
 labelled, and the legend maps `white` to Public, `green` to Minimal Access,
 `yellow` to Limited Access and `red` to Full Access.
 
+## `torn-openapi-forum-excerpt-2026-10-08.json`
+
+An unedited excerpt of Torn's published OpenAPI document
+(`https://www.torn.com/swagger/openapi.json`, `info.version` 6.13.8), fetched
+on 2026-10-08. Unlike the page above, this one answered an automated request.
+It keeps only the forum paths, schemas and parameters that issue #10 (thread
+reactions tracker) and issue #2 (My posts) rely on: `user/forumthreads`,
+`user/forumposts`, `forum/{threadId}/thread`, `ForumThreadBase`,
+`ForumThreadUserExtended`, `ForumPost` and `ForumFeedTypeEnum`, among others.
+It is a schema, not a captured response: it says which fields Torn promises,
+not what a live answer holds. Regenerate it from the full document if the
+schema moves; do not edit it by hand.
+
 ## What is not here
 
 The **scripting rule** itself. It was supplied verbatim by the project owner

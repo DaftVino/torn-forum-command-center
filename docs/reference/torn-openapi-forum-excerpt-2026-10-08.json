@@ -1,0 +1,550 @@
+{
+  "source": "https://www.torn.com/swagger/openapi.json",
+  "retrieved": "2026-10-08",
+  "note": "Excerpt only: the forum paths and schemas the reactions tracker (#10) and My posts (#2) depend on. Not edited.",
+  "openapi": "3.1.0",
+  "info_version": "6.13.8",
+  "paths": {
+    "/user/forumthreads": {
+      "get": {
+        "tags": [
+          "User"
+        ],
+        "summary": "Get your threads",
+        "description": "Requires public access key. <br>Returns 100 threads per page. The field 'new_posts' is also available, indicating the amount of unread posts with a Minimum API key (or higher).",
+        "operationId": "getMyForumThreads",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ApiLimit100Default20"
+          },
+          {
+            "$ref": "#/components/parameters/ApiSort"
+          },
+          {
+            "$ref": "#/components/parameters/ApiFrom"
+          },
+          {
+            "$ref": "#/components/parameters/ApiTo"
+          },
+          {
+            "$ref": "#/components/parameters/ApiTimestamp"
+          },
+          {
+            "$ref": "#/components/parameters/ApiComment"
+          },
+          {
+            "$ref": "#/components/parameters/ApiKeyPublic"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserForumThreadsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "x-stability": "Stable"
+      }
+    },
+    "/user/forumposts": {
+      "get": {
+        "tags": [
+          "User"
+        ],
+        "summary": "Get your posts",
+        "description": "Requires public access key. <br>Returns 20 posts per page.",
+        "operationId": "getMyForumPosts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ApiStripTagsTrue"
+          },
+          {
+            "$ref": "#/components/parameters/ApiLimit20"
+          },
+          {
+            "$ref": "#/components/parameters/ApiSort"
+          },
+          {
+            "$ref": "#/components/parameters/ApiFrom"
+          },
+          {
+            "$ref": "#/components/parameters/ApiTo"
+          },
+          {
+            "$ref": "#/components/parameters/ApiTimestamp"
+          },
+          {
+            "$ref": "#/components/parameters/ApiComment"
+          },
+          {
+            "$ref": "#/components/parameters/ApiKeyPublic"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserForumPostsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "x-stability": "Stable"
+      }
+    },
+    "/forum/{threadId}/thread": {
+      "get": {
+        "tags": [
+          "Forum"
+        ],
+        "summary": "Get specific thread details",
+        "description": "Requires public access key. <br>Contains details of a thread including topic content and poll (if any).",
+        "operationId": "getForumThread",
+        "parameters": [
+          {
+            "name": "threadId",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ForumThreadId"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ApiTimestamp"
+          },
+          {
+            "$ref": "#/components/parameters/ApiComment"
+          },
+          {
+            "$ref": "#/components/parameters/ApiKeyPublic"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForumThreadResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "x-stability": "Stable"
+      }
+    }
+  },
+  "schemas": {
+    "UserForumThreadsResponse": {
+      "required": [
+        "forumThreads",
+        "_metadata"
+      ],
+      "properties": {
+        "forumThreads": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ForumThreadUserExtended"
+          }
+        },
+        "_metadata": {
+          "$ref": "#/components/schemas/RequestMetadataWithLinks"
+        }
+      },
+      "type": "object"
+    },
+    "ForumThreadUserExtended": {
+      "allOf": [
+        {
+          "$ref": "#/components/schemas/ForumThreadBase"
+        },
+        {
+          "required": [
+            "new_posts"
+          ],
+          "properties": {
+            "new_posts": {
+              "description": "Available only when requesting data for yourself (no id or your id) with at least 'Minimal' access type key.",
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ForumThreadBase": {
+      "required": [
+        "id",
+        "title",
+        "forum_id",
+        "posts",
+        "rating",
+        "views",
+        "author",
+        "last_poster",
+        "first_post_time",
+        "last_post_time",
+        "has_poll",
+        "is_locked",
+        "is_sticky"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/components/schemas/ForumThreadId"
+        },
+        "title": {
+          "type": "string"
+        },
+        "forum_id": {
+          "$ref": "#/components/schemas/ForumId"
+        },
+        "posts": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "rating": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "views": {
+          "description": "Total number of times players have opened this thread.",
+          "type": "integer",
+          "format": "int32"
+        },
+        "author": {
+          "$ref": "#/components/schemas/ForumThreadAuthor"
+        },
+        "last_poster": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/ForumThreadAuthor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "first_post_time": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "last_post_time": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "format": "int32"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "has_poll": {
+          "type": "boolean"
+        },
+        "is_locked": {
+          "type": "boolean"
+        },
+        "is_sticky": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "ForumThreadExtended": {
+      "allOf": [
+        {
+          "$ref": "#/components/schemas/ForumThreadBase"
+        },
+        {
+          "required": [
+            "content",
+            "content_raw",
+            "poll"
+          ],
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "content_raw": {
+              "type": "string"
+            },
+            "poll": {
+              "description": "'poll' is null when 'has_poll' is false.",
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ForumPoll"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ForumThreadAuthor": {
+      "required": [
+        "id",
+        "username",
+        "karma"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/components/schemas/UserId"
+        },
+        "username": {
+          "type": "string"
+        },
+        "karma": {
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "type": "object"
+    },
+    "UserForumPostsResponse": {
+      "required": [
+        "forumPosts",
+        "_metadata"
+      ],
+      "properties": {
+        "forumPosts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ForumPost"
+          }
+        },
+        "_metadata": {
+          "$ref": "#/components/schemas/RequestMetadataWithLinks"
+        }
+      },
+      "type": "object"
+    },
+    "ForumPost": {
+      "required": [
+        "id",
+        "thread_id",
+        "author",
+        "is_legacy",
+        "is_topic",
+        "is_edited",
+        "is_pinned",
+        "created_time",
+        "edited_by",
+        "has_quote",
+        "quoted_post_id",
+        "content",
+        "likes",
+        "dislikes"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/components/schemas/ForumPostId"
+        },
+        "thread_id": {
+          "$ref": "#/components/schemas/ForumThreadId"
+        },
+        "author": {
+          "$ref": "#/components/schemas/ForumThreadAuthor"
+        },
+        "is_legacy": {
+          "description": "Indicates whether post was made using the old formatting engine which doesn't use HTML.",
+          "type": "boolean"
+        },
+        "is_topic": {
+          "type": "boolean"
+        },
+        "is_edited": {
+          "type": "boolean"
+        },
+        "is_pinned": {
+          "type": "boolean"
+        },
+        "created_time": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "edited_by": {
+          "description": "'edited_by' is null when 'is_edited' is false.",
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/UserId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "has_quote": {
+          "type": "boolean"
+        },
+        "quoted_post_id": {
+          "description": "'quoted_post_id' is null when 'has_quote' is false.",
+          "oneOf": [
+            {
+              "type": "integer",
+              "format": "int32"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content": {
+          "description": "depending on the input 'cat' parameter, this will either return raw value (with HTML) or plain text. Legacy posts are returned as is, they can't be stripped of tags.",
+          "type": "string"
+        },
+        "likes": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "dislikes": {
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "type": "object"
+    },
+    "ForumFeedTypeEnum": {
+      "description": "This represents the type of the activity. Values range from 1 to 8 where:\n *                    1 = 'X posted on a thread',\n *                    2 = 'X created a thread',\n *                    3 = 'X liked your thread',\n *                    4 = 'X disliked your thread',\n *                    5 = 'X liked your post',\n *                    6 = 'X disliked your post',\n *                    7 = 'X quoted your post'.",
+      "type": "integer",
+      "format": "int32",
+      "enum": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    "ForumSubscribedThread": {
+      "required": [
+        "id",
+        "forum_id",
+        "author",
+        "title",
+        "posts"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/components/schemas/ForumThreadId"
+        },
+        "forum_id": {
+          "$ref": "#/components/schemas/ForumId"
+        },
+        "author": {
+          "$ref": "#/components/schemas/ForumThreadAuthor"
+        },
+        "title": {
+          "type": "string"
+        },
+        "posts": {
+          "$ref": "#/components/schemas/ForumSubscribedThreadPostsCount"
+        }
+      },
+      "type": "object"
+    },
+    "ForumSubscribedThreadPostsCount": {
+      "required": [
+        "new",
+        "total"
+      ],
+      "properties": {
+        "new": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "total": {
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "parameters": {
+    "ApiLimit100Default20": {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+        "type": "integer",
+        "format": "int32",
+        "default": 20,
+        "maximum": 100,
+        "minimum": 1
+      }
+    },
+    "ApiSort": {
+      "name": "sort",
+      "in": "query",
+      "description": "Sorted by the greatest timestamps",
+      "required": false,
+      "schema": {
+        "type": "string",
+        "enum": [
+          "DESC",
+          "ASC"
+        ]
+      }
+    },
+    "ApiFrom": {
+      "name": "from",
+      "in": "query",
+      "description": "Timestamp that sets the lower limit for the data returned. Data returned will be after this time",
+      "required": false,
+      "schema": {
+        "type": "integer",
+        "format": "int32"
+      }
+    },
+    "ApiTo": {
+      "name": "to",
+      "in": "query",
+      "description": "Timestamp that sets the upper limit for the data returned. Data returned will be up to and including this time",
+      "required": false,
+      "schema": {
+        "type": "integer",
+        "format": "int32"
+      }
+    }
+  }
+}
