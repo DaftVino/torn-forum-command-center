@@ -65,6 +65,8 @@ Shared with #2's plan Task 0. Do it once for both.
 - [ ] **Step 4 (meaning):** For the same thread, note Torn's thumbs up, thumbs down on its thread page, the topic post's `likes`/`dislikes`, and the thread's `rating`. Record in the spec's open question 1 whether likes = up, dislikes = down, and rating = up - down. **If likes/dislikes differ from Torn's thumbs, stop** (stop condition).
 - [ ] **Step 5:** Check whether `forum/<id>/posts` page 1 ever has two `is_topic` posts (it should not).
 
+**Release gate:** steps 3 and 4 gate the release, not only the code (spec, "Release gate"). Until both are recorded as passing in the spec's "What is verified" table, Tasks 1 to 10 may be built and reviewed but no tag may carry this feature.
+
 Commit: `git add tests/fixtures docs/superpowers/specs/2026-10-08-thread-reactions-tracker-design.md && git commit -m "test: live fixtures for thread rating and topic post thumbs (#10)"`
 
 ---
@@ -420,6 +422,19 @@ test('no usable topic post is null, never a zero', () => {
     'a topic post from another thread');
   assert.strictEqual(api.topicPostFromApi(threadPostsPayload([{ id: 1, threadId: 5, isTopic: true, likes: null, dislikes: 1 }]), 5), null);
   assert.strictEqual(api.topicPostFromApi(threadPostsPayload([{ id: 1, threadId: 5, isTopic: true, noLikes: true }]), 5), null);
+});
+
+test('the live opening-post page (plan Task 0) yields real thumbs', {
+  skip: !require('node:fs').existsSync(require('node:path').join(__dirname, 'fixtures', 'forum-thread-posts-asc.json'))
+    && 'Task 0 fixture not captured yet',
+}, () => {
+  // The builders above are assumptions until this fixture exists; this ties the
+  // reader to Torn's real field names, not to our own payload builder.
+  const page = JSON.parse(require('node:fs').readFileSync(
+    require('node:path').join(__dirname, 'fixtures', 'forum-thread-posts-asc.json'), 'utf8'));
+  const topic = page.posts.find((p) => p.is_topic === true);
+  assert.ok(topic, 'the ASC page must contain the topic post');
+  assert.deepStrictEqual(api.topicPostFromApi(page, topic.thread_id), { up: topic.likes, down: topic.dislikes });
 });
 
 test('an unrecognised answer is undefined, so nothing is stamped', () => {
@@ -837,7 +852,7 @@ async function boot(tbl, options) {
 
 const topicCalls = (env) => env.router.urls.filter((u) => /\/v2\/forum\/\d+\/posts\?/.test(u));
 
-test('a My posts run reads at most 5 opening posts, oldest first, only for threads you started', async () => {
+test('a My posts run reads at most 5 opening posts, newest activity first, only for threads you started', async () => {
   const env = await boot(table(8));
   env.exports.refreshMine(NOW);
   await settle(env);
@@ -848,6 +863,8 @@ test('a My posts run reads at most 5 opening posts, oldest first, only for threa
     assert.match(u, /[?&]offset=0(&|$)/);
   }
   assert.ok(!calls.some((u) => /\/forum\/20\/posts/.test(u)), 'a thread you only posted in is never checked');
+  // Threads 100..107 have rising last-post times, so the newest five go first.
+  assert.deepStrictEqual(calls.map((u) => Number(/\/forum\/(\d+)\/posts/.exec(u)[1])), [107, 106, 105, 104, 103]);
   assert.ok(env.router.seen.length <= 2 + 10 + 5, 'at most 17 requests at defaults, got ' + env.router.seen.length);
   assert.strictEqual(env.exports.state.mine.threads.filter((t) => typeof t.up === 'number').length, 5);
   assert.strictEqual(JSON.stringify(env.exports.state.mine).indexOf('SECRET'), -1, 'no post body stored');
@@ -1505,7 +1522,7 @@ git commit -m "test: mutation entries for the reactions tracker (#10)"
 **Files:**
 - Modify: `CHANGELOG.md`, `docs/qa-checklist.md`, `docs/architecture.md`, `README.md`, `docs/code-map.md`
 
-- [ ] **Step 1: CHANGELOG.** Under `## [Unreleased]` (replace `Nothing yet.` if present), in `### Added`:
+- [ ] **Step 1: CHANGELOG.** Under `## [Unreleased]` (replace `Nothing yet.` if present; if #2 already added `### Added` and `### Changed` there, append to them), with a blank line after each heading:
 
 ```markdown
 - A line under the panel header totals the thumbs up and thumbs down on the
@@ -1515,7 +1532,9 @@ git commit -m "test: mutation entries for the reactions tracker (#10)"
   Torn's net rating, labelled "net". It shows "-" until My posts has loaded and
   never a guessed number. Torn's API has no subscriber count, so none is shown
   (#10).
+
 ### Changed
+
 - A My posts refresh is at most 17 requests at the default settings (was 12)
   and 32 at the largest (was 27). A Threads refresh is unchanged at 13.
 ```
@@ -1537,7 +1556,7 @@ git add CHANGELOG.md docs/qa-checklist.md docs/architecture.md README.md docs/co
 git commit -m "docs: changelog, QA and code map for the reactions tracker (#10)"
 ```
 
-- [ ] **Step 7: Review and ship.** `/review`, then `/ship` (verify gate `npm test`). The PR description states: no change to `@match`, `@grant`, `@connect`; one more GET path (`forum/{id}/posts`, already used by deep search); the new My posts maximum (17 / 32) and the unchanged Threads maximum (13); the contrast audit result; Task 0 status, including what `rating` turned out to mean and whether `ASC` puts the topic first. No attribution footer. The release commit is separate and owner-cut, after the QA gate (rule 8).
+- [ ] **Step 7: Review and ship.** `/review`, then `/ship` (verify gate `npm test`). The PR description states: no change to `@match`, `@grant`, `@connect`; one more GET path (`forum/{id}/posts`, already used by deep search); the new My posts maximum (17 / 32) and the unchanged Threads maximum (13); the contrast audit result; Task 0 status (the release gate), including what `rating` turned out to mean and whether `ASC` puts the topic first. No attribution footer. The release commit is separate and owner-cut, after the QA gate (rule 8).
 
 ---
 

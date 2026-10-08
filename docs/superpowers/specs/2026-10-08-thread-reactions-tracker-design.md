@@ -50,7 +50,7 @@ or any thumbs field.
 ### Post objects: `forum/{threadId}/posts`
 
 `GET /forum/{threadId}/posts`, "Get specific forum thread posts", Public key,
-`x-stability: Stable`. Description, verbatim: "Returns 20 posts per page for a
+`x-stability: Stable`. Description (HTML line breaks omitted): "Returns 20 posts per page for a
 specific thread. By default, it uses 'offset', but it's possible to filter
 posts with 'from' & 'to' parameters." Parameters:
 
@@ -87,8 +87,9 @@ render as `-` or fall back to net, never as 0.
 
 ### Subscribers: cannot be met
 
-The word "subscriber" does not occur anywhere in the 1.4 MB document. The only
-subscription data is `user/forumsubscribedthreads`, the threads *you* follow.
+The word "subscriber" occurs once in the 1.4 MB document, as a value of
+`UserDonatorStatusEnum` (a Torn donator tier, unrelated to forums); no forum
+schema has a subscriber field. The only subscription data is `user/forumsubscribedthreads`, the threads *you* follow.
 No endpoint says who follows yours. **This part of the issue cannot be met
 from the API**, and the script will not scrape it (ADR 0001). The tracker
 shows no subscriber figure, and its tooltip ends with: "Torn's API has no
@@ -320,10 +321,30 @@ its badges directly after the title.
 3. **Its own line directly under the header row** (`.tfcc-subhead`). Never
    competes with the buttons, leaves the after-title spot to #9. **Chosen.**
 
-**Contract with #9.** #9 owns everything inside `.tfcc-head` between the title
-and the auto margin; this feature adds nothing to `.tfcc-head` and never
-touches `.tfcc-title`. If #9 ever needs an overflow line it may append to
-`.tfcc-subhead` after the tracker.
+**Contract with #9.** #9's spec (`2026-10-08-badges-design.md`, sections 8.2
+and 9.5) splits `.tfcc-head` into `.tfcc-head-id` (title plus `.tfcc-chips`) and
+`.tfcc-head-ctl`, and reserves the slot after its trophy chip for a #10 chip
+with its own `data-shelf="reactions"`. **This design deliberately does not use
+that slot**, for the reason in option 2 above: a figure line such as
+`Your threads: 34 up, 5 down, net +3 on 4 more` does not fit a nowrap chip
+(`max-width: 12em`) at 320 px, and a shelf for it would only repeat the
+tooltip. So:
+
+- #10 adds nothing to `.tfcc-head`, `.tfcc-head-id`, `.tfcc-chips` or
+  `.tfcc-head-ctl`, never touches `.tfcc-title`, and adds no `state.shelf`
+  value. #9 therefore never has a #10 chip to lay out: with badges off,
+  `.tfcc-chips` is omitted, not "only #10's chip" (#9 section 9.5, third
+  bullet, no longer applies; whichever PR merges second amends that sentence).
+- `.tfcc-subhead` is emitted **immediately after the `.tfcc-head` block**
+  (after #9's head, before any #9 shelf or toast), so the tracker keeps one
+  position whether or not a shelf is open. `renderReactions` is the only
+  producer of `.tfcc-subhead`. If #9 ever needs an overflow line it may append
+  to `.tfcc-subhead` after the tracker.
+- The collapsed rule differs on purpose: #9's chip stays visible when
+  collapsed (it is local and free); the tracker does not (it needs a fetch
+  and a tap target the collapsed bar does not have).
+- The tests that pin placement slice the HTML from the `tfcc-head` opening tag
+  to the `tfcc-subhead` tag, so they hold under either head structure.
 
 ### Visibility
 
@@ -544,6 +565,16 @@ New section "Reactions tracker", Torn PDA and desktop:
 - [ ] Tapping the tracker opens My posts.
 - [ ] Dark, Light and Match Torn: readable in all three.
 - [ ] After a day without opening My posts, the line shows `(1d ago)`.
+
+## Release gate
+
+Task 0 steps 3 and 4 are an owner gate on the release, not only on the code:
+no release tag may carry this feature until the spec's "What is verified"
+table records (a) that `sort=ASC&offset=0` puts the `is_topic` post first and
+(b) that its `likes`/`dislikes` equal the thumbs on Torn's own thread page. The
+QA checklist item "Pick a thread you started" repeats (b) on the released
+build. If either fails, the thumbs half is amended or dropped, and the net
+fallback is the only figure shown.
 
 ## Assumptions
 
