@@ -47,7 +47,7 @@ These inputs are not in the issue's acceptance list. They are the most likely to
 | `tests/storage.test.js` | `rowsShown` normalising and the reload round trip |
 | `tests/handlers.test.js` | Fixture makes the cap bite. New handler tests |
 | `tests/share.test.js` | The export carries no `rowsShown` |
-| `tests/mutation-check.mjs` | Five new mutations |
+| `tests/mutation-check.mjs` | Six new mutations |
 | `tests/render-preview.mjs` | One capped narrow preview |
 | `docs/architecture.md`, `docs/qa-checklist.md`, `README.md`, `CHANGELOG.md`, `docs/code-map.md`, `package.json` | Docs, release |
 
@@ -341,10 +341,47 @@ Expected: PASS.
 Run: `npm test && npm run test:syntax`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Write the failing upgrade test**
+
+Adding `rowsShown` re-opens the upgrade trap: `loadKey` calls a stored value damaged whenever `JSON.stringify(raw)` differs from the normalised value, and a v0.1.0 settings blob has no `rowsShown`. Without a fix every upgrading user is told "Settings were damaged and have been reset." when nothing was damaged. Append to `tests/storage.test.js`:
+
+```js
+test('a settings blob saved by 0.1.0 is not reported as damaged', () => {
+  // 0.1.0 wrote every field it knew and nothing else. rowsShown is absent from
+  // it. That is an upgrade, and telling the user their settings were reset
+  // would be false.
+  const NOW = 1700000000000;
+  const { exports: api } = loadUserscript();
+  const old = api.freshSettings();
+  delete old.rowsShown;
+
+  const env = loadUserscript({ gmStore: [['tfcc:settings', JSON.stringify(old)]] });
+  const res = env.exports.loadKey('tfcc:settings', env.exports.normaliseSettings, NOW);
+  assert.strictEqual(res.recovered, false);
+  assert.strictEqual(res.value.rowsShown, 0, 'the default is filled in');
+
+  env.exports.loadAll(NOW);
+  const notices = env.exports.state.notices.map((n) => n.text).join(' ');
+  assert.doesNotMatch(notices, /Settings were damaged/);
+});
+```
+
+Run: `node --test tests/storage.test.js`
+Expected: FAIL on this test only (`recovered` is `true`, and the notice matches). This is the trap, observed.
+
+- [ ] **Step 7: Make sure `isRecoveredValue` is on main**
+
+If `isRecoveredValue` is not yet on main (it is introduced by #8), add it and wire it into `loadKey` exactly as the #8 plan specifies, including its test; if it is on main, skip. Check first with `grep -n "function isRecoveredValue" torn-forum-command-center.user.js`. The #8 plan is `docs/superpowers/plans/2026-10-08-auto-hide-on-open.md`, Task 1 Steps 1, 2 and 6; its spec section is "The upgrade trap". In short: a pure engine helper `isRecoveredValue(raw, value)` after `normaliseSettings` fills absent top-level keys of a plain-object `raw` from `value` before the `JSON.stringify` comparison (nested objects are not forgiven), `loadKey` computes `var recovered = isRecoveredValue(raw, value);`, `'isRecoveredValue'` joins `EXPORT_NAMES` in `tests/load-userscript.js`, and the test `isRecoveredValue forgives only absent top-level fields` is added. Whichever PR lands second drops its copy at merge; the code is identical.
+
+- [ ] **Step 8: Run to verify the upgrade test passes**
+
+Run: `node --test tests/storage.test.js` then `npm test && npm run test:syntax`
+Expected: PASS. `tests/storage.test.js` "a damaged key is reported" still passes: a present-but-wrong field is unaffected.
+
+- [ ] **Step 9: Commit**
 
 ```bash
-git add torn-forum-command-center.user.js tests/storage.test.js
+git add torn-forum-command-center.user.js tests/storage.test.js tests/load-userscript.js
 git commit -m "feat: rowsShown setting, normalised to All when corrupt (#3)"
 ```
 
@@ -994,7 +1031,7 @@ git commit -m "feat: Rows shown setting in Settings, Show all handler (#3)"
 
 - [ ] **Step 1: Add the mutations**
 
-Every `apply` string must match the source exactly as Tasks 1 to 5 wrote it. If one does not, the check prints `SKIP ... stale` and counts it as a failure. Append to `MUTATIONS`:
+Every `apply` string must match the source exactly as Tasks 1 to 5 wrote it. If one does not, the check prints `SKIP ... stale` and counts it as a failure. Append to `MUTATIONS`. The last entry reverts `loadKey` to the raw JSON comparison and expects `a settings blob saved by 0.1.0 is not reported as damaged` to fail:
 
 ```js
   {
@@ -1037,12 +1074,20 @@ Every `apply` string must match the source exactly as Tasks 1 to 5 wrote it. If 
       "    out.rowsShown = typeof raw.rowsShown === 'number' && raw.rowsShown >= 0",
     ),
   },
+  {
+    name: 'an upgrade from 0.1.0 is reported as damaged',
+    suite: 'tests/storage.test.js',
+    apply: (s) => s.replace(
+      'var recovered = isRecoveredValue(raw, value);',
+      'var recovered = raw !== null && JSON.stringify(raw) !== JSON.stringify(value);',
+    ),
+  },
 ```
 
 - [ ] **Step 2: Run the mutation check, redirected to a file**
 
 Run: `node tests/mutation-check.mjs > "$TMPDIR/mutation.txt" 2>&1; echo exit=$?` and then read `$TMPDIR/mutation.txt` with `Read`. If `$TMPDIR` is unset, use the session scratchpad. **Never** pipe this into `head`.
-Expected: every line is `OK`, including the five new ones, with `exit=0`. Then `git status --short` must show `torn-forum-command-center.user.js` unchanged by the run, and no `.mutation-backup` left behind.
+Expected: every line is `OK`, including the six new ones, with `exit=0`. Then `git status --short` must show `torn-forum-command-center.user.js` unchanged by the run, and no `.mutation-backup` left behind.
 
 If a new one prints `WEAK`, the test it names passes for the wrong reason. Fix the test, not the mutation. Then add a sentence to the corresponding test's comment saying what it now guards.
 
@@ -1098,7 +1143,7 @@ deep search and the Catch up nav count read them, and puts the capped lists in
 until the page reloads and is never stored.
 ```
 
-In "## Verification", change "It breaks each of 23 user-visible promises" to the count `MUTATIONS.length` now has. The 23 is already stale (51 entries before this plan, 56 after). Get the number with `grep -c "^    suite:" tests/mutation-check.mjs`.
+In "## Verification", change "It breaks each of 23 user-visible promises" to the count `MUTATIONS.length` now has. The 23 is already stale (51 entries before this plan, 57 after). Get the number with `grep -c "^    suite:" tests/mutation-check.mjs`.
 
 - [ ] **Step 2: QA checklist**
 

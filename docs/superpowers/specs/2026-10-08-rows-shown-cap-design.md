@@ -53,6 +53,20 @@ All**, default **All**. Existing users see no change.
 | Request budget | Unchanged. The cap is render-only and issues no request. Constraint 7's text in Settings does not change. | |
 | Search's existing 50-row ceiling | Untouched. `renderSearchView` already stops at 50 rendered thread matches regardless of any setting. That is not this setting, and changing it is out of scope. | Noted so a reviewer does not read it as the cap leaking into Search. |
 
+### The upgrade trap
+
+`loadKey` calls a stored value damaged when `JSON.stringify(raw)` differs from
+the normalised value, and `loadAll` turns that into the notice "Settings were
+damaged and have been reset." A v0.1.0 settings blob has no `rowsShown`, so the
+normaliser adds `rowsShown: 0`, the strings differ, and every upgrading user is
+told their settings were reset when every value was kept. #3 therefore depends
+on the pure engine helper `isRecoveredValue(raw, value)`, designed in #8's spec
+("The upgrade trap"), which fills absent top-level keys of a plain-object `raw`
+from `value` before comparing; nested objects are not forgiven, and a
+present-but-wrong field is still damage. `rowsShown` is top-level, so the helper
+covers it. If #8 has not landed, this plan adds the helper and the `loadKey`
+change exactly as #8 specifies; whichever PR lands second drops its copy.
+
 ## Interfaces
 
 ```js
@@ -123,15 +137,17 @@ proved by the classification test instead: My posts cannot exist uncapped.
 | Catch up caps the activity-sorted list, the nav count stays full, and headings count shown rows | `tests/rows-cap.test.js` |
 | Search and Drafts render every row with the cap at 3 | `tests/rows-cap.test.js` |
 | "Showing N of M", Show all, Show N only, and no line when the cap does not bite | `tests/rows-cap.test.js` |
+| A 0.1.0 settings blob with no `rowsShown` loads with `recovered === false` and no "damaged" notice | `tests/storage.test.js` |
 | The settings select changes and persists the value and clears Show all; Show all is never persisted | `tests/handlers.test.js` |
 | Every rendered control has a handler, including `rows-toggle` and `rows-shown` | `tests/handlers.test.js` (fixture grows to make the cap bite) |
 | The export carries no `rowsShown` | `tests/share.test.js` |
 | The engine stays pure | `tests/purity.test.js` (unchanged; it covers `capRows` by position) |
 
-Five new mutations in `tests/mutation-check.mjs`. Each breaks one promise above:
+Six new mutations in `tests/mutation-check.mjs`. Each breaks one promise above:
 the cap is ignored, the cap runs before the sort, the nav count counts capped
-rows, Search renders the capped list, and the normaliser accepts an off-menu
-value.
+rows, Search renders the capped list, the normaliser accepts an off-menu
+value, and `loadKey` goes back to the raw JSON comparison (an upgrade from
+0.1.0 reads as damage).
 
 `docs/qa-checklist.md` gains a Rows shown block under "The workspace", walked on
 a real account on both Torn PDA and desktop.
