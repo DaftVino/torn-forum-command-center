@@ -183,3 +183,87 @@ test('lookup targets: started only, never-checked newest first, then oldest chec
   assert.deepStrictEqual(api.reactionLookupTargets(mine, NOW, TTL, 2), [2, 1]);
   assert.deepStrictEqual(api.reactionLookupTargets(mine, NOW, TTL, 0), []);
 });
+
+const thumbs = (up, down, at) => ({ topicAt: at === undefined ? NOW : at, up, down });
+const net = (rating, at) => ({ reactAt: at === undefined ? NOW : at, rating });
+
+test('formatSigned', () => {
+  assert.strictEqual(api.formatSigned(12), '+12');
+  assert.strictEqual(api.formatSigned(0), '0');
+  assert.strictEqual(api.formatSigned(-3), '-3');
+  assert.strictEqual(api.formatSigned(1200), '+1.2k');
+  assert.strictEqual(api.formatSigned(-1200), '-1.2k');
+});
+
+test('unloaded, empty and missing are three different things', () => {
+  assert.strictEqual(api.reactionTotals(api.freshMine(), NOW, DAY).state, 'unloaded');
+  assert.strictEqual(api.reactionTotals(mineOf([]), NOW, DAY).state, 'empty');
+  const missing = api.reactionTotals(mineOf([started(1), started(2, { topicAt: NOW })]), NOW, DAY);
+  assert.strictEqual(missing.state, 'missing');
+  assert.strictEqual(missing.up, null);
+  assert.strictEqual(missing.net, null);
+});
+
+test('thumbs sum real topic counts; zero is a known zero', () => {
+  const r = api.reactionTotals(mineOf([started(1, thumbs(10, 2)), started(2, thumbs(0, 0))]), NOW, DAY);
+  assert.strictEqual(r.state, 'known');
+  assert.strictEqual(r.up, 10);
+  assert.strictEqual(r.down, 2);
+  assert.strictEqual(r.thumbThreads, 2);
+  assert.strictEqual(r.net, null);
+});
+
+test('a thread counts once: by thumbs when it has them, else by net', () => {
+  const both = Object.assign(net(500), thumbs(4, 1));
+  const r = api.reactionTotals(mineOf([started(1, both), started(2, net(-3)), started(3)]), NOW, DAY);
+  assert.strictEqual(r.up, 4);
+  assert.strictEqual(r.down, 1);
+  assert.strictEqual(r.net, -3, 'thread 1 is not also counted as net');
+  assert.strictEqual(r.netThreads, 1);
+  assert.strictEqual(r.started, 3);
+});
+
+test('net is never split into thumbs', () => {
+  const r = api.reactionTotals(mineOf([started(1, net(12))]), NOW, DAY);
+  assert.strictEqual(r.state, 'known');
+  assert.strictEqual(r.up, null);
+  assert.strictEqual(r.down, null);
+  assert.strictEqual(r.net, 12);
+});
+
+test('threads you only posted in are not counted', () => {
+  const posted = api.freshMineThread(9, NOW);
+  posted.posted = true;
+  api.setReactionFields(posted, thumbs(500, 500));
+  const r = api.reactionTotals(mineOf([started(1, thumbs(1, 2)), posted]), NOW, DAY);
+  assert.strictEqual(r.up, 1);
+  assert.strictEqual(r.started, 1);
+});
+
+test('stale strictly after the threshold, from the newest contributing check', () => {
+  const mine = mineOf([started(1, thumbs(1, 1, NOW - 2 * DAY)), started(2, net(1, NOW))]);
+  assert.strictEqual(api.reactionTotals(mine, NOW + DAY, DAY).stale, false);
+  assert.strictEqual(api.reactionTotals(mine, NOW + DAY + 1, DAY).stale, true);
+  assert.strictEqual(api.reactionTotals(mine, NOW, DAY).updatedAt, NOW);
+  assert.strictEqual(api.REACTIONS_STALE_MS, DAY);
+});
+
+test('tooltips name the state, the coverage and the missing subscribers', () => {
+  const L = 100;
+  const T = (mine, now, opener) => api.reactionsTitle(api.reactionTotals(mine, now || NOW, DAY), now || NOW, L, opener);
+  const SUBS = ' Torn\'s API has no subscriber count, so none is shown.';
+  assert.strictEqual(T(api.freshMine()), 'Not loaded yet. Open My posts to load the threads you started.' + SUBS);
+  assert.strictEqual(T(mineOf([started(1)])), 'Torn has not reported thumbs or a rating for your threads yet.' + SUBS);
+  assert.strictEqual(T(mineOf([started(1, thumbs(1, 1, NOW - 5 * 60000))])),
+    'Thumbs up and down from the opening post of 1 of 1 thread you started. Updated 5m ago.' + SUBS);
+  assert.strictEqual(T(mineOf([started(1, thumbs(1, 1)), started(2, net(3)), started(3, net(1))])),
+    'Thumbs up and down from the opening post of 1 of 3 threads you started. '
+    + '2 more show Torn\'s net rating until checked. Updated just now.' + SUBS);
+  assert.strictEqual(T(mineOf([started(1, net(3))])),
+    'Torn\'s net rating for 1 of 1 thread you started; thumbs up and down appear once its opening post is checked. '
+    + 'Updated just now.' + SUBS);
+  assert.match(T(mineOf([started(1, thumbs(1, 1, NOW - 3 * DAY))])), /Updated 3d ago\. Open My posts to update\. Torn/);
+  assert.match(T(api.freshMine(), NOW, 'Tap here'), /^Not loaded yet\. Tap here to load/);
+  const many = mineOf(Array.from({ length: 100 }, (_, i) => started(i + 1, thumbs(1, 0))));
+  assert.match(T(many), /Torn sends your newest 100 threads per request/);
+});

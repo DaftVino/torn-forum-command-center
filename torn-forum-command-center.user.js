@@ -73,6 +73,9 @@
   // min(REACTION_LOOKUPS_PER_RUN, enrichBudget) per My posts run.
   var TOPIC_TTL_MS = 12 * 60 * 60 * 1000;
   var REACTION_LOOKUPS_PER_RUN = 5;
+  // The line is read on every view but data arrives only from My posts, so a
+  // shorter threshold would call it stale nearly always. A day is "old".
+  var REACTIONS_STALE_MS = 24 * 60 * 60 * 1000;
   // Without `from`, forum/{id}/posts is oldest first, 20 per page, with the
   // topic post at offset 0. Torn IGNORES `sort` and `limit`, so neither is sent:
   // a `sort=ASC` here would suggest a guarantee that does not exist. Evidence:
@@ -911,6 +914,78 @@
       return (toInt(a.topicAt, 0) - toInt(b.topicAt, 0)) || (b.id - a.id);
     });
     return due.slice(0, cap).map(function (r) { return r.id; });
+  }
+
+  // -- thread reactions: totals (#10) ---------------------------------------
+  // Up and down are only ever sums of real topic-post counts. rating is shown
+  // only as "net" and never split. The API has no subscriber count at all
+  // (docs/reference/torn-openapi-forum-excerpt-2026-10-08.json).
+
+  var NO_SUBSCRIBERS = ' Torn\'s API has no subscriber count, so none is shown.';
+
+  function formatSigned(n) {
+    var v = toInt(n, 0);
+    if (v > 0) return '+' + formatCount(v);
+    if (v < 0) return '-' + formatCount(-v);
+    return '0';
+  }
+
+  function reactionTotals(mine, now, staleMs) {
+    var out = {
+      state: 'unloaded', started: 0, up: null, down: null, thumbThreads: 0,
+      net: null, netThreads: 0, updatedAt: 0, stale: false,
+      // Forum karma: whatever the state, never defaulted to 0.
+      karma: isPlainObject(mine) && isReactionNumber(mine.karma, true) ? Math.floor(mine.karma) : null,
+    };
+    var threads = isPlainObject(mine) && Array.isArray(mine.threads) ? mine.threads : [];
+    for (var i = 0; i < threads.length; i += 1) {
+      var t = threads[i];
+      if (!t || t.started !== true) continue;
+      out.started += 1;
+      if (typeof t.up === 'number' && typeof t.down === 'number') {
+        out.up = (out.up || 0) + t.up;
+        out.down = (out.down || 0) + t.down;
+        out.thumbThreads += 1;
+        out.updatedAt = Math.max(out.updatedAt, toInt(t.topicAt, 0));
+      } else if (typeof t.rating === 'number') {
+        out.net = (out.net || 0) + t.rating;
+        out.netThreads += 1;
+        out.updatedAt = Math.max(out.updatedAt, toInt(t.reactAt, 0));
+      }
+    }
+    if (out.started === 0) {
+      out.state = isPlainObject(mine) && toInt(mine.fetchedAt, 0) > 0 ? 'empty' : 'unloaded';
+      return out;
+    }
+    if (out.thumbThreads === 0 && out.netThreads === 0) { out.state = 'missing'; return out; }
+    out.state = 'known';
+    out.stale = toInt(now, 0) - out.updatedAt > staleMs;
+    return out;
+  }
+
+  function reactionsTitle(r, now, pageLimit, opener) {
+    var act = opener || 'Open My posts';
+    if (!r || r.state === 'unloaded') return 'Not loaded yet. ' + act + ' to load the threads you started.' + NO_SUBSCRIBERS;
+    if (r.state === 'empty') return 'Torn reports no threads you started.' + NO_SUBSCRIBERS;
+    if (r.state === 'missing') return 'Torn has not reported thumbs or a rating for your threads yet.' + NO_SUBSCRIBERS;
+    var ofText = ' of ' + r.started + ' ' + plural(r.started, 'thread') + ' you started';
+    var text;
+    if (r.thumbThreads > 0) {
+      text = 'Thumbs up and down from the opening post of ' + r.thumbThreads + ofText + '.';
+      if (r.netThreads > 0) {
+        text += ' ' + r.netThreads + ' more ' + plural(r.netThreads, 'shows', 'show') + ' Torn\'s net rating until checked.';
+      }
+    } else {
+      text = 'Torn\'s net rating for ' + r.netThreads + ofText + '; thumbs up and down appear once '
+        + plural(r.netThreads, 'its', 'their') + ' opening ' + plural(r.netThreads, 'post is', 'posts are') + ' checked.';
+    }
+    text += ' Updated ' + formatRelativeTime(r.updatedAt, now) + '.';
+    if (r.started >= pageLimit) {
+      text += ' Torn sends your newest ' + pageLimit + ' threads per request; older ones keep the figures '
+        + 'from when they were last seen.';
+    }
+    if (r.stale) text += ' ' + act + ' to update.';
+    return text + NO_SUBSCRIBERS;
   }
 
   // The post body arrives in `content` and is deliberately never read.
