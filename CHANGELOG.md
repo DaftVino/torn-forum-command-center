@@ -34,6 +34,17 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   42" and offers Show all, which lasts until the page reloads. Search and
   Drafts always show everything, and the nav counts still count every
   thread. (#3)
+- Settings, Refreshing: **Only flag new posts by the thread author**, off by
+  default. In Threads and Catch up a thread then counts as new only when its
+  author posted since you last looked: "2 new by author", "2+ new by author"
+  for a lower bound, or "author: not checked" (with the reason) when the script
+  does not know yet, never Torn's any-poster count. Catch up lists unchecked
+  threads under their own heading, and Unread only, `is:unread` and Mark all
+  read never treat an unchecked thread as known-empty. Each activity lookup
+  reads the thread's posts since your marker, 20 a page, at most 3 pages a
+  thread, from the same lookup allowance, so a refresh is still at most 13
+  requests by default. My posts ignores the setting. The debug report counts
+  unchecked and too-many rows. (#4)
 
 ### Changed
 
@@ -54,6 +65,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   Minimal, which live probing showed is the actual minimum (#16).
 - Upgrading no longer reports "Settings were damaged and have been reset" just
   because a release added a setting. Nothing was being reset. (#8)
+- Upgrading no longer reports "Folders and tags were damaged" because a
+  release added a per-thread field. A present field that is wrong, an unknown
+  field and a dropped entry are still reported. (#4)
 
 ## [0.1.0] - 2026-08-07
 

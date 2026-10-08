@@ -326,3 +326,43 @@ test('Reset everything also clears Show all', () => {
   handlers.onAction('reset-all', { getAttribute: (k) => (k === 'data-act' ? 'reset-all' : null) });
   assert.deepStrictEqual(Object.keys(api.state.showAll), []);
 });
+
+test('Mark all read in author mode leaves unchecked threads unmarked', () => {
+  const env = loadUserscript({ location: forums(), now: NOW });
+  const api = env.exports;
+  api.state.settings.authorOnly = true;
+  api.state.organizer.threads['1'] = api.normaliseThreadEntry({ lastVisitedAt: NOW - 1000 });
+  api.state.feed.subscribed = [1, 2].map((id) => api.normaliseSubscribedRow({
+    id, forum_id: 61, title: 'T' + id, author: { id: 3, username: 'a', karma: 1 }, posts: { new: 2, total: 9 },
+  }));
+  api.state.organizer.threads['2'] = api.normaliseThreadEntry({
+    lastVisitedAt: NOW - 1000, authorCheckedAt: 1, authorCheckTotal: 9, authorCheckSince: NOW - 1000,
+    authorNewCount: 0, authorCheckComplete: true });
+  api.recompute(NOW);
+  api.makeHandlers(env.doc, env.win).onAction('markall', { getAttribute: () => null });
+  assert.strictEqual(api.state.organizer.threads['1'].lastSeenTotal, 0, 'an unchecked thread must keep its unseen author posts');
+  assert.strictEqual(api.state.organizer.threads['2'].lastSeenTotal, 9);
+});
+
+test('the author-only toggle saves, survives a reload, and turning it off restores the count', () => {
+  const env = loadUserscript({ location: forums(), now: NOW });
+  const api = env.exports;
+  api.state.feed.subscribed = [api.normaliseSubscribedRow({
+    id: 5, forum_id: 61, title: 'T', author: { id: 1, username: 'a', karma: 0 }, posts: { new: 2, total: 7 },
+  })];
+  api.recompute(NOW);
+  const handlers = api.makeHandlers(env.doc, env.win);
+  const box = (checked) => ({ getAttribute: () => null, checked, value: checked ? 'on' : '' });
+
+  handlers.onChange('author-only', box(true));
+  assert.strictEqual(JSON.parse(env.gmStore.get('tfcc:settings')).authorOnly, true);
+  assert.strictEqual(api.state.rows[0].authorState, 'unchecked', 'the rows are recomputed, not only redrawn');
+  assert.strictEqual(api.state.rows[0].unread, 0);
+
+  const again = loadUserscript({ location: forums(), now: NOW,
+    gmStore: [['tfcc:settings', env.gmStore.get('tfcc:settings')]] });
+  assert.strictEqual(again.exports.state.settings.authorOnly, true);
+
+  handlers.onChange('author-only', box(false));
+  assert.strictEqual(api.state.rows[0].unread, 2, 'off means Torn\'s count again');
+});

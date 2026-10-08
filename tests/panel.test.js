@@ -383,3 +383,101 @@ test('Settings states both request budgets, from the constants', () => {
   assert.match(html, /a Threads refresh is at most 13\s+requests and My posts at most 12; at the largest setting of 25, 28 and 27\./);
   assert.match(html, /under 40 requests a minute/);
 });
+
+// -- author-only mode (issue #4) -------------------------------------------
+
+test('author mode: Unread only keeps unchecked rows visible', () => {
+  const env = loadUserscript({ location: forums() });
+  env.exports.state.settings.authorOnly = true;
+  env.exports.state.settings.unreadOnly = true;
+  env.exports.state.organizer.threads['1'] = env.exports.normaliseThreadEntry({ lastVisitedAt: NOW - 1000 });
+  seed(env, [{ id: 1, unread: 4 }]);
+  const model = env.exports.buildPanelModel(NOW);
+  assert.strictEqual(model.rows.length, 1, 'an unknown must not be hidden as if it were known-empty');
+  assert.strictEqual(model.totals.unchecked, 1);
+  assert.strictEqual(model.catchUp.length, 0);
+  assert.strictEqual(model.catchUpUnchecked.length, 1);
+});
+
+test('author mode: My posts ignores the setting and keeps the any-poster count', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1, unread: 3 }]);
+  seedMine(env);
+  const api = env.exports;
+  // Thread 1 is subscribed and also one the user posted in.
+  api.state.mine.threads.push(Object.assign(api.freshMineThread(1, NOW), { posted: true, title: 'Thread 1' }));
+  api.state.settings.view = 'mine';
+  api.recompute(NOW);
+  const off = api.buildPanelModel(NOW);
+  const offHtml = api.panelHtml(off);
+
+  api.state.settings.authorOnly = true;
+  api.recompute(NOW);
+  const on = api.buildPanelModel(NOW);
+  assert.deepStrictEqual(on.mine, off.mine, 'the My posts counts do not move');
+  assert.deepStrictEqual(on.rows.map((r) => [r.id, r.unread]), off.rows.map((r) => [r.id, r.unread]));
+  const onHtml = api.panelHtml(on);
+  assert.doesNotMatch(onHtml, /by author|author: not checked/, 'no author-only wording in My posts');
+  assert.match(offHtml, /3 new/);
+  assert.match(onHtml, /3 new/);
+  api.state.settings.unreadOnly = true;
+  assert.deepStrictEqual(api.buildPanelModel(NOW).rows.map((r) => r.id).sort(), ['1', '50']);
+});
+
+function authorEnv(entry, unread) {
+  const env = loadUserscript({ location: forums() });
+  env.exports.state.settings.authorOnly = true;
+  env.exports.state.organizer.threads['1'] = env.exports.normaliseThreadEntry(Object.assign({ lastVisitedAt: NOW - 1000 }, entry));
+  seed(env, [{ id: 1, unread: unread === undefined ? 37 : unread, total: 50 }]);
+  return env;
+}
+
+test('author mode never prints Torn\'s any-poster count', () => {
+  const env = authorEnv({});
+  const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  assert.doesNotMatch(html, /37 new|>37</, 'the any-poster count must not appear as a badge');
+  assert.match(html, /author: not checked/);
+  assert.match(html, /1 not checked/);
+});
+
+test('author mode shows N new by author, and N+ for a lower bound', () => {
+  const base = { authorCheckedAt: 1, authorCheckTotal: 50, authorCheckSince: NOW - 1000, authorNewCount: 2, authorLatestAt: NOW - 500 };
+  let html = env2html(authorEnv(Object.assign({ authorCheckComplete: true }, base)));
+  assert.match(html, /2 new by author/);
+  assert.doesNotMatch(html, /2\+ new by author/);
+  html = env2html(authorEnv(Object.assign({ authorCheckComplete: false }, base)));
+  assert.match(html, /2\+ new by author/);
+  function env2html(env) { return env.exports.panelHtml(env.exports.buildPanelModel(NOW)); }
+});
+
+test('author mode says too many new when no post read is by the author', () => {
+  const env = authorEnv({ authorCheckedAt: 1, authorCheckTotal: 50, authorCheckSince: NOW - 1000,
+    authorNewCount: 0, authorCheckComplete: false, authorCheckReason: 'too-many' });
+  const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  assert.match(html, /author: not checked \(too many new\)/);
+  assert.match(html, /could not all be read/, 'the tooltip says why');
+  assert.doesNotMatch(html, /37 new/);
+});
+
+test('catch up lists unchecked threads under their own heading', () => {
+  const env = authorEnv({});
+  env.exports.state.settings.view = 'catchup';
+  const html = env.exports.renderCatchUpView(env.exports.buildPanelModel(NOW));
+  assert.match(html, /Not yet checked for author posts \(1\)/);
+  assert.doesNotMatch(html, /You are caught up/, 'an unchecked thread means we cannot claim that');
+  assert.match(html, /No author updates in the threads checked/);
+});
+
+test('settings states the author-only option and the real request cost', () => {
+  const env = loadUserscript({ location: forums() });
+  const html = env.exports.renderSettingsView(env.exports.buildPanelModel(NOW));
+  assert.match(html, /Only flag new posts by the thread author/);
+  assert.match(html, /data-act="author-only"/);
+  assert.match(html, /at most 13 requests/);
+  assert.match(html, /edits are not detected/i, 'the limit is shown before the setting is turned on');
+  assert.match(html, /My posts ignores this setting/);
+  // The figure must be computed from the user's budget, not hard-coded. 13
+  // alone would also pass with a constant string, so use a different budget.
+  env.exports.state.settings.enrichBudget = 4;
+  assert.match(env.exports.renderSettingsView(env.exports.buildPanelModel(NOW)), /at most 7 requests a refresh/);
+});

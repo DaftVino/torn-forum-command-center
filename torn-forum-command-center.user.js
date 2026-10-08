@@ -98,6 +98,10 @@
   var MINE_MAX_THREADS = 200;
   var POST_CACHE_MAX_BYTES = 1500000;
   var EXPORT_PREFIX = 'TFCC1:';
+  // Author-only mode (issue #4): the most posts pages one thread's walk reads
+  // in one refresh, and the reasons a cut-short walk may store.
+  var AUTHOR_MAX_PAGES = 3;
+  var AUTHOR_CHECK_REASONS = Object.freeze(['', 'too-many']);
 
   var ACTIVITY_SOURCES = Object.freeze(['enriched', 'feed', 'mine', 'enriched-stale', 'own-post', 'visit', 'none']);
 
@@ -335,6 +339,9 @@
       enrichBudget: DEFAULT_ENRICH_BUDGET,
       autosaveDrafts: true,
       hideTornBox: false,
+      // Issue #4. Off by default: flag a thread as new only when its author
+      // posts. Applies to Threads and Catch up; My posts ignores it.
+      authorOnly: false,
       // Issue #8. Off by default: an existing user sees no change.
       autoHideOnOpen: false,
       // The Torn error code that condemned the stored key, or 0. Persisted on
@@ -363,6 +370,7 @@
     out.unreadOnly = raw.unreadOnly === true;
     out.autosaveDrafts = raw.autosaveDrafts !== false;
     out.hideTornBox = raw.hideTornBox === true;
+    out.authorOnly = raw.authorOnly === true;
     out.autoHideOnOpen = raw.autoHideOnOpen === true;
     out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1
       ? 0 : toInt(raw.keyRejected, 0);
@@ -441,6 +449,14 @@
       isSticky: false,
       firstSeenAt: 0,
       archived: false,
+      // Author-only check result (issue #4). A cache: never exported.
+      authorCheckedAt: 0,
+      authorCheckTotal: 0,
+      authorCheckSince: 0,
+      authorNewCount: 0,
+      authorLatestAt: 0,
+      authorCheckComplete: false,
+      authorCheckReason: '',
     };
     if (!isPlainObject(raw)) return e;
     if (typeof raw.folderId === 'string' && raw.folderId) e.folderId = safeString(raw.folderId, 64);
@@ -463,6 +479,13 @@
     e.isLocked = raw.isLocked === true;
     e.isSticky = raw.isSticky === true;
     e.firstSeenAt = Math.max(0, toInt(raw.firstSeenAt, 0));
+    e.authorCheckedAt = Math.max(0, toInt(raw.authorCheckedAt, 0));
+    e.authorCheckTotal = Math.max(0, toInt(raw.authorCheckTotal, 0));
+    e.authorCheckSince = Math.max(0, toInt(raw.authorCheckSince, 0));
+    e.authorNewCount = Math.max(0, toInt(raw.authorNewCount, 0));
+    e.authorLatestAt = Math.max(0, toInt(raw.authorLatestAt, 0));
+    e.authorCheckComplete = raw.authorCheckComplete === true;
+    e.authorCheckReason = AUTHOR_CHECK_REASONS.indexOf(raw.authorCheckReason) !== -1 ? raw.authorCheckReason : '';
     return e;
   }
 
@@ -524,6 +547,24 @@
       threads: threads,
       lastCatchUpAt: Math.max(0, toInt(raw.lastCatchUpAt, 0)),
     };
+  }
+
+  // An upgrade adds per-thread fields (issue #4). They are nested inside the
+  // threads map, which isRecoveredValue deliberately does not forgive, so fill
+  // each raw thread entry's absent keys from its normalised entry first. A key
+  // that is present and changed, a key the normaliser drops, and an entry it
+  // drops all still differ, so they are still damage.
+  function isRecoveredOrganizer(raw, value) {
+    if (isPlainObject(raw) && isPlainObject(raw.threads) && isPlainObject(value) && isPlainObject(value.threads)) {
+      var threads = {};
+      Object.keys(raw.threads).forEach(function (id) {
+        var r = raw.threads[id];
+        var v = value.threads[id];
+        threads[id] = isPlainObject(r) && isPlainObject(v) ? Object.assign({}, v, r) : r;
+      });
+      raw = Object.assign({}, raw, { threads: threads });
+    }
+    return isRecoveredValue(raw, value);
   }
 
   function freshDrafts() { return { v: SCHEMA_VERSION, byThread: {} }; }
@@ -1062,6 +1103,105 @@
     };
   }
 
+  // -- author-only mode (issue #4) ----------------------------------------
+  // One step of the backwards walk over forum/{id}/posts?from=..&to=... Torn
+  // returns newest first, at most perPage, and both from and to are
+  // inclusive, so the next page starts with this page's oldest post again.
+  // prevLink is the response's _metadata.links.prev, read only for null; the
+  // URL itself is never fetched (the script builds its own).
+  function authorPageStep(pagePosts, seenIds, perPage, prevLink) {
+    var list = Array.isArray(pagePosts) ? pagePosts : [];
+    var size = Math.max(1, toInt(perPage, POSTS_PER_PAGE));
+    if (list.length < size || prevLink === null) return { done: true, complete: true, to: 0 };
+    var seen = {};
+    (Array.isArray(seenIds) ? seenIds : []).forEach(function (id) { seen[String(id)] = true; });
+    var added = 0;
+    var oldest = 0;
+    for (var i = 0; i < list.length; i += 1) {
+      var post = list[i];
+      if (!isPlainObject(post)) continue;
+      var t = toInt(post.created_time, 0);
+      if (t > 0 && (oldest === 0 || t < oldest)) oldest = t;
+      if (!seen[String(post.id)]) added += 1;
+    }
+    // A full page that brought nothing new: more than a page of posts share
+    // one second, so to cannot move. Stop rather than loop; it is a lower bound.
+    if (added === 0 || oldest === 0) return { done: true, complete: false, to: 0 };
+    return { done: false, complete: false, to: oldest };
+  }
+
+  // Reads every page of one walk, concatenated. Each post id counts once, so
+  // the boundary post that the inclusive to repeats is not counted twice. A
+  // post counts as new only when it is strictly after the marker, which also
+  // keeps a post at the marker out even if the request were built wrong.
+  // complete comes from the walk (authorPageStep), not from a page length.
+  function summariseAuthorPosts(posts, authorId, sinceMs, complete) {
+    var list = Array.isArray(posts) ? posts : [];
+    var aid = toInt(authorId, 0);
+    var since = Math.max(0, toInt(sinceMs, 0));
+    var seen = {};
+    var out = { count: 0, latestAt: 0, newestAt: 0, complete: complete === true };
+    for (var i = 0; i < list.length; i += 1) {
+      var post = list[i];
+      if (!isPlainObject(post)) continue;
+      var key = post.id === undefined || post.id === null ? '' : String(post.id);
+      if (key && seen[key]) continue;
+      if (key) seen[key] = true;
+      var at = secondsToMs(post.created_time);
+      if (at <= since) continue;
+      if (at > out.newestAt) out.newestAt = at;
+      var pid = isPlainObject(post.author) ? toInt(post.author.id, 0) : 0;
+      if (aid > 0 && pid === aid) {
+        out.count += 1;
+        if (at > out.latestAt) out.latestAt = at;
+      }
+    }
+    return out;
+  }
+
+  var AUTHOR_REASON_TEXT = Object.freeze({
+    never: 'Not checked for author posts yet. Torn reports new posts from someone. Refresh, or raise Activity lookups in Settings.',
+    stale: 'New posts since the last check. Not rechecked yet. Refresh to check again.',
+    'too-many': 'More posts are new than one refresh reads for a thread, so they could not all be read. None of those read is by the author; the older ones were not checked. Open the thread or mark it read to start counting again.',
+    'no-author': 'The thread author is not known, so their posts cannot be picked out.',
+    'no-marker': 'Open this thread or mark it read once, so there is a point to count from.',
+  });
+
+  // The point after which an author post counts as new: the last time the
+  // user saw the thread (a captured visit or Mark read), else when the script
+  // first saw it. Posts from before the install are deliberately not flagged.
+  function authorSinceFor(entry) {
+    if (!entry) return 0;
+    return entry.lastVisitedAt > 0 ? entry.lastVisitedAt : Math.max(0, toInt(entry.firstSeenAt, 0));
+  }
+
+  // The author-only view of one row: 'none' (known: nothing new by the
+  // author), 'author' (an exact count), 'author-atleast' (a lower bound) or
+  // 'unchecked' (unknown, with a reason). An unknown is never folded into none.
+  function authorStateFor(apiRow, entry, u) {
+    var e = entry || normaliseThreadEntry(null);
+    function unchecked(reason) { return { state: 'unchecked', count: 0, latestAt: 0, reason: reason }; }
+    if (!u || u.dismissed || u.tornUnread === 0) return { state: 'none', count: 0, latestAt: 0, reason: '' };
+    var authorId = (apiRow && apiRow.authorId) || e.authorId || 0;
+    if (!authorId) return unchecked('no-author');
+    var since = authorSinceFor(e);
+    if (!since) return unchecked('no-marker');
+    if (!e.authorCheckedAt) return unchecked('never');
+    if (e.authorCheckSince !== since) return unchecked('stale');
+    if (e.authorCheckTotal === u.postsTotal) {
+      if (e.authorNewCount > 0) {
+        return { state: e.authorCheckComplete ? 'author' : 'author-atleast', count: e.authorNewCount, latestAt: e.authorLatestAt, reason: '' };
+      }
+      // A walk cut short with no author post is never a known zero: the author
+      // may have posted among the new posts the walk did not reach.
+      return e.authorCheckComplete ? { state: 'none', count: 0, latestAt: 0, reason: '' } : unchecked('too-many');
+    }
+    if (e.authorNewCount > 0) {
+      return { state: 'author-atleast', count: e.authorNewCount, latestAt: e.authorLatestAt, reason: 'grown' };
+    }
+    return unchecked('stale');
+  }
+
   // A subscribed thread keeps Torn's own count, exactly as in Threads. Only a
   // thread Torn gives no count for is counted here, and an unknown total is
   // reported as unchecked so it can never pass for a thread checked and quiet.
@@ -1163,6 +1303,7 @@
     var drafts = (input && input.drafts) || freshDrafts();
     var now = toInt(input && input.now, 0);
     var ttl = input && input.enrichTtlMs !== undefined ? input.enrichTtlMs : ENRICH_TTL_MS;
+    var authorOnly = !!(input && input.authorOnly);
     var mine = (input && input.mine) || freshMine();
     var mineById = {};
     for (var mi = 0; mi < mine.threads.length; mi += 1) mineById[String(mine.threads[mi].id)] = mine.threads[mi];
@@ -1214,6 +1355,7 @@
       var rec = Object.prototype.hasOwnProperty.call(mineById, id) ? mineById[id] : null;
       var u = rec ? mineUnreadFor(api, entry, rec) : unreadFor(api, entry);
       var unreadSource = rec ? u.unreadSource : (api ? 'torn' : 'none');
+      var au = authorOnly ? authorStateFor(api, entry, u) : null;
       var feedRow = Object.prototype.hasOwnProperty.call(feeds, id) ? feeds[id] : null;
       var act = resolveLastActivity(entry, feedRow ? feedRow.at : 0, now, ttl,
         rec ? { mineAt: rec.lastPostAt, ownPostAt: rec.myLastPostAt } : null);
@@ -1235,7 +1377,14 @@
         subscribed: !!api,
         postsTotal: u.postsTotal,
         tornUnread: u.tornUnread,
-        unread: u.unread,
+        unread: au ? ((au.state === 'author' || au.state === 'author-atleast') ? au.count : 0) : u.unread,
+        // The any-poster count, whatever the setting. My posts ignores
+        // author-only mode (issue #4) and reads this.
+        anyUnread: u.unread,
+        authorState: au ? au.state : 'off',
+        authorNew: au ? au.count : 0,
+        authorLatestAt: au ? au.latestAt : 0,
+        authorReason: au ? au.reason : '',
         dismissed: u.dismissed,
         pinned: entry.pinned,
         archived: entry.archived,
@@ -1307,13 +1456,29 @@
     return out;
   }
 
-  function catchUpList(rows, lastCatchUpAt) {
+  function catchUpList(rows, lastCatchUpAt, mode) {
     var since = Math.max(0, toInt(lastCatchUpAt, 0));
     return rows.filter(function (r) {
       if (r.dismissed) return false;
+      if (mode === 'author') {
+        return (r.authorState === 'author' || r.authorState === 'author-atleast') && r.authorLatestAt > since;
+      }
       if (r.unread > 0) return true;
       return r.lastActivity !== null && r.lastActivity > since;
     });
+  }
+
+  // Rows whose author activity is unknown. Kept out of the catch-up list, which
+  // claims "the author posted", but listed beside it so nothing goes quiet.
+  function catchUpUnchecked(rows) {
+    return rows.filter(function (r) { return r.authorState === 'unchecked' && !r.archived; });
+  }
+
+  // My posts ignores author-only mode (issue #4): its rows go back to the
+  // any-poster count. A row built with the setting off is returned as is.
+  function anyPosterRow(r) {
+    if (r.authorState === 'off') return r;
+    return Object.assign({}, r, { unread: r.anyUnread, authorState: 'off', authorNew: 0, authorLatestAt: 0, authorReason: '' });
   }
 
   // Every list view's population and filters, in one place. sortThreads runs
@@ -1324,7 +1489,7 @@
     return rows.filter(function (r) {
       if (view === 'mine' ? !r.mineRole : !r.inThreads) return false;
       if (r.archived && !r.pinned && r.unread === 0) return false;
-      if (f.unreadOnly && r.unread === 0) return false;
+      if (f.unreadOnly && r.unread === 0 && r.authorState !== 'unchecked') return false;
       if (f.folderFilter && r.folderId !== f.folderFilter) return false;
       if (f.tagFilter && r.tags.indexOf(f.tagFilter) === -1) return false;
       return matchThread(r, query);
@@ -1396,7 +1561,7 @@
       return !!row.folderName && row.folderName.toLowerCase().indexOf(v) !== -1;
     }
     if (term.type === 'is') {
-      if (v === 'unread') return row.unread > 0;
+      if (v === 'unread') return row.unread > 0 || row.authorState === 'unchecked';
       if (v === 'pinned') return row.pinned;
       if (v === 'draft') return row.hasDraft;
       if (v === 'subscribed') return row.subscribed;
@@ -2035,13 +2200,13 @@
     }
   }
 
-  function loadKey(name, normaliser, now) {
+  function loadKey(name, normaliser, now, recoveredCheck) {
     var raw = readRaw(name);
     if (raw === PARSE_FAILED) {
       return { value: normaliser(null, now), recovered: true, hadRaw: true };
     }
     var value = normaliser(raw, now);
-    var recovered = isRecoveredValue(raw, value);
+    var recovered = (recoveredCheck || isRecoveredValue)(raw, value);
     return { value: value, recovered: recovered, hadRaw: raw !== null };
   }
 
@@ -2333,7 +2498,7 @@
 
   function loadAll(now) {
     var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now);
-    var o = loadKey(STORAGE_KEYS.organizer, normaliseOrganizer, now);
+    var o = loadKey(STORAGE_KEYS.organizer, normaliseOrganizer, now, isRecoveredOrganizer);
     var d = loadKey(STORAGE_KEYS.drafts, normaliseDrafts, now);
     var f = loadKey(STORAGE_KEYS.feed, normaliseFeed, now);
     var p = loadKey(STORAGE_KEYS.postCache, normalisePostCache, now);
@@ -2377,6 +2542,7 @@
       drafts: state.drafts,
       mine: state.mine,
       now: now,
+      authorOnly: state.settings.authorOnly === true,
     });
   }
 
@@ -2445,10 +2611,19 @@
         state.lastError = null;
         recompute(now);
         if (budget <= 0) return { ok: true };
+        var authorMode = state.settings.authorOnly === true;
         var targets = state.rows
-          .filter(function (r) { return r.subscribed && r.unread > 0 && r.activitySource !== 'enriched'; })
+          .filter(function (r) {
+            if (!r.subscribed) return false;
+            // Author mode selects on the author state, never on unread: an
+            // unchecked row has unread 0 by design, so selecting on it would
+            // check nothing, ever.
+            if (authorMode) return r.authorState === 'unchecked' && (r.authorReason === 'never' || r.authorReason === 'stale');
+            return r.unread > 0 && r.activitySource !== 'enriched';
+          })
           .slice(0, budget);
-        return enrichThreads(targets.map(function (r) { return r.numericId; }), now, options);
+        var ids = targets.map(function (r) { return r.numericId; });
+        return authorMode ? checkAuthorPosts(ids, now, options, budget) : enrichThreads(ids, now, options);
       })
       .then(function (res) {
         if (!stale()) {
@@ -2496,6 +2671,97 @@
           // Stop the batch rather than grinding against the limit.
           return { ok: true, enriched: done, stoppedEarly: true };
         }
+        return step(i + 1);
+      });
+    }
+
+    return step(0);
+  }
+
+  // Author-only lookups (issue #4): forum/{id}/posts in place of
+  // forum/{id}/thread. With from set, Torn returns the newest 20 posts at or
+  // after it, newest first, and ignores offset; to (also inclusive) pages
+  // further back, so each further page repeats the previous page's oldest
+  // post, which summariseAuthorPosts counts once. from is marker + 1: a post
+  // at the marker was already seen. Every page is one unit of the same lookup
+  // budget, a thread gets at most AUTHOR_MAX_PAGES, and a further page is
+  // fetched only while one request stays reserved for each thread not yet
+  // started, so the refresh total never moves. URLs are built here, through
+  // tornApiGet, from from and to; the prev URL Torn returns is read only for
+  // null, never fetched, because it carries Torn's own parameters. The check
+  // total is the subscribed posts.total; a thread's own "posts" counts
+  // replies and is one less, so it must never be stored here (if one is ever
+  // needed, threadPostsTotal converts it; never add 1 again after that). The
+  // entry is re-read after the walk, because a handler may have replaced the
+  // organizer while the requests were in flight.
+  function checkAuthorPosts(ids, now, opts, budget) {
+    var list = (ids || []).slice(0, MAX_ENRICH_BUDGET);
+    if (!list.length) return Promise.resolve({ ok: true, checked: 0, requests: 0 });
+    var cap = Math.min(MAX_ENRICH_BUDGET, Math.max(list.length, toInt(budget, list.length)));
+    var spent = 0;
+    var done = 0;
+    var generation = state.generation;
+
+    function step(i) {
+      if (i >= list.length) return Promise.resolve({ ok: true, checked: done, requests: spent });
+      var id = String(list[i]);
+      var before = entryOf(state.organizer, id);
+      var since = authorSinceFor(before);
+      var row = state.rows.filter(function (r) { return r.id === id; })[0] || null;
+      var authorId = (row && row.authorId) || before.authorId;
+      var total = row ? row.postsTotal : before.postsTotal;
+      var from = Math.floor(since / 1000) + 1;
+      var posts = [];
+      var pages = 0;
+
+      function page(to) {
+        var params = { from: from };
+        if (to > 0) params.to = to;
+        spent += 1;
+        pages += 1;
+        return tornApiGet('forum/' + id + '/posts', params, opts).then(function (res) {
+          if (generation !== state.generation) return { stale: true };
+          if (!(res.ok && isPlainObject(res.data) && Array.isArray(res.data.posts))) {
+            return { failed: true, throttled: res.reason === 'throttled' };
+          }
+          var meta = isPlainObject(res.data._metadata) && isPlainObject(res.data._metadata.links) ? res.data._metadata.links : {};
+          var seenIds = posts.map(function (p) { return isPlainObject(p) ? p.id : null; });
+          var walk = authorPageStep(res.data.posts, seenIds, POSTS_PER_PAGE, meta.prev);
+          posts = posts.concat(res.data.posts);
+          if (walk.done) return { complete: walk.complete };
+          // Breadth before depth: one request stays reserved for every
+          // thread in this batch that has not had its first page yet.
+          var reserved = list.length - (i + 1);
+          if (pages >= AUTHOR_MAX_PAGES || spent + reserved >= cap) return { complete: false };
+          return page(walk.to);
+        });
+      }
+
+      return page(0).then(function (out) {
+        if (out.stale) return { ok: true, checked: done, requests: spent, stale: true };
+        if (out.failed && pages === 1) {
+          // Nothing read: write nothing, so the row stays never/stale.
+          if (out.throttled) return { ok: true, checked: done, requests: spent, stoppedEarly: true };
+          return step(i + 1);
+        }
+        // A failed further page keeps what was read, as a walk cut short.
+        var sum = summariseAuthorPosts(posts, authorId, since, out.complete === true);
+        var e = entryOf(state.organizer, id);
+        e.authorCheckedAt = now;
+        e.authorCheckTotal = total;
+        e.authorCheckSince = since;
+        e.authorNewCount = sum.count;
+        e.authorLatestAt = sum.latestAt;
+        e.authorCheckComplete = sum.complete;
+        e.authorCheckReason = !sum.complete && sum.count === 0 ? 'too-many' : '';
+        if (sum.newestAt > 0) {
+          // Newest first with no upper bound: the newest post read is the
+          // thread's last post, however the walk ended.
+          e.lastPostTimeCached = Math.max(e.lastPostTimeCached, sum.newestAt);
+          e.enrichedAt = now;
+        }
+        done += 1;
+        if (out.throttled) return { ok: true, checked: done, requests: spent, stoppedEarly: true };
         return step(i + 1);
       });
     }
@@ -3120,18 +3386,24 @@
     // Threads, Catch up, the header badge and Search see only the Threads
     // population. A My posts-only thread lives in its own view.
     var threadRows = rows.filter(function (r) { return r.inThreads; });
-    var mineAll = viewRows(rows, 'mine', {}, parseQuery(''));
-    var visible = viewRows(rows, s.view === 'mine' ? 'mine' : 'threads', s, query);
+    // My posts ignores author-only mode (issue #4).
+    var mineRows = rows.map(anyPosterRow);
+    var mineAll = viewRows(mineRows, 'mine', {}, parseQuery(''));
+    var visible = s.view === 'mine' ? viewRows(mineRows, 'mine', s, query) : viewRows(rows, 'threads', s, query);
 
     var totalUnread = 0;
-    for (var i = 0; i < threadRows.length; i += 1) totalUnread += threadRows[i].unread;
+    var totalUnchecked = 0;
+    for (var i = 0; i < threadRows.length; i += 1) {
+      totalUnread += threadRows[i].unread;
+      if (threadRows[i].authorState === 'unchecked') totalUnchecked += 1;
+    }
 
     // Each capped view caps its own sorted population, so the cap is the last
     // step after every filter and the sort: the top N of what was asked for.
     var sorted = sortThreads(visible, s.sort);
     var threadsSorted = s.view === 'mine' ? sortThreads(viewRows(rows, 'threads', s, query), s.sort) : sorted;
-    var mineSorted = s.view === 'mine' ? sorted : sortThreads(viewRows(rows, 'mine', s, query), s.sort);
-    var catchUp = sortThreads(catchUpList(threadRows, state.organizer.lastCatchUpAt), 'activity');
+    var mineSorted = s.view === 'mine' ? sorted : sortThreads(viewRows(mineRows, 'mine', s, query), s.sort);
+    var catchUp = sortThreads(catchUpList(threadRows, state.organizer.lastCatchUpAt, s.authorOnly ? 'author' : 'any'), 'activity');
     var showAll = state.showAll || {};
 
     return {
@@ -3160,6 +3432,7 @@
         threads: threadRows.length,
         subscribed: threadRows.filter(function (r) { return r.subscribed; }).length,
         unread: totalUnread,
+        unchecked: totalUnchecked,
         drafts: draftList(state.drafts).length,
       },
       // Whole on purpose: the Catch up nav count reads its length.
@@ -3171,6 +3444,8 @@
         catchup: capRows(catchUp, s.rowsShown, showAll.catchup === true),
         mine: capRows(mineSorted, s.rowsShown, showAll.mine === true),
       },
+      catchUpUnchecked: s.authorOnly ? sortThreads(catchUpUnchecked(threadRows), 'activity') : [],
+      authorOnly: s.authorOnly === true,
       mine: {
         total: mineAll.length,
         unread: mineAll.filter(function (r) { return r.unread > 0; }).length,
@@ -3194,6 +3469,7 @@
         enrichBudget: s.enrichBudget,
         autosaveDrafts: s.autosaveDrafts,
         hideTornBox: s.hideTornBox,
+        authorOnly: s.authorOnly,
         autoHideOnOpen: s.autoHideOnOpen,
         deepSearchPages: s.deepSearchPages,
         rowsShown: s.rowsShown,
@@ -3262,7 +3538,17 @@
     out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '"'
       + threadLinkAttr(row.id) + '>'
       + escapeHtml(row.title) + '</a></span>');
-    if (row.unread > 0) {
+    // Author-only mode (issue #4) never shows Torn's any-poster count, and an
+    // unknown is named, never left blank.
+    var amode = row.authorState || 'off';
+    if (amode === 'author' || amode === 'author-atleast') {
+      out.push('<span class="tfcc-unread">' + formatCount(row.authorNew) + (amode === 'author-atleast' ? '+' : '')
+        + ' new by author</span>');
+    } else if (amode === 'unchecked') {
+      out.push('<span class="tfcc-note tfcc-unchecked" title="'
+        + escapeHtml(AUTHOR_REASON_TEXT[row.authorReason] || AUTHOR_REASON_TEXT.never)
+        + '">author: not checked' + (row.authorReason === 'too-many' ? ' (too many new)' : '') + '</span>');
+    } else if (amode === 'off' && row.unread > 0) {
       if (row.unreadSource === 'local') {
         // A count this script made, never passed off as Torn's.
         out.push('<span class="tfcc-unread" title="Counted on this device since you last marked it read or posted. '
@@ -3439,8 +3725,21 @@
     out.push('</div>');
     out.push('<p class="tfcc-note">Marking read here hides a thread from this list. '
       + 'It cannot clear Torn\'s own new-post counter, which only clears when you open the thread.</p>');
+    // Author-only mode (issue #4): threads not yet checked are listed apart,
+    // so an unknown never reads as caught up.
+    var unchecked = '';
+    var pending = model.catchUpUnchecked || [];
+    if (pending.length) {
+      var u = ['<div class="tfcc-section"><h4>Not yet checked for author posts (' + pending.length
+        + ')</h4><div class="tfcc-rows">'];
+      for (var p = 0; p < pending.length; p += 1) u.push(renderRow(pending[p], model));
+      u.push('</div></div>');
+      unchecked = u.join('');
+    }
     if (!model.catchUp.length) {
-      out.push('<div class="tfcc-empty">Nothing new. You are caught up.</div>');
+      out.push('<div class="tfcc-empty">' + (model.authorOnly && pending.length
+        ? 'No author updates in the threads checked.' : 'Nothing new. You are caught up.') + '</div>');
+      out.push(unchecked);
       return out.join('');
     }
     // Cap the flat, activity-sorted list first, then group what is shown.
@@ -3461,6 +3760,7 @@
       out.push('</div></div>');
     }
     out.push(renderCapLine(model.capped.catchup, 'catchup'));
+    out.push(unchecked);
     return out.join('');
   }
 
@@ -3632,6 +3932,20 @@
       + '; at the largest setting of ' + MAX_ENRICH_BUDGET + ', ' + (3 + MAX_ENRICH_BUDGET) + ' and '
       + (2 + MAX_ENRICH_BUDGET) + '. '
       + 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.</p>');
+    out.push('<div class="tfcc-kv"><label for="tfcc-author">Only flag new posts by the thread author</label>'
+      + '<input id="tfcc-author" type="checkbox" data-act="author-only"'
+      + (model.settings.authorOnly ? ' checked' : '') + '></div>');
+    // Shown whether the setting is on or off, so the limits are read first.
+    out.push('<p class="tfcc-note">With this on, a thread in Threads and Catch up counts as new only when its '
+      + 'author has posted since you last looked. Each activity lookup then reads the thread\'s posts since '
+      + 'you last looked, ' + POSTS_PER_PAGE + ' at a time, newest first, instead of its last-post time. '
+      + 'Each page is one lookup from the same allowance, so the cost does not change: with your setting of '
+      + model.settings.enrichBudget + ', a Threads refresh is at most ' + (3 + model.settings.enrichBudget)
+      + ' requests a refresh, on or off. A thread gets at most ' + AUTHOR_MAX_PAGES + ' pages, and only once '
+      + 'every other thread has had its first. With more new posts than that, a count shows as a minimum '
+      + '(N+), or as "not checked (too many new)" when none of the posts read is by the author. Threads not '
+      + 'checked yet show "not checked". My posts ignores this setting. Posts from before you started using '
+      + 'this script are not flagged, and edits are not detected.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Appearance</h4>');
@@ -3737,7 +4051,11 @@
     out.push('<div class="tfcc-head">');
     out.push('<span class="tfcc-title">Forum Command Center</span>');
     if (model.totals.unread > 0) {
-      out.push('<span class="tfcc-badge">' + formatCount(model.totals.unread) + ' new</span>');
+      out.push('<span class="tfcc-badge">' + formatCount(model.totals.unread)
+        + (model.authorOnly ? ' new by author' : ' new') + '</span>');
+    }
+    if (model.authorOnly && model.totals.unchecked > 0) {
+      out.push('<span class="tfcc-note">' + model.totals.unchecked + ' not checked</span>');
     }
     out.push('<span class="tfcc-note">' + model.totals.subscribed + ' subscribed</span>');
     out.push(btn('refresh', model.refreshing ? 'Refreshing...' : 'Refresh'));
@@ -3933,7 +4251,12 @@
         mineStarted: state.mine.threads.filter(function (t) { return t.started; }).length,
         minePosted: state.mine.threads.filter(function (t) { return t.posted; }).length,
         mineUnchecked: state.mine.threads.filter(function (t) { return !t.totalKnown; }).length,
+        // Issue #4: rows Torn cannot answer (too many new) apart from rows
+        // simply not reached yet. Counts only, never an author.
+        authorUnchecked: state.rows.filter(function (r) { return r.authorState === 'unchecked'; }).length,
+        authorTooMany: state.rows.filter(function (r) { return r.authorReason === 'too-many'; }).length,
       },
+      authorOnly: state.settings.authorOnly === true,
       lastFetchedAt: state.feed.fetchedAt,
       mineFetchedAt: state.mine.fetchedAt,
       // Reason only: a My posts detail can quote Torn's free text.
@@ -3974,6 +4297,8 @@
       'my posts unchecked: ' + c.counts.mineUnchecked,
       'my posts fetched: ' + (c.mineFetchedAt ? 'set' : 'never'),
       'my posts error: ' + (c.mineError ? safeString(c.mineError, 20) : 'none'),
+      'author only: ' + (c.authorOnly ? 'on' : 'off'),
+      'author unchecked: ' + c.counts.authorUnchecked + ' (too many new: ' + c.counts.authorTooMany + ')',
     ];
     return lines.join('\n');
   }
@@ -4209,6 +4534,9 @@
           for (var i = 0; i < state.rows.length; i += 1) {
             // Catch up's Mark all read covers the Threads population only.
             if (!state.rows[i].inThreads) continue;
+            // Author mode: an unchecked thread may hide author posts, so it
+            // keeps them rather than being marked read unseen (issue #4).
+            if (state.settings.authorOnly === true && state.rows[i].authorState === 'unchecked') continue;
             state.organizer = markRead(state.organizer, state.rows[i].id, state.rows[i].postsTotal, now);
           }
           persist('organizer'); recompute(now); redraw(); return;
@@ -4354,6 +4682,10 @@
         if (act === 'hide-torn-box') {
           state.settings.hideTornBox = !!el.checked;
           persist('settings'); applyHideTornBox(doc); redraw(); return;
+        }
+        if (act === 'author-only') {
+          state.settings.authorOnly = !!el.checked;
+          persist('settings'); recompute(now); redraw(); return;
         }
         if (act === 'autosave') {
           state.settings.autosaveDrafts = !!el.checked;

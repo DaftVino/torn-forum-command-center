@@ -50,7 +50,7 @@ const EXPORT_NAMES = [
   'freshOrganizer', 'normaliseOrganizer', 'normaliseThreadEntry',
   'freshDrafts', 'normaliseDrafts', 'freshFeed', 'normaliseFeed',
   'freshPostCache', 'normalisePostCache',
-  'loadKey', 'saveKey', 'loadApiKey', 'saveApiKey', 'isKeyShaped', 'isRecoveredValue',
+  'loadKey', 'saveKey', 'loadApiKey', 'saveApiKey', 'isKeyShaped', 'isRecoveredValue', 'isRecoveredOrganizer',
   // api adapter
   'API_BASE', 'REQUEST_TIMEOUT_MS', 'TORN_ERRORS', 'KEY_REJECTED_CODES', 'rejectKey', 'clearKeyRejection', 'mapTornError', 'redactUrl', 'scrubDetail',
   'buildApiUrl', 'httpGet', 'tornApiGet', 'makeRateLimiter',
@@ -58,8 +58,9 @@ const EXPORT_NAMES = [
   'PDA_KEY_SENTINEL', 'PDA_KEY_SLOT', 'pdaInjectedKey',
   // engine: merge, unread, sort
   'ACTIVITY_SOURCES', 'resolveLastActivity', 'unreadFor', 'mergeThreads',
-  'SORT_MODES', 'SORT_LABELS', 'sortThreads', 'catchUpList',
+  'SORT_MODES', 'SORT_LABELS', 'sortThreads', 'catchUpList', 'catchUpUnchecked', 'checkAuthorPosts',
   'ROWS_SHOWN_OPTIONS', 'CAPPED_VIEWS', 'UNCAPPED_VIEWS', 'VIEW_LABELS', 'capRows', 'renderCapLine',
+  'authorPageStep', 'summariseAuthorPosts', 'AUTHOR_MAX_PAGES', 'authorSinceFor', 'authorStateFor', 'AUTHOR_REASON_TEXT',
   // engine: search
   'parseQuery', 'matchThread', 'matchPost', 'searchMetadata', 'searchPosts',
   'buildNativeSearchUrl', 'stripHtml',

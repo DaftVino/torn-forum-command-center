@@ -126,3 +126,20 @@ test('an error detail in the report is already scrubbed of any URL', () => {
   assert.strictEqual(report.indexOf(KEY), -1);
   assert.match(report, /\[redacted\]/);
 });
+
+test('the report shows author-check health without leaking who the author is', () => {
+  const env = loaded();
+  const api = env.exports;
+  assert.match(api.buildDebugReport(), /author only: off/);
+  api.state.settings.authorOnly = true;
+  Object.assign(api.state.organizer.threads['1'], {
+    lastVisitedAt: NOW - 1000, authorCheckedAt: 1, authorCheckTotal: 9, authorCheckSince: NOW - 1000,
+    authorNewCount: 0, authorCheckComplete: false, authorCheckReason: 'too-many',
+  });
+  api.recompute(NOW);
+  const report = api.buildDebugReport();
+  assert.match(report, /author only: on/);
+  assert.match(report, /author unchecked: 1 \(too many new: 1\)/);
+  assert.strictEqual(report.indexOf('SecretPlanner'), -1);
+  assert.strictEqual(report.indexOf(KEY), -1, 'the key must never appear');
+});

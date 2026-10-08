@@ -277,3 +277,117 @@ test('a settings blob saved before rows shown existed is not reported as damaged
   assert.doesNotMatch(notices, /Settings were damaged/);
   assert.strictEqual(env.exports.state.settings.theme, 'light');
 });
+
+// -- author-only mode (issue #4) -------------------------------------------
+
+const { exports: api } = loadUserscript();
+
+test('authorOnly defaults off, accepts only true, and round-trips', () => {
+  assert.strictEqual(api.freshSettings().authorOnly, false);
+  assert.strictEqual(api.normaliseSettings({ v: 1, authorOnly: true }).authorOnly, true);
+  for (const bad of ['true', 1, null, {}, undefined]) {
+    assert.strictEqual(api.normaliseSettings({ v: 1, authorOnly: bad }).authorOnly, false, String(bad));
+  }
+  const round = api.normaliseSettings(JSON.parse(JSON.stringify(api.normaliseSettings({ v: 1, authorOnly: true }))));
+  assert.strictEqual(round.authorOnly, true);
+});
+
+test('a settings blob saved by 0.1.0 is not reported as damaged', () => {
+  // 0.1.0 wrote every field it knew and nothing else. authorOnly is absent
+  // from it. That is an upgrade, not damage.
+  const NOW = 1700000000000;
+  const old = api.freshSettings();
+  delete old.authorOnly;
+
+  const env = loadUserscript({ gmStore: [['tfcc:settings', JSON.stringify(old)]] });
+  const res = env.exports.loadKey('tfcc:settings', env.exports.normaliseSettings, NOW);
+  assert.strictEqual(res.recovered, false);
+  assert.strictEqual(res.value.authorOnly, false, 'the default is filled in');
+
+  env.exports.loadAll(NOW);
+  const notices = env.exports.state.notices.map((n) => n.text).join(' ');
+  assert.doesNotMatch(notices, /Settings were damaged/);
+});
+
+test('author-check fields default to zero and survive normalisation', () => {
+  const blank = api.normaliseThreadEntry(null);
+  assert.deepStrictEqual(
+    [blank.authorCheckedAt, blank.authorCheckTotal, blank.authorCheckSince, blank.authorNewCount,
+      blank.authorLatestAt, blank.authorCheckComplete, blank.authorCheckReason],
+    [0, 0, 0, 0, 0, false, '']);
+  const e = api.normaliseThreadEntry({
+    authorCheckedAt: 5, authorCheckTotal: 12, authorCheckSince: 4, authorNewCount: 2,
+    authorLatestAt: 3, authorCheckComplete: true, authorCheckReason: 'too-many',
+  });
+  assert.strictEqual(e.authorNewCount, 2);
+  assert.strictEqual(e.authorCheckComplete, true);
+  assert.strictEqual(e.authorCheckReason, 'too-many');
+  assert.strictEqual(api.normaliseThreadEntry({ authorCheckReason: 'evil<b>' }).authorCheckReason, '');
+  assert.strictEqual(api.normaliseThreadEntry({ authorNewCount: -4 }).authorNewCount, 0);
+});
+
+test('a v0.1.0 organizer entry with no author fields loads unchanged otherwise', () => {
+  const old = { pinned: true, lastSeenTotal: 9, lastVisitedAt: 100, note: 'n' };
+  const e = api.normaliseThreadEntry(old);
+  assert.strictEqual(e.pinned, true);
+  assert.strictEqual(e.lastSeenTotal, 9);
+  assert.strictEqual(e.authorCheckedAt, 0);
+});
+
+test('an export never carries author-check cache fields', () => {
+  const env = loadUserscript();
+  const api = env.exports;
+  const o = api.freshOrganizer(0);
+  o.threads['7'] = api.normaliseThreadEntry({ pinned: true, authorNewCount: 3, authorCheckedAt: 9 });
+  const text = api.encodeState(o, api.freshDrafts(), env.sandbox.btoa);
+  const json = api.b64DecodeUtf8(text.slice(api.EXPORT_PREFIX.length), env.sandbox.atob);
+  assert.ok(json.indexOf('"pinned":true') !== -1, 'the thread must be in the export, or this proves nothing');
+  assert.ok(!/author(Check|NewCount|LatestAt)/.test(json), json);
+});
+
+const AUTHOR_FIELDS = ['authorCheckedAt', 'authorCheckTotal', 'authorCheckSince', 'authorNewCount',
+  'authorLatestAt', 'authorCheckComplete', 'authorCheckReason'];
+
+function organizer010(raw) {
+  // What 0.1.0 (and main before #4) wrote: every thread entry without the
+  // seven author fields.
+  const o = api.normaliseOrganizer(raw, 1700000000000);
+  Object.keys(o.threads).forEach((id) => AUTHOR_FIELDS.forEach((k) => { delete o.threads[id][k]; }));
+  return o;
+}
+
+test('an organizer saved by 0.1.0 is not reported as damaged', () => {
+  const NOW = 1700000000000;
+  const old = organizer010({ threads: {
+    7: { pinned: true, lastSeenTotal: 9, lastVisitedAt: 100, note: 'n' },
+    8: { lastSeenTotal: 2 },
+  } });
+  assert.ok(!('authorNewCount' in old.threads['7']), 'the fixture must really lack the new fields');
+
+  const env = loadUserscript({ gmStore: [['tfcc:organizer', JSON.stringify(old)]] });
+  env.exports.loadAll(NOW);
+  const notices = env.exports.state.notices.map((n) => n.text).join(' ');
+  assert.doesNotMatch(notices, /Folders and tags were damaged/);
+  assert.strictEqual(env.exports.state.organizer.threads['7'].pinned, true, 'the stored values were kept');
+  assert.strictEqual(env.exports.state.organizer.threads['7'].authorNewCount, 0, 'the default is filled in');
+});
+
+test('a genuinely corrupt thread entry is still reported as damage', () => {
+  const NOW = 1700000000000;
+  const cases = {
+    'a present field the normaliser changed': (o) => { o.threads['7'].authorNewCount = -4; },
+    'an off-list reason': (o) => { o.threads['7'].authorCheckReason = 'evil<b>'; },
+    'a wrong-typed old field': (o) => { o.threads['7'].pinned = 'yes'; },
+    'an unknown key the normaliser drops': (o) => { o.threads['7'].stray = 1; },
+    'an entry the normaliser drops': (o) => { o.threads.abc = { pinned: true }; },
+    'a top-level field that is wrong': (o) => { o.lastCatchUpAt = 'soon'; },
+  };
+  for (const name of Object.keys(cases)) {
+    const bad = organizer010({ threads: { 7: { pinned: true, lastSeenTotal: 9 } } });
+    cases[name](bad);
+    const env = loadUserscript({ gmStore: [['tfcc:organizer', JSON.stringify(bad)]] });
+    env.exports.loadAll(NOW);
+    const notices = env.exports.state.notices.map((n) => n.text).join(' ');
+    assert.match(notices, /Folders and tags were damaged/, name);
+  }
+});
