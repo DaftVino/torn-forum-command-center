@@ -304,6 +304,29 @@ test('Catch up caps the flat list, then groups, and headings count what they sho
   assert.match(html, /Showing all 5/);
 });
 
+test('the Settings view offers the menu and names the capped views', () => {
+  const { api } = boot();
+  api.state.settings.view = 'settings';
+  api.state.settings.rowsShown = 10;
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /<select id="tfcc-rows" data-act="rows-shown">/);
+  for (const [v, label] of [[3, '3'], [5, '5'], [10, '10'], [20, '20'], [30, '30'], [0, 'All']]) {
+    assert.match(html, new RegExp('<option value="' + v + '"[^>]*>' + label + '</option>'));
+  }
+  assert.match(html, /<option value="10" selected>10<\/option>/);
+  assert.match(html, /Applies to Threads, Catch up and My posts\./);
+  assert.match(html, /Search and Drafts always show everything/);
+});
+
+test('the nav still reads its labels after VIEW_LABELS moved out of renderNav', () => {
+  const { api } = boot();
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  for (const v of api.VIEWS) {
+    assert.match(html, new RegExp('data-view="' + v + '"[^>]*>' + api.VIEW_LABELS[v]));
+  }
+  assert.strictEqual(api.VIEW_LABELS.mine, 'My posts');
+});
+
 test('Show all is per view', () => {
   const { api } = boot();
   seed(api, SIX.map((r) => Object.assign({ unread: 1 }, r)));

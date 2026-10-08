@@ -194,3 +194,12 @@ test('the export is built from folders and drafts only, so the My posts cache ca
   // export, because the harness wrapper takes (...args) and reports length 0.
   assert.strictEqual(env.rawExports.encodeState.length, 3);
 });
+
+test('an export carries no settings, so no rows shown either', () => {
+  // Settings are not part of the export today. If that changes, this fails
+  // and rowsShown has to be included deliberately, not by accident.
+  const { organizer, drafts } = populated();
+  const decoded = api.decodeState(api.encodeState(organizer, drafts, btoaFn), atobFn);
+  assert.deepStrictEqual(Object.keys(decoded.payload).sort(), ['drafts', 'folders', 'threads', 'v']);
+  assert.strictEqual(JSON.stringify(decoded.payload).indexOf('rowsShown'), -1);
+});

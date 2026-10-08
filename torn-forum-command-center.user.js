@@ -122,6 +122,12 @@
   // answers a different question from the one asked.
   var CAPPED_VIEWS = Object.freeze(['threads', 'catchup', 'mine']);
   var UNCAPPED_VIEWS = Object.freeze(['search', 'drafts', 'settings']);
+  // The nav reads these, and so does the Settings note that names the capped
+  // views, so adding a view to CAPPED_VIEWS updates that text by itself.
+  var VIEW_LABELS = Object.freeze({
+    threads: 'Threads', catchup: 'Catch up', search: 'Search', drafts: 'Drafts', settings: 'Settings',
+    mine: 'My posts',
+  });
 
   var THEMES = Object.freeze(['dark', 'light', 'match']);
 
@@ -3232,10 +3238,6 @@
   }
 
   function renderNav(model) {
-    var labels = {
-      threads: 'Threads', catchup: 'Catch up', search: 'Search', drafts: 'Drafts', settings: 'Settings',
-      mine: 'My posts',
-    };
     var out = ['<div class="tfcc-nav">'];
     for (var i = 0; i < VIEWS.length; i += 1) {
       var v = VIEWS[i];
@@ -3247,7 +3249,7 @@
       // .tfcc-nav-mine rules), so it needs no special case in this loop.
       out.push('<button type="button" data-act="view" data-view="' + v + '"'
         + (v === 'mine' ? ' class="tfcc-nav-mine"' : '') + ' aria-pressed="'
-        + (model.view === v ? 'true' : 'false') + '">' + escapeHtml(labels[v] + count) + '</button>');
+        + (model.view === v ? 'true' : 'false') + '">' + escapeHtml(VIEW_LABELS[v] + count) + '</button>');
     }
     out.push('</div>');
     return out.join('');
@@ -3640,6 +3642,20 @@
         return '<option value="' + t + '"' + (model.theme === t ? ' selected' : '') + '>' + label + '</option>';
       }).join('')
       + '</select></div>');
+    out.push('<div class="tfcc-kv"><label for="tfcc-rows">Rows shown</label>'
+      + '<select id="tfcc-rows" data-act="rows-shown">'
+      + ROWS_SHOWN_OPTIONS.map(function (n) {
+        return '<option value="' + n + '"' + (model.settings.rowsShown === n ? ' selected' : '') + '>'
+          + (n === 0 ? 'All' : String(n)) + '</option>';
+      }).join('')
+      + '</select></div>');
+    var cappedNames = CAPPED_VIEWS.map(function (v) { return VIEW_LABELS[v]; });
+    out.push('<p class="tfcc-note">Applies to '
+      + escapeHtml(cappedNames.length > 1
+        ? cappedNames.slice(0, -1).join(', ') + ' and ' + cappedNames[cappedNames.length - 1]
+        : cappedNames.join(''))
+      + '. Search and Drafts always show everything. A capped list says how many it is hiding, '
+      + 'and Show all lifts the cap for that list until the page reloads.</p>');
     out.push('<div class="tfcc-kv"><label for="tfcc-hide">Hide Torn\'s own subscribed box</label>'
       + '<input id="tfcc-hide" type="checkbox" data-act="hide-torn-box"'
       + (model.settings.hideTornBox ? ' checked' : '') + '></div>');
@@ -4166,6 +4182,13 @@
         if (act === 'collapse') { state.settings.collapsed = !state.settings.collapsed; persist('settings'); redraw(); return; }
         if (act === 'takeover') { state.settings.takeover = !state.settings.takeover; persist('settings'); redraw(); return; }
         if (act === 'unread-only') { state.settings.unreadOnly = !state.settings.unreadOnly; persist('settings'); redraw(); return; }
+        if (act === 'rows-toggle') {
+          // Only a capped view can be expanded; anything else is ignored, so a
+          // stale or forged data-view cannot plant state nothing reads.
+          var cv = el && el.getAttribute ? el.getAttribute('data-view') : null;
+          if (CAPPED_VIEWS.indexOf(cv) !== -1) state.showAll[cv] = state.showAll[cv] !== true;
+          redraw(); return;
+        }
         if (act === 'pin' && id) { state.organizer = togglePin(state.organizer, id); persist('organizer'); recompute(now); redraw(); return; }
         if (act === 'read' && id) {
           var row = state.rows.filter(function (r) { return r.id === id; })[0];
@@ -4280,7 +4303,7 @@
         }
         if (act === 'reset-all') {
           invalidateInFlight();
-          state.settings = freshSettings(); state.organizer = freshOrganizer(now);
+          state.settings = freshSettings(); state.organizer = freshOrganizer(now); state.showAll = {};
           state.drafts = freshDrafts(); state.feed = freshFeed(); state.postCache = freshPostCache();
           state.mine = freshMine(); state.mineError = null;
           persist('settings'); persist('organizer'); persist('drafts'); persist('feed'); persist('postCache');
@@ -4317,6 +4340,15 @@
           // would mean the choice did nothing until the next page load.
           scheduleAutoRefresh(doc, win);
           redraw(); return;
+        }
+        if (act === 'rows-shown') {
+          // Through the normaliser, like auto-refresh, so the select cannot
+          // store anything the menu does not offer.
+          state.settings = normaliseSettings(Object.assign({}, state.settings, { rowsShown: Number(value) }));
+          // A new cap is a fresh statement of what the user wants; a Show all
+          // from before it would silently override it.
+          state.showAll = {};
+          persist('settings'); redraw(); return;
         }
         if (act === 'enrich-budget') { state.settings.enrichBudget = clamp(toInt(value, DEFAULT_ENRICH_BUDGET), 0, MAX_ENRICH_BUDGET); persist('settings'); redraw(); return; }
         if (act === 'hide-torn-box') {
