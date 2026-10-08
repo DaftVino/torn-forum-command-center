@@ -277,3 +277,34 @@ test('a settings blob saved before rows shown existed is not reported as damaged
   assert.doesNotMatch(notices, /Settings were damaged/);
   assert.strictEqual(env.exports.state.settings.theme, 'light');
 });
+
+// -- author-only mode (issue #4) -------------------------------------------
+
+const { exports: api } = loadUserscript();
+
+test('authorOnly defaults off, accepts only true, and round-trips', () => {
+  assert.strictEqual(api.freshSettings().authorOnly, false);
+  assert.strictEqual(api.normaliseSettings({ v: 1, authorOnly: true }).authorOnly, true);
+  for (const bad of ['true', 1, null, {}, undefined]) {
+    assert.strictEqual(api.normaliseSettings({ v: 1, authorOnly: bad }).authorOnly, false, String(bad));
+  }
+  const round = api.normaliseSettings(JSON.parse(JSON.stringify(api.normaliseSettings({ v: 1, authorOnly: true }))));
+  assert.strictEqual(round.authorOnly, true);
+});
+
+test('a settings blob saved by 0.1.0 is not reported as damaged', () => {
+  // 0.1.0 wrote every field it knew and nothing else. authorOnly is absent
+  // from it. That is an upgrade, not damage.
+  const NOW = 1700000000000;
+  const old = api.freshSettings();
+  delete old.authorOnly;
+
+  const env = loadUserscript({ gmStore: [['tfcc:settings', JSON.stringify(old)]] });
+  const res = env.exports.loadKey('tfcc:settings', env.exports.normaliseSettings, NOW);
+  assert.strictEqual(res.recovered, false);
+  assert.strictEqual(res.value.authorOnly, false, 'the default is filled in');
+
+  env.exports.loadAll(NOW);
+  const notices = env.exports.state.notices.map((n) => n.text).join(' ');
+  assert.doesNotMatch(notices, /Settings were damaged/);
+});

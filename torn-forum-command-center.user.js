@@ -335,6 +335,9 @@
       enrichBudget: DEFAULT_ENRICH_BUDGET,
       autosaveDrafts: true,
       hideTornBox: false,
+      // Issue #4. Off by default: flag a thread as new only when its author
+      // posts. Applies to Threads and Catch up; My posts ignores it.
+      authorOnly: false,
       // Issue #8. Off by default: an existing user sees no change.
       autoHideOnOpen: false,
       // The Torn error code that condemned the stored key, or 0. Persisted on
@@ -363,6 +366,7 @@
     out.unreadOnly = raw.unreadOnly === true;
     out.autosaveDrafts = raw.autosaveDrafts !== false;
     out.hideTornBox = raw.hideTornBox === true;
+    out.authorOnly = raw.authorOnly === true;
     out.autoHideOnOpen = raw.autoHideOnOpen === true;
     out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1
       ? 0 : toInt(raw.keyRejected, 0);
