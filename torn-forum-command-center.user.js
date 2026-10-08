@@ -1303,6 +1303,7 @@
     var drafts = (input && input.drafts) || freshDrafts();
     var now = toInt(input && input.now, 0);
     var ttl = input && input.enrichTtlMs !== undefined ? input.enrichTtlMs : ENRICH_TTL_MS;
+    var authorOnly = !!(input && input.authorOnly);
     var mine = (input && input.mine) || freshMine();
     var mineById = {};
     for (var mi = 0; mi < mine.threads.length; mi += 1) mineById[String(mine.threads[mi].id)] = mine.threads[mi];
@@ -1354,6 +1355,7 @@
       var rec = Object.prototype.hasOwnProperty.call(mineById, id) ? mineById[id] : null;
       var u = rec ? mineUnreadFor(api, entry, rec) : unreadFor(api, entry);
       var unreadSource = rec ? u.unreadSource : (api ? 'torn' : 'none');
+      var au = authorOnly ? authorStateFor(api, entry, u) : null;
       var feedRow = Object.prototype.hasOwnProperty.call(feeds, id) ? feeds[id] : null;
       var act = resolveLastActivity(entry, feedRow ? feedRow.at : 0, now, ttl,
         rec ? { mineAt: rec.lastPostAt, ownPostAt: rec.myLastPostAt } : null);
@@ -1375,7 +1377,14 @@
         subscribed: !!api,
         postsTotal: u.postsTotal,
         tornUnread: u.tornUnread,
-        unread: u.unread,
+        unread: au ? ((au.state === 'author' || au.state === 'author-atleast') ? au.count : 0) : u.unread,
+        // The any-poster count, whatever the setting. My posts ignores
+        // author-only mode (issue #4) and reads this.
+        anyUnread: u.unread,
+        authorState: au ? au.state : 'off',
+        authorNew: au ? au.count : 0,
+        authorLatestAt: au ? au.latestAt : 0,
+        authorReason: au ? au.reason : '',
         dismissed: u.dismissed,
         pinned: entry.pinned,
         archived: entry.archived,
@@ -1447,13 +1456,29 @@
     return out;
   }
 
-  function catchUpList(rows, lastCatchUpAt) {
+  function catchUpList(rows, lastCatchUpAt, mode) {
     var since = Math.max(0, toInt(lastCatchUpAt, 0));
     return rows.filter(function (r) {
       if (r.dismissed) return false;
+      if (mode === 'author') {
+        return (r.authorState === 'author' || r.authorState === 'author-atleast') && r.authorLatestAt > since;
+      }
       if (r.unread > 0) return true;
       return r.lastActivity !== null && r.lastActivity > since;
     });
+  }
+
+  // Rows whose author activity is unknown. Kept out of the catch-up list, which
+  // claims "the author posted", but listed beside it so nothing goes quiet.
+  function catchUpUnchecked(rows) {
+    return rows.filter(function (r) { return r.authorState === 'unchecked' && !r.archived; });
+  }
+
+  // My posts ignores author-only mode (issue #4): its rows go back to the
+  // any-poster count. A row built with the setting off is returned as is.
+  function anyPosterRow(r) {
+    if (r.authorState === 'off') return r;
+    return Object.assign({}, r, { unread: r.anyUnread, authorState: 'off', authorNew: 0, authorLatestAt: 0, authorReason: '' });
   }
 
   // Every list view's population and filters, in one place. sortThreads runs
@@ -1464,7 +1489,7 @@
     return rows.filter(function (r) {
       if (view === 'mine' ? !r.mineRole : !r.inThreads) return false;
       if (r.archived && !r.pinned && r.unread === 0) return false;
-      if (f.unreadOnly && r.unread === 0) return false;
+      if (f.unreadOnly && r.unread === 0 && r.authorState !== 'unchecked') return false;
       if (f.folderFilter && r.folderId !== f.folderFilter) return false;
       if (f.tagFilter && r.tags.indexOf(f.tagFilter) === -1) return false;
       return matchThread(r, query);
@@ -1536,7 +1561,7 @@
       return !!row.folderName && row.folderName.toLowerCase().indexOf(v) !== -1;
     }
     if (term.type === 'is') {
-      if (v === 'unread') return row.unread > 0;
+      if (v === 'unread') return row.unread > 0 || row.authorState === 'unchecked';
       if (v === 'pinned') return row.pinned;
       if (v === 'draft') return row.hasDraft;
       if (v === 'subscribed') return row.subscribed;
@@ -2517,6 +2542,7 @@
       drafts: state.drafts,
       mine: state.mine,
       now: now,
+      authorOnly: state.settings.authorOnly === true,
     });
   }
 
@@ -3260,18 +3286,24 @@
     // Threads, Catch up, the header badge and Search see only the Threads
     // population. A My posts-only thread lives in its own view.
     var threadRows = rows.filter(function (r) { return r.inThreads; });
-    var mineAll = viewRows(rows, 'mine', {}, parseQuery(''));
-    var visible = viewRows(rows, s.view === 'mine' ? 'mine' : 'threads', s, query);
+    // My posts ignores author-only mode (issue #4).
+    var mineRows = rows.map(anyPosterRow);
+    var mineAll = viewRows(mineRows, 'mine', {}, parseQuery(''));
+    var visible = s.view === 'mine' ? viewRows(mineRows, 'mine', s, query) : viewRows(rows, 'threads', s, query);
 
     var totalUnread = 0;
-    for (var i = 0; i < threadRows.length; i += 1) totalUnread += threadRows[i].unread;
+    var totalUnchecked = 0;
+    for (var i = 0; i < threadRows.length; i += 1) {
+      totalUnread += threadRows[i].unread;
+      if (threadRows[i].authorState === 'unchecked') totalUnchecked += 1;
+    }
 
     // Each capped view caps its own sorted population, so the cap is the last
     // step after every filter and the sort: the top N of what was asked for.
     var sorted = sortThreads(visible, s.sort);
     var threadsSorted = s.view === 'mine' ? sortThreads(viewRows(rows, 'threads', s, query), s.sort) : sorted;
-    var mineSorted = s.view === 'mine' ? sorted : sortThreads(viewRows(rows, 'mine', s, query), s.sort);
-    var catchUp = sortThreads(catchUpList(threadRows, state.organizer.lastCatchUpAt), 'activity');
+    var mineSorted = s.view === 'mine' ? sorted : sortThreads(viewRows(mineRows, 'mine', s, query), s.sort);
+    var catchUp = sortThreads(catchUpList(threadRows, state.organizer.lastCatchUpAt, s.authorOnly ? 'author' : 'any'), 'activity');
     var showAll = state.showAll || {};
 
     return {
@@ -3300,6 +3332,7 @@
         threads: threadRows.length,
         subscribed: threadRows.filter(function (r) { return r.subscribed; }).length,
         unread: totalUnread,
+        unchecked: totalUnchecked,
         drafts: draftList(state.drafts).length,
       },
       // Whole on purpose: the Catch up nav count reads its length.
@@ -3311,6 +3344,8 @@
         catchup: capRows(catchUp, s.rowsShown, showAll.catchup === true),
         mine: capRows(mineSorted, s.rowsShown, showAll.mine === true),
       },
+      catchUpUnchecked: s.authorOnly ? sortThreads(catchUpUnchecked(threadRows), 'activity') : [],
+      authorOnly: s.authorOnly === true,
       mine: {
         total: mineAll.length,
         unread: mineAll.filter(function (r) { return r.unread > 0; }).length,
@@ -3334,6 +3369,7 @@
         enrichBudget: s.enrichBudget,
         autosaveDrafts: s.autosaveDrafts,
         hideTornBox: s.hideTornBox,
+        authorOnly: s.authorOnly,
         autoHideOnOpen: s.autoHideOnOpen,
         deepSearchPages: s.deepSearchPages,
         rowsShown: s.rowsShown,
@@ -4349,6 +4385,9 @@
           for (var i = 0; i < state.rows.length; i += 1) {
             // Catch up's Mark all read covers the Threads population only.
             if (!state.rows[i].inThreads) continue;
+            // Author mode: an unchecked thread may hide author posts, so it
+            // keeps them rather than being marked read unseen (issue #4).
+            if (state.settings.authorOnly === true && state.rows[i].authorState === 'unchecked') continue;
             state.organizer = markRead(state.organizer, state.rows[i].id, state.rows[i].postsTotal, now);
           }
           persist('organizer'); recompute(now); redraw(); return;

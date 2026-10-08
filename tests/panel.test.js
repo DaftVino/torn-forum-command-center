@@ -383,3 +383,43 @@ test('Settings states both request budgets, from the constants', () => {
   assert.match(html, /a Threads refresh is at most 13\s+requests and My posts at most 12; at the largest setting of 25, 28 and 27\./);
   assert.match(html, /under 40 requests a minute/);
 });
+
+// -- author-only mode (issue #4) -------------------------------------------
+
+test('author mode: Unread only keeps unchecked rows visible', () => {
+  const env = loadUserscript({ location: forums() });
+  env.exports.state.settings.authorOnly = true;
+  env.exports.state.settings.unreadOnly = true;
+  env.exports.state.organizer.threads['1'] = env.exports.normaliseThreadEntry({ lastVisitedAt: NOW - 1000 });
+  seed(env, [{ id: 1, unread: 4 }]);
+  const model = env.exports.buildPanelModel(NOW);
+  assert.strictEqual(model.rows.length, 1, 'an unknown must not be hidden as if it were known-empty');
+  assert.strictEqual(model.totals.unchecked, 1);
+  assert.strictEqual(model.catchUp.length, 0);
+  assert.strictEqual(model.catchUpUnchecked.length, 1);
+});
+
+test('author mode: My posts ignores the setting and keeps the any-poster count', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1, unread: 3 }]);
+  seedMine(env);
+  const api = env.exports;
+  // Thread 1 is subscribed and also one the user posted in.
+  api.state.mine.threads.push(Object.assign(api.freshMineThread(1, NOW), { posted: true, title: 'Thread 1' }));
+  api.state.settings.view = 'mine';
+  api.recompute(NOW);
+  const off = api.buildPanelModel(NOW);
+  const offHtml = api.panelHtml(off);
+
+  api.state.settings.authorOnly = true;
+  api.recompute(NOW);
+  const on = api.buildPanelModel(NOW);
+  assert.deepStrictEqual(on.mine, off.mine, 'the My posts counts do not move');
+  assert.deepStrictEqual(on.rows.map((r) => [r.id, r.unread]), off.rows.map((r) => [r.id, r.unread]));
+  const onHtml = api.panelHtml(on);
+  assert.doesNotMatch(onHtml, /by author|author: not checked/, 'no author-only wording in My posts');
+  assert.match(offHtml, /3 new/);
+  assert.match(onHtml, /3 new/);
+  api.state.settings.unreadOnly = true;
+  assert.deepStrictEqual(api.buildPanelModel(NOW).rows.map((r) => r.id).sort(), ['1', '50']);
+});

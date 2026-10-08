@@ -227,3 +227,57 @@ test('every reason has ASCII tooltip text that never quotes a count', () => {
     assert.doesNotMatch(api.AUTHOR_REASON_TEXT[k], /\d+ new/);
   }
 });
+
+// -- merge, catch up and search ----------------------------------------------
+
+function merged(authorOnly, entryExtra, subExtra) {
+  const o = api.freshOrganizer(0);
+  o.threads['1'] = api.normaliseThreadEntry(Object.assign({ lastVisitedAt: SINCE }, entryExtra));
+  return api.mergeThreads({ subscribed: [sub(subExtra)], activity: [], categories: [], organizer: o, drafts: api.freshDrafts(), now: SINCE + 1, authorOnly })[0];
+}
+
+test('setting off: unread is still Torn\'s count and authorState is off', () => {
+  const r = merged(false, {});
+  assert.strictEqual(r.unread, 3);
+  assert.strictEqual(r.authorState, 'off');
+});
+
+test('setting on: only non-author posts means no badge count and not in catch up', () => {
+  const r = merged(true, { authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 0, authorCheckComplete: true });
+  assert.strictEqual(r.unread, 0, 'must not fall back to Torn\'s any-poster count');
+  assert.strictEqual(r.tornUnread, 3);
+  assert.deepStrictEqual(api.catchUpList([r], 0, 'author'), []);
+});
+
+test('setting on: an author post flags the row and puts it in catch up', () => {
+  const r = merged(true, { authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 2, authorLatestAt: SINCE + 9, authorCheckComplete: true });
+  assert.strictEqual(r.unread, 2);
+  assert.strictEqual(api.catchUpList([r], SINCE, 'author').length, 1);
+  assert.strictEqual(api.catchUpList([r], SINCE + 9, 'author').length, 0, 'before the catch-up point means already caught up');
+});
+
+test('setting on: an unchecked row is not an update, but is listed as unchecked', () => {
+  const r = merged(true, {});
+  assert.strictEqual(r.authorState, 'unchecked');
+  assert.strictEqual(r.unread, 0);
+  assert.deepStrictEqual(api.catchUpList([r], 0, 'author'), []);
+  assert.strictEqual(api.catchUpUnchecked([r]).length, 1);
+});
+
+test('setting on: is:unread keeps an unchecked row, setting off it does not', () => {
+  const q = api.parseQuery('is:unread');
+  assert.strictEqual(api.matchThread(merged(true, {}), q), true, 'an unknown must not be filtered out as known-empty');
+  assert.strictEqual(api.matchThread(merged(true, { authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 0, authorCheckComplete: true }), q), false);
+  assert.strictEqual(api.matchThread(merged(false, {}), q), true);
+});
+
+test('catchUpList with no mode behaves exactly as before', () => {
+  const r = merged(false, {});
+  assert.deepStrictEqual(api.catchUpList([r], 0).map((x) => x.id), api.catchUpList([r], 0, 'any').map((x) => x.id));
+});
+
+test('setting on: the any-poster count is kept on the row for My posts', () => {
+  const r = merged(true, {});
+  assert.strictEqual(r.anyUnread, 3, 'My posts ignores the setting and needs the any-poster count');
+  assert.strictEqual(merged(false, {}).anyUnread, 3);
+});
