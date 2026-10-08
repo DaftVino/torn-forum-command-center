@@ -12,11 +12,13 @@ endpoints. It never parses Torn's HTML for data.
 
 It needs a key carrying two of the user's own selections, `forumsubscribedthreads`
 and `forumfeed`; everything else it touches is public. The panel asks for a
-Custom key with exactly those two, because that is the least access that works,
-and names Limited Access as the preset equivalent. It deliberately does not name
-a preset as the requirement: the docs colour-code both selections as Minimal
-Access, but the key page does not offer that as a choice, so naming the
-selections is both accurate and stable.
+**Minimal Access** key and says Limited Access also works but is not needed.
+Live probing on 2026-10-08 settled this: a Public Only key fails both
+selections with error 16, Minimal Access passes every endpoint the script uses,
+and Limited Access adds nothing. The panel no longer suggests a Custom key with
+only those two selections: Torn's docs say a custom key reaches only the
+default, timestamp and lookup selections unless more are listed, so it would
+probably fail the `forum/*` calls.
 
 That choice is the centre of the design, and it came out of three findings.
 Torn's own API v2 roadmap scoped a `forumUpdates` feature — new posts in
