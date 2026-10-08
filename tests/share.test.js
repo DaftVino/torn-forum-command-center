@@ -187,3 +187,10 @@ test('a newer local draft is not overwritten by an older imported one', () => {
   assert.strictEqual(api.draftFor(out.drafts, 100).text, 'the version I am writing now');
   assert.strictEqual(out.summary.addedDrafts, 0);
 });
+
+test('the export is built from folders and drafts only, so the My posts cache cannot reach it', () => {
+  // encodeState(organizer, drafts, btoa) reads nothing else. A fourth input is
+  // how a cache would leak into an export, so the signature is pinned. The raw
+  // export, because the harness wrapper takes (...args) and reports length 0.
+  assert.strictEqual(env.rawExports.encodeState.length, 3);
+});

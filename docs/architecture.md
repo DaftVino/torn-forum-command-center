@@ -42,7 +42,7 @@ collapse before the browser follows the link. The lookup (`threadLinkOf`)
 stops at the panel and never reads Torn's nodes. The script still initiates no
 navigation: the user's click does.
 
-### The five endpoints
+### The seven endpoints
 
 | Endpoint | Access | Used for |
 |---|---|---|
@@ -51,6 +51,8 @@ navigation: the user's click does.
 | `forum/categories` | Public | Real forum names, fetched at most once a day |
 | `forum/{id}/thread` | Public | `last_post_time` enrichment, budgeted |
 | `forum/{id}/posts` | Public | Deep search only, explicit and bounded |
+| `user/forumthreads` | Public | My posts: threads the key owner started, fetched only for that view |
+| `user/forumposts` | Public | My posts: threads the key owner posted in, fetched only for that view |
 
 `forumsubscribedthreads` carries the unread count but no last-post time. That
 asymmetry is why enrichment exists and why last activity resolves from several
@@ -61,6 +63,15 @@ calls, one category call at most daily, and up to ten enrichment lookups for
 threads that have unread posts and no recent time. The limiter enforces a
 650 ms gap and a ceiling of 40 requests per rolling minute, against the ~100
 the community reports. Auto refresh is off by default.
+
+Both My posts selections answer on any key level (live finding 16), so the
+required key level stays Minimal Access; the custom-key link lists them so a
+least-privilege key covers the whole script. My posts is its own bounded
+action, never part of the Threads refresh: opening the view (at most once per
+15 minutes) or pressing Refresh while it is open makes two list requests plus
+up to the same lookup budget, so at most 12 requests by default and 27 at the
+largest setting. It never fetches the category list, page load never fetches
+it, and auto refresh never does.
 
 ## Structure
 
@@ -92,17 +103,46 @@ effectiveUnread = dismissed ? 0 : tornUnread
 cannot clear Torn's own counter, which only clears when the thread is opened,
 and the panel says so rather than implying a sync that does not exist.
 
+### My posts and the local unread count
+
+A thread in `tfcc:mine` that is not subscribed has no `posts.new`. The first
+matching rule decides its count:
+
+1. Subscribed: exactly the Threads rule above.
+2. Started, with `new_posts` on its `user/forumthreads` row: the same rule with
+   `new_posts` in place of `posts.new`. It is Torn's own count.
+3. Total known, no Torn count: a local count,
+   `unread = max(0, postsTotal - max(lastSeenTotal, baselineTotal))`.
+   `baselineTotal` is set the first time the script sees a total (so installing
+   never floods history as new) and advances when the last post is your own.
+4. Total unknown: `unchecked`. The row says "not checked yet" and never passes
+   for a checked zero.
+
+**Units.** A thread object's `posts` (`user/forumthreads`, `forum/{id}/thread`)
+counts replies, while the subscribed `posts.total`, and so `lastSeenTotal`,
+counts every post (live findings 3 and 4). Every stored total is therefore
+`posts + 1`, converted in `threadPostsTotal` and nowhere else.
+
+**Population.** A My posts thread appears in Threads only when
+`subscribed || organised`, where organised is a folder, a tag, a pin, a
+priority, a note, archived or a draft. A read marker or a visit does not count,
+so marking your own thread read does not file it in Threads. Threads, Catch up,
+the header badge and Catch up's Mark all read use the Threads population only.
+
 ### Last activity
 
 Resolved from the newest of several candidates, not the first available one: a
 fresh enrichment can still be older than an activity row that arrived since.
-Each row reports which candidate won (`enriched`, `feed`, `enriched-stale`,
-`visit`, `none`), so a surprising sort order is diagnosable from the row. An
+Each row reports which candidate won (`enriched`, `feed`, `mine`,
+`enriched-stale`, `own-post`, `visit`, `none`), so a surprising sort order is diagnosable from the row. An
 unresolved time is `null` and sorts last; it is never treated as zero.
 
 ### Storage
 
-Six independent keys, each with a schema version. A value that fails
+Seven independent keys, each with a schema version. `tfcc:mine`, the My posts
+cache, is its own key rather than a field of `tfcc:feed`, because a new field
+there would make every existing user's first load report the feed cache as
+damaged; it is not exported and Reset everything clears it. A value that fails
 normalisation resets that key only and is reported visibly, so a corrupt post
 cache cannot cost the user their folders. An unparseable value is distinguished
 from an absent one, because collapsing the two is how someone loses everything

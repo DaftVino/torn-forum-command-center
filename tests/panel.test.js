@@ -258,3 +258,128 @@ test('counts read as English, not as a template', () => {
   assert.strictEqual(api.plural(1, 'entry', 'entries'), 'entry');
   assert.strictEqual(api.plural(3, 'entry', 'entries'), 'entries');
 });
+
+function seedMine(env) {
+  const api = env.exports;
+  const s = api.freshMine();
+  s.selfId = 7;
+  s.fetchedAt = NOW;
+  s.threads = [
+    Object.assign(api.freshMineThread(50, NOW), { posted: true, title: 'Reply thread', totalKnown: true, postsTotal: 12, baselineTotal: 10 }),
+    Object.assign(api.freshMineThread(51, NOW), { started: true, title: 'My guide', totalKnown: true, postsTotal: 5, baselineTotal: 5 }),
+    Object.assign(api.freshMineThread(52, NOW), { posted: true, title: 'Unchecked thread' }),
+  ];
+  api.state.mine = s;
+  api.recompute(NOW);
+}
+
+test('My posts-only threads stay out of Threads, Catch up and the header count', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1, unread: 3 }]);
+  seedMine(env);
+  env.exports.state.settings.view = 'threads';
+  const model = env.exports.buildPanelModel(NOW);
+  assert.deepStrictEqual(model.rows.map((r) => r.id), ['1']);
+  assert.strictEqual(model.totals.unread, 3, 'the header badge counts Threads only');
+  assert.ok(model.catchUp.every((r) => r.id !== '50'));
+  assert.strictEqual(model.mine.unread, 1);
+  assert.strictEqual(model.mine.unchecked, 1);
+  assert.strictEqual(model.mine.total, 3);
+});
+
+test('the My posts model lists its own population, and Unread only narrows it', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1, unread: 3 }]);
+  seedMine(env);
+  env.exports.state.settings.view = 'mine';
+  assert.deepStrictEqual(env.exports.buildPanelModel(NOW).rows.map((r) => r.id).sort(), ['50', '51', '52']);
+  env.exports.state.settings.unreadOnly = true;
+  assert.deepStrictEqual(env.exports.buildPanelModel(NOW).rows.map((r) => r.id), ['50']);
+});
+
+test('My posts is the last nav button, classed, labelled and pressed like the rest', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1 }]);
+  seedMine(env);
+  assert.strictEqual(env.exports.VIEWS[env.exports.VIEWS.length - 1], 'mine');
+  for (const view of ['threads', 'mine']) {
+    env.exports.state.settings.view = view;
+    const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+    const nav = /<div class="tfcc-nav">([\s\S]*?)<\/div>/.exec(html)[1];
+    const buttons = nav.match(/<button[^>]*>[^<]*<\/button>/g);
+    const last = buttons[buttons.length - 1];
+    assert.match(last, /data-view="mine"/);
+    assert.match(last, /class="tfcc-nav-mine"/);
+    assert.match(last, />My posts \(1\)</, 'the count is My posts rows with new replies');
+    assert.match(last, new RegExp('aria-pressed="' + (view === 'mine') + '"'));
+  }
+});
+
+test('the My posts view marks roles, local counts and unchecked rows honestly', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1 }]);
+  seedMine(env);
+  env.exports.state.settings.view = 'mine';
+  const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  assert.match(html, /Threads you started or posted in/);
+  assert.match(html, /1 not checked yet/);
+  assert.match(html, /started/);
+  assert.match(html, /posted in/);
+  assert.match(html, /2 new<\/span>[\s\S]*?local count/);
+  assert.match(html, /title="Counted on this device/);
+  assert.match(html, /data-act="unread-only"/);
+  assert.match(html, /data-act="sort"/);
+  for (const act of ['pin', 'read', 'prio-up', 'prio-down', 'folder', 'tag-input', 'note-input', 'draft', 'archive']) {
+    assert.match(html, new RegExp('data-act="' + act + '" data-id="50"'), act + ' missing on a My posts row');
+  }
+});
+
+test('My posts empty, loading, error and filtered states each say what happened', () => {
+  const env = loadUserscript({ location: forums() });
+  const api = env.exports;
+  seed(env, [{ id: 1 }]);
+  api.state.settings.view = 'mine';
+  api.state.mine = api.freshMine();
+  api.recompute(NOW);
+  api.state.refreshingMine = true;
+  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /Loading the threads you started and posted in/);
+  api.state.refreshingMine = false;
+  api.state.mine.fetchedAt = NOW;
+  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /Torn reports no threads you started or posted in/);
+  api.state.mineError = { reason: 'torn', detail: 'Torn had a backend error.' };
+  const err = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(err, /Torn had a backend error/);
+  assert.match(err, /data-act="refresh"/);
+  assert.doesNotMatch(err, /Torn reports no threads/, 'a failed fetch is not an empty answer');
+  api.state.mineError = null;
+  seedMine(env);
+  api.state.settings.unreadOnly = true;
+  api.state.searchQuery = 'zzz-no-match';
+  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /Nothing matches/);
+  api.state.searchQuery = '';
+  api.state.mine.threads.forEach((t) => { t.baselineTotal = t.postsTotal; });
+  api.recompute(NOW);
+  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /No new replies in your threads/);
+});
+
+test('Threads rows never carry My posts marks', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1, unread: 2 }]);
+  env.exports.state.settings.view = 'threads';
+  const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  assert.doesNotMatch(html, /local count|not checked yet|posted in/);
+});
+
+test('Settings states both request budgets, from the constants', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1 }]);
+  env.exports.state.settings.view = 'settings';
+  const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  const api = env.exports;
+  assert.strictEqual(3 + api.DEFAULT_ENRICH_BUDGET, 13);
+  assert.strictEqual(2 + api.DEFAULT_ENRICH_BUDGET, 12);
+  assert.match(html, /Opening My posts, or refreshing while it is open, makes two requests of its own/);
+  assert.match(html, new RegExp('at most once every ' + (api.MINE_TTL_MS / 60000) + ' minutes'));
+  assert.match(html, /a Threads refresh is at most 13\s+requests and My posts at most 12; at the largest setting of 25, 28 and 27\./);
+  assert.match(html, /under 40 requests a minute/);
+});

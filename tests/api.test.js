@@ -262,3 +262,22 @@ test('the request deadline is a real bound, not an arbitrarily large number', ()
   assert.ok(api.REQUEST_TIMEOUT_MS <= 30000,
     'a deadline the user outlives is not a deadline: ' + api.REQUEST_TIMEOUT_MS);
 });
+
+test('a My posts failure never carries the key, in the result, the error or the cache', async () => {
+  const transports = [
+    ['http', jsonTransport({}, 503)],
+    ['parse', jsonTransport('not json')],
+    ['shape', jsonTransport({ surprise: [] })],
+    ['torn', jsonTransport({ error: { code: 17, error: 'bad' } })],
+    ['network', { fetch: () => Promise.reject(new Error('failed for https://api.torn.com/v2/user/forumthreads?key=' + KEY)) }],
+  ];
+  for (const [label, transport] of transports) {
+    const env = loadUserscript(Object.assign({ gmStore: [['tfcc:key', KEY]] }, transport));
+    const p = env.exports.refreshMine(1700000000000);
+    await settle(env, 1000);
+    const res = await p;
+    const blob = JSON.stringify([res, env.exports.state.mineError, env.exports.state.mine]);
+    assert.strictEqual(blob.indexOf(KEY), -1, label + ' leaked the key: ' + blob);
+    assert.notStrictEqual(env.exports.state.mineError, null, label + ' must be reported, not swallowed');
+  }
+});

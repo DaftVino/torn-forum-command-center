@@ -73,6 +73,13 @@ const EXPORT_NAMES = [
   'togglePin', 'markRead', 'deleteFolder', 'upsertFolder', 'allTags',
   // engine: drafts
   'DRAFT_MAX_CHARS', 'saveDraft', 'draftFor', 'deleteDraft', 'draftList',
+  // engine: my posts
+  'MINE_MAX_THREADS', 'freshMine', 'freshMineThread', 'normaliseMine', 'normaliseMineThread',
+  'mineThreadFromApi', 'minePostFromApi', 'pickList', 'threadPostsTotal', 'parseThreadDetail',
+  'mergeMineSnapshot', 'applyMineDetail', 'mineUnreadFor', 'isOrganised',
+  'mineLookupTargets', 'mineIsDue', 'viewRows',
+  // runtime: my posts
+  'MINE_TTL_MS', 'MINE_PAGE_LIMIT', 'refreshMine',
   // engine: share
   'EXPORT_PREFIX', 'encodeState', 'decodeState', 'importState',
   // runtime: lifecycle
@@ -538,8 +545,76 @@ function forumFeedPayload(rows) {
   };
 }
 
+// Cloned from the redacted live captures in tests/fixtures/ (issue #14), so
+// every field name, and every field the builder does not override, is what
+// Torn actually sent on 2026-10-08. Options override single values only.
+// `replies` is the raw API `posts` value, which counts REPLIES, not posts
+// (live finding 3); `total` is accepted as an alias so #10's tests, written
+// against the earlier builder, keep working. Either way it is the API value,
+// never the stored postsTotal.
+const FX_THREAD_ROW = require('./fixtures/user-forumthreads.json').forumThreads[0];
+const FX_POST_ROW = require('./fixtures/user-forumposts.json').forumPosts[1];   // a reply, not the topic
+const FX_THREAD = require('./fixtures/forum-thread.json').thread;
+const FIXTURE_SELF_ID = FX_THREAD_ROW.author.id;   // the key owner in every fixture (1000)
+
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+function pick(v, fallback) { return v === undefined ? fallback : v; }
+
+function forumThreadsPayload(threads) {
+  return {
+    forumThreads: threads.map((t) => {
+      const row = Object.assign(clone(FX_THREAD_ROW), {
+        id: t.id,
+        forum_id: pick(t.forumId, FX_THREAD_ROW.forum_id),
+        title: pick(t.title, `Thread ${t.id}`),
+        posts: pick(t.replies, pick(t.total, FX_THREAD_ROW.posts)),
+        first_post_time: pick(t.firstAt, FX_THREAD_ROW.first_post_time),
+        last_post_time: pick(t.lastAt, FX_THREAD_ROW.last_post_time),
+        new_posts: pick(t.newPosts, FX_THREAD_ROW.new_posts),
+      });
+      if (t.author) row.author = t.author;
+      if (t.lastPoster !== undefined) row.last_poster = t.lastPoster;
+      if (t.noNewPosts) delete row.new_posts;
+      return row;
+    }),
+    _metadata: { links: { prev: null, next: null } },
+  };
+}
+
+function forumPostsPayload(posts) {
+  return {
+    forumPosts: posts.map((p) => {
+      const row = Object.assign(clone(FX_POST_ROW), {
+        id: p.id,
+        thread_id: p.threadId,
+        created_time: pick(p.at, FX_POST_ROW.created_time),
+        is_topic: p.isTopic === true,
+        content: pick(p.content, 'SECRET POST BODY ' + p.id),
+      });
+      if (p.author) row.author = p.author;
+      return row;
+    }),
+    _metadata: { links: { prev: null, next: null } },
+  };
+}
+
+// forum/{id}/thread. `replies` is the raw `posts` value, as above.
+function forumThreadPayload(t) {
+  const thread = Object.assign(clone(FX_THREAD), {
+    id: t.id,
+    forum_id: pick(t.forumId, FX_THREAD.forum_id),
+    title: pick(t.title, `Thread ${t.id}`),
+    posts: pick(t.replies, FX_THREAD.posts),
+    last_post_time: pick(t.lastAt, FX_THREAD.last_post_time),
+  });
+  if (t.lastPoster !== undefined) thread.last_poster = t.lastPoster;
+  if (t.noPosts) delete thread.posts;
+  return { thread };
+}
+
 module.exports = {
   loadUserscript, readSource, buildInstrumentedSource, makeSandbox,
   EXPORT_NAMES, SOURCE_PATH, DEFAULT_LOCATION, FORUMS_LOCATION,
   subscribedThreadsPayload, forumFeedPayload,
+  forumThreadsPayload, forumPostsPayload, forumThreadPayload, FIXTURE_SELF_ID,
 };

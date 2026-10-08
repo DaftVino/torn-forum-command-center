@@ -20,6 +20,24 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   Search, Drafts, and My posts) collapses the panel and leaves Expand, then the
   thread opens. Show brings it back. New-tab clicks and Torn's own links leave
   the panel alone. (#8)
+- A My posts view listing the threads you started or posted in, from the
+  Public `user/forumthreads` and `user/forumposts` selections. It has the same
+  row actions, filters and sort as Threads, plus `is:started` and `is:posted`.
+  (#2)
+- Torn's own unread count (`new_posts`) for threads you started, and a local
+  unread count for threads you only posted in, counted from the first time
+  the script sees them, cleared by Mark read or by your own post, and
+  labelled as a local count. A thread not yet looked up says so. (#2)
+
+### Changed
+
+- An unsubscribed thread of your own whose only local state is a visit or a
+  read marker now lives in My posts rather than Threads. (#2)
+- The Settings request note states the My posts budget: at most 12 requests
+  by default (27 at the largest lookup setting), at most once every 15 minutes
+  unless you press Refresh. (#2)
+- The custom key link also asks for `user` forumthreads and forumposts, the
+  two selections My posts reads. (#2)
 
 ### Fixed
 

@@ -66,6 +66,18 @@ notices.
   which only clears when you open the thread. The panel says so rather than
   pretending otherwise.
 
+### My posts
+
+- A **My posts** view lists the threads you started or posted in, whether or
+  not you follow them, with the same row actions, filters and sort as Threads,
+  plus `is:started` and `is:posted`.
+- Threads you started carry Torn's own unread count. Threads you only posted in
+  get a count made on your device, from the first time the script sees them,
+  cleared by Mark read or by your own post, and labelled as a local count. A
+  thread not looked up yet says so instead of showing zero.
+- It fetches only when you open it, at most once every 15 minutes unless you
+  press Refresh, and at most 12 requests by default.
+
 ### Drafts
 
 - Write a reply, save it, come back days later. Drafts live on your device.
@@ -117,8 +129,9 @@ No separate mobile build exists. The same file runs in both places.
 
 Torn, Settings, API Key.
 
-The script reads exactly two of your own selections, `forumsubscribedthreads`
-and `forumfeed`, plus the public forum endpoints. Those two need a **Minimal
+The script reads two of your own selections, `forumsubscribedthreads` and
+`forumfeed`, plus the public forum endpoints and, for My posts, the public
+`forumthreads` and `forumposts` selections. Those two need a **Minimal
 Access** key, which is the level to create. **Limited Access** also works but is
 not needed. **Public Only** does not.
 

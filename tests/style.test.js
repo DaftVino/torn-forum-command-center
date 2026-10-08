@@ -353,3 +353,35 @@ test('following the theme costs no redraw', () => {
   assert.strictEqual(panel.renderCount || 0, before, 'applying a theme rewrote the panel');
   assert.strictEqual(panel.classList.contains('tfcc-theme-light'), true);
 });
+
+test('My posts is right-aligned, light grey with dark text, in both themes', () => {
+  const rule = (sel) => {
+    const i = css.indexOf(sel + ' {');
+    assert.ok(i !== -1, 'missing rule: ' + sel);
+    return css.slice(i, css.indexOf('}', i));
+  };
+  const base = rule('#tfcc-panel button.tfcc-nav-mine');
+  assert.match(base, /margin-left:\s*auto/);
+  assert.match(base, /background:\s*var\(--tfcc-mine-bg\)/);
+  assert.match(base, /color:\s*var\(--tfcc-mine-text\)/);
+  assert.match(base, /border-color:\s*var\(--tfcc-mine-border\)/);
+  assert.match(rule('#tfcc-panel button.tfcc-nav-mine:hover'), /background:\s*var\(--tfcc-mine-hover\)/);
+  const pressed = rule('#tfcc-panel button.tfcc-nav-mine[aria-pressed="true"]');
+  assert.match(pressed, /background:\s*var\(--tfcc-mine-pressed\)/);
+  assert.match(pressed, /box-shadow:\s*inset 0 -3px 0 var\(--tfcc-mine-text\)/, 'pressed needs a non-colour cue');
+});
+
+test('the My posts rules come after, and are at least as specific as, the generic button rules', () => {
+  const generic = css.indexOf('button[aria-pressed="true"] {');
+  const mine = css.indexOf('button.tfcc-nav-mine[aria-pressed="true"] {');
+  assert.ok(generic !== -1 && mine > generic, 'a later rule of equal or higher specificity must win');
+});
+
+test('every My posts colour token is set in both theme blocks, to the agreed values', () => {
+  const dark = { bg: '#d9d9d9', hover: '#c8c8c8', pressed: '#b0b0b0', text: '#141414', border: '#d9d9d9' };
+  const light = Object.assign({}, dark, { border: '#5c5c5c' });
+  const darkBlock = css.slice(0, css.indexOf('.tfcc-theme-light {'));
+  const lightBlock = css.slice(css.indexOf('.tfcc-theme-light {'), css.indexOf('}', css.indexOf('.tfcc-theme-light {')));
+  for (const [k, v] of Object.entries(dark)) assert.ok(darkBlock.indexOf('--tfcc-mine-' + k + ': ' + v) !== -1, 'dark ' + k);
+  for (const [k, v] of Object.entries(light)) assert.ok(lightBlock.indexOf('--tfcc-mine-' + k + ': ' + v) !== -1, 'light ' + k);
+});

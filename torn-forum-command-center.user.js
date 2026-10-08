@@ -54,6 +54,7 @@
     drafts: 'tfcc:drafts',
     feed: 'tfcc:feed',
     postCache: 'tfcc:postcache',
+    mine: 'tfcc:mine',
   });
 
   var API_BASE = 'https://api.torn.com/v2';
@@ -65,6 +66,8 @@
   var ENRICH_TTL_MS = 15 * 60 * 1000;
   var DEFAULT_ENRICH_BUDGET = 10;
   var MAX_ENRICH_BUDGET = 25;
+  var MINE_TTL_MS = 15 * 60 * 1000;
+  var MINE_PAGE_LIMIT = 100;
   var DEEP_SEARCH_MAX_PAGES = 5;
   var DEEP_SEARCH_MAX_THREADS = 10;
   var POSTS_PER_PAGE = 20;
@@ -92,10 +95,11 @@
   var PRIORITY_MAX = 2;
   var DRAFT_MAX_CHARS = 20000;
   var POST_CACHE_MAX_POSTS = 2000;
+  var MINE_MAX_THREADS = 200;
   var POST_CACHE_MAX_BYTES = 1500000;
   var EXPORT_PREFIX = 'TFCC1:';
 
-  var ACTIVITY_SOURCES = Object.freeze(['enriched', 'feed', 'enriched-stale', 'visit', 'none']);
+  var ACTIVITY_SOURCES = Object.freeze(['enriched', 'feed', 'mine', 'enriched-stale', 'own-post', 'visit', 'none']);
 
   var SORT_MODES = Object.freeze(['activity', 'unread', 'priority', 'title', 'author', 'forum', 'added']);
   var SORT_LABELS = Object.freeze({
@@ -108,7 +112,7 @@
     added: 'Recently added',
   });
 
-  var VIEWS = Object.freeze(['threads', 'catchup', 'search', 'drafts', 'settings']);
+  var VIEWS = Object.freeze(['threads', 'catchup', 'search', 'drafts', 'settings', 'mine']);
 
   var THEMES = Object.freeze(['dark', 'light', 'match']);
 
@@ -607,6 +611,288 @@
     return out;
   }
 
+  // -- my posts ---------------------------------------------------------------
+  // Threads the key owner started (user/forumthreads) or posted in
+  // (user/forumposts). Stored under its own key, tfcc:mine, because adding a
+  // field to tfcc:feed would make loadKey report every existing user's feed
+  // cache as damaged on the first load after upgrade.
+
+  function pickList(data, names) {
+    if (!isPlainObject(data)) return null;
+    for (var i = 0; i < names.length; i += 1) {
+      if (Array.isArray(data[names[i]])) return data[names[i]];
+    }
+    return null;
+  }
+
+  function freshMine() {
+    return { v: SCHEMA_VERSION, fetchedAt: 0, selfId: 0, threads: [] };
+  }
+
+  function freshMineThread(id, now) {
+    return {
+      id: Math.max(0, toInt(id, 0)),
+      forumId: 0,
+      title: '',
+      started: false,
+      posted: false,
+      myLastPostAt: 0,
+      postsTotal: 0,
+      totalKnown: false,
+      lastPostAt: 0,
+      lastPosterId: 0,
+      infoAt: 0,
+      baselineTotal: 0,
+      firstSeenAt: Math.max(0, toInt(now, 0)),
+      isLocked: false,
+      tornNew: 0,
+      tornNewKnown: false,
+    };
+  }
+
+  // Reads only the shape freshMineThread produces. API rows go through
+  // mineThreadFromApi first, so this never has to guess between two shapes.
+  function normaliseMineThread(raw) {
+    if (!isPlainObject(raw)) return null;
+    var id = toInt(raw.id, 0);
+    if (id <= 0) return null;
+    var t = freshMineThread(id, 0);
+    t.forumId = Math.max(0, toInt(raw.forumId, 0));
+    t.title = safeString(raw.title, 300);
+    t.started = raw.started === true;
+    t.posted = raw.posted === true;
+    t.myLastPostAt = Math.max(0, toInt(raw.myLastPostAt, 0));
+    t.totalKnown = raw.totalKnown === true;
+    t.postsTotal = t.totalKnown ? Math.max(0, toInt(raw.postsTotal, 0)) : 0;
+    t.lastPostAt = Math.max(0, toInt(raw.lastPostAt, 0));
+    t.lastPosterId = Math.max(0, toInt(raw.lastPosterId, 0));
+    t.infoAt = Math.max(0, toInt(raw.infoAt, 0));
+    t.baselineTotal = Math.max(0, toInt(raw.baselineTotal, 0));
+    t.firstSeenAt = Math.max(0, toInt(raw.firstSeenAt, 0));
+    t.isLocked = raw.isLocked === true;
+    t.tornNewKnown = raw.tornNewKnown === true;
+    t.tornNew = t.tornNewKnown ? Math.max(0, toInt(raw.tornNew, 0)) : 0;
+    return t;
+  }
+
+  function normaliseMine(raw) {
+    if (!isPlainObject(raw)) return freshMine();
+    if (toInt(raw.v, 0) > SCHEMA_VERSION) return freshMine();
+    var out = freshMine();
+    out.fetchedAt = Math.max(0, toInt(raw.fetchedAt, 0));
+    out.selfId = Math.max(0, toInt(raw.selfId, 0));
+    if (Array.isArray(raw.threads)) {
+      for (var i = 0; i < raw.threads.length && out.threads.length < MINE_MAX_THREADS; i += 1) {
+        var t = normaliseMineThread(raw.threads[i]);
+        if (t) out.threads.push(t);
+      }
+    }
+    return out;
+  }
+
+  // Every postsTotal this script stores counts every post, topic included:
+  // the unit of posts.total on user/forumsubscribedthreads, and so of
+  // lastSeenTotal, which markRead writes from it. A thread object's `posts`
+  // (user/forumthreads, forum/{id}/thread) counts REPLIES, one fewer: thread
+  // 16589908 says posts: 1 and holds 2 posts. Live findings 3 and 4,
+  // docs/reference/torn-api-live-findings-2026-10-08.md. Convert here and
+  // nowhere else. -1 means unknown.
+  function threadPostsTotal(raw) {
+    if (!isPlainObject(raw)) return -1;
+    if (typeof raw.posts === 'number' && isFinite(raw.posts) && raw.posts >= 0) {
+      return Math.floor(raw.posts) + 1;
+    }
+    if (isPlainObject(raw.posts) && typeof raw.posts.total === 'number' && raw.posts.total >= 0) {
+      return Math.floor(raw.posts.total);
+    }
+    return -1;
+  }
+
+  function mineThreadFromApi(raw) {
+    if (!isPlainObject(raw)) return null;
+    var id = toInt(raw.id, 0);
+    if (id <= 0) return null;
+    var author = isPlainObject(raw.author) ? raw.author : {};
+    var last = isPlainObject(raw.last_poster) ? raw.last_poster : {};
+    var total = threadPostsTotal(raw);
+    var hasNew = typeof raw.new_posts === 'number' && isFinite(raw.new_posts);
+    return {
+      id: id,
+      forumId: Math.max(0, toInt(raw.forum_id, 0)),
+      title: safeString(raw.title, 300),
+      authorId: Math.max(0, toInt(author.id, 0)),
+      postsTotal: Math.max(0, total),
+      totalKnown: total >= 0,
+      lastPostAt: secondsToMs(raw.last_post_time),
+      lastPosterId: Math.max(0, toInt(last.id, 0)),
+      isLocked: raw.is_locked === true,
+      // Torn's own unread count for a thread the key owner started (finding 1).
+      tornNew: hasNew ? Math.max(0, Math.floor(raw.new_posts)) : 0,
+      tornNewKnown: hasNew,
+    };
+  }
+
+  // The post body arrives in `content` and is deliberately never read.
+  function minePostFromApi(raw) {
+    if (!isPlainObject(raw)) return null;
+    var threadId = toInt(raw.thread_id, 0);
+    if (threadId <= 0) return null;
+    var author = isPlainObject(raw.author) ? raw.author : {};
+    return {
+      postId: Math.max(0, toInt(raw.id, 0)),
+      threadId: threadId,
+      authorId: Math.max(0, toInt(author.id, 0)),
+      at: secondsToMs(raw.created_time === undefined ? raw.timestamp : raw.created_time),
+    };
+  }
+
+  // postsTotal is posts + 1 via threadPostsTotal: same unit as posts.total.
+  // A caller must not add 1 again.
+  function parseThreadDetail(raw) {
+    if (!isPlainObject(raw)) return null;
+    var last = isPlainObject(raw.last_poster) ? raw.last_poster : {};
+    var total = threadPostsTotal(raw);
+    return {
+      title: safeString(raw.title, 300),
+      forumId: Math.max(0, toInt(raw.forum_id, 0)),
+      postsTotal: Math.max(0, total),
+      totalKnown: total >= 0,
+      lastPostAt: secondsToMs(raw.last_post_time),
+      lastPosterId: Math.max(0, toInt(last.id, 0)),
+      isLocked: raw.is_locked === true,
+      isSticky: raw.is_sticky === true,
+    };
+  }
+
+  // First sight of a total sets the baseline, so the feature never reports a
+  // user's whole posting history as unread on the day it is installed.
+  function observeMineTotal(t, total, now) {
+    if (!t.totalKnown) t.baselineTotal = total;
+    t.postsTotal = total;
+    t.totalKnown = true;
+    t.infoAt = now;
+  }
+
+  // You do not have unread replies to a thread whose last word is yours.
+  function advanceMineBaseline(t, selfId) {
+    if (!t.totalKnown) return;
+    var lastIsMine = (selfId > 0 && t.lastPosterId === selfId)
+      || (t.lastPostAt > 0 && t.myLastPostAt >= t.lastPostAt);
+    if (lastIsMine) t.baselineTotal = Math.max(t.baselineTotal, t.postsTotal);
+  }
+
+  function mineRecency(t) { return Math.max(t.myLastPostAt, t.lastPostAt); }
+
+  function finishMine(out, byId, order) {
+    var list = order.map(function (k) { return byId[k]; });
+    list.sort(function (a, b) {
+      var d = mineRecency(b) - mineRecency(a);
+      return d !== 0 ? d : b.id - a.id;
+    });
+    out.threads = list.slice(0, MINE_MAX_THREADS);
+    return out;
+  }
+
+  // started: mineThreadFromApi records; posts: minePostFromApi records.
+  // complete false (one of the two lists failed) keeps the old fetchedAt, so
+  // a partial answer never holds off the next attempt for a whole TTL.
+  function mergeMineSnapshot(prev, started, posts, now, complete) {
+    var t0 = toInt(now, 0);
+    var base = normaliseMine(prev);
+    var out = freshMine();
+    out.fetchedAt = complete ? t0 : base.fetchedAt;
+    out.selfId = base.selfId;
+    var byId = {};
+    var order = [];
+    function rec(id) {
+      var k = String(id);
+      if (!Object.prototype.hasOwnProperty.call(byId, k)) {
+        byId[k] = freshMineThread(id, t0);
+        order.push(k);
+      }
+      return byId[k];
+    }
+    var i;
+    for (i = 0; i < base.threads.length; i += 1) {
+      var k0 = String(base.threads[i].id);
+      // Torn's new_posts is only as fresh as the forumthreads page it came
+      // on. A started thread that dropped off the page falls back to the
+      // local count rather than keeping a count Torn no longer reports.
+      base.threads[i].tornNewKnown = false;
+      base.threads[i].tornNew = 0;
+      byId[k0] = base.threads[i];
+      order.push(k0);
+    }
+    for (i = 0; i < (started || []).length; i += 1) {
+      var s = started[i];
+      if (!s) continue;
+      var r = rec(s.id);
+      r.started = true;
+      if (s.forumId) r.forumId = s.forumId;
+      if (s.title) r.title = s.title;
+      if (s.lastPostAt) r.lastPostAt = Math.max(r.lastPostAt, s.lastPostAt);
+      if (s.lastPosterId) r.lastPosterId = s.lastPosterId;
+      r.isLocked = s.isLocked === true;
+      r.tornNewKnown = s.tornNewKnown === true;
+      r.tornNew = r.tornNewKnown ? s.tornNew : 0;
+      if (s.totalKnown) observeMineTotal(r, s.postsTotal, t0);
+      if (!out.selfId && s.authorId) out.selfId = s.authorId;
+    }
+    for (i = 0; i < (posts || []).length; i += 1) {
+      var p = posts[i];
+      if (!p) continue;
+      var rp = rec(p.threadId);
+      rp.posted = true;
+      rp.myLastPostAt = Math.max(rp.myLastPostAt, p.at);
+      if (!out.selfId && p.authorId) out.selfId = p.authorId;
+    }
+    for (i = 0; i < order.length; i += 1) advanceMineBaseline(byId[order[i]], out.selfId);
+    return finishMine(out, byId, order);
+  }
+
+  // normaliseMine doubles as the deep clone, so the input is never mutated.
+  function applyMineDetail(snap, threadId, detail, now) {
+    var out = normaliseMine(snap);
+    if (!detail) return out;
+    var id = toInt(threadId, 0);
+    for (var i = 0; i < out.threads.length; i += 1) {
+      var t = out.threads[i];
+      if (t.id !== id) continue;
+      if (detail.title && !t.title) t.title = detail.title;
+      if (detail.forumId) t.forumId = detail.forumId;
+      if (detail.lastPostAt) t.lastPostAt = Math.max(t.lastPostAt, detail.lastPostAt);
+      if (detail.lastPosterId) t.lastPosterId = detail.lastPosterId;
+      t.isLocked = detail.isLocked === true;
+      if (detail.totalKnown) observeMineTotal(t, detail.postsTotal, toInt(now, 0));
+      advanceMineBaseline(t, out.selfId);
+    }
+    return out;
+  }
+
+  function mineIsDue(snap, now, ttl) {
+    var f = snap ? toInt(snap.fetchedAt, 0) : 0;
+    return f <= 0 || (toInt(now, 0) - f) >= ttl;
+  }
+
+  // Lookups go only to threads Torn gives no count for, whose total is unknown
+  // or older than the TTL, newest conversation first, inside the same budget
+  // setting Threads uses.
+  function mineLookupTargets(snap, subscribed, budget, now, ttl) {
+    var n = clamp(toInt(budget, 0), 0, MAX_ENRICH_BUDGET);
+    if (!n || !snap) return [];
+    var subs = {};
+    for (var i = 0; i < (subscribed || []).length; i += 1) subs[String(subscribed[i].id)] = true;
+    var t = toInt(now, 0);
+    var out = [];
+    for (var j = 0; j < snap.threads.length && out.length < n; j += 1) {
+      var r = snap.threads[j];
+      if (subs[String(r.id)]) continue;
+      if (r.totalKnown && (t - r.infoAt) < ttl) continue;
+      out.push(r.id);
+    }
+    return out;
+  }
+
   function freshPostCache() { return { v: SCHEMA_VERSION, threads: {}, order: [] }; }
 
   function normalisePostCache(raw) {
@@ -755,11 +1041,56 @@
     };
   }
 
+  // A subscribed thread keeps Torn's own count, exactly as in Threads. Only a
+  // thread Torn gives no count for is counted here, and an unknown total is
+  // reported as unchecked so it can never pass for a thread checked and quiet.
+  // Every total compared here counts the topic post: rec.postsTotal and
+  // rec.baselineTotal are posts + 1 (threadPostsTotal), the same unit as the
+  // subscribed posts.total that lastSeenTotal is written from. Live findings
+  // 3 and 4, docs/reference/torn-api-live-findings-2026-10-08.md.
+  function mineUnreadFor(apiRow, entry, rec) {
+    var u;
+    if (apiRow) {
+      u = unreadFor(apiRow, entry);
+      u.unreadSource = 'torn';
+      return u;
+    }
+    // A started thread's new_posts is Torn's own unread count, like posts.new.
+    if (rec && rec.totalKnown && rec.tornNewKnown) {
+      u = unreadFor({ postsNew: rec.tornNew, postsTotal: rec.postsTotal }, entry);
+      u.unreadSource = 'torn';
+      return u;
+    }
+    var seen = entry ? Math.max(0, toInt(entry.lastSeenTotal, 0)) : 0;
+    if (!rec || !rec.totalKnown) {
+      return { tornUnread: 0, postsTotal: 0, lastSeenTotal: seen, dismissed: false, unread: 0, unreadSource: 'unchecked' };
+    }
+    var unread = Math.max(0, rec.postsTotal - Math.max(seen, rec.baselineTotal));
+    return {
+      tornUnread: 0,
+      postsTotal: rec.postsTotal,
+      lastSeenTotal: seen,
+      dismissed: rec.postsTotal > 0 && seen >= rec.postsTotal,
+      unread: unread,
+      unreadSource: 'local',
+    };
+  }
+
+  // What pulls a My posts thread into Threads. A read marker and a visit
+  // deliberately do not, or marking your own thread read would file it.
+  function isOrganised(entry, hasDraft) {
+    if (hasDraft) return true;
+    if (!entry) return false;
+    return !!(entry.folderId || entry.tags.length || entry.pinned || entry.priority !== 0
+      || entry.note || entry.archived);
+  }
+
   // Takes the newest of every candidate rather than the first available one:
   // a fresh enrichment can still be older than an activity row that arrived
   // since. `source` reports which candidate won, so a surprising sort order is
   // diagnosable from the row itself instead of by guesswork.
-  function resolveLastActivity(entry, feedAt, now, maxAgeMs) {
+  // extra is optional: { mineAt, ownPostAt } from a My posts record.
+  function resolveLastActivity(entry, feedAt, now, maxAgeMs, extra) {
     var ttl = maxAgeMs === undefined ? ENRICH_TTL_MS : maxAgeMs;
     var t = toInt(now, 0);
     var candidates = [];
@@ -769,6 +1100,9 @@
       candidates.push({ at: entry.lastPostTimeCached, source: fresh ? 'enriched' : 'enriched-stale' });
     }
     if (feedAt > 0) candidates.push({ at: feedAt, source: 'feed' });
+    var x = extra || {};
+    if (x.mineAt > 0) candidates.push({ at: x.mineAt, source: 'mine' });
+    if (x.ownPostAt > 0) candidates.push({ at: x.ownPostAt, source: 'own-post' });
     if (entry && entry.lastVisitedAt > 0) candidates.push({ at: entry.lastVisitedAt, source: 'visit' });
 
     if (!candidates.length) return { at: null, source: 'none' };
@@ -808,6 +1142,9 @@
     var drafts = (input && input.drafts) || freshDrafts();
     var now = toInt(input && input.now, 0);
     var ttl = input && input.enrichTtlMs !== undefined ? input.enrichTtlMs : ENRICH_TTL_MS;
+    var mine = (input && input.mine) || freshMine();
+    var mineById = {};
+    for (var mi = 0; mi < mine.threads.length; mi += 1) mineById[String(mine.threads[mi].id)] = mine.threads[mi];
 
     var cats = categoryIndex(categories);
     var feeds = feedIndex(activity);
@@ -840,6 +1177,7 @@
     for (i = 0; i < known.length; i += 1) ensure(known[i]);
     var draftIds = Object.keys(drafts.byThread || {});
     for (i = 0; i < draftIds.length; i += 1) ensure(draftIds[i]);
+    for (i = 0; i < mine.threads.length; i += 1) ensure(mine.threads[i].id);
 
     var rows = [];
     for (i = 0; i < order.length; i += 1) {
@@ -852,10 +1190,13 @@
       // Archived rows are still built here. Hiding them is a view decision, and
       // buildPanelModel makes it, so an archived thread with new posts can still
       // surface rather than being lost at the merge.
-      var u = unreadFor(api, entry);
+      var rec = Object.prototype.hasOwnProperty.call(mineById, id) ? mineById[id] : null;
+      var u = rec ? mineUnreadFor(api, entry, rec) : unreadFor(api, entry);
+      var unreadSource = rec ? u.unreadSource : (api ? 'torn' : 'none');
       var feedRow = Object.prototype.hasOwnProperty.call(feeds, id) ? feeds[id] : null;
-      var act = resolveLastActivity(entry, feedRow ? feedRow.at : 0, now, ttl);
-      var forumId = (api && api.forumId) || entry.forumId || 0;
+      var act = resolveLastActivity(entry, feedRow ? feedRow.at : 0, now, ttl,
+        rec ? { mineAt: rec.lastPostAt, ownPostAt: rec.myLastPostAt } : null);
+      var forumId = (api && api.forumId) || entry.forumId || (rec && rec.forumId) || 0;
       var cat = Object.prototype.hasOwnProperty.call(cats, String(forumId)) ? cats[String(forumId)] : null;
       var folder = entry.folderId && Object.prototype.hasOwnProperty.call(folderById, entry.folderId)
         ? folderById[entry.folderId]
@@ -865,7 +1206,7 @@
       rows.push({
         id: id,
         numericId: Number(id),
-        title: (api && api.title) || entry.title || (draft && draft.title) || ('Thread ' + id),
+        title: (api && api.title) || entry.title || (draft && draft.title) || (rec && rec.title) || ('Thread ' + id),
         forumId: forumId,
         forumName: cat ? cat.title : (forumId ? ('Forum ' + forumId) : 'Unknown forum'),
         authorId: (api && api.authorId) || entry.authorId || 0,
@@ -885,12 +1226,15 @@
         lastActivity: act.at,
         activitySource: act.source,
         lastVisitedAt: entry.lastVisitedAt,
-        firstSeenAt: entry.firstSeenAt,
-        isLocked: entry.isLocked,
+        firstSeenAt: entry.firstSeenAt || (rec ? rec.firstSeenAt : 0),
+        isLocked: entry.isLocked || !!(rec && rec.isLocked),
         isSticky: entry.isSticky,
         hasDraft: !!draft,
         draftUpdatedAt: draft ? draft.updatedAt : 0,
         needsEnrich: act.source !== 'enriched',
+        mineRole: rec ? (rec.started ? 'started' : 'posted') : null,
+        inThreads: !!api || !rec || isOrganised(entry, !!draft),
+        unreadSource: unreadSource,
       });
     }
 
@@ -951,6 +1295,21 @@
     });
   }
 
+  // Every list view's population and filters, in one place. sortThreads runs
+  // after this, and a row cap (issue #3) goes after that, so the user always
+  // sees the top N of what they asked for.
+  function viewRows(rows, view, filters, query) {
+    var f = filters || {};
+    return rows.filter(function (r) {
+      if (view === 'mine' ? !r.mineRole : !r.inThreads) return false;
+      if (r.archived && !r.pinned && r.unread === 0) return false;
+      if (f.unreadOnly && r.unread === 0) return false;
+      if (f.folderFilter && r.folderId !== f.folderFilter) return false;
+      if (f.tagFilter && r.tags.indexOf(f.tagFilter) === -1) return false;
+      return matchThread(r, query);
+    });
+  }
+
   // -- query parsing and search --------------------------------------------
 
   var QUERY_PREFIXES = Object.freeze(['by', 'tag', 'folder', 'is']);
@@ -1002,6 +1361,8 @@
       if (v === 'subscribed') return row.subscribed;
       if (v === 'archived') return row.archived;
       if (v === 'visited') return row.lastVisitedAt > 0;
+      if (v === 'started') return row.mineRole === 'started';
+      if (v === 'posted') return row.mineRole === 'posted';
       return false;
     }
     var hay = [row.title, row.authorName, row.forumName, row.note, row.tags.join(' ')]
@@ -1090,7 +1451,7 @@
   // this lists one that is never requested. When #2 (user forumthreads,
   // forumposts) and #10 (user profile) merge, they add theirs here.
   var CUSTOM_KEY_SELECTIONS = Object.freeze({
-    user: Object.freeze(['forumsubscribedthreads', 'forumfeed']),
+    user: Object.freeze(['forumsubscribedthreads', 'forumfeed', 'forumthreads', 'forumposts']),
     forum: Object.freeze(['categories', 'thread', 'posts']),
   });
 
@@ -1862,6 +2223,9 @@
     drafts: freshDrafts(),
     feed: freshFeed(),
     postCache: freshPostCache(),
+    mine: freshMine(),
+    refreshingMine: false,
+    mineError: null,
     rows: [],
     loading: false,
     refreshing: false,
@@ -1928,14 +2292,16 @@
     var d = loadKey(STORAGE_KEYS.drafts, normaliseDrafts, now);
     var f = loadKey(STORAGE_KEYS.feed, normaliseFeed, now);
     var p = loadKey(STORAGE_KEYS.postCache, normalisePostCache, now);
+    var m = loadKey(STORAGE_KEYS.mine, normaliseMine, now);
     state.settings = s.value;
     state.organizer = o.value;
     state.drafts = d.value;
     state.feed = f.value;
     state.postCache = p.value;
+    state.mine = m.value;
     // A key that failed normalisation is reported rather than silently reset,
     // because a user who loses their folders deserves to know it happened.
-    [['Settings', s], ['Folders and tags', o], ['Drafts', d], ['Cached thread list', f], ['Post cache', p]]
+    [['Settings', s], ['Folders and tags', o], ['Drafts', d], ['Cached thread list', f], ['Post cache', p], ['My posts list', m]]
       .forEach(function (pair) {
         if (pair[1].recovered) notice(pair[0] + ' were damaged and have been reset.', 'warn');
       });
@@ -1948,6 +2314,7 @@
       drafts: [STORAGE_KEYS.drafts, state.drafts],
       feed: [STORAGE_KEYS.feed, state.feed],
       postCache: [STORAGE_KEYS.postCache, state.postCache],
+      mine: [STORAGE_KEYS.mine, state.mine],
     };
     var pair = map[which];
     if (!pair) return { ok: true };
@@ -1963,6 +2330,7 @@
       categories: state.feed.categories,
       organizer: state.organizer,
       drafts: state.drafts,
+      mine: state.mine,
       now: now,
     });
   }
@@ -2088,6 +2456,95 @@
     }
 
     return step(0);
+  }
+
+  var MINE_SHAPE_THREADS = 'Torn\'s answer for your threads was not in the shape this version expects.';
+  var MINE_SHAPE_POSTS = 'Torn\'s answer for your posts was not in the shape this version expects.';
+
+  function enrichMine(ids, now, opts, generation) {
+    function step(i) {
+      if (i >= ids.length) return Promise.resolve({ ok: true });
+      return tornApiGet('forum/' + ids[i] + '/thread', {}, opts).then(function (res) {
+        if (generation !== state.generation) return { ok: false, reason: 'stale' };
+        if (res.ok && res.data && isPlainObject(res.data.thread)) {
+          state.mine = applyMineDetail(state.mine, ids[i], parseThreadDetail(res.data.thread), now);
+        } else if (res.reason === 'throttled') {
+          // Stop the batch rather than grinding against the limit. The rows not
+          // reached keep saying "not checked yet".
+          return { ok: true, stoppedEarly: true };
+        }
+        return step(i + 1);
+      });
+    }
+    return step(0);
+  }
+
+  // A separate, bounded action for the My posts view only: two lists and at
+  // most enrichBudget lookups, never the category list. Threads' refresh and
+  // auto refresh never call this.
+  function refreshMine(now, opts) {
+    var options = opts || {};
+    if (state.refreshingMine) return Promise.resolve({ ok: false, reason: 'inflight' });
+    state.refreshingMine = true;
+    var generation = state.generation;
+    var budget = clamp(toInt(state.settings.enrichBudget, DEFAULT_ENRICH_BUDGET), 0, MAX_ENRICH_BUDGET);
+    var params = { limit: MINE_PAGE_LIMIT };
+    var started = null;
+
+    function stale() { return generation !== state.generation; }
+    function fail(res, fallback) {
+      state.mineError = { reason: (res && res.reason) || 'network', detail: scrubDetail((res && res.detail) || fallback) };
+      return { ok: false, reason: state.mineError.reason, detail: state.mineError.detail };
+    }
+
+    var work = tornApiGet('user/forumthreads', params, options)
+      .then(function (res) {
+        if (stale()) return { ok: false, reason: 'stale' };
+        if (!res.ok) return fail(res, 'Could not load your threads.');
+        var list = pickList(res.data, ['forumThreads', 'forum_threads', 'threads']);
+        if (!list) return fail({ reason: 'parse', detail: MINE_SHAPE_THREADS });
+        started = list.map(mineThreadFromApi).filter(Boolean);
+        return tornApiGet('user/forumposts', params, options).then(function (pres) {
+          if (stale()) return { ok: false, reason: 'stale' };
+          var complete = false;
+          var posts = [];
+          var outcome = { ok: true };
+          if (!pres.ok) {
+            outcome = fail(pres, 'Could not load your posts.');
+            state.mineError.detail = 'Threads you posted in could not be loaded: ' + state.mineError.detail;
+            outcome.detail = state.mineError.detail;
+          } else {
+            var plist = pickList(pres.data, ['forumPosts', 'forum_posts', 'posts']);
+            if (!plist) {
+              outcome = fail({ reason: 'parse', detail: MINE_SHAPE_POSTS });
+            } else {
+              posts = plist.map(minePostFromApi).filter(Boolean);
+              complete = true;
+              state.mineError = null;
+            }
+          }
+          state.mine = mergeMineSnapshot(state.mine, started, posts, now, complete);
+          var ids = mineLookupTargets(state.mine, state.feed.subscribed, budget, now, MINE_TTL_MS);
+          return enrichMine(ids, now, options, generation).then(function () { return outcome; });
+        });
+      })
+      .then(function (res) {
+        // A stale answer writes nothing: the user reset, cleared the key, or
+        // left the page while it was in flight.
+        if (!stale()) {
+          persist('mine');
+          recompute(now);
+        }
+        return res;
+      })
+      .catch(function (e) {
+        return fail({ reason: 'network', detail: e && e.message }, 'My posts could not be loaded.');
+      });
+
+    return work.then(function (r) {
+      state.refreshingMine = false;
+      return r;
+    });
   }
 
   function runDeepSearch(threadIds, queryText, now, opts) {
@@ -2386,6 +2843,8 @@
       '  --tfcc-text-sm: 12px; --tfcc-text: 14px; --tfcc-text-lg: 1.2em;',
       '  --tfcc-gap-xs: 4px; --tfcc-gap-sm: 6px; --tfcc-gap: 8px; --tfcc-gap-lg: 14px;',
       '  --tfcc-focus-ring: 2px solid var(--tm-good-text);',
+      '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
+      '  --tfcc-mine-text: #141414; --tfcc-mine-border: #d9d9d9;',
       '}',
       '#' + PANEL_ID + '.tfcc-theme-light {',
       '  --tm-bg: #f2f2f2; --tm-bg-2: #e8e8e8; --tm-bg-3: #ffffff; --tm-hover: #dcdcdc;',
@@ -2393,6 +2852,10 @@
       '  --tm-text: #141414; --tm-muted: #4a4a4a; --tm-meta: #3a3a3a;',
       '  --tm-good-bg: #cfe8d4; --tm-good-text: #1c5c2c; --tm-bad-text: #a11414;',
       '  --tm-warn-text: #7a5600; --tm-accent-text: #14507d;',
+      // Same fill and text as dark; only the border differs, because a light
+      // grey fill on the light panel is not itself a visible boundary.
+      '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
+      '  --tfcc-mine-text: #141414; --tfcc-mine-border: #5c5c5c;',
       '}',
       '#' + FALLBACK_ID + ' { position: fixed; right: 12px; bottom: 12px; z-index: 2147483000;',
       '  box-sizing: border-box; width: min(960px, calc(100vw - 24px)); max-width: calc(100vw - 24px);',
@@ -2448,6 +2911,19 @@
       '  color: var(--tm-text); }',
       '#' + PANEL_ID + ' .tfcc-nav { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
       '  margin-bottom: var(--tfcc-gap); }',
+      // My posts stands apart from the other five: last, pushed right, and
+      // light grey with dark text in every theme. Each rule names the button
+      // element so it is (1,1,1) or more and beats the generic button,
+      // :hover and aria-pressed rules above. Pressed is shown by an underline
+      // bar as well as the fill, so it never depends on colour alone.
+      // Measured: text on fill 13.05, on hover 11.01, on pressed 8.49; fill
+      // on the dark panel 11.68; light border on the light panel 5.97.
+      '#' + PANEL_ID + ' button.tfcc-nav-mine { margin-left: auto; background: var(--tfcc-mine-bg);',
+      '  color: var(--tfcc-mine-text); border-color: var(--tfcc-mine-border); font-weight: bold; }',
+      '#' + PANEL_ID + ' button.tfcc-nav-mine:hover { background: var(--tfcc-mine-hover);',
+      '  color: var(--tfcc-mine-text); }',
+      '#' + PANEL_ID + ' button.tfcc-nav-mine[aria-pressed="true"] { background: var(--tfcc-mine-pressed);',
+      '  color: var(--tfcc-mine-text); box-shadow: inset 0 -3px 0 var(--tfcc-mine-text); }',
       '#' + PANEL_ID + ' .tfcc-bar { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
       '  align-items: center; margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-grow { flex: 1 1 180px; min-width: 0; }',
@@ -2596,16 +3072,14 @@
     var rows = state.rows;
     var query = parseQuery(state.searchQuery);
 
-    var visible = rows.filter(function (r) {
-      if (r.archived && !r.pinned && r.unread === 0) return false;
-      if (s.unreadOnly && r.unread === 0) return false;
-      if (s.folderFilter && r.folderId !== s.folderFilter) return false;
-      if (s.tagFilter && r.tags.indexOf(s.tagFilter) === -1) return false;
-      return matchThread(r, query);
-    });
+    // Threads, Catch up, the header badge and Search see only the Threads
+    // population. A My posts-only thread lives in its own view.
+    var threadRows = rows.filter(function (r) { return r.inThreads; });
+    var mineAll = viewRows(rows, 'mine', {}, parseQuery(''));
+    var visible = viewRows(rows, s.view === 'mine' ? 'mine' : 'threads', s, query);
 
     var totalUnread = 0;
-    for (var i = 0; i < rows.length; i += 1) totalUnread += rows[i].unread;
+    for (var i = 0; i < threadRows.length; i += 1) totalUnread += threadRows[i].unread;
 
     return {
       loading: false,
@@ -2627,14 +3101,22 @@
       tags: allTags(state.organizer),
       categories: state.feed.categories.slice(),
       rows: sortThreads(visible, s.sort),
-      allRows: rows,
+      allRows: threadRows,
       totals: {
-        threads: rows.length,
-        subscribed: rows.filter(function (r) { return r.subscribed; }).length,
+        threads: threadRows.length,
+        subscribed: threadRows.filter(function (r) { return r.subscribed; }).length,
         unread: totalUnread,
         drafts: draftList(state.drafts).length,
       },
-      catchUp: sortThreads(catchUpList(rows, state.organizer.lastCatchUpAt), 'activity'),
+      catchUp: sortThreads(catchUpList(threadRows, state.organizer.lastCatchUpAt), 'activity'),
+      mine: {
+        total: mineAll.length,
+        unread: mineAll.filter(function (r) { return r.unread > 0; }).length,
+        unchecked: mineAll.filter(function (r) { return r.unreadSource === 'unchecked'; }).length,
+        fetchedAt: state.mine.fetchedAt,
+        refreshing: state.refreshingMine,
+        error: state.mineError,
+      },
       lastCatchUpAt: state.organizer.lastCatchUpAt,
       drafts: draftList(state.drafts),
       searchQuery: state.searchQuery,
@@ -2693,14 +3175,21 @@
   }
 
   function renderNav(model) {
-    var labels = { threads: 'Threads', catchup: 'Catch up', search: 'Search', drafts: 'Drafts', settings: 'Settings' };
+    var labels = {
+      threads: 'Threads', catchup: 'Catch up', search: 'Search', drafts: 'Drafts', settings: 'Settings',
+      mine: 'My posts',
+    };
     var out = ['<div class="tfcc-nav">'];
     for (var i = 0; i < VIEWS.length; i += 1) {
       var v = VIEWS[i];
       var count = '';
       if (v === 'catchup' && model.catchUp.length) count = ' (' + model.catchUp.length + ')';
       if (v === 'drafts' && model.totals.drafts) count = ' (' + model.totals.drafts + ')';
-      out.push('<button type="button" data-act="view" data-view="' + v + '" aria-pressed="'
+      if (v === 'mine' && model.mine && model.mine.unread) count = ' (' + model.mine.unread + ')';
+      // My posts is last in VIEWS and right-aligned by its class (see the
+      // .tfcc-nav-mine rules), so it needs no special case in this loop.
+      out.push('<button type="button" data-act="view" data-view="' + v + '"'
+        + (v === 'mine' ? ' class="tfcc-nav-mine"' : '') + ' aria-pressed="'
         + (model.view === v ? 'true' : 'false') + '">' + escapeHtml(labels[v] + count) + '</button>');
     }
     out.push('</div>');
@@ -2715,13 +3204,23 @@
       + threadLinkAttr(row.id) + '>'
       + escapeHtml(row.title) + '</a></span>');
     if (row.unread > 0) {
-      out.push('<span class="tfcc-unread">' + formatCount(row.unread) + ' new</span>');
+      if (row.unreadSource === 'local') {
+        // A count this script made, never passed off as Torn's.
+        out.push('<span class="tfcc-unread" title="Counted on this device since you last marked it read or posted. '
+          + 'Torn does not report unread counts for threads you do not follow.">'
+          + formatCount(row.unread) + ' new</span><span class="tfcc-note">local count</span>');
+      } else {
+        out.push('<span class="tfcc-unread">' + formatCount(row.unread) + ' new</span>');
+      }
     }
+    // A total nobody looked up must never look like a checked zero.
+    if (row.unreadSource === 'unchecked') out.push('<span class="tfcc-note">not checked yet</span>');
     if (!row.subscribed) out.push('<span class="tfcc-note">not subscribed</span>');
     if (row.isLocked) out.push('<span class="tfcc-note">locked</span>');
     out.push('</div>');
 
     out.push('<div class="tfcc-meta">');
+    if (row.mineRole) out.push('<span class="tfcc-tag">' + (row.mineRole === 'started' ? 'started' : 'posted in') + '</span>');
     out.push('<span title="Where the time came from: ' + escapeHtml(row.activitySource) + '">'
       + escapeHtml(formatRelativeTime(row.lastActivity, model.now)) + '</span>');
     out.push('<span>' + escapeHtml(row.forumName) + '</span>');
@@ -2763,7 +3262,8 @@
     return out.join('');
   }
 
-  function renderThreadsView(model) {
+  // The filter bar Threads and My posts share.
+  function renderListBar(model) {
     var out = ['<div class="tfcc-bar">'];
     out.push('<input class="tfcc-grow" type="search" data-act="filter" value="'
       + escapeHtml(model.searchQuery) + '" placeholder="filter: words, by:player, tag:x, is:unread">');
@@ -2793,16 +3293,65 @@
     out.push('<button type="button" data-act="unread-only" aria-pressed="'
       + (model.unreadOnly ? 'true' : 'false') + '">Unread only</button>');
     out.push('</div>');
+    return out.join('');
+  }
+
+  function renderThreadsView(model) {
+    var out = [renderListBar(model)];
 
     if (!model.rows.length) {
       out.push('<div class="tfcc-empty">Nothing matches. '
-        + (model.totals.subscribed ? 'Try clearing the filters.' : 'Refresh to load your subscribed threads.')
+        + (model.view === 'mine' || model.totals.subscribed ? 'Try clearing the filters.' : 'Refresh to load your subscribed threads.')
         + '</div>');
     } else {
       out.push('<div class="tfcc-rows">');
       for (var r = 0; r < model.rows.length; r += 1) out.push(renderRow(model.rows[r], model));
       out.push('</div>');
     }
+    return out.join('');
+  }
+
+  function renderMineView(model) {
+    var m = model.mine;
+    var out = [];
+    var line = 'Threads you started or posted in.';
+    if (m.fetchedAt) line += ' Updated ' + formatRelativeTime(m.fetchedAt, model.now) + '.';
+    if (m.unchecked) line += ' ' + m.unchecked + ' not checked yet.';
+    out.push('<p class="tfcc-note">' + escapeHtml(line) + '</p>');
+
+    if (m.error) {
+      out.push('<div class="tfcc-error">' + escapeHtml(m.error.detail) + '</div>');
+      out.push('<div class="tfcc-actions">' + btn('refresh', 'Try again') + '</div>');
+      if (m.total && m.fetchedAt) {
+        out.push('<p class="tfcc-note">' + escapeHtml('Showing the saved list from '
+          + formatAbsoluteTime(m.fetchedAt) + '.') + '</p>');
+      }
+    }
+
+    if (!m.total) {
+      if (m.refreshing) {
+        out.push('<div class="tfcc-empty">Loading the threads you started and posted in...</div>');
+      } else if (m.error) {
+        // The error above says what happened; a failed fetch is not an empty answer.
+      } else if (m.fetchedAt) {
+        out.push('<div class="tfcc-empty">Torn reports no threads you started or posted in.</div>');
+      } else {
+        out.push('<div class="tfcc-empty">Press Refresh to load the threads you started and posted in.</div>');
+      }
+      return out.join('');
+    }
+
+    // Unread only is the one filter that can empty a non-empty list without
+    // the user typing anything, so it gets its own words, plus the count of
+    // rows it hid because nobody has checked them yet.
+    var onlyUnread = model.unreadOnly && !model.searchQuery && !model.folderFilter && !model.tagFilter;
+    if (!model.rows.length && onlyUnread) {
+      out.push(renderListBar(model));
+      out.push('<div class="tfcc-empty">No new replies in your threads.'
+        + (m.unchecked ? ' ' + m.unchecked + ' not checked yet.' : '') + '</div>');
+      return out.join('');
+    }
+    out.push(renderThreadsView(model));
     return out.join('');
   }
 
@@ -2994,9 +3543,17 @@
     out.push('<div class="tfcc-kv"><label for="tfcc-budget">Activity lookups per refresh</label>'
       + '<input id="tfcc-budget" type="number" min="0" max="' + MAX_ENRICH_BUDGET
       + '" value="' + model.settings.enrichBudget + '" data-act="enrich-budget"></div>');
-    out.push('<p class="tfcc-note">A refresh always makes two requests. Each activity lookup adds one more, '
-      + 'and only runs for a thread that has unread posts and no recent time. The script keeps itself '
-      + 'under 40 requests a minute regardless.</p>');
+    // The numbers are computed from the constants, so this promise cannot
+    // drift from what the code does (CLAUDE.md constraint 7).
+    out.push('<p class="tfcc-note">A refresh of Threads makes two requests, plus one for the forum list at '
+      + 'most once a day. Opening My posts, or refreshing while it is open, makes two requests of its own, '
+      + 'at most once every ' + Math.round(MINE_TTL_MS / 60000) + ' minutes unless you press Refresh. '
+      + 'Each activity lookup adds one more to either, and only runs for a thread with no recent time. '
+      + 'With the default of ' + DEFAULT_ENRICH_BUDGET + ', a Threads refresh is at most '
+      + (3 + DEFAULT_ENRICH_BUDGET) + ' requests and My posts at most ' + (2 + DEFAULT_ENRICH_BUDGET)
+      + '; at the largest setting of ' + MAX_ENRICH_BUDGET + ', ' + (3 + MAX_ENRICH_BUDGET) + ' and '
+      + (2 + MAX_ENRICH_BUDGET) + '. '
+      + 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Appearance</h4>');
@@ -3116,6 +3673,7 @@
     else if (model.view === 'search') out.push(renderSearchView(model));
     else if (model.view === 'drafts') out.push(renderDraftsView(model));
     else if (model.view === 'settings') out.push(renderSettingsView(model));
+    else if (model.view === 'mine') out.push(renderMineView(model));
     else out.push(renderThreadsView(model));
 
     if (model.lastFetchedAt) {
@@ -3279,8 +3837,15 @@
         folders: state.organizer.folders.length,
         drafts: Object.keys(state.drafts.byThread).length,
         cachedPosts: postCacheSize(state.postCache).posts,
+        mineThreads: state.mine.threads.length,
+        mineStarted: state.mine.threads.filter(function (t) { return t.started; }).length,
+        minePosted: state.mine.threads.filter(function (t) { return t.posted; }).length,
+        mineUnchecked: state.mine.threads.filter(function (t) { return !t.totalKnown; }).length,
       },
       lastFetchedAt: state.feed.fetchedAt,
+      mineFetchedAt: state.mine.fetchedAt,
+      // Reason only: a My posts detail can quote Torn's free text.
+      mineError: state.mineError ? state.mineError.reason : null,
       lastError: state.lastError ? { reason: state.lastError.reason, detail: state.lastError.detail } : null,
       mounted: state.mounted,
       replyBoxFound: state.replyBoxFound,
@@ -3311,6 +3876,12 @@
       'cached posts: ' + c.counts.cachedPosts,
       'last fetch age ms: ' + (c.lastFetchedAt ? 'set' : 'never'),
       'last error: ' + (c.lastError ? (c.lastError.reason + ' - ' + c.lastError.detail) : 'none'),
+      'my posts threads: ' + c.counts.mineThreads,
+      'my posts started: ' + c.counts.mineStarted,
+      'my posts posted in: ' + c.counts.minePosted,
+      'my posts unchecked: ' + c.counts.mineUnchecked,
+      'my posts fetched: ' + (c.mineFetchedAt ? 'set' : 'never'),
+      'my posts error: ' + (c.mineError ? safeString(c.mineError, 20) : 'none'),
     ];
     return lines.join('\n');
   }
@@ -3500,13 +4071,20 @@
         var id = idOf(el);
         if (act === 'refresh') {
           state.notices = [];
-          refreshAll(now).then(function () { if (isForumsPage(win.location)) redraw(); });
+          // Refresh refreshes what the user is looking at: My posts runs its own
+          // bounded fetch, every other view runs the Threads refresh, never both.
+          var run = state.settings.view === 'mine' ? refreshMine(now) : refreshAll(now);
+          run.then(function () { if (isForumsPage(win.location)) redraw(); });
           redraw();
           return;
         }
         if (act === 'view') {
           var v = el.getAttribute('data-view');
           if (VIEWS.indexOf(v) !== -1) { state.settings.view = v; persist('settings'); }
+          // Opening My posts is the user input that pays for it, once per TTL.
+          if (v === 'mine' && isKeyShaped(loadApiKey()) && mineIsDue(state.mine, now, MINE_TTL_MS)) {
+            refreshMine(now).then(function () { if (isForumsPage(win.location)) redraw(); });
+          }
           redraw(); return;
         }
         if (act === 'collapse') { state.settings.collapsed = !state.settings.collapsed; persist('settings'); redraw(); return; }
@@ -3530,6 +4108,8 @@
         }
         if (act === 'markall') {
           for (var i = 0; i < state.rows.length; i += 1) {
+            // Catch up's Mark all read covers the Threads population only.
+            if (!state.rows[i].inThreads) continue;
             state.organizer = markRead(state.organizer, state.rows[i].id, state.rows[i].postsTotal, now);
           }
           persist('organizer'); recompute(now); redraw(); return;
@@ -3626,7 +4206,9 @@
           invalidateInFlight();
           state.settings = freshSettings(); state.organizer = freshOrganizer(now);
           state.drafts = freshDrafts(); state.feed = freshFeed(); state.postCache = freshPostCache();
+          state.mine = freshMine(); state.mineError = null;
           persist('settings'); persist('organizer'); persist('drafts'); persist('feed'); persist('postCache');
+          persist('mine');
           recompute(now); notice('Everything except your API key has been reset.', 'info'); redraw(); return;
         }
         if (act === 'debug') { copyText(doc, win, buildDebugReport()); notice('Debug report copied.', 'info'); redraw(); return; }

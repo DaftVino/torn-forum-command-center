@@ -156,6 +156,11 @@ test('a refresh cannot exceed the request budget the panel promises', () => {
     'the worst-case refresh (' + worstCase + ') must fit inside one minute of budget');
   assert.ok(api.DEEP_SEARCH_MAX_THREADS * api.DEEP_SEARCH_MAX_PAGES <= 50,
     'a deep search must stay bounded');
+  const mineWorst = 2 + api.MAX_ENRICH_BUDGET;
+  assert.ok(mineWorst <= api.REQUESTS_PER_WINDOW, 'the worst-case My posts fetch must fit inside one minute');
+  assert.strictEqual(2 + api.DEFAULT_ENRICH_BUDGET, 12, 'the default My posts fetch the Settings text promises');
+  assert.strictEqual(3 + api.MAX_ENRICH_BUDGET, 28);
+  assert.strictEqual(2 + api.MAX_ENRICH_BUDGET, 27);
 });
 
 test('nothing in the source reads as an action on the account', () => {

@@ -30,6 +30,12 @@ function loaded() {
     { id: 5, authorName: 'someone', at: NOW, text: 'a post body quoted from the forum' },
   ], { fetchedAt: NOW });
   api.state.lastError = { reason: 'torn', detail: 'That API key is not valid. Check it in Settings.' };
+  const mine = api.freshMine();
+  mine.threads = [Object.assign(api.freshMineThread(77, NOW), {
+    posted: true, title: 'MY SECRET THREAD TITLE', totalKnown: true, postsTotal: 3, baselineTotal: 1,
+  })];
+  api.state.mine = mine;
+  api.state.mineError = { reason: 'torn', detail: 'Threads you posted in could not be loaded: SECRET POST BODY' };
   api.recompute(NOW);
   return env;
 }
@@ -47,6 +53,10 @@ test('the report carries what a maintainer needs', () => {
   assert.match(report, /cached posts: 1/);
   assert.match(report, /on a thread: yes/);
   assert.match(report, /last error: torn - That API key is not valid/);
+  assert.match(report, /my posts threads: 1/);
+  assert.match(report, /my posts posted in: 1/);
+  assert.match(report, /my posts unchecked: 0/);
+  assert.match(report, /my posts error: torn/);
 });
 
 test('the report never carries anything private', () => {
@@ -64,6 +74,8 @@ test('the report never carries anything private', () => {
     ['SecretPlanner', 'an author name'],
     ['confidential-tag', 'a tag'],
     ['16589908', 'the thread id currently open'],
+    ['MY SECRET THREAD TITLE', 'a My posts thread title'],
+    ['SECRET POST BODY', 'My posts error free text'],
   ];
 
   for (const [needle, label] of forbidden) {

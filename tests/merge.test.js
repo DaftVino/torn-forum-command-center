@@ -206,3 +206,59 @@ test('a merge with no inputs at all produces nothing and does not throw', () => 
   assert.deepStrictEqual(api.mergeThreads({}), []);
   assert.deepStrictEqual(api.mergeThreads(), []);
 });
+
+function mineSnap(threads) {
+  const s = api.freshMine();
+  s.selfId = 7;
+  s.threads = threads.map((t) => Object.assign(api.freshMineThread(t.id, NOW), t));
+  return s;
+}
+
+test('My posts threads become rows with a role, outside Threads unless subscribed or organised', () => {
+  const rows = api.mergeThreads({
+    subscribed: [sub(1)],
+    organizer: org({ 3: { pinned: true }, 4: { lastSeenTotal: 2, lastVisitedAt: NOW } }),
+    mine: mineSnap([
+      { id: 1, started: true, totalKnown: true, postsTotal: 10, baselineTotal: 10 },
+      { id: 2, posted: true },
+      { id: 3, posted: true },
+      { id: 4, started: true },
+    ]),
+    now: NOW,
+  });
+  const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.strictEqual(by['1'].mineRole, 'started');
+  assert.strictEqual(by['1'].inThreads, true, 'subscribed stays in Threads');
+  assert.strictEqual(by['1'].unreadSource, 'torn');
+  assert.strictEqual(by['2'].mineRole, 'posted');
+  assert.strictEqual(by['2'].inThreads, false, 'a bare My posts thread must not flood Threads');
+  assert.strictEqual(by['2'].unreadSource, 'unchecked');
+  assert.strictEqual(by['3'].inThreads, true, 'pinning a My posts thread files it in Threads too');
+  assert.strictEqual(by['4'].inThreads, false, 'a read marker or visit alone does not');
+});
+
+test('rows outside My posts keep their old shape and sources', () => {
+  const rows = api.mergeThreads({ subscribed: [sub(1)], organizer: org({ 9: { note: 'x' } }), now: NOW });
+  const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.strictEqual(by['1'].mineRole, null);
+  assert.strictEqual(by['1'].inThreads, true);
+  assert.strictEqual(by['1'].unreadSource, 'torn');
+  assert.strictEqual(by['9'].inThreads, true);
+  assert.strictEqual(by['9'].unreadSource, 'none');
+});
+
+test('a My posts row takes title, forum and activity from its record', () => {
+  const rows = api.mergeThreads({
+    mine: mineSnap([{ id: 5, posted: true, title: 'Mine', forumId: 61, lastPostAt: NOW - MIN, myLastPostAt: NOW - 2 * MIN }]),
+    now: NOW,
+  });
+  assert.strictEqual(rows[0].title, 'Mine');
+  assert.strictEqual(rows[0].forumId, 61);
+  assert.strictEqual(rows[0].lastActivity, NOW - MIN);
+  assert.strictEqual(rows[0].activitySource, 'mine');
+});
+
+test('only your own post time known reports own-post', () => {
+  const rows = api.mergeThreads({ mine: mineSnap([{ id: 5, posted: true, myLastPostAt: NOW - MIN }]), now: NOW });
+  assert.strictEqual(rows[0].activitySource, 'own-post');
+});
