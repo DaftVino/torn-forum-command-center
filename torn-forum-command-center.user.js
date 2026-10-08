@@ -3013,6 +3013,12 @@
     out.push('<div class="tfcc-kv"><label for="tfcc-autosave">Autosave the reply box as a draft</label>'
       + '<input id="tfcc-autosave" type="checkbox" data-act="autosave"'
       + (model.settings.autosaveDrafts ? ' checked' : '') + '></div>');
+    out.push('<div class="tfcc-kv"><label for="tfcc-autohide">Hide the panel when I open a thread</label>'
+      + '<input id="tfcc-autohide" type="checkbox" data-act="auto-hide"'
+      + (model.settings.autoHideOnOpen ? ' checked' : '') + '></div>');
+    out.push('<p class="tfcc-note">Only thread links in this panel do this, and only a plain click. '
+      + 'Opening a link in a new tab, or following links on the Torn page itself, leaves the panel '
+      + 'as it is. Press Show to bring it back.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Folders</h4>');
@@ -3664,6 +3670,10 @@
           persist('settings');
           if (!state.settings.autosaveDrafts) detachAutosave();
           redraw(); return;
+        }
+        if (act === 'auto-hide') {
+          state.settings.autoHideOnOpen = !!el.checked;
+          persist('settings'); redraw(); return;
         }
         if (act === 'folder-forum' && id) {
           var fid = toInt(value, 0);

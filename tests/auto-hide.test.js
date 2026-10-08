@@ -338,3 +338,27 @@ test('the link walk finds our marked anchor and never reads past the panel', () 
   assert.strictEqual(find(undefined, panel), null);
   assert.strictEqual(find({}, panel), null);
 });
+
+// ---- settings view -------------------------------------------------------------
+
+test('the Settings checkbox shows the setting and saves a change', () => {
+  const env = loadUserscript({ location: forums(), now: NOW });
+  const api = env.exports;
+  api.state.settings.view = 'settings';
+
+  let html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /<label for="tfcc-autohide">Hide the panel when I open a thread<\/label>/);
+  assert.match(html, /<input id="tfcc-autohide" type="checkbox" data-act="auto-hide">/, 'unchecked by default');
+  assert.match(html, /Only thread links in this panel do this, and only a plain click\./);
+
+  const handlers = api.makeHandlers(env.doc, env.win);
+  handlers.onChange('auto-hide', { getAttribute: () => null, checked: true, value: 'on' });
+  assert.strictEqual(api.state.settings.autoHideOnOpen, true);
+  assert.strictEqual(storedSettings(env).autoHideOnOpen, true, 'a change the user made must survive a reload');
+
+  html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /data-act="auto-hide" checked>/);
+
+  handlers.onChange('auto-hide', { getAttribute: () => null, checked: false, value: '' });
+  assert.strictEqual(storedSettings(env).autoHideOnOpen, false);
+});
