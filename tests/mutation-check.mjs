@@ -525,8 +525,8 @@ const MUTATIONS = [
   {
     name: 'Unread only is ignored in My posts',
     suite: 'tests/panel.test.js',
-    apply: (s) => s.replace('      if (f.unreadOnly && r.unread === 0) return false;',
-      "      if (f.unreadOnly && r.unread === 0 && view !== 'mine') return false;"),
+    apply: (s) => s.replace("      if (f.unreadOnly && r.unread === 0 && r.authorState !== 'unchecked') return false;",
+      "      if (f.unreadOnly && r.unread === 0 && r.authorState !== 'unchecked' && view !== 'mine') return false;"),
   },
   {
     name: 'first sight no longer sets the baseline, so history floods as new',
@@ -622,8 +622,129 @@ const MUTATIONS = [
     name: 'an upgrade from a blob without rowsShown is reported as damaged',
     suite: 'tests/storage.test.js',
     apply: (s) => s.replace(
-      'var recovered = isRecoveredValue(raw, value);',
+      'var recovered = (recoveredCheck || isRecoveredValue)(raw, value);',
       'var recovered = raw !== null && JSON.stringify(raw) !== JSON.stringify(value);',
+    ),
+  },
+  // -- author-only mode (issue #4) --
+  {
+    name: 'author mode falls back to Torn\'s any-poster count',
+    suite: 'tests/author.test.js',
+    apply: (s) => s.replace(
+      "unread: au ? ((au.state === 'author' || au.state === 'author-atleast') ? au.count : 0) : u.unread,",
+      'unread: u.unread,',
+    ),
+  },
+  {
+    name: 'a post exactly at the read marker is counted as new',
+    suite: 'tests/author.test.js',
+    apply: (s) => s.replace('      if (at <= since) continue;', '      if (at < since) continue;'),
+  },
+  {
+    name: 'the boundary post that inclusive to repeats is counted twice',
+    suite: 'tests/author.test.js',
+    apply: (s) => s.replace('if (key && seen[key]) continue;', ''),
+  },
+  {
+    name: 'every page ends the walk as complete, so a cut-short walk becomes a false none',
+    suite: 'tests/author.test.js',
+    apply: (s) => s.replace(
+      'if (list.length < size || prevLink === null) return { done: true, complete: true, to: 0 };',
+      'return { done: true, complete: true, to: 0 };',
+    ),
+  },
+  {
+    name: 'a walk that makes no progress is called complete',
+    suite: 'tests/author.test.js',
+    apply: (s) => s.replace(
+      'if (added === 0 || oldest === 0) return { done: true, complete: false, to: 0 };',
+      'if (added === 0 || oldest === 0) return { done: true, complete: true, to: 0 };',
+    ),
+  },
+  {
+    name: 'the page cap is ignored, so one thread walks until the budget runs out',
+    suite: 'tests/refresh.test.js',
+    apply: (s) => s.replace('if (pages >= AUTHOR_MAX_PAGES || spent + reserved >= cap)', 'if (spent + reserved >= cap)'),
+  },
+  {
+    name: 'further pages take budget reserved for threads not yet started',
+    suite: 'tests/refresh.test.js',
+    apply: (s) => s.replace('if (pages >= AUTHOR_MAX_PAGES || spent + reserved >= cap)', 'if (pages >= AUTHOR_MAX_PAGES || spent >= cap)'),
+  },
+  {
+    name: 'a further page is requested without to, so the walk re-reads page 0',
+    suite: 'tests/refresh.test.js',
+    apply: (s) => s.replace('if (to > 0) params.to = to;', ''),
+  },
+  {
+    name: 'a failed further page is recorded as a complete walk',
+    suite: 'tests/refresh.test.js',
+    apply: (s) => s.replace(
+      'var sum = summariseAuthorPosts(posts, authorId, since, out.complete === true);',
+      'var sum = summariseAuthorPosts(posts, authorId, since, out.complete !== false);',
+    ),
+  },
+  {
+    name: 'a walk cut short with no author post is read as a known zero',
+    suite: 'tests/author.test.js',
+    apply: (s) => s.replace(
+      "return e.authorCheckComplete ? { state: 'none', count: 0, latestAt: 0, reason: '' } : unchecked('too-many');",
+      "return { state: 'none', count: 0, latestAt: 0, reason: '' };",
+    ),
+  },
+  {
+    name: 'the request sends the marker itself, which inclusive from returns as new',
+    suite: 'tests/refresh.test.js',
+    apply: (s) => s.replace('var from = Math.floor(since / 1000) + 1;', 'var from = Math.floor(since / 1000);'),
+  },
+  {
+    name: 'the check total is stored as a thread reply count (posts.total - 1)',
+    suite: 'tests/refresh.test.js',
+    apply: (s) => s.replace('e.authorCheckTotal = total;', 'e.authorCheckTotal = total - 1;'),
+  },
+  {
+    name: 'an author check is never invalidated by new posts',
+    suite: 'tests/author.test.js',
+    apply: (s) => s.replace('if (e.authorCheckTotal === u.postsTotal) {', 'if (true) {'),
+  },
+  {
+    name: 'author-mode lookups select on the any-poster unread count',
+    suite: 'tests/refresh.test.js',
+    apply: (s) => s.replace(
+      "if (authorMode) return r.authorState === 'unchecked' && (r.authorReason === 'never' || r.authorReason === 'stale');",
+      'if (authorMode) return r.unread > 0;',
+    ),
+  },
+  {
+    name: 'Unread only hides unchecked rows',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace(" && r.authorState !== 'unchecked') return false;", ') return false;'),
+  },
+  {
+    name: 'My posts follows author-only mode instead of ignoring it',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace('    var mineRows = rows.map(anyPosterRow);', '    var mineRows = rows;'),
+  },
+  {
+    name: 'Mark all read marks an unchecked thread in author mode',
+    suite: 'tests/handlers.test.js',
+    apply: (s) => s.replace(
+      "if (state.settings.authorOnly === true && state.rows[i].authorState === 'unchecked') continue;", ''),
+  },
+  {
+    name: 'the organizer goes back to the strict comparison, so new per-thread fields read as damage',
+    suite: 'tests/storage.test.js',
+    apply: (s) => s.replace(
+      'loadKey(STORAGE_KEYS.organizer, normaliseOrganizer, now, isRecoveredOrganizer)',
+      'loadKey(STORAGE_KEYS.organizer, normaliseOrganizer, now)',
+    ),
+  },
+  {
+    name: 'the per-entry check forgives a corrupt thread entry',
+    suite: 'tests/storage.test.js',
+    apply: (s) => s.replace(
+      'threads[id] = isPlainObject(r) && isPlainObject(v) ? Object.assign({}, v, r) : r;',
+      'threads[id] = isPlainObject(v) ? v : r;',
     ),
   },
 ];
