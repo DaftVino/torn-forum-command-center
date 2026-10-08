@@ -113,6 +113,15 @@
   });
 
   var VIEWS = Object.freeze(['threads', 'catchup', 'search', 'drafts', 'settings', 'mine']);
+  // Rows shown: 0 is All. A menu rather than a free number, so the settings
+  // normaliser can refuse anything the menu never wrote and fall back to All.
+  var ROWS_SHOWN_OPTIONS = Object.freeze([3, 5, 10, 20, 30, 0]);
+  // Every view is in exactly one of these, and a test holds it there, so a new
+  // view cannot ship without someone deciding whether the cap governs it.
+  // Search and Drafts are uncapped on purpose: a search that hides matches
+  // answers a different question from the one asked.
+  var CAPPED_VIEWS = Object.freeze(['threads', 'catchup', 'mine']);
+  var UNCAPPED_VIEWS = Object.freeze(['search', 'drafts', 'settings']);
 
   var THEMES = Object.freeze(['dark', 'light', 'match']);
 
@@ -1308,6 +1317,26 @@
       if (f.tagFilter && r.tags.indexOf(f.tagFilter) === -1) return false;
       return matchThread(r, query);
     });
+  }
+
+  // The last step before rendering a capped list. It runs after every filter
+  // and the sort, so the user sees the top N of what they asked for. It copies
+  // rather than slices in place, because the full list is still the one that
+  // Search, deep search and the nav counts read.
+  function capRows(rows, limit, expanded) {
+    var list = Array.isArray(rows) ? rows : [];
+    var lim = typeof limit === 'number' && ROWS_SHOWN_OPTIONS.indexOf(limit) !== -1 ? limit : 0;
+    var total = list.length;
+    var bites = lim > 0 && total > lim;
+    var open = bites && expanded === true;
+    return {
+      rows: bites && !open ? list.slice(0, lim) : list.slice(),
+      total: total,
+      limit: lim,
+      hidden: bites && !open ? total - lim : 0,
+      expandable: bites,
+      expanded: open,
+    };
   }
 
   // -- query parsing and search --------------------------------------------
