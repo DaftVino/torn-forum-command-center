@@ -2501,6 +2501,38 @@
     return { state: 'broken', current: 0, best: streak.best };
   }
 
+  // A focused thread visit: 15 s on one thread route, counted only while the
+  // page is visible and focused. Time away is never added (an inactive sample
+  // clears lastAt), a route change starts again, and one sample adds at most
+  // DWELL_MAX_STEP_MS so a throttled or sleeping timer cannot fake 15 s.
+  var DWELL_MS = 15000;
+  var DWELL_TICK_MS = 1000;
+  var DWELL_MAX_STEP_MS = 2000;
+
+  function freshDwell() {
+    return { threadId: '', accMs: 0, lastAt: 0, done: false };
+  }
+
+  function dwellStep(dwell, threadId, active, now) {
+    var d = dwell || freshDwell();
+    var id = threadId ? String(threadId) : '';
+    var t = toInt(now, 0);
+    if (id !== d.threadId) {
+      return { dwell: { threadId: id, accMs: 0, lastAt: id && active ? t : 0, done: false }, credit: null };
+    }
+    var next = { threadId: d.threadId, accMs: d.accMs, lastAt: d.lastAt, done: d.done };
+    if (next.done || !id) return { dwell: next, credit: null };
+    if (!active) { next.lastAt = 0; return { dwell: next, credit: null }; }
+    if (next.lastAt === 0) { next.lastAt = t; return { dwell: next, credit: null }; }
+    next.accMs += clamp(t - next.lastAt, 0, DWELL_MAX_STEP_MS);
+    next.lastAt = t;
+    if (next.accMs >= DWELL_MS) {
+      next.done = true;
+      return { dwell: next, credit: id };
+    }
+    return { dwell: next, credit: null };
+  }
+
   // ---- ENGINE END ------------------------------------------------------
 
   // -- storage runtime -----------------------------------------------------

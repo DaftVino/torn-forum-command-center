@@ -84,3 +84,72 @@ test('the displayed streak never mutates and never warns', () => {
   assert.deepStrictEqual(api.streakView(s, D + 2), { state: 'broken', current: 0, best: 9 });
   assert.deepStrictEqual(s, streak(4, 9, D));
 });
+
+// ---- dwell -------------------------------------------------------------------
+
+const T0 = NOON;
+
+// samples: [threadId, active, now]. A fake clock passed in; nothing ambient.
+function runDwell(samples) {
+  let d = api.freshDwell();
+  const credits = [];
+  for (const [id, active, now] of samples) {
+    const r = api.dwellStep(d, id, active, now);
+    d = r.dwell;
+    if (r.credit) credits.push([r.credit, now]);
+  }
+  return { dwell: d, credits };
+}
+
+function seconds(id, from, count, active) {
+  const out = [];
+  for (let s = 0; s <= count; s += 1) out.push([id, active !== false, from + s * 1000]);
+  return out;
+}
+
+test('fifteen focused seconds credit the thread, and fourteen do not', () => {
+  assert.deepStrictEqual(runDwell(seconds('7', T0, 14)).credits, []);
+  assert.deepStrictEqual(runDwell(seconds('7', T0, 15)).credits, [['7', T0 + 15000]]);
+});
+
+test('a thread is credited once however long it stays open', () => {
+  assert.deepStrictEqual(runDwell(seconds('7', T0, 120)).credits, [['7', T0 + 15000]]);
+});
+
+test('a pause keeps the time so far, and time away never counts', () => {
+  const samples = seconds('7', T0, 10)                     // 10 s focused
+    .concat([['7', false, T0 + 10500], ['7', false, T0 + 40000]]) // blurred or hidden
+    .concat(seconds('7', T0 + 40000, 4));                  // back: re-arm, then 4 s
+  assert.deepStrictEqual(runDwell(samples).credits, [], '10 + 4 is not 15');
+  const more = samples.concat([['7', true, T0 + 45000]]);
+  assert.deepStrictEqual(runDwell(more).credits, [['7', T0 + 45000]]);
+});
+
+test('a route change resets the time', () => {
+  const samples = seconds('7', T0, 10).concat(seconds('8', T0 + 10000, 14));
+  assert.deepStrictEqual(runDwell(samples).credits, [], '10 s on 7 plus 14 s on 8 credits neither');
+  const more = samples.concat([['8', true, T0 + 25000]]);
+  assert.deepStrictEqual(runDwell(more).credits, [['8', T0 + 25000]]);
+});
+
+test('one late sample adds at most two seconds', () => {
+  const r = runDwell([['7', true, T0], ['7', true, T0 + 60000]]);
+  assert.deepStrictEqual(r.credits, []);
+  assert.strictEqual(r.dwell.accMs, 2000);
+});
+
+test('a clock that goes backwards adds nothing', () => {
+  const r = runDwell([['7', true, T0 + 5000], ['7', true, T0], ['7', true, T0 + 1000]]);
+  assert.strictEqual(r.dwell.accMs, 1000);
+});
+
+test('inactive time and no thread never credit', () => {
+  assert.deepStrictEqual(runDwell(seconds('7', T0, 60, false)).credits, []);
+  const none = runDwell(seconds('', T0, 60));
+  assert.deepStrictEqual(none.credits, []);
+  assert.strictEqual(none.dwell.accMs, 0);
+});
+
+test('the dwell threshold is fifteen seconds', () => {
+  assert.strictEqual(api.DWELL_MS, 15000);
+});
