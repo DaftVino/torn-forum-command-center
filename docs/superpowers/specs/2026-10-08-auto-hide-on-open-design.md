@@ -94,7 +94,7 @@ before trusting them.
 
 `loadKey` (l.1568) computes
 `recovered = raw !== null && JSON.stringify(raw) !== JSON.stringify(value)`,
-and `loadAll` (l.1872) turns `recovered` into the notice "Settings were damaged
+and `loadAll` (l.1857) turns `recovered` into the notice "Settings were damaged
 and have been reset." A 0.1.0 user's stored `tfcc:settings` was written from
 `settingsDefaults` order and has no `autoHideOnOpen`. The normaliser appends
 `autoHideOnOpen: false`, the strings differ, and the user is told their
@@ -366,6 +366,7 @@ Under "Torn PDA" > "Layout", and mirrored in "Desktop regression":
 4. Clearing takeover on auto-hide is what users want. A user who lives in
    takeover presses Expand after Show. If that proves annoying, see
    Follow-ups.
+5a. `GM_setValue` is treated as written when it returns. Tampermonkey hands the write to its background page by message, so on a cross-document load (a thread link from `torn.com` without `www`) the write is best effort. Every link the panel renders is `www.torn.com` on a page that is already `forums.php`, so the normal case is a same-document hash change and the write has long finished.
 5. Settings are shared across tabs through `tfcc:settings`, as today. A tab
    opened after an auto-hide also starts collapsed, exactly as after a manual
    Hide.

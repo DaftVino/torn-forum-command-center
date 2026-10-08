@@ -57,11 +57,13 @@
 
 **Files:** none.
 
-- [ ] **Step 1: Create the feature worktree off `origin/main`** (superpowers:using-git-worktrees)
+- [ ] **Step 1: Create the feature worktree** (superpowers:using-git-worktrees)
+
+The spec and this plan live on `docs/8-auto-hide-plan`, not on `main`. Branch from `origin/main` once the docs PR has merged; until then branch from `origin/docs/8-auto-hide-plan` instead, or the implementer will not find the spec. Run from the main checkout, not from inside `.claude/worktrees/`.
 
 ```bash
 git fetch origin
-git worktree add ../tfcc-8-auto-hide -b feat/8-auto-hide-on-open origin/main
+git worktree add ../tfcc-8-auto-hide -b feat/8-auto-hide-on-open origin/main   # or origin/docs/8-auto-hide-plan
 cd ../tfcc-8-auto-hide
 npm test
 ```
@@ -640,7 +642,8 @@ test('a new-tab click, a middle click and a prevented click change nothing', () 
     panel.dispatchEvent(click(threadLink(env, 5, panel), extra));
     env.advanceTimersBy(1000);
     assert.strictEqual(env.exports.state.settings.collapsed, false, JSON.stringify(extra));
-    assert.strictEqual(storedSettings(env).collapsed, false, JSON.stringify(extra));
+    // The seeded blob has no collapsed key and nothing persists, so assert "not true", not "false".
+    assert.notStrictEqual(storedSettings(env).collapsed, true, JSON.stringify(extra));
   }
 });
 
@@ -690,9 +693,12 @@ test('a hash change into the thread after the click keeps the panel collapsed', 
   const panel = panelOf(env);
   panel.dispatchEvent(click(threadLink(env, 5, panel)));
 
+  env.advanceTimersBy(0);
+  const drawn = panel.renderCount;
   env.win.location.hash = THREAD_HASH;
   env.win.fire('hashchange');
   env.advanceTimersBy(1000);
+  assert.strictEqual(panel.renderCount, drawn, 'the collapsed header was already drawn, so the route draw writes nothing');
 
   assert.strictEqual(env.exports.state.route.isThread, true, 'the route followed the hash');
   assert.strictEqual(env.exports.state.settings.collapsed, true);
