@@ -229,3 +229,40 @@ test('the TTL decides whether opening the view fetches', () => {
   assert.strictEqual(api.mineIsDue(s, NOW + 15 * 60000, api.MINE_TTL_MS), true);
   assert.strictEqual(api.MINE_TTL_MS, 15 * 60 * 1000, 'the Settings text promises 15 minutes');
 });
+
+function el(attrs) { return { getAttribute: (k) => (attrs[k] === undefined ? null : attrs[k]) }; }
+
+test('opening My posts fetches once, and reopening inside the TTL does not', async () => {
+  const env = await bootAndClear(mineTable());
+  const h = env.exports.makeHandlers(env.doc, env.win);
+  h.onAction('view', el({ 'data-view': 'mine' }));
+  await settle(env);
+  assert.strictEqual(mineCalls(env).filter((u) => u === 'user/forumthreads').length, 1);
+  h.onAction('view', el({ 'data-view': 'threads' }));
+  h.onAction('view', el({ 'data-view': 'mine' }));
+  await settle(env);
+  assert.strictEqual(mineCalls(env).filter((u) => u === 'user/forumthreads').length, 1);
+});
+
+test('Refresh in My posts fetches My posts only; Refresh in Threads never does', async () => {
+  const env = await bootAndClear(mineTable());
+  const h = env.exports.makeHandlers(env.doc, env.win);
+  env.exports.state.settings.view = 'mine';
+  env.exports.state.mine.fetchedAt = NOW;
+  h.onAction('refresh', el({}));
+  await settle(env);
+  assert.ok(env.router.seen.includes('user/forumthreads'), 'Refresh bypasses the TTL');
+  assert.ok(!env.router.seen.includes('user/forumsubscribedthreads'));
+  env.router.seen.length = 0;
+  env.exports.state.settings.view = 'threads';
+  h.onAction('refresh', el({}));
+  await settle(env);
+  assert.ok(env.router.seen.includes('user/forumsubscribedthreads'));
+  assert.ok(!env.router.seen.includes('user/forumthreads'));
+});
+
+test('loading the page with My posts open does not fetch My posts', async () => {
+  const env = boot(mineTable(), { gmStore: [['tfcc:key', KEY], ['tfcc:settings', JSON.stringify({ v: 1, view: 'mine' })]] });
+  await settle(env);
+  assert.ok(!env.router.seen.includes('user/forumthreads'));
+});

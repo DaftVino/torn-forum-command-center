@@ -112,7 +112,7 @@
     added: 'Recently added',
   });
 
-  var VIEWS = Object.freeze(['threads', 'catchup', 'search', 'drafts', 'settings']);
+  var VIEWS = Object.freeze(['threads', 'catchup', 'search', 'drafts', 'settings', 'mine']);
 
   var THEMES = Object.freeze(['dark', 'light', 'match']);
 
@@ -3963,13 +3963,20 @@
         var id = idOf(el);
         if (act === 'refresh') {
           state.notices = [];
-          refreshAll(now).then(function () { if (isForumsPage(win.location)) redraw(); });
+          // Refresh refreshes what the user is looking at: My posts runs its own
+          // bounded fetch, every other view runs the Threads refresh, never both.
+          var run = state.settings.view === 'mine' ? refreshMine(now) : refreshAll(now);
+          run.then(function () { if (isForumsPage(win.location)) redraw(); });
           redraw();
           return;
         }
         if (act === 'view') {
           var v = el.getAttribute('data-view');
           if (VIEWS.indexOf(v) !== -1) { state.settings.view = v; persist('settings'); }
+          // Opening My posts is the user input that pays for it, once per TTL.
+          if (v === 'mine' && isKeyShaped(loadApiKey()) && mineIsDue(state.mine, now, MINE_TTL_MS)) {
+            refreshMine(now).then(function () { if (isForumsPage(win.location)) redraw(); });
+          }
           redraw(); return;
         }
         if (act === 'collapse') { state.settings.collapsed = !state.settings.collapsed; persist('settings'); redraw(); return; }
