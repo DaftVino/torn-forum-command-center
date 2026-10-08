@@ -97,7 +97,7 @@
   var POST_CACHE_MAX_BYTES = 1500000;
   var EXPORT_PREFIX = 'TFCC1:';
 
-  var ACTIVITY_SOURCES = Object.freeze(['enriched', 'feed', 'enriched-stale', 'visit', 'none']);
+  var ACTIVITY_SOURCES = Object.freeze(['enriched', 'feed', 'mine', 'enriched-stale', 'own-post', 'visit', 'none']);
 
   var SORT_MODES = Object.freeze(['activity', 'unread', 'priority', 'title', 'author', 'forum', 'added']);
   var SORT_LABELS = Object.freeze({
@@ -1015,11 +1015,56 @@
     };
   }
 
+  // A subscribed thread keeps Torn's own count, exactly as in Threads. Only a
+  // thread Torn gives no count for is counted here, and an unknown total is
+  // reported as unchecked so it can never pass for a thread checked and quiet.
+  // Every total compared here counts the topic post: rec.postsTotal and
+  // rec.baselineTotal are posts + 1 (threadPostsTotal), the same unit as the
+  // subscribed posts.total that lastSeenTotal is written from. Live findings
+  // 3 and 4, docs/reference/torn-api-live-findings-2026-10-08.md.
+  function mineUnreadFor(apiRow, entry, rec) {
+    var u;
+    if (apiRow) {
+      u = unreadFor(apiRow, entry);
+      u.unreadSource = 'torn';
+      return u;
+    }
+    // A started thread's new_posts is Torn's own unread count, like posts.new.
+    if (rec && rec.totalKnown && rec.tornNewKnown) {
+      u = unreadFor({ postsNew: rec.tornNew, postsTotal: rec.postsTotal }, entry);
+      u.unreadSource = 'torn';
+      return u;
+    }
+    var seen = entry ? Math.max(0, toInt(entry.lastSeenTotal, 0)) : 0;
+    if (!rec || !rec.totalKnown) {
+      return { tornUnread: 0, postsTotal: 0, lastSeenTotal: seen, dismissed: false, unread: 0, unreadSource: 'unchecked' };
+    }
+    var unread = Math.max(0, rec.postsTotal - Math.max(seen, rec.baselineTotal));
+    return {
+      tornUnread: 0,
+      postsTotal: rec.postsTotal,
+      lastSeenTotal: seen,
+      dismissed: rec.postsTotal > 0 && seen >= rec.postsTotal,
+      unread: unread,
+      unreadSource: 'local',
+    };
+  }
+
+  // What pulls a My posts thread into Threads. A read marker and a visit
+  // deliberately do not, or marking your own thread read would file it.
+  function isOrganised(entry, hasDraft) {
+    if (hasDraft) return true;
+    if (!entry) return false;
+    return !!(entry.folderId || entry.tags.length || entry.pinned || entry.priority !== 0
+      || entry.note || entry.archived);
+  }
+
   // Takes the newest of every candidate rather than the first available one:
   // a fresh enrichment can still be older than an activity row that arrived
   // since. `source` reports which candidate won, so a surprising sort order is
   // diagnosable from the row itself instead of by guesswork.
-  function resolveLastActivity(entry, feedAt, now, maxAgeMs) {
+  // extra is optional: { mineAt, ownPostAt } from a My posts record.
+  function resolveLastActivity(entry, feedAt, now, maxAgeMs, extra) {
     var ttl = maxAgeMs === undefined ? ENRICH_TTL_MS : maxAgeMs;
     var t = toInt(now, 0);
     var candidates = [];
@@ -1029,6 +1074,9 @@
       candidates.push({ at: entry.lastPostTimeCached, source: fresh ? 'enriched' : 'enriched-stale' });
     }
     if (feedAt > 0) candidates.push({ at: feedAt, source: 'feed' });
+    var x = extra || {};
+    if (x.mineAt > 0) candidates.push({ at: x.mineAt, source: 'mine' });
+    if (x.ownPostAt > 0) candidates.push({ at: x.ownPostAt, source: 'own-post' });
     if (entry && entry.lastVisitedAt > 0) candidates.push({ at: entry.lastVisitedAt, source: 'visit' });
 
     if (!candidates.length) return { at: null, source: 'none' };
@@ -1068,6 +1116,9 @@
     var drafts = (input && input.drafts) || freshDrafts();
     var now = toInt(input && input.now, 0);
     var ttl = input && input.enrichTtlMs !== undefined ? input.enrichTtlMs : ENRICH_TTL_MS;
+    var mine = (input && input.mine) || freshMine();
+    var mineById = {};
+    for (var mi = 0; mi < mine.threads.length; mi += 1) mineById[String(mine.threads[mi].id)] = mine.threads[mi];
 
     var cats = categoryIndex(categories);
     var feeds = feedIndex(activity);
@@ -1100,6 +1151,7 @@
     for (i = 0; i < known.length; i += 1) ensure(known[i]);
     var draftIds = Object.keys(drafts.byThread || {});
     for (i = 0; i < draftIds.length; i += 1) ensure(draftIds[i]);
+    for (i = 0; i < mine.threads.length; i += 1) ensure(mine.threads[i].id);
 
     var rows = [];
     for (i = 0; i < order.length; i += 1) {
@@ -1112,10 +1164,13 @@
       // Archived rows are still built here. Hiding them is a view decision, and
       // buildPanelModel makes it, so an archived thread with new posts can still
       // surface rather than being lost at the merge.
-      var u = unreadFor(api, entry);
+      var rec = Object.prototype.hasOwnProperty.call(mineById, id) ? mineById[id] : null;
+      var u = rec ? mineUnreadFor(api, entry, rec) : unreadFor(api, entry);
+      var unreadSource = rec ? u.unreadSource : (api ? 'torn' : 'none');
       var feedRow = Object.prototype.hasOwnProperty.call(feeds, id) ? feeds[id] : null;
-      var act = resolveLastActivity(entry, feedRow ? feedRow.at : 0, now, ttl);
-      var forumId = (api && api.forumId) || entry.forumId || 0;
+      var act = resolveLastActivity(entry, feedRow ? feedRow.at : 0, now, ttl,
+        rec ? { mineAt: rec.lastPostAt, ownPostAt: rec.myLastPostAt } : null);
+      var forumId = (api && api.forumId) || entry.forumId || (rec && rec.forumId) || 0;
       var cat = Object.prototype.hasOwnProperty.call(cats, String(forumId)) ? cats[String(forumId)] : null;
       var folder = entry.folderId && Object.prototype.hasOwnProperty.call(folderById, entry.folderId)
         ? folderById[entry.folderId]
@@ -1125,7 +1180,7 @@
       rows.push({
         id: id,
         numericId: Number(id),
-        title: (api && api.title) || entry.title || (draft && draft.title) || ('Thread ' + id),
+        title: (api && api.title) || entry.title || (draft && draft.title) || (rec && rec.title) || ('Thread ' + id),
         forumId: forumId,
         forumName: cat ? cat.title : (forumId ? ('Forum ' + forumId) : 'Unknown forum'),
         authorId: (api && api.authorId) || entry.authorId || 0,
@@ -1145,12 +1200,15 @@
         lastActivity: act.at,
         activitySource: act.source,
         lastVisitedAt: entry.lastVisitedAt,
-        firstSeenAt: entry.firstSeenAt,
-        isLocked: entry.isLocked,
+        firstSeenAt: entry.firstSeenAt || (rec ? rec.firstSeenAt : 0),
+        isLocked: entry.isLocked || !!(rec && rec.isLocked),
         isSticky: entry.isSticky,
         hasDraft: !!draft,
         draftUpdatedAt: draft ? draft.updatedAt : 0,
         needsEnrich: act.source !== 'enriched',
+        mineRole: rec ? (rec.started ? 'started' : 'posted') : null,
+        inThreads: !!api || !rec || isOrganised(entry, !!draft),
+        unreadSource: unreadSource,
       });
     }
 
@@ -2229,6 +2287,7 @@
       categories: state.feed.categories,
       organizer: state.organizer,
       drafts: state.drafts,
+      mine: state.mine,
       now: now,
     });
   }

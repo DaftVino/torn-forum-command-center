@@ -213,3 +213,78 @@ test('merging never mutates the snapshot it was given', () => {
   api.applyMineDetail(a, 1, api.parseThreadDetail({ posts: 50 }), T0 + MIN);
   assert.strictEqual(JSON.stringify(a), frozen);
 });
+
+function rec(over) {
+  return Object.assign(api.freshMineThread(1, T0), { posted: true }, over || {});
+}
+
+test('a subscribed thread uses Torn count and dismissal, never a local count', () => {
+  const entry = api.normaliseThreadEntry({ lastSeenTotal: 0 });
+  const u = api.mineUnreadFor({ postsNew: 3, postsTotal: 12 }, entry, rec({ totalKnown: true, postsTotal: 50, baselineTotal: 10 }));
+  assert.strictEqual(u.unread, 3);
+  assert.strictEqual(u.unreadSource, 'torn');
+});
+
+test('an unsubscribed thread counts posts since the baseline or the last Mark read', () => {
+  const r = rec({ totalKnown: true, postsTotal: 25, baselineTotal: 20 });
+  assert.strictEqual(api.mineUnreadFor(null, api.normaliseThreadEntry(null), r).unread, 5);
+  assert.strictEqual(api.mineUnreadFor(null, api.normaliseThreadEntry(null), r).unreadSource, 'local');
+  assert.strictEqual(api.mineUnreadFor(null, api.normaliseThreadEntry({ lastSeenTotal: 24 }), r).unread, 1);
+  assert.strictEqual(api.mineUnreadFor(null, api.normaliseThreadEntry({ lastSeenTotal: 25 }), r).unread, 0);
+});
+
+test('a started thread with new_posts uses Torn\'s count, with the local dismissal layer', () => {
+  const r = rec({ started: true, totalKnown: true, postsTotal: 25, baselineTotal: 25, tornNew: 4, tornNewKnown: true });
+  const u = api.mineUnreadFor(null, api.normaliseThreadEntry(null), r);
+  assert.strictEqual(u.unread, 4, 'Torn\'s count, not the local 25 - 25 = 0');
+  assert.strictEqual(u.unreadSource, 'torn');
+  const read = api.mineUnreadFor(null, api.normaliseThreadEntry({ lastSeenTotal: 25 }), r);
+  assert.strictEqual(read.unread, 0, 'Mark read still dismisses it, as in Threads');
+  const absent = api.mineUnreadFor(null, api.normaliseThreadEntry(null), Object.assign({}, r, { tornNewKnown: false, baselineTotal: 20 }));
+  assert.strictEqual(absent.unread, 5, 'without new_posts the local count takes over');
+  assert.strictEqual(absent.unreadSource, 'local');
+});
+
+// Live findings 3 and 4, end to end through the real fixtures. lastSeenTotal
+// is written by markRead from the subscribed posts.total (every post); the
+// My posts total comes from a thread object's posts (replies). Both
+// directions of a unit mix are pinned: a reply hidden, and a phantom
+// "1 new" in Threads after Mark read in My posts.
+test('a read marker from a subscribed total and a My posts total agree', () => {
+  // Thread 16505837: subscribed total 1; forum/{id}/thread said posts: 0.
+  const subRaw = FX_SUBS.forumSubscribedThreads.find((r) => r.id === 16505837);
+  const sub = api.normaliseSubscribedRow(subRaw);
+  assert.strictEqual(sub.postsTotal, 1);
+  // Read while subscribed, then unsubscribed; it is one of the user's threads.
+  let org = api.markRead(api.freshOrganizer(T0), 16505837, sub.postsTotal, T0);
+  const lookup = (replies, at) => api.parseThreadDetail(forumThreadPayload({
+    id: 16505837, replies, lastAt: at / 1000, lastPoster: { id: 99 },
+  }).thread);
+  let snap = api.mergeMineSnapshot(api.freshMine(), [], [post(16505837, T0 - MIN)], T0, true);
+  snap = api.applyMineDetail(snap, 16505837, lookup(0, T0), T0);
+  let u = api.mineUnreadFor(null, org.threads['16505837'], snap.threads[0]);
+  assert.strictEqual(u.unread, 0, 'quiet thread, already read: nothing new');
+  snap = api.applyMineDetail(snap, 16505837, lookup(1, T0 + MIN), T0 + MIN);
+  u = api.mineUnreadFor(null, org.threads['16505837'], snap.threads[0]);
+  assert.strictEqual(u.unread, 1, 'one reply from someone else must show, not vanish into the unit gap');
+
+  // Mark read in My posts, then subscribe on Torn: Threads must see it as read.
+  org = api.markRead(org, 16505837, u.postsTotal, T0 + 2 * MIN);
+  const resub = api.normaliseSubscribedRow(Object.assign({}, subRaw, { posts: { new: 1, total: 2 } }));
+  assert.strictEqual(api.unreadFor(resub, org.threads['16505837']).dismissed, true,
+    'Mark read in My posts must count as read in Threads, not leave "1 new"');
+});
+
+test('an unknown total is unchecked, not a checked zero', () => {
+  const u = api.mineUnreadFor(null, api.normaliseThreadEntry(null), rec({ totalKnown: false }));
+  assert.strictEqual(u.unread, 0);
+  assert.strictEqual(u.unreadSource, 'unchecked');
+});
+
+test('only organising state counts as organised; a read marker or a visit does not', () => {
+  assert.strictEqual(api.isOrganised(api.normaliseThreadEntry({ lastSeenTotal: 5, lastVisitedAt: 9 }), false), false);
+  for (const e of [{ pinned: true }, { tags: ['x'] }, { folderId: 'guides' }, { priority: 1 }, { note: 'n' }, { archived: true }]) {
+    assert.strictEqual(api.isOrganised(api.normaliseThreadEntry(e), false), true, JSON.stringify(e));
+  }
+  assert.strictEqual(api.isOrganised(api.normaliseThreadEntry(null), true), true, 'a draft is organising');
+});
