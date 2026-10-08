@@ -369,3 +369,17 @@ test('Threads rows never carry My posts marks', () => {
   const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
   assert.doesNotMatch(html, /local count|not checked yet|posted in/);
 });
+
+test('Settings states both request budgets, from the constants', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1 }]);
+  env.exports.state.settings.view = 'settings';
+  const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  const api = env.exports;
+  assert.strictEqual(3 + api.DEFAULT_ENRICH_BUDGET, 13);
+  assert.strictEqual(2 + api.DEFAULT_ENRICH_BUDGET, 12);
+  assert.match(html, /Opening My posts, or refreshing while it is open, makes two requests of its own/);
+  assert.match(html, new RegExp('at most once every ' + (api.MINE_TTL_MS / 60000) + ' minutes'));
+  assert.match(html, /a Threads refresh is at most 13\s+requests and My posts at most 12; at the largest setting of 25, 28 and 27\./);
+  assert.match(html, /under 40 requests a minute/);
+});

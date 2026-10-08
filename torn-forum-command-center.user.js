@@ -3543,9 +3543,17 @@
     out.push('<div class="tfcc-kv"><label for="tfcc-budget">Activity lookups per refresh</label>'
       + '<input id="tfcc-budget" type="number" min="0" max="' + MAX_ENRICH_BUDGET
       + '" value="' + model.settings.enrichBudget + '" data-act="enrich-budget"></div>');
-    out.push('<p class="tfcc-note">A refresh always makes two requests. Each activity lookup adds one more, '
-      + 'and only runs for a thread that has unread posts and no recent time. The script keeps itself '
-      + 'under 40 requests a minute regardless.</p>');
+    // The numbers are computed from the constants, so this promise cannot
+    // drift from what the code does (CLAUDE.md constraint 7).
+    out.push('<p class="tfcc-note">A refresh of Threads makes two requests, plus one for the forum list at '
+      + 'most once a day. Opening My posts, or refreshing while it is open, makes two requests of its own, '
+      + 'at most once every ' + Math.round(MINE_TTL_MS / 60000) + ' minutes unless you press Refresh. '
+      + 'Each activity lookup adds one more to either, and only runs for a thread with no recent time. '
+      + 'With the default of ' + DEFAULT_ENRICH_BUDGET + ', a Threads refresh is at most '
+      + (3 + DEFAULT_ENRICH_BUDGET) + ' requests and My posts at most ' + (2 + DEFAULT_ENRICH_BUDGET)
+      + '; at the largest setting of ' + MAX_ENRICH_BUDGET + ', ' + (3 + MAX_ENRICH_BUDGET) + ' and '
+      + (2 + MAX_ENRICH_BUDGET) + '. '
+      + 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Appearance</h4>');
@@ -3829,8 +3837,15 @@
         folders: state.organizer.folders.length,
         drafts: Object.keys(state.drafts.byThread).length,
         cachedPosts: postCacheSize(state.postCache).posts,
+        mineThreads: state.mine.threads.length,
+        mineStarted: state.mine.threads.filter(function (t) { return t.started; }).length,
+        minePosted: state.mine.threads.filter(function (t) { return t.posted; }).length,
+        mineUnchecked: state.mine.threads.filter(function (t) { return !t.totalKnown; }).length,
       },
       lastFetchedAt: state.feed.fetchedAt,
+      mineFetchedAt: state.mine.fetchedAt,
+      // Reason only: a My posts detail can quote Torn's free text.
+      mineError: state.mineError ? state.mineError.reason : null,
       lastError: state.lastError ? { reason: state.lastError.reason, detail: state.lastError.detail } : null,
       mounted: state.mounted,
       replyBoxFound: state.replyBoxFound,
@@ -3861,6 +3876,12 @@
       'cached posts: ' + c.counts.cachedPosts,
       'last fetch age ms: ' + (c.lastFetchedAt ? 'set' : 'never'),
       'last error: ' + (c.lastError ? (c.lastError.reason + ' - ' + c.lastError.detail) : 'none'),
+      'my posts threads: ' + c.counts.mineThreads,
+      'my posts started: ' + c.counts.mineStarted,
+      'my posts posted in: ' + c.counts.minePosted,
+      'my posts unchecked: ' + c.counts.mineUnchecked,
+      'my posts fetched: ' + (c.mineFetchedAt ? 'set' : 'never'),
+      'my posts error: ' + (c.mineError ? safeString(c.mineError, 20) : 'none'),
     ];
     return lines.join('\n');
   }
