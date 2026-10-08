@@ -744,6 +744,129 @@
     };
   }
 
+  // postsTotal is posts + 1 via threadPostsTotal: same unit as posts.total.
+  // A caller must not add 1 again.
+  function parseThreadDetail(raw) {
+    if (!isPlainObject(raw)) return null;
+    var last = isPlainObject(raw.last_poster) ? raw.last_poster : {};
+    var total = threadPostsTotal(raw);
+    return {
+      title: safeString(raw.title, 300),
+      forumId: Math.max(0, toInt(raw.forum_id, 0)),
+      postsTotal: Math.max(0, total),
+      totalKnown: total >= 0,
+      lastPostAt: secondsToMs(raw.last_post_time),
+      lastPosterId: Math.max(0, toInt(last.id, 0)),
+      isLocked: raw.is_locked === true,
+      isSticky: raw.is_sticky === true,
+    };
+  }
+
+  // First sight of a total sets the baseline, so the feature never reports a
+  // user's whole posting history as unread on the day it is installed.
+  function observeMineTotal(t, total, now) {
+    if (!t.totalKnown) t.baselineTotal = total;
+    t.postsTotal = total;
+    t.totalKnown = true;
+    t.infoAt = now;
+  }
+
+  // You do not have unread replies to a thread whose last word is yours.
+  function advanceMineBaseline(t, selfId) {
+    if (!t.totalKnown) return;
+    var lastIsMine = (selfId > 0 && t.lastPosterId === selfId)
+      || (t.lastPostAt > 0 && t.myLastPostAt >= t.lastPostAt);
+    if (lastIsMine) t.baselineTotal = Math.max(t.baselineTotal, t.postsTotal);
+  }
+
+  function mineRecency(t) { return Math.max(t.myLastPostAt, t.lastPostAt); }
+
+  function finishMine(out, byId, order) {
+    var list = order.map(function (k) { return byId[k]; });
+    list.sort(function (a, b) {
+      var d = mineRecency(b) - mineRecency(a);
+      return d !== 0 ? d : b.id - a.id;
+    });
+    out.threads = list.slice(0, MINE_MAX_THREADS);
+    return out;
+  }
+
+  // started: mineThreadFromApi records; posts: minePostFromApi records.
+  // complete false (one of the two lists failed) keeps the old fetchedAt, so
+  // a partial answer never holds off the next attempt for a whole TTL.
+  function mergeMineSnapshot(prev, started, posts, now, complete) {
+    var t0 = toInt(now, 0);
+    var base = normaliseMine(prev);
+    var out = freshMine();
+    out.fetchedAt = complete ? t0 : base.fetchedAt;
+    out.selfId = base.selfId;
+    var byId = {};
+    var order = [];
+    function rec(id) {
+      var k = String(id);
+      if (!Object.prototype.hasOwnProperty.call(byId, k)) {
+        byId[k] = freshMineThread(id, t0);
+        order.push(k);
+      }
+      return byId[k];
+    }
+    var i;
+    for (i = 0; i < base.threads.length; i += 1) {
+      var k0 = String(base.threads[i].id);
+      // Torn's new_posts is only as fresh as the forumthreads page it came
+      // on. A started thread that dropped off the page falls back to the
+      // local count rather than keeping a count Torn no longer reports.
+      base.threads[i].tornNewKnown = false;
+      base.threads[i].tornNew = 0;
+      byId[k0] = base.threads[i];
+      order.push(k0);
+    }
+    for (i = 0; i < (started || []).length; i += 1) {
+      var s = started[i];
+      if (!s) continue;
+      var r = rec(s.id);
+      r.started = true;
+      if (s.forumId) r.forumId = s.forumId;
+      if (s.title) r.title = s.title;
+      if (s.lastPostAt) r.lastPostAt = Math.max(r.lastPostAt, s.lastPostAt);
+      if (s.lastPosterId) r.lastPosterId = s.lastPosterId;
+      r.isLocked = s.isLocked === true;
+      r.tornNewKnown = s.tornNewKnown === true;
+      r.tornNew = r.tornNewKnown ? s.tornNew : 0;
+      if (s.totalKnown) observeMineTotal(r, s.postsTotal, t0);
+      if (!out.selfId && s.authorId) out.selfId = s.authorId;
+    }
+    for (i = 0; i < (posts || []).length; i += 1) {
+      var p = posts[i];
+      if (!p) continue;
+      var rp = rec(p.threadId);
+      rp.posted = true;
+      rp.myLastPostAt = Math.max(rp.myLastPostAt, p.at);
+      if (!out.selfId && p.authorId) out.selfId = p.authorId;
+    }
+    for (i = 0; i < order.length; i += 1) advanceMineBaseline(byId[order[i]], out.selfId);
+    return finishMine(out, byId, order);
+  }
+
+  // normaliseMine doubles as the deep clone, so the input is never mutated.
+  function applyMineDetail(snap, threadId, detail, now) {
+    var out = normaliseMine(snap);
+    if (!detail) return out;
+    var id = toInt(threadId, 0);
+    for (var i = 0; i < out.threads.length; i += 1) {
+      var t = out.threads[i];
+      if (t.id !== id) continue;
+      if (detail.title && !t.title) t.title = detail.title;
+      if (detail.forumId) t.forumId = detail.forumId;
+      if (detail.lastPostAt) t.lastPostAt = Math.max(t.lastPostAt, detail.lastPostAt);
+      if (detail.lastPosterId) t.lastPosterId = detail.lastPosterId;
+      t.isLocked = detail.isLocked === true;
+      if (detail.totalKnown) observeMineTotal(t, detail.postsTotal, toInt(now, 0));
+      advanceMineBaseline(t, out.selfId);
+    }
+    return out;
+  }
+
   function freshPostCache() { return { v: SCHEMA_VERSION, threads: {}, order: [] }; }
 
   function normalisePostCache(raw) {

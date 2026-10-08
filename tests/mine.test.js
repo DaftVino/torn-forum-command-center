@@ -108,3 +108,108 @@ test('a hostile snapshot normalises to something valid and capped', () => {
   for (let i = 1; i <= 500; i += 1) many.threads.push({ id: i });
   assert.strictEqual(api.normaliseMine(many).threads.length, api.MINE_MAX_THREADS);
 });
+
+const T0 = 1700000000000;
+const MIN = 60000;
+
+const SELF = FIXTURE_SELF_ID;   // the key owner in tests/fixtures/ (1000)
+
+// `total` here is the stored unit, every post including the topic. The API
+// row carries replies, one fewer (live finding 3), so the builder gets total - 1.
+function started(id, total, lastAt, lastPosterId, extra) {
+  return api.mineThreadFromApi(forumThreadsPayload([Object.assign({
+    id, forumId: 61, title: 'T' + id, replies: total - 1,
+    lastAt: lastAt / 1000, lastPoster: { id: lastPosterId },
+  }, extra || {})]).forumThreads[0]);
+}
+function post(threadId, at) {
+  return api.minePostFromApi(forumPostsPayload([{ id: threadId * 10, threadId, at: at / 1000 }]).forumPosts[0]);
+}
+
+test('first sight sets the baseline, so installing never floods history as new', () => {
+  const s = api.mergeMineSnapshot(api.freshMine(), [started(1, 40, T0, 99)], [], T0, true);
+  const t = s.threads[0];
+  assert.strictEqual(t.started, true);
+  assert.strictEqual(t.postsTotal, 40);
+  assert.strictEqual(t.baselineTotal, 40);
+  assert.strictEqual(s.selfId, SELF);
+  assert.strictEqual(s.fetchedAt, T0);
+});
+
+test('a later fetch keeps the baseline, so new replies show as the difference', () => {
+  const a = api.mergeMineSnapshot(api.freshMine(), [started(1, 40, T0, 99)], [], T0, true);
+  const b = api.mergeMineSnapshot(a, [started(1, 43, T0 + MIN, 99)], [], T0 + MIN, true);
+  assert.strictEqual(b.threads[0].postsTotal, 43);
+  assert.strictEqual(b.threads[0].baselineTotal, 40);
+});
+
+test('when the last word is yours, the baseline catches up', () => {
+  const a = api.mergeMineSnapshot(api.freshMine(), [started(1, 40, T0, 99)], [], T0, true);
+  const b = api.mergeMineSnapshot(a, [started(1, 44, T0 + MIN, SELF)], [], T0 + MIN, true);
+  assert.strictEqual(b.threads[0].baselineTotal, 44, 'your own post is not an unread reply');
+});
+
+test('a posted-in thread has no total until a lookup supplies one', () => {
+  const s = api.mergeMineSnapshot(api.freshMine(), [], [post(2, T0)], T0, true);
+  const t = s.threads[0];
+  assert.strictEqual(t.posted, true);
+  assert.strictEqual(t.started, false);
+  assert.strictEqual(t.totalKnown, false);
+  assert.strictEqual(t.myLastPostAt, T0);
+});
+
+test('a lookup sets the total, first sight baselines it, and a later lookup shows the gap', () => {
+  let s = api.mergeMineSnapshot(api.freshMine(), [], [post(2, T0)], T0, true);
+  // 19 replies on the wire is 20 posts stored (live finding 3).
+  const detail = api.parseThreadDetail(forumThreadPayload({ id: 2, forumId: 5, title: 'Two', replies: 19, lastAt: T0 / 1000 + 60, lastPoster: { id: 99 } }).thread);
+  s = api.applyMineDetail(s, 2, detail, T0 + MIN);
+  assert.strictEqual(s.threads[0].totalKnown, true);
+  assert.strictEqual(s.threads[0].baselineTotal, 20);
+  assert.strictEqual(s.threads[0].forumId, 5);
+  s = api.applyMineDetail(s, 2, Object.assign({}, detail, { postsTotal: 23 }), T0 + 2 * MIN);
+  assert.strictEqual(s.threads[0].postsTotal, 23);
+  assert.strictEqual(s.threads[0].baselineTotal, 20);
+});
+
+test('the live thread detail reads total, last poster and lock state', () => {
+  // forum-thread.json: thread 16589908, posts: 1 (one reply), so 2 posts.
+  const d = api.parseThreadDetail(FX_THREAD.thread);
+  assert.deepStrictEqual(d, {
+    title: '[title redacted]', forumId: 61, postsTotal: 2, totalKnown: true,
+    lastPostAt: 1786067226000, lastPosterId: 1001, isLocked: false, isSticky: false,
+  });
+  assert.strictEqual(api.parseThreadDetail(null), null);
+  assert.strictEqual(api.parseThreadDetail({ title: 'x' }).totalKnown, false);
+  assert.strictEqual(api.parseThreadDetail(forumThreadPayload({ id: 3, noPosts: true }).thread).totalKnown, false);
+});
+
+test('a started thread keeps Torn\'s new_posts, and a row without it forgets the old value', () => {
+  const a = api.mergeMineSnapshot(api.freshMine(), [started(1, 10, T0, 99, { newPosts: 3 })], [], T0, true);
+  assert.strictEqual(a.threads[0].tornNew, 3);
+  assert.strictEqual(a.threads[0].tornNewKnown, true);
+  const b = api.mergeMineSnapshot(a, [started(1, 10, T0, 99, { noNewPosts: true })], [], T0 + MIN, true);
+  assert.strictEqual(b.threads[0].tornNewKnown, false, 'a stale Torn count must not outlive the row that carried it');
+});
+
+test('a partial fetch does not reset the TTL clock', () => {
+  const a = api.mergeMineSnapshot(api.freshMine(), [started(1, 4, T0, SELF)], [], T0, true);
+  const b = api.mergeMineSnapshot(a, [started(1, 4, T0, SELF)], [], T0 + MIN, false);
+  assert.strictEqual(b.fetchedAt, T0);
+});
+
+test('threads that drop out of the latest page are kept, newest first, up to the cap', () => {
+  const a = api.mergeMineSnapshot(api.freshMine(), [], [post(1, T0), post(2, T0 + MIN)], T0, true);
+  const b = api.mergeMineSnapshot(a, [], [post(3, T0 + 2 * MIN)], T0 + 2 * MIN, true);
+  assert.deepStrictEqual(b.threads.map((t) => t.id), [3, 2, 1]);
+  const many = [];
+  for (let i = 1; i <= 250; i += 1) many.push(post(i, T0 + i * 1000));
+  assert.strictEqual(api.mergeMineSnapshot(api.freshMine(), [], many, T0, true).threads.length, api.MINE_MAX_THREADS);
+});
+
+test('merging never mutates the snapshot it was given', () => {
+  const a = api.mergeMineSnapshot(api.freshMine(), [started(1, 4, T0, 99)], [], T0, true);
+  const frozen = JSON.stringify(a);
+  api.mergeMineSnapshot(a, [started(1, 9, T0 + MIN, SELF)], [post(2, T0)], T0 + MIN, true);
+  api.applyMineDetail(a, 1, api.parseThreadDetail({ posts: 50 }), T0 + MIN);
+  assert.strictEqual(JSON.stringify(a), frozen);
+});
