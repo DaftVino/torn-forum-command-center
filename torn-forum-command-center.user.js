@@ -54,6 +54,7 @@
     drafts: 'tfcc:drafts',
     feed: 'tfcc:feed',
     postCache: 'tfcc:postcache',
+    badges: 'tfcc:badges',
     mine: 'tfcc:mine',
   });
 
@@ -2533,6 +2534,83 @@
     return { dwell: next, credit: null };
   }
 
+  var BADGE_VISIT_IDS_MAX = 200;   // a storage bound on one day's ids, not a rule
+  var BADGE_BACKLOG_IDS_MAX = 100;
+  var BADGE_FORUMS_MAX = 64;
+  var BADGE_EARNED_MAX = 64;
+
+  function freshBadges() {
+    return {
+      v: SCHEMA_VERSION,
+      visits: 0,
+      checkinDays: 0,
+      bigBacklog: 0,
+      firstCheckinAt: 0,
+      streak: { current: 0, best: 0, lastDay: -1 },
+      forums: [],
+      today: { day: -1, firstLook: -1, backlogIds: [], visitIds: [] },
+      earned: {},
+    };
+  }
+
+  function badgeIdList(raw, max) {
+    var out = [];
+    if (!Array.isArray(raw)) return out;
+    for (var i = 0; i < raw.length && out.length < max; i += 1) {
+      var s = raw[i];
+      if (typeof s !== 'string' || !/^[0-9]{1,12}$/.test(s)) continue;
+      if (out.indexOf(s) === -1) out.push(s);
+    }
+    return out;
+  }
+
+  // Total, bounded, and it reads back its own output byte for byte: loadKey calls
+  // anything else damage. Counters are top-level on purpose, so a later counter
+  // is an absent top-level key that isRecoveredValue forgives. streak and today
+  // are frozen for v1; changing them needs a v bump and a migration.
+  function normaliseBadges(raw) {
+    var out = freshBadges();
+    if (!isPlainObject(raw)) return out;
+    if (toInt(raw.v, 0) > SCHEMA_VERSION) return out;
+    out.visits = Math.max(0, toInt(raw.visits, 0));
+    out.checkinDays = Math.max(0, toInt(raw.checkinDays, 0));
+    out.bigBacklog = Math.max(0, toInt(raw.bigBacklog, 0));
+    out.firstCheckinAt = Math.max(0, toInt(raw.firstCheckinAt, 0));
+    var s = isPlainObject(raw.streak) ? raw.streak : {};
+    out.streak = {
+      current: Math.max(0, toInt(s.current, 0)),
+      best: Math.max(0, toInt(s.best, 0)),
+      lastDay: Math.max(-1, toInt(s.lastDay, -1)),
+    };
+    if (out.streak.best < out.streak.current) out.streak.best = out.streak.current;
+    if (Array.isArray(raw.forums)) {
+      for (var i = 0; i < raw.forums.length && out.forums.length < BADGE_FORUMS_MAX; i += 1) {
+        var f = raw.forums[i];
+        if (typeof f !== 'number' || f <= 0 || Math.floor(f) !== f) continue;
+        if (out.forums.indexOf(f) === -1) out.forums.push(f);
+      }
+    }
+    var t = isPlainObject(raw.today) ? raw.today : {};
+    out.today = {
+      day: Math.max(-1, toInt(t.day, -1)),
+      firstLook: Math.max(-1, toInt(t.firstLook, -1)),
+      backlogIds: badgeIdList(t.backlogIds, BADGE_BACKLOG_IDS_MAX),
+      visitIds: badgeIdList(t.visitIds, BADGE_VISIT_IDS_MAX),
+    };
+    if (isPlainObject(raw.earned)) {
+      var ids = Object.keys(raw.earned);
+      var kept = 0;
+      for (var j = 0; j < ids.length && kept < BADGE_EARNED_MAX; j += 1) {
+        var at = raw.earned[ids[j]];
+        if (!/^[a-z0-9-]{1,32}$/.test(ids[j])) continue;
+        if (typeof at !== 'number' || at <= 0 || Math.floor(at) !== at) continue;
+        out.earned[ids[j]] = at;
+        kept += 1;
+      }
+    }
+    return out;
+  }
+
   // ---- ENGINE END ------------------------------------------------------
 
   // -- storage runtime -----------------------------------------------------
@@ -2795,6 +2873,11 @@
     drafts: freshDrafts(),
     feed: freshFeed(),
     postCache: freshPostCache(),
+    badges: freshBadges(),
+    badgeShelfOpen: false,
+    badgeCatalogueOpen: false,
+    badgeToast: null,
+    dwell: freshDwell(),
     mine: freshMine(),
     refreshingMine: false,
     mineError: null,
@@ -2869,15 +2952,18 @@
     var f = loadKey(STORAGE_KEYS.feed, normaliseFeed, now);
     var p = loadKey(STORAGE_KEYS.postCache, normalisePostCache, now);
     var m = loadKey(STORAGE_KEYS.mine, normaliseMine, now);
+    var b = loadKey(STORAGE_KEYS.badges, normaliseBadges, now);
     state.settings = s.value;
     state.organizer = o.value;
     state.drafts = d.value;
     state.feed = f.value;
     state.postCache = p.value;
     state.mine = m.value;
+    state.badges = b.value;
     // A key that failed normalisation is reported rather than silently reset,
     // because a user who loses their folders deserves to know it happened.
-    [['Settings', s], ['Folders and tags', o], ['Drafts', d], ['Cached thread list', f], ['Post cache', p], ['My posts list', m]]
+    [['Settings', s], ['Folders and tags', o], ['Drafts', d], ['Cached thread list', f], ['Post cache', p], ['My posts list', m],
+      ['Badges', b]]
       .forEach(function (pair) {
         if (pair[1].recovered) notice(pair[0] + ' were damaged and have been reset.', 'warn');
       });
@@ -2891,6 +2977,7 @@
       feed: [STORAGE_KEYS.feed, state.feed],
       postCache: [STORAGE_KEYS.postCache, state.postCache],
       mine: [STORAGE_KEYS.mine, state.mine],
+      badges: [STORAGE_KEYS.badges, state.badges],
     };
     var pair = map[which];
     if (!pair) return { ok: true };
