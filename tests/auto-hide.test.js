@@ -168,3 +168,173 @@ test('every thread link in every view carries the marker, and Search on Torn doe
   api.state.settings.view = 'search';
   assert.match(api.panelHtml(api.buildPanelModel(NOW)), /class="tfcc-linkbtn"/, 'Search on Torn was rendered and checked');
 });
+
+// ---- runtime: the click ------------------------------------------------------
+
+function loaded(settings, hash) {
+  const gmStore = settings ? [['tfcc:settings', JSON.stringify(Object.assign({ v: 1 }, settings))]] : [];
+  return loadUserscript({ location: forums({ hash: hash || '#/p=forums&f=61' }), now: NOW, gmStore });
+}
+
+function threadLink(env, id, parent) {
+  const a = env.makeElement('a');
+  a.setAttribute('data-tfcc-thread', String(id));
+  a.parentNode = parent;
+  return a;
+}
+
+function click(target, extra) {
+  return Object.assign({ type: 'click', target }, PLAIN, extra || {});
+}
+
+test('a plain click on a panel thread link persists collapsed before navigation', () => {
+  const env = loaded({ autoHideOnOpen: true });
+  const panel = panelOf(env);
+  assert.ok(panel, 'the panel mounted');
+  assert.match(panel.innerHTML, /data-act="view"/, 'precondition: the panel is open');
+
+  panel.dispatchEvent(click(threadLink(env, 5, panel)));
+
+  // No timer has run yet. This is the moment the browser follows the link, so
+  // a full page load from here must already find the panel hidden.
+  assert.strictEqual(storedSettings(env).collapsed, true);
+  assert.strictEqual(env.exports.state.settings.collapsed, true);
+
+  env.advanceTimersBy(0);
+  assert.doesNotMatch(panel.innerHTML, /data-act="view"/, 'only the header remains');
+  assert.match(panel.innerHTML, /data-act="collapse">Show</);
+});
+
+test('with the setting off a thread link click changes nothing', () => {
+  const env = loaded(null);
+  const panel = panelOf(env);
+  const before = env.gmStore.get('tfcc:settings');
+
+  panel.dispatchEvent(click(threadLink(env, 5, panel)));
+  env.advanceTimersBy(1000);
+
+  assert.strictEqual(env.exports.state.settings.collapsed, false);
+  assert.strictEqual(env.gmStore.get('tfcc:settings'), before, 'nothing was written');
+  assert.match(panel.innerHTML, /data-act="view"/);
+});
+
+test('a new-tab click, a middle click and a prevented click change nothing', () => {
+  const cases = [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true },
+    { button: 1 }, { defaultPrevented: true }];
+  for (const extra of cases) {
+    const env = loaded({ autoHideOnOpen: true });
+    const panel = panelOf(env);
+    panel.dispatchEvent(click(threadLink(env, 5, panel), extra));
+    env.advanceTimersBy(1000);
+    assert.strictEqual(env.exports.state.settings.collapsed, false, JSON.stringify(extra));
+    // The seeded blob has no collapsed key and nothing persists, so assert "not true", not "false".
+    assert.notStrictEqual(storedSettings(env).collapsed, true, JSON.stringify(extra));
+  }
+});
+
+test('opening a thread from takeover leaves takeover', () => {
+  const env = loaded({ autoHideOnOpen: true, takeover: true });
+  const panel = panelOf(env);
+  assert.strictEqual(panel.classList.contains('tfcc-takeover'), true, 'precondition');
+
+  panel.dispatchEvent(click(threadLink(env, 5, panel)));
+  assert.strictEqual(storedSettings(env).takeover, false);
+
+  env.advanceTimersBy(0);
+  assert.strictEqual(panel.classList.contains('tfcc-takeover'), false,
+    'a collapsed panel in takeover would still cover the thread');
+});
+
+test('controls still dispatch, and a link that is not a thread does not collapse', () => {
+  const env = loaded({ autoHideOnOpen: true });
+  const panel = panelOf(env);
+
+  const button = env.makeElement('button');
+  button.setAttribute('data-act', 'unread-only');
+  button.parentNode = panel;
+  panel.dispatchEvent(click(button));
+  assert.strictEqual(env.exports.state.settings.unreadOnly, true, 'data-act clicks are untouched');
+
+  const searchOnTorn = env.makeElement('a');
+  searchOnTorn.setAttribute('class', 'tfcc-linkbtn');
+  searchOnTorn.parentNode = panel;
+  panel.dispatchEvent(click(searchOnTorn));
+  env.advanceTimersBy(0);
+  assert.strictEqual(env.exports.state.settings.collapsed, false);
+});
+
+test('clicking the thread you are already on collapses without a hash change', () => {
+  // Same href as the current hash: the browser fires no hashchange, so the
+  // deferred redraw is the only thing that can draw the collapsed panel.
+  const env = loaded({ autoHideOnOpen: true }, THREAD_HASH);
+  const panel = panelOf(env);
+  panel.dispatchEvent(click(threadLink(env, 5, panel)));
+  env.advanceTimersBy(0);
+  assert.doesNotMatch(panel.innerHTML, /data-act="view"/);
+});
+
+test('a hash change into the thread after the click keeps the panel collapsed', () => {
+  const env = loaded({ autoHideOnOpen: true });
+  const panel = panelOf(env);
+  panel.dispatchEvent(click(threadLink(env, 5, panel)));
+
+  env.advanceTimersBy(0);
+  const drawn = panel.renderCount;
+  env.win.location.hash = THREAD_HASH;
+  env.win.fire('hashchange');
+  env.advanceTimersBy(1000);
+  assert.strictEqual(panel.renderCount, drawn, 'the collapsed header was already drawn, so the route draw writes nothing');
+
+  assert.strictEqual(env.exports.state.route.isThread, true, 'the route followed the hash');
+  assert.strictEqual(env.exports.state.settings.collapsed, true);
+  assert.doesNotMatch(panel.innerHTML, /data-act="view"/);
+});
+
+test('a reload after the click arrives already hidden', () => {
+  const env = loaded({ autoHideOnOpen: true });
+  panelOf(env).dispatchEvent(click(threadLink(env, 5, panelOf(env))));
+
+  const again = loadUserscript({
+    location: forums({ hash: THREAD_HASH }), now: NOW,
+    gmStore: [['tfcc:settings', env.gmStore.get('tfcc:settings')]],
+  });
+  assert.strictEqual(again.exports.state.settings.collapsed, true);
+  assert.strictEqual(again.exports.state.settings.autoHideOnOpen, true);
+  assert.doesNotMatch(panelOf(again).innerHTML, /data-act="view"/);
+});
+
+test('the link walk finds our marked anchor and never reads past the panel', () => {
+  const env = loaded(null);
+  const find = env.rawExports.threadLinkOf;
+  const panel = panelOf(env);
+
+  const a = threadLink(env, 5, panel);
+  const span = env.makeElement('span');
+  span.parentNode = a;
+  assert.strictEqual(find(a, panel), a);
+  assert.strictEqual(find(span, panel), a, 'a click on text inside the link');
+  assert.strictEqual(find({ parentNode: a }, panel), a, 'a node with no getAttribute is stepped over');
+
+  // A marked element above the panel must be invisible to the walk.
+  const outside = env.makeElement('div');
+  outside.setAttribute('data-tfcc-thread', '9');
+  const otherPanel = env.makeElement('div');
+  otherPanel.parentNode = outside;
+  const inner = env.makeElement('span');
+  inner.parentNode = otherPanel;
+  assert.strictEqual(find(inner, otherPanel), null);
+
+  // The walk is bounded.
+  let node = env.makeElement('a');
+  node.setAttribute('data-tfcc-thread', '1');
+  for (let i = 0; i < 6; i += 1) {
+    const child = env.makeElement('span');
+    child.parentNode = node;
+    node = child;
+  }
+  assert.strictEqual(find(node, panel), null);
+
+  assert.strictEqual(find(null, panel), null);
+  assert.strictEqual(find(undefined, panel), null);
+  assert.strictEqual(find({}, panel), null);
+});

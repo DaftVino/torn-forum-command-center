@@ -2674,6 +2674,19 @@
     return ' ' + THREAD_LINK_ATTR + '="' + escapeHtml(String(id)) + '"';
   }
 
+  // Finds the thread anchor a click landed on, or inside. Reads only the panel's
+  // own nodes: the walk stops at the panel and after THREAD_LINK_MAX_DEPTH steps,
+  // so nothing of Torn's is ever read (ADR 0001). Every step is null-guarded.
+  function threadLinkOf(node, panel) {
+    var n = node;
+    for (var i = 0; n && i < THREAD_LINK_MAX_DEPTH; i += 1) {
+      if (n === panel) return null;
+      if (typeof n.getAttribute === 'function' && n.getAttribute(THREAD_LINK_ATTR) !== null) return n;
+      n = n.parentNode;
+    }
+    return null;
+  }
+
   function btn(action, label, extra) {
     return '<button type="button" data-act="' + escapeHtml(action) + '"'
       + (extra || '') + '>' + escapeHtml(label) + '</button>';
@@ -3196,6 +3209,18 @@
       delegated = panel;
       panel.addEventListener('click', function (ev) {
         var t = ev && ev.target;
+        // A thread link the panel rendered. The browser follows it; this only
+        // gives the auto-hide setting a chance to persist first (issue #8).
+        var link = threadLinkOf(t, panel);
+        if (link) {
+          if (typeof handlers.onThreadLink === 'function') {
+            handlers.onThreadLink(link, {
+              button: ev.button, ctrlKey: !!ev.ctrlKey, metaKey: !!ev.metaKey,
+              shiftKey: !!ev.shiftKey, altKey: !!ev.altKey, defaultPrevented: !!ev.defaultPrevented,
+            });
+          }
+          return;
+        }
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
         if (!act || typeof handlers.onAction !== 'function') return;
         handlers.onAction(act, t);
@@ -3451,6 +3476,19 @@
     }
 
     var handlers = {
+      // Not an act === case: a thread link is navigation the browser performs,
+      // not a control, so tests/handlers.test.js does not pair it.
+      onThreadLink: function (link, click) {
+        if (!isPlainActivation(click)) return;
+        var next = autoHideSettings(state.settings);
+        if (next === state.settings) return;
+        state.settings = next;
+        persist('settings');
+        // Deferred: redrawing now would replace the anchor while its click is
+        // still being dispatched. It also covers a click on the thread already
+        // open, where no hashchange will ever come.
+        setTimeout(function () { if (isForumsPage(win.location)) redraw(); }, 0);
+      },
       onAction: function (act, el) {
         var now = Date.now();
         var id = idOf(el);
