@@ -5500,6 +5500,14 @@
       lastError: state.lastError ? { reason: state.lastError.reason, detail: state.lastError.detail } : null,
       mounted: state.mounted,
       replyBoxFound: state.replyBoxFound,
+      badges: {
+        on: state.settings.badges === true,
+        earned: Object.keys(state.badges.earned).length,
+        current: state.badges.streak.current,
+        best: state.badges.streak.best,
+        checkinDays: state.badges.checkinDays,
+        visits: state.badges.visits,
+      },
     };
   }
 
@@ -5527,6 +5535,9 @@
       'cached posts: ' + c.counts.cachedPosts,
       'last fetch age ms: ' + (c.lastFetchedAt ? 'set' : 'never'),
       'last error: ' + (c.lastError ? (c.lastError.reason + ' - ' + c.lastError.detail) : 'none'),
+      'badges: ' + (c.badges ? ((c.badges.on ? 'on' : 'off') + ', ' + c.badges.earned + ' earned, streak '
+        + c.badges.current + '/' + c.badges.best + ', check-in days ' + c.badges.checkinDays
+        + ', focused visits ' + c.badges.visits) : 'none'),
       'my posts threads: ' + c.counts.mineThreads,
       'my posts started: ' + c.counts.mineStarted,
       'my posts posted in: ' + c.counts.minePosted,
@@ -5880,8 +5891,12 @@
           state.settings = freshSettings(); state.organizer = freshOrganizer(now); state.showAll = {};
           state.drafts = freshDrafts(); state.feed = freshFeed(); state.postCache = freshPostCache();
           state.mine = freshMine(); state.mineError = null;
+          // A real reset: no backfill, nothing re-awarded until a new event earns it.
+          state.badges = freshBadges(); state.badgeShelfOpen = false; state.badgeCatalogueOpen = false;
+          state.badgeToast = null; state.dwell = freshDwell();
           persist('settings'); persist('organizer'); persist('drafts'); persist('feed'); persist('postCache');
           persist('mine');
+          persist('badges');
           recompute(now); notice('Everything except your API key has been reset.', 'info'); redraw(); return;
         }
         if (act === 'badges-shelf') { state.badgeShelfOpen = !state.badgeShelfOpen; redraw(); return; }

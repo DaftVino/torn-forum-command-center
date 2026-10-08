@@ -341,3 +341,61 @@ test('every icon is ASCII SVG with no emoji and no text node', () => {
   assert.ok(/^[\x09-\x7e]*$/.test(out));
   assert.doesNotMatch(out, /<text[\s>]/, 'no SVG text node (a <textarea> is not one)');
 });
+
+// ---- reset and debug ------------------------------------------------------------
+
+test('Reset everything really resets badges, and nothing returns silently', () => {
+  const env = seeded();
+  const api = env.exports;
+  api.persist('badges');
+  api.state.badgeShelfOpen = true;
+  api.state.badgeToast = { text: 'x', until: NOW + 6000, announced: false };
+  api.makeHandlers(env.doc, env.win).onAction('reset-all', { getAttribute: () => null });
+  assert.deepStrictEqual(JSON.parse(env.gmStore.get('tfcc:badges')), api.freshBadges());
+  assert.strictEqual(api.state.badgeShelfOpen, false);
+  assert.strictEqual(api.state.badgeToast, null);
+  api.draw(env.doc, env.win, api.makeHandlers(env.doc, env.win), true);
+  assert.deepStrictEqual(JSON.parse(env.gmStore.get('tfcc:badges')).earned, {}, 'a redraw re-awards nothing');
+});
+
+test('Reset everything resets every key except the API key', () => {
+  const env = seeded();
+  const api = env.exports;
+  env.gmStore.set('tfcc:key', KEY);
+  api.makeHandlers(env.doc, env.win).onAction('reset-all', { getAttribute: () => null });
+  for (const name of Object.keys(api.STORAGE_KEYS)) {
+    if (name === 'key') { assert.strictEqual(env.gmStore.get('tfcc:key'), KEY); continue; }
+    assert.ok(env.gmStore.has(api.STORAGE_KEYS[name]), name + ' was written by the reset');
+  }
+});
+
+test('the API key never reaches the badges record, the export block, a toast or the report', () => {
+  const env = seeded();
+  const api = env.exports;
+  const btoa = (s) => Buffer.from(String(s), 'binary').toString('base64');
+  const atob = (s) => Buffer.from(String(s), 'base64').toString('binary');
+  env.gmStore.set('tfcc:key', KEY);
+  api.persist('badges');
+  api.state.badgeToast = { text: api.badgeToastText(['reader'], api.state.badges,
+    { switchedOn: 1, ownFoldersFilled: 0, subscribed: 0, unfiledSubscribed: 0 }), until: NOW + 6000, announced: false };
+  const exported = JSON.stringify(api.decodeState(
+    api.encodeState(api.state.organizer, api.state.drafts, btoa, api.state.badges), atob).payload);
+  const surfaces = {
+    record: env.gmStore.get('tfcc:badges'), exported, toast: api.state.badgeToast.text,
+    report: api.buildDebugReport(), panel: html(env),
+  };
+  assert.ok(env.gmStore.get('tfcc:key') === KEY, 'the key really is stored, so absence below means something');
+  assert.match(surfaces.exported, /"badges":\{/, 'the export really carries the block');
+  assert.match(surfaces.report, /badges: on/);
+  for (const [name, text] of Object.entries(surfaces)) {
+    assert.ok(typeof text === 'string' && text.length > 0, name + ' is non-empty');
+    assert.ok(!text.includes(KEY), name + ' contains the API key');
+  }
+});
+
+test('the debug report carries badge counts and no ids', () => {
+  const env = seeded();
+  const report = env.exports.buildDebugReport();
+  assert.match(report, /badges: on, 3 earned, streak 12\/23, check-in days 12, focused visits 30/);
+  assert.doesNotMatch(report, /20734|reader|streak-10/);
+});
