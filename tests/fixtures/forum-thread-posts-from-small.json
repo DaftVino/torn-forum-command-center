@@ -1,0 +1,30 @@
+{
+ "posts": [
+  {
+   "id": 27714428,
+   "thread_id": 16589908,
+   "author": {
+    "id": 1001,
+    "username": "player001",
+    "karma": 7
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1786067226,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 3,
+   "dislikes": 0
+  }
+ ],
+ "_metadata": {
+  "links": {
+   "prev": null,
+   "next": null
+  }
+ }
+}

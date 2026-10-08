@@ -1,0 +1,34 @@
+{
+ "forumThreads": [
+  {
+   "id": 16589908,
+   "title": "[title redacted]",
+   "forum_id": 61,
+   "posts": 1,
+   "rating": 7,
+   "views": 218,
+   "author": {
+    "id": 1000,
+    "username": "player000",
+    "karma": 26
+   },
+   "last_poster": {
+    "id": 1001,
+    "username": "player001",
+    "karma": 7
+   },
+   "first_post_time": 1786030501,
+   "last_post_time": 1786067226,
+   "has_poll": false,
+   "is_locked": false,
+   "is_sticky": false,
+   "new_posts": 0
+  }
+ ],
+ "_metadata": {
+  "links": {
+   "prev": null,
+   "next": null
+  }
+ }
+}

@@ -1,0 +1,50 @@
+{
+ "posts": [
+  {
+   "id": 27712536,
+   "thread_id": 16589908,
+   "author": {
+    "id": 1000,
+    "username": "player000",
+    "karma": 26
+   },
+   "is_legacy": false,
+   "is_topic": true,
+   "is_edited": true,
+   "is_pinned": false,
+   "created_time": 1786030501,
+   "edited_by": 1000,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 7,
+   "dislikes": 0
+  },
+  {
+   "id": 27714428,
+   "thread_id": 16589908,
+   "author": {
+    "id": 1001,
+    "username": "player001",
+    "karma": 7
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1786067226,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 3,
+   "dislikes": 0
+  }
+ ],
+ "_metadata": {
+  "links": {
+   "prev": null,
+   "next": null
+  }
+ }
+}

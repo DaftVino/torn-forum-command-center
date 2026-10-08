@@ -1,0 +1,262 @@
+{
+ "categories": [
+  {
+   "id": 1,
+   "title": "[title redacted]",
+   "acronym": "ANN",
+   "threads": 842
+  },
+  {
+   "id": 2,
+   "title": "[title redacted]",
+   "acronym": "GD",
+   "threads": 27613
+  },
+  {
+   "id": 3,
+   "title": "[title redacted]",
+   "acronym": "Q&A",
+   "threads": 50505
+  },
+  {
+   "id": 4,
+   "title": "[title redacted]",
+   "acronym": "SG",
+   "threads": 25786
+  },
+  {
+   "id": 6,
+   "title": "[title redacted]",
+   "acronym": "NR",
+   "threads": 4348
+  },
+  {
+   "id": 7,
+   "title": "[title redacted]",
+   "acronym": "RP",
+   "threads": 1222
+  },
+  {
+   "id": 9,
+   "title": "[title redacted]",
+   "acronym": "FD",
+   "threads": 5217
+  },
+  {
+   "id": 10,
+   "title": "[title redacted]",
+   "acronym": "TP",
+   "threads": 67399
+  },
+  {
+   "id": 11,
+   "title": "[title redacted]",
+   "acronym": "SM",
+   "threads": 8936
+  },
+  {
+   "id": 13,
+   "title": "[title redacted]",
+   "acronym": "F&G",
+   "threads": 9060
+  },
+  {
+   "id": 14,
+   "title": "[title redacted]",
+   "acronym": "DC",
+   "threads": 738
+  },
+  {
+   "id": 15,
+   "title": "[title redacted]",
+   "acronym": "GAMB",
+   "threads": 3737
+  },
+  {
+   "id": 16,
+   "title": "[title redacted]",
+   "acronym": "ACH",
+   "threads": 9773
+  },
+  {
+   "id": 17,
+   "title": "[title redacted]",
+   "acronym": "GRAV",
+   "threads": 33843
+  },
+  {
+   "id": 19,
+   "title": "[title redacted]",
+   "acronym": "B&I",
+   "threads": 68200
+  },
+  {
+   "id": 20,
+   "title": "[title redacted]",
+   "acronym": "CD",
+   "threads": 18691
+  },
+  {
+   "id": 21,
+   "title": "[title redacted]",
+   "acronym": "RAC",
+   "threads": 2442
+  },
+  {
+   "id": 22,
+   "title": "[title redacted]",
+   "acronym": "PROP",
+   "threads": 10254
+  },
+  {
+   "id": 23,
+   "title": "[title redacted]",
+   "acronym": "GFX",
+   "threads": 8388
+  },
+  {
+   "id": 24,
+   "title": "[title redacted]",
+   "acronym": "FR",
+   "threads": 18851
+  },
+  {
+   "id": 35,
+   "title": "[title redacted]",
+   "acronym": "TV&M",
+   "threads": 1195
+  },
+  {
+   "id": 36,
+   "title": "[title redacted]",
+   "acronym": "TECH",
+   "threads": 672
+  },
+  {
+   "id": 37,
+   "title": "[title redacted]",
+   "acronym": "SPR",
+   "threads": 976
+  },
+  {
+   "id": 38,
+   "title": "[title redacted]",
+   "acronym": "P&L",
+   "threads": 6814
+  },
+  {
+   "id": 39,
+   "title": "[title redacted]",
+   "acronym": "H&F",
+   "threads": 424
+  },
+  {
+   "id": 40,
+   "title": "[title redacted]",
+   "acronym": "GAM",
+   "threads": 2929
+  },
+  {
+   "id": 41,
+   "title": "[title redacted]",
+   "acronym": "MUS",
+   "threads": 1430
+  },
+  {
+   "id": 46,
+   "title": "[title redacted]",
+   "acronym": "CR",
+   "threads": 73303
+  },
+  {
+   "id": 47,
+   "title": "[title redacted]",
+   "acronym": "MIS",
+   "threads": 1214
+  },
+  {
+   "id": 49,
+   "title": "[title redacted]",
+   "acronym": "A&L",
+   "threads": 728
+  },
+  {
+   "id": 50,
+   "title": "[title redacted]",
+   "acronym": "SCI",
+   "threads": 326
+  },
+  {
+   "id": 51,
+   "title": "[title redacted]",
+   "acronym": "MOTR",
+   "threads": 233
+  },
+  {
+   "id": 52,
+   "title": "[title redacted]",
+   "acronym": "H&I",
+   "threads": 559
+  },
+  {
+   "id": 53,
+   "title": "[title redacted]",
+   "acronym": "PARA",
+   "threads": 381
+  },
+  {
+   "id": 54,
+   "title": "[title redacted]",
+   "acronym": "F&C",
+   "threads": 573
+  },
+  {
+   "id": 55,
+   "title": "[title redacted]",
+   "acronym": "A&N",
+   "threads": 328
+  },
+  {
+   "id": 56,
+   "title": "[title redacted]",
+   "acronym": "T&C",
+   "threads": 383
+  },
+  {
+   "id": 59,
+   "title": "[title redacted]",
+   "acronym": "ATK",
+   "threads": 18839
+  },
+  {
+   "id": 61,
+   "title": "[title redacted]",
+   "acronym": "T&G",
+   "threads": 2339
+  },
+  {
+   "id": 62,
+   "title": "[title redacted]",
+   "acronym": "CE",
+   "threads": 311
+  },
+  {
+   "id": 63,
+   "title": "[title redacted]",
+   "acronym": "API",
+   "threads": 1056
+  },
+  {
+   "id": 67,
+   "title": "[title redacted]",
+   "acronym": "T&U",
+   "threads": 2996
+  },
+  {
+   "id": 69,
+   "title": "[title redacted]",
+   "acronym": "P2.0",
+   "threads": 665
+  }
+ ]
+}
