@@ -59,6 +59,14 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   fetches. Only when you have started no threads and written no posts does My
   posts read your profile once for it, at most every 12 hours (3 requests in
   all). It shows "-" until known. (#10)
+- Badges (#9): fifteen badges for setup, focused thread visits, forums explored,
+  a tidy desk, clearing a backlog, and finishing Torn days with Catch up empty
+  (3, 10, 25, 100 and 500 in a row). A cup chip after the panel title shows the
+  count and streak, and opens a shelf; the full list with progress is at the
+  bottom of Settings, with an off switch. Earned locally; no request is made.
+  Badges travel in an export and are merged by maximum on import, and Reset
+  everything clears them. In author-only mode a thread not yet checked keeps
+  the day from counting until a later refresh checks it.
 
 ### Changed
 

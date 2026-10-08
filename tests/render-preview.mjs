@@ -153,6 +153,7 @@ const HOSTILE_HOST_CSS = [
   'a { color: #0645ad; }',
   'button, input, select, textarea { color: #000; background: #fff; }',
   'option { color: #000; background: #fff; }',
+  'svg, svg * { fill: #000; color: #000; }',
 ].join('\n');
 
 function page(title, theme, body, width, hostile) {
@@ -217,6 +218,45 @@ fs.writeFileSync(path.join(outDir, 'threads-capped-narrow.html'),
   page('threads / rows shown 3 / narrow 375px', 'dark', cappedNarrow, 375));
 written.push('threads-capped-narrow.html');
 api.state.settings.rowsShown = 0;
+
+// Badges (issue #9). Match Torn applies one of the two theme classes, so dark
+// and light cover it; both are rendered here under the hostile host too.
+api.state.badges = api.normaliseBadges({
+  v: 1, visits: 30, checkinDays: 12, bigBacklog: 0, firstCheckinAt: NOW - 864000000,
+  streak: { current: 12, best: 23, lastDay: Math.floor(NOW / 86400000) }, forums: [61, 63, 67],
+  today: { day: Math.floor(NOW / 86400000), firstLook: 0, backlogIds: [], visitIds: [] },
+  earned: { reader: NOW - 1000, 'streak-10': NOW - 2000, 'caught-up': NOW - 3000, explorer: NOW - 4000,
+    'switched-on': NOW - 5000, 'tidy-desk': NOW - 6000, 'streak-100': NOW - 7000 },
+});
+const BADGE_STATES = [
+  ['chip', () => { api.state.settings.collapsed = false; api.state.badgeShelfOpen = false; api.state.badgeToast = null; }],
+  ['shelf', () => { api.state.badgeShelfOpen = true; }],
+  ['toast', () => { api.state.badgeShelfOpen = false;
+    api.state.badgeToast = { text: 'Badge earned: Reader (Bronze). 475 more focused visits to Bookworm.', until: NOW + 6000, announced: false }; }],
+  ['collapsed', () => { api.state.settings.collapsed = true; api.state.badgeShelfOpen = true;
+    api.state.badgeToast = { text: 'Badge earned: Ten days (Silver). 15 more days to Twenty-five days.', until: NOW + 6000, announced: false }; }],
+  ['catalogue', () => { api.state.settings.collapsed = false; api.state.badgeShelfOpen = false; api.state.badgeToast = null;
+    api.state.settings.view = 'settings'; api.state.badgeCatalogueOpen = true; }],
+];
+for (const [label, setUp] of BADGE_STATES) {
+  api.state.settings.view = 'threads';
+  setUp();
+  for (const theme of ['dark', 'light']) {
+    api.state.settings.theme = theme;
+    const body = api.panelHtml(api.buildPanelModel(NOW));
+    for (const width of [320, 360]) {
+      for (const hostile of [false, true]) {
+        const name = `badges-${label}-${theme}-${width}${hostile ? '-hostile' : ''}.html`;
+        fs.writeFileSync(path.join(outDir, name),
+          page(`badges ${label} / ${theme} / ${width}px${hostile ? ' / hostile' : ''}`, theme, body, width, hostile));
+        written.push(name);
+      }
+    }
+  }
+}
+api.state.settings.collapsed = false;
+api.state.badgeCatalogueOpen = false;
+api.state.badgeToast = null;
 
 console.log('wrote ' + written.length + ' files to ' + outDir);
 for (const w of written) console.log('  ' + w);

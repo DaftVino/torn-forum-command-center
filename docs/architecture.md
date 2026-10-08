@@ -178,7 +178,7 @@ in `state.showAll` until the page reloads and is never stored.
 
 ### Storage
 
-Seven independent keys, each with a schema version. `tfcc:mine`, the My posts
+Eight independent keys (`tfcc:badges` is the eighth), each with a schema version. `tfcc:mine`, the My posts
 cache, is its own key rather than a field of `tfcc:feed`, because a new field
 there would make every existing user's first load report the feed cache as
 damaged; it is not exported and Reset everything clears it. A value that fails
@@ -317,6 +317,18 @@ markup, so following Torn costs no redraw and takes nobody's caret.
 The two structural guards overlap on purpose: either alone stops the loop.
 `tests/redraw.test.js` therefore tests `isOwnMutation` directly and counts route
 callbacks rather than renders, or the overlap would hide whichever one broke.
+
+## Badges
+
+Fifteen local badges (issue #9). Every rule is a pure engine function of the
+`tfcc:badges` record, organiser facts and `now`; a day is a Torn (UTC) day and
+streaks are strict. One runtime choke point, `recordBadgeEvent`, re-reads the
+key, applies one event and writes, so tabs usually see each other's work; this
+is best effort, not atomic. A focused thread visit is 15 s on one thread
+route while the page is visible and focused, sampled once a second and on
+focus, blur and visibilitychange, which are page lifecycle signals and not
+Torn's markup (ADR 0001). Rendering never writes, nothing is backfilled, and
+no badge ever makes a request.
 
 ## Capture
 

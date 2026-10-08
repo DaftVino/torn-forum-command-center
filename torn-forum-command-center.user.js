@@ -5726,10 +5726,10 @@
         if (!isPlainActivation(click)) return;
         var next = autoHideSettings(state.settings);
         if (next === state.settings) return;
-        state.settings = next;
-        persist('settings');
         // The shelf renders in the collapsed header too; hiding the panel closes it.
         state.badgeShelfOpen = false;
+        state.settings = next;
+        persist('settings');
         // Deferred: redrawing now would replace the anchor while its click is
         // still being dispatched. It also covers a click on the thread already
         // open, where no hashchange will ever come.

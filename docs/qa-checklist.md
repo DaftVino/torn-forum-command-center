@@ -354,6 +354,44 @@ See `docs/rules-compliance.md` for the rule text and the line-by-line check.
 - [ ] Confirm nothing is ever sent that would post, reply, subscribe or
       otherwise change the account.
 
+## Badges (#9)
+
+Walk on Torn PDA and on desktop, signed in to a real account.
+
+- [ ] Upgrade from the previous release: no "were damaged" notice, and no
+      badges appear until you do something (no backfill).
+- [ ] The cup chip sits right after "Forum Command Center" in Dark, Light and
+      Match Torn (toggle Torn's own theme while it is open).
+- [ ] At the narrowest PDA width, portrait and landscape: Refresh, Expand and
+      Hide stay together and in order; the control group wraps whole.
+- [ ] Tap the cup itself, and the number: the shelf opens both times.
+- [ ] Open a thread and keep it in front for 15 s: Focused thread visits goes
+      up by 1 in the Settings catalogue. Leave after 5 s: it does not.
+- [ ] Open a thread, switch to another app or tab for 30 s, come back for
+      10 s: no visit. Five more seconds: one visit.
+- [ ] Open the same thread again today: no change. Tomorrow (TCT): +1.
+- [ ] Hide the panel, then open a thread: the chip still shows in the
+      collapsed header, and an earned toast appears there.
+- [ ] Two tabs on the same thread for 15 s: the count goes up by 1.
+- [ ] A quiet day: the page-load refresh finds Catch up empty and the streak
+      glyph fills.
+- [ ] A busy day: the glyph stays an outline until Catch up is empty (Mark all
+      read counts), then fills.
+- [ ] Across 00:00 TCT: a check-in before and after midnight makes the streak
+      grow by one.
+- [ ] Settings, Badges: the list is collapsed by default, shows all 15 with how
+      to earn each, and progress bars for the counted ones.
+- [ ] Turn badges off: the chip disappears, and the debug report's counts do
+      not move over a session.
+- [ ] Export, Reset everything (badges gone, no toast storm), Import (badges
+      back, and the notice says how many).
+- [ ] Cartographer: Debug in Settings still reports `categories:` at or above
+      15. It was 43 on 2026-10-08 (`docs/reference/torn-api-live-findings-2026-10-08.md`,
+      finding 14). If Torn ever cuts the board below 15, revisit the
+      threshold of 12.
+- [ ] With a screen reader on (TalkBack in Torn PDA), an earned toast is
+      announced once, or not at all, and never repeats on a redraw.
+
 ## Sign-off
 
 Release is blocked until every box above is ticked on the same build, on a real

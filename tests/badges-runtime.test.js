@@ -423,3 +423,17 @@ test('a row cap never makes Catch up look empty to the check-in', () => {
   assert.strictEqual(api.buildPanelModel(NOW).capped.catchup.rows.length, 3, 'the view shows three');
   assert.strictEqual(api.catchUpRowsNow().length, 5, 'the check-in still counts five');
 });
+
+test('a visit recorded in one tab survives a write from another tab', () => {
+  // Each write re-reads storage first. Writing from a tab's own memory would
+  // let tab b, which loaded before tab a's visit, overwrite it.
+  const shared = new Map();
+  const a = loadUserscript({ location: forums({ hash: THREAD }), now: NOW, sharedGmStore: shared });
+  const b = loadUserscript({ location: forums({ hash: THREAD }), now: NOW, sharedGmStore: shared });
+  a.exports.recordBadgeEvent({ type: 'visit', threadId: '7', forumId: 61 }, NOW);
+  b.exports.recordBadgeEvent({ type: 'visit', threadId: '8', forumId: 4 }, NOW + 1000);
+  const rec = JSON.parse(shared.get('tfcc:badges'));
+  assert.strictEqual(rec.visits, 2);
+  assert.deepStrictEqual(rec.today.visitIds, ['7', '8']);
+  assert.deepStrictEqual(rec.forums, [61, 4]);
+});
