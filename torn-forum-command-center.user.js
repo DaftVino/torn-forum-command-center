@@ -2760,6 +2760,79 @@
     return text;
   }
 
+  var CHECKIN_FRESH_MS = 30 * 60 * 1000;
+  var BACKLOG_MIN_SIZE = 20;
+  var BACKLOG_MIN_VISITS = 10;
+
+  // A check-in: fresh data today, something followed, and nothing left in
+  // Catch up. ctx.blockers is the Catch up count the panel shows (plus #4's
+  // not-yet-checked rows when that mode is on); the runtime computes it.
+  function checkinEligible(record, ctx, day) {
+    var now = toInt(ctx.now, 0);
+    var fetchedAt = toInt(ctx.fetchedAt, 0);
+    return record.today.day === day
+      && record.today.firstLook >= 0
+      && fetchedAt > 0
+      && fetchedAt >= now - CHECKIN_FRESH_MS
+      && toInt(ctx.subscribed, 0) >= 1
+      && toInt(ctx.blockers, 0) === 0;
+  }
+
+  function tryCheckin(r, ctx, day) {
+    if (!checkinEligible(r, ctx, day)) return;
+    var res = creditDay(r.streak, day);
+    r.streak = res.streak;
+    if (!res.credited) return;
+    r.checkinDays += 1;
+    if (!r.firstCheckinAt) r.firstCheckinAt = toInt(ctx.now, 0);
+    if (r.today.firstLook >= BACKLOG_MIN_SIZE) {
+      var hits = 0;
+      for (var i = 0; i < r.today.visitIds.length; i += 1) {
+        if (r.today.backlogIds.indexOf(r.today.visitIds[i]) !== -1) hits += 1;
+      }
+      if (hits >= BACKLOG_MIN_VISITS) r.bigBacklog = Math.max(r.bigBacklog, r.today.firstLook);
+    }
+  }
+
+  function applyBadgeEvent(record, event, ctx) {
+    var before = JSON.stringify(normaliseBadges(record));
+    var r = normaliseBadges(record);
+    var now = toInt(ctx.now, 0);
+    var day = tctDay(now);
+    if (r.today.day !== day) r.today = { day: day, firstLook: -1, backlogIds: [], visitIds: [] };
+    var type = event && event.type;
+
+    if (type === 'visit') {
+      var id = String(event.threadId || '');
+      if (/^[0-9]{1,12}$/.test(id) && r.today.visitIds.indexOf(id) === -1
+        && r.today.visitIds.length < BADGE_VISIT_IDS_MAX) {
+        r.today.visitIds.push(id);
+        r.visits += 1;
+        var forumId = toInt(event.forumId, 0);
+        if (forumId > 0 && r.forums.indexOf(forumId) === -1 && r.forums.length < BADGE_FORUMS_MAX) {
+          r.forums.push(forumId);
+        }
+      }
+    } else if (type === 'refreshed') {
+      if (r.today.firstLook < 0) {
+        r.today.firstLook = Math.max(0, toInt(ctx.blockers, 0));
+        r.today.backlogIds = badgeIdList(ctx.catchUpIds || [], BADGE_BACKLOG_IDS_MAX);
+      }
+      tryCheckin(r, ctx, day);
+    } else if (type === 'catchup-changed') {
+      tryCheckin(r, ctx, day);
+    }
+
+    var stamped = [];
+    var ev = evaluateBadges(r, ctx.facts);
+    for (var i = 0; i < ev.newly.length; i += 1) {
+      if (Object.keys(r.earned).length >= BADGE_EARNED_MAX) break;
+      r.earned[ev.newly[i]] = now;
+      stamped.push(ev.newly[i]);
+    }
+    return { record: r, newly: stamped, changed: JSON.stringify(r) !== before };
+  }
+
   // ---- ENGINE END ------------------------------------------------------
 
   // -- storage runtime -----------------------------------------------------

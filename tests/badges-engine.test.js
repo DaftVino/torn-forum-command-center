@@ -252,3 +252,123 @@ test('the toast names the badge, its tier, and the next rung of the same ladder'
     '2 badges earned: Ten days, Tidy desk.');
   assert.strictEqual(api.badgeToastText(['switched-on'], r, ZERO_FACTS), 'Badge earned: Switched on (Bronze).');
 });
+
+// ---- events --------------------------------------------------------------------
+
+const FACTS = { switchedOn: 1, ownFoldersFilled: 0, subscribed: 3, unfiledSubscribed: 3 };
+
+function ctx(over) {
+  return Object.assign({ now: NOON, facts: FACTS, blockers: 0, catchUpIds: [], subscribed: 3, fetchedAt: NOON }, over || {});
+}
+
+function apply(rec, events) {
+  let r = rec || api.freshBadges();
+  const newly = [];
+  for (const [event, c] of events) {
+    const out = api.applyBadgeEvent(r, event, c);
+    r = out.record;
+    newly.push(...out.newly);
+  }
+  return { r, newly };
+}
+
+const visit = (id, forumId) => ({ type: 'visit', threadId: String(id), forumId: forumId || 0 });
+const REFRESHED = { type: 'refreshed' };
+const CHANGED = { type: 'catchup-changed' };
+
+test('a visit counts once per thread per Torn day, and forums are distinct', () => {
+  const day1 = apply(null, [[visit(7, 61), ctx()], [visit(7, 61), ctx()], [visit(8, 61), ctx()], [visit(9, 4), ctx()]]);
+  assert.strictEqual(day1.r.visits, 3);
+  assert.deepStrictEqual(day1.r.forums, [61, 4]);
+  const day2 = apply(day1.r, [[visit(7, 61), ctx({ now: MIDNIGHT + 1000 })]]);
+  assert.strictEqual(day2.r.visits, 4, 'the same thread counts again on a new Torn day');
+});
+
+test('a quiet day counts: fresh data that finds Catch up already empty', () => {
+  const out = apply(null, [[REFRESHED, ctx()]]);
+  assert.strictEqual(out.r.checkinDays, 1);
+  assert.deepStrictEqual(out.r.streak, { current: 1, best: 1, lastDay: D });
+  assert.ok(out.newly.includes('caught-up'));
+  assert.ok(out.newly.includes('switched-on'));
+  assert.strictEqual(out.r.earned['caught-up'], NOON);
+});
+
+test('triage counts: a non-empty first look, then Catch up emptied with no visits', () => {
+  const out = apply(null, [[REFRESHED, ctx({ blockers: 5 })], [CHANGED, ctx({ now: NOON + 60000 })]]);
+  assert.strictEqual(out.r.today.firstLook, 5);
+  assert.strictEqual(out.r.checkinDays, 1);
+});
+
+test('the first look is taken once a day and never overwritten', () => {
+  const out = apply(null, [[REFRESHED, ctx({ blockers: 5 })], [REFRESHED, ctx({ blockers: 2, now: NOON + 60000 })]]);
+  assert.strictEqual(out.r.today.firstLook, 5);
+  assert.strictEqual(out.r.checkinDays, 0);
+});
+
+test('stale data does not count: 29 minutes old does, 31 minutes old does not', () => {
+  const base = apply(null, [[REFRESHED, ctx({ blockers: 1 })]]).r;
+  assert.strictEqual(apply(base, [[CHANGED, ctx({ now: NOON + 29 * 60000 })]]).r.checkinDays, 1);
+  assert.strictEqual(apply(base, [[CHANGED, ctx({ now: NOON + 31 * 60000 })]]).r.checkinDays, 0);
+});
+
+test('no subscriptions, no first look today, or a blocker: no check-in', () => {
+  assert.strictEqual(apply(null, [[REFRESHED, ctx({ subscribed: 0 })]]).r.checkinDays, 0);
+  assert.strictEqual(apply(null, [[CHANGED, ctx()]]).r.checkinDays, 0, 'no refresh yet today');
+  const yesterday = apply(null, [[REFRESHED, ctx({ blockers: 2 })]]).r;
+  assert.strictEqual(apply(yesterday, [[CHANGED, ctx({ now: MIDNIGHT + 1000, fetchedAt: MIDNIGHT + 500 })]]).r.checkinDays, 0,
+    'yesterday\'s first look does not carry into today');
+  assert.strictEqual(apply(null, [[REFRESHED, ctx({ blockers: 1 })]]).r.checkinDays, 0);
+});
+
+test('refresh spam adds nothing: one day is one day', () => {
+  const events = [];
+  for (let i = 0; i < 20; i += 1) events.push([REFRESHED, ctx({ now: NOON + i * 1000, fetchedAt: NOON + i * 1000 })]);
+  assert.strictEqual(apply(null, events).r.checkinDays, 1);
+});
+
+test('a check-in after a clock correction neither breaks nor blocks the streak', () => {
+  const r = api.freshBadges();
+  r.streak = { current: 5, best: 8, lastDay: D + 3 };   // written while the clock ran fast
+  const fixed = apply(r, [[REFRESHED, ctx()]]).r;
+  assert.deepStrictEqual(fixed.streak, { current: 5, best: 8, lastDay: D });
+  const next = apply(fixed, [[REFRESHED, ctx({ now: MIDNIGHT + 1000, fetchedAt: MIDNIGHT + 1000 })]]).r;
+  assert.deepStrictEqual(next.streak, { current: 6, best: 8, lastDay: D + 1 });
+});
+
+function backlogDay(firstLook, visitedIds) {
+  const ids = Array.from({ length: firstLook }, (_, i) => String(100 + i));
+  const events = [[REFRESHED, ctx({ blockers: firstLook, catchUpIds: ids })]];
+  for (const id of visitedIds) events.push([visit(id, 61), ctx({ now: NOON + 1000 })]);
+  events.push([CHANGED, ctx({ now: NOON + 2000 })]);
+  return apply(null, events);
+}
+
+test('Backlog buster: 20 at the first look and 10 of those visited', () => {
+  const ten = Array.from({ length: 10 }, (_, i) => 100 + i);
+  const out = backlogDay(20, ten);
+  assert.strictEqual(out.r.bigBacklog, 20);
+  assert.ok(out.newly.includes('backlog-buster'));
+});
+
+test('Backlog buster: 19 at the first look is not a backlog', () => {
+  assert.strictEqual(backlogDay(19, Array.from({ length: 10 }, (_, i) => 100 + i)).r.bigBacklog, 0);
+});
+
+test('Backlog buster: 9 backlog visits are not enough', () => {
+  assert.strictEqual(backlogDay(20, Array.from({ length: 9 }, (_, i) => 100 + i)).r.bigBacklog, 0);
+});
+
+test('Backlog buster: ten visits outside the backlog do not count', () => {
+  const out = backlogDay(25, Array.from({ length: 10 }, (_, i) => 900 + i));
+  assert.strictEqual(out.r.checkinDays, 1, 'Mark all read still checks in');
+  assert.strictEqual(out.r.bigBacklog, 0, 'but the backlog was never visited');
+});
+
+test('a repeated event reports no change, and a tick only evaluates', () => {
+  const once = api.applyBadgeEvent(api.freshBadges(), REFRESHED, ctx());
+  const again = api.applyBadgeEvent(once.record, REFRESHED, ctx({ now: NOON + 1000 }));
+  assert.strictEqual(again.changed, false);
+  const tick = api.applyBadgeEvent(api.freshBadges(), { type: 'tick' }, ctx({ facts: Object.assign({}, FACTS, { ownFoldersFilled: 1 }) }));
+  assert.deepStrictEqual(tick.newly, ['switched-on', 'first-folder']);
+  assert.strictEqual(tick.record.checkinDays, 0);
+});
