@@ -3541,6 +3541,18 @@
       '#' + PANEL_ID + ' option { background: var(--tm-bg-3); color: var(--tm-text); }',
       '#' + PANEL_ID + ' button { cursor: pointer; }',
       '#' + PANEL_ID + ' button:hover { background: var(--tm-hover); }',
+      // Thread reactions (#10). (1,1,1) beats the generic button rule (1,0,1);
+      // :hover at (1,2,1) beats the generic button:hover (1,1,1).
+      '#' + PANEL_ID + ' .tfcc-subhead { display: flex; flex-wrap: wrap; gap: var(--tfcc-gap-sm);',
+      '  margin-bottom: var(--tfcc-gap); }',
+      '#' + PANEL_ID + ' button.tfcc-reactions { font-size: var(--tfcc-text-sm); padding: 0 8px;',
+      '  border-radius: 10px; background: var(--tm-bg-3); color: var(--tm-meta);',
+      '  border: 1px solid var(--tm-border); white-space: normal; text-align: left; max-width: 100%; }',
+      '#' + PANEL_ID + ' button.tfcc-reactions:hover { background: var(--tm-hover); }',
+      '#' + PANEL_ID + ' .tfcc-rx { color: var(--tm-text); font-weight: bold; font-variant-numeric: tabular-nums; }',
+      '#' + PANEL_ID + ' .tfcc-karma { display: inline-flex; align-items: center; gap: 0.25em;',
+      '  white-space: nowrap; color: var(--tm-text); }',
+      '#' + PANEL_ID + ' .tfcc-karma svg { flex: none; }',
       '#' + PANEL_ID + ' .tfcc-linkbtn { display: inline-block; text-decoration: none;',
       '  color: var(--tm-text); background: var(--tm-bg-3); border: 1px solid var(--tm-border-2);',
       '  border-radius: 4px; padding: 3px 8px; }',
@@ -3795,6 +3807,7 @@
       },
       lastCatchUpAt: state.organizer.lastCatchUpAt,
       drafts: draftList(state.drafts),
+      reactions: reactionTotals(state.mine, now, REACTIONS_STALE_MS),
       searchQuery: state.searchQuery,
       searchResults: state.searchResults,
       deepBusy: state.deepBusy,
@@ -4375,6 +4388,57 @@
     return out.join('');
   }
 
+  // The karma figure (#10): the owner's endless-knot icon (currentColor, so it
+  // follows the theme) and a number. No visible word; the span carries the
+  // meaning for assistive tech and the tooltip. The wording follows the Torn
+  // wiki's Karma page (spec, "Karma definition").
+  var KARMA_MEANING = '. Likes and dislikes on your forum posts, never below 0; some posts do not count.';
+  function renderKarma(karma) {
+    var n = formatKarma(karma);
+    var title = 'Karma: ' + (n === '-' ? 'unknown' : n) + KARMA_MEANING;
+    return '<span class="tfcc-karma" role="group" aria-label="Karma" title="' + escapeHtml(title) + '">'
+      + KARMA_ICON_SVG + '<span class="tfcc-rx">' + escapeHtml(n) + '</span></span>';
+  }
+
+  // The thread reactions line (#10). Its own block under .tfcc-head, never in
+  // it: the header row belongs to the title, #9's badges and Refresh, Expand
+  // and Hide. Rendered after the collapsed early return, so hidden when
+  // collapsed. Up and down are real topic-post sums; net is labelled. Karma
+  // follows them; with no started threads and a known karma, it stands alone.
+  function renderReactions(model) {
+    var r = model.reactions;
+    if (!model.hasKey || !r) return '';
+    var karma = isReactionNumber(r.karma, true) ? r.karma : null;
+    if (r.state === 'empty' && karma === null) return '';
+    var known = r.state === 'known';
+    var stale = known && r.stale;
+    var rx = function (v) { return '<span class="tfcc-rx">' + escapeHtml(v) + '</span>'; };
+    var parts = '';
+    var spoken = '';
+    if (r.state !== 'empty') {
+      if (known && r.thumbThreads > 0) {
+        var more = r.netThreads > 0 ? ', net ' + formatSigned(r.net) + ' on ' + r.netThreads + ' more' : '';
+        parts = rx(formatCount(r.up)) + ' up, ' + rx(formatCount(r.down)) + ' down'
+          + (r.netThreads > 0 ? ', net ' + rx(formatSigned(r.net)) + ' on ' + r.netThreads + ' more' : '');
+        spoken = formatCount(r.up) + ' up, ' + formatCount(r.down) + ' down' + more;
+      } else if (known) {
+        parts = 'net ' + rx(formatSigned(r.net));
+        spoken = 'net ' + formatSigned(r.net);
+      } else {
+        parts = rx('-') + ' up, ' + rx('-') + ' down';
+        spoken = 'thumbs unknown';
+      }
+    }
+    var age = stale ? ' (' + formatRelativeTime(r.updatedAt, model.now) + ')' : '';
+    var title = reactionsTitle(r, model.now, MINE_PAGE_LIMIT);
+    var said = (r.state === 'empty' ? '' : 'Your threads: ' + spoken + age + '. ')
+      + 'Karma: ' + (karma === null ? 'unknown' : formatKarma(karma)) + '. ';
+    var lead = r.state === 'empty' ? '' : 'Your threads: ' + parts + escapeHtml(age) + ' ';
+    return '<div class="tfcc-subhead"><button type="button" class="tfcc-reactions' + (stale ? ' tfcc-stale' : '')
+      + '" data-act="view" data-view="mine" title="' + escapeHtml(title) + '" aria-label="'
+      + escapeHtml(said + title) + '">' + lead + renderKarma(karma) + '</button></div>';
+  }
+
   function panelHtml(model) {
     if (model.loading) {
       return '<div class="tfcc-head"><span class="tfcc-title">Forum Command Center</span></div>'
@@ -4404,6 +4468,7 @@
     out.push('</div>');
 
     if (model.collapsed) return out.join('');
+    out.push(renderReactions(model));
 
     for (var n = 0; n < model.notices.length; n += 1) {
       out.push('<div class="tfcc-' + (model.notices[n].kind === 'error' ? 'error' : 'warn') + '">'

@@ -385,3 +385,21 @@ test('every My posts colour token is set in both theme blocks, to the agreed val
   for (const [k, v] of Object.entries(dark)) assert.ok(darkBlock.indexOf('--tfcc-mine-' + k + ': ' + v) !== -1, 'dark ' + k);
   for (const [k, v] of Object.entries(light)) assert.ok(lightBlock.indexOf('--tfcc-mine-' + k + ': ' + v) !== -1, 'light ' + k);
 });
+
+test('the reactions pill is its own line and wraps rather than overflowing', () => {
+  assert.match(blockFor('#tfcc-panel .tfcc-subhead'), /flex-wrap: wrap/);
+  const pill = blockFor('#tfcc-panel button.tfcc-reactions');
+  assert.match(pill, /white-space: normal/);
+  assert.match(pill, /max-width: 100%/);
+  assert.ok(css.includes('#tfcc-panel button.tfcc-reactions:hover {'), 'hover must out-rank the generic button:hover');
+  assert.ok(!/\.tfcc-head[^{]*\.tfcc-reactions/.test(css), 'no rule may place the tracker in the header row');
+});
+
+test('the karma icon is sized to the text and takes the theme colour', () => {
+  const karma = blockFor('#tfcc-panel .tfcc-karma');
+  assert.match(karma, /display: inline-flex/);
+  assert.match(karma, /white-space: nowrap/);
+  assert.match(karma, /color: var\(--tm-text\)/, 'currentColor resolves to a themed colour, not black');
+  assert.match(blockFor('#tfcc-panel .tfcc-karma svg'), /flex: none/);
+  assert.ok(api.KARMA_ICON_SVG.includes('style="height:1em;width:auto"'));
+});

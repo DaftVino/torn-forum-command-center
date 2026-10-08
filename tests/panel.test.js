@@ -481,3 +481,167 @@ test('settings states the author-only option and the real request cost', () => {
   env.exports.state.settings.enrichBudget = 4;
   assert.match(env.exports.renderSettingsView(env.exports.buildPanelModel(NOW)), /at most 7 requests a refresh/);
 });
+
+// -- thread reactions (#10) --------------------------------------------------
+
+const KEY_STORE = [['tfcc:key', 'abcdefghij123456']];
+
+function withMine(env, threads, fetchedAt) {
+  const api = env.exports;
+  api.state.mine = Object.assign(api.freshMine(), { fetchedAt: fetchedAt === undefined ? NOW : fetchedAt, threads });
+  api.recompute(NOW);
+}
+
+function startedRec(api, id, fields, title) {
+  const rec = api.freshMineThread(id, NOW);
+  rec.started = true;
+  if (title) rec.title = title;
+  if (fields) api.setReactionFields(rec, fields);
+  return rec;
+}
+
+const TH = (up, down, at) => ({ topicAt: at === undefined ? NOW : at, up, down });
+const NET = (rating) => ({ reactAt: NOW, rating });
+
+function htmlOf(env) {
+  return env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+}
+
+function bootPanel() {
+  const env = loadUserscript({ location: forums(), gmStore: KEY_STORE });
+  seed(env, [{ id: 1 }]);
+  return env;
+}
+
+test('the reactions line sits under the header row, never inside it', () => {
+  const env = bootPanel();
+  withMine(env, [startedRec(env.exports, 1, TH(34, 5))]);
+  const html = htmlOf(env);
+  const sub = html.indexOf('<div class="tfcc-subhead">');
+  assert.ok(sub > html.indexOf('<div class="tfcc-head">'));
+  const head = html.slice(html.indexOf('<div class="tfcc-head">'), sub);
+  assert.doesNotMatch(head, /tfcc-reactions/);
+  assert.match(head, /data-act="collapse"/, 'the subhead starts after the whole header row');
+  assert.match(html, /Your threads: <span class="tfcc-rx">34<\/span> up, <span class="tfcc-rx">5<\/span> down /);
+});
+
+test('unknown renders "-", never 0', () => {
+  const env = bootPanel();
+  withMine(env, [], 0);
+  let html = htmlOf(env);
+  assert.match(html, /Your threads: <span class="tfcc-rx">-<\/span> up, <span class="tfcc-rx">-<\/span> down/);
+  assert.doesNotMatch(html, /<span class="tfcc-rx">0<\/span>/);
+  withMine(env, [startedRec(env.exports, 1)]);
+  html = htmlOf(env);
+  assert.match(html, /<span class="tfcc-rx">-<\/span> up/);
+  assert.match(html, /has not reported thumbs or a rating/);
+});
+
+test('net is labelled, never split, and named as Torn\'s', () => {
+  const env = bootPanel();
+  withMine(env, [startedRec(env.exports, 1, NET(12))]);
+  let html = htmlOf(env);
+  assert.match(html, /Your threads: net <span class="tfcc-rx">\+12<\/span> /);
+  assert.doesNotMatch(html, / up, /);
+  withMine(env, [startedRec(env.exports, 1, TH(4, 1)), startedRec(env.exports, 2, NET(-3))]);
+  html = htmlOf(env);
+  assert.match(html, /<span class="tfcc-rx">4<\/span> up, <span class="tfcc-rx">1<\/span> down, net <span class="tfcc-rx">-3<\/span> on 1 more/);
+});
+
+test('known zeros render 0', () => {
+  const env = bootPanel();
+  withMine(env, [startedRec(env.exports, 1, TH(0, 0))]);
+  assert.match(htmlOf(env), /<span class="tfcc-rx">0<\/span> up, <span class="tfcc-rx">0<\/span> down/);
+});
+
+test('every tooltip says subscribers cannot be shown', () => {
+  const env = bootPanel();
+  for (const threads of [[], [startedRec(env.exports, 1)], [startedRec(env.exports, 1, TH(1, 1))]]) {
+    withMine(env, threads, threads.length ? NOW : 0);
+    assert.match(htmlOf(env), /class="tfcc-reactions[^"]*"[^>]* title="[^"]*API has no subscriber count, so none is shown\."/);
+  }
+});
+
+test('stale figures carry a visible age, not just a colour', () => {
+  const env = bootPanel();
+  withMine(env, [startedRec(env.exports, 1, TH(1, 1, NOW - 3 * 24 * 3600000))]);
+  const html = htmlOf(env);
+  assert.match(html, /class="tfcc-reactions tfcc-stale"/);
+  assert.match(html, /down \(3d ago\) /);
+});
+
+test('hidden when collapsed, without a key, and when you started nothing', () => {
+  const env = bootPanel();
+  withMine(env, [startedRec(env.exports, 1, TH(1, 1))]);
+  env.exports.state.settings.collapsed = true;
+  assert.doesNotMatch(htmlOf(env), /tfcc-subhead/);
+  env.exports.state.settings.collapsed = false;
+  withMine(env, [], NOW);
+  assert.doesNotMatch(htmlOf(env), /tfcc-subhead/, 'empty is not unknown');
+  const nokey = loadUserscript({ location: forums() });
+  seed(nokey, [{ id: 1 }]);
+  withMine(nokey, [startedRec(nokey.exports, 1, TH(1, 1))]);
+  assert.doesNotMatch(htmlOf(nokey), /tfcc-subhead/);
+});
+
+test('tapping the line opens My posts through the existing view action', () => {
+  const env = bootPanel();
+  withMine(env, [startedRec(env.exports, 1, TH(1, 1))]);
+  assert.match(htmlOf(env), /<button type="button" class="tfcc-reactions" data-act="view" data-view="mine"/);
+});
+
+const visibleText = (html) => html.replace(/<[^>]*>/g, '');
+
+function withKarma(env, karma) {
+  const api = env.exports;
+  api.state.mine = api.setKarma(api.state.mine, karma, NOW);
+  api.recompute(NOW);
+}
+
+test('karma follows the thumbs as the icon and a number, with an aria-label and no visible word', () => {
+  const env = bootPanel();
+  withMine(env, [startedRec(env.exports, 1, TH(34, 5))]);
+  withKarma(env, 1208);
+  const html = htmlOf(env);
+  assert.match(html, /<span class="tfcc-rx">5<\/span> down <span class="tfcc-karma" role="group" aria-label="Karma" title="Karma: 1,208\. Likes and dislikes on your forum posts, never below 0; some posts do not count\.">/);
+  assert.ok(html.includes(env.exports.KARMA_ICON_SVG), 'the icon constant is what is injected');
+  assert.match(html, /<span class="tfcc-rx">1,208<\/span><\/span><\/button>/);
+  assert.ok(html.indexOf('tfcc-karma') > html.indexOf('down'), 'karma follows thumbs up and down');
+  assert.doesNotMatch(visibleText(html), /karma/i, 'the word is never visible text');
+  assert.match(html, /class="tfcc-reactions"[^>]*aria-label="[^"]*Karma: 1,208\./, 'the button speaks it too');
+});
+
+test('unknown karma shows "-", never 0, and a real 0 shows 0', () => {
+  const env = bootPanel();
+  withMine(env, [startedRec(env.exports, 1, TH(34, 5))]);
+  let html = htmlOf(env);
+  assert.match(html, /title="Karma: unknown\. Likes and dislikes on your forum posts, never below 0; some posts do not count\."/);
+  assert.match(html, /<span class="tfcc-rx">-<\/span><\/span>/);
+  assert.doesNotMatch(visibleText(html), /karma/i);
+  withKarma(env, 0);
+  html = htmlOf(env);
+  assert.match(html, /<span class="tfcc-rx">0<\/span><\/span>/);
+  assert.match(html, /title="Karma: 0\./);
+  withKarma(env, -12);
+  assert.match(htmlOf(env), /<span class="tfcc-rx">-12<\/span><\/span>/);
+});
+
+test('with no threads started, known karma is shown alone; unknown stays hidden', () => {
+  const env = bootPanel();
+  withMine(env, [], NOW);
+  assert.doesNotMatch(htmlOf(env), /tfcc-subhead/, 'nothing to say yet');
+  withKarma(env, 1208);
+  const html = htmlOf(env);
+  assert.match(html, /<div class="tfcc-subhead"><button type="button" class="tfcc-reactions" data-act="view" data-view="mine"/);
+  assert.doesNotMatch(visibleText(html), /Your threads/);
+  assert.match(html, /<span class="tfcc-rx">1,208<\/span>/);
+  assert.doesNotMatch(visibleText(html), /karma/i);
+});
+
+test('the karma line is also present before My posts has loaded, as "-"', () => {
+  const env = bootPanel();
+  withMine(env, [], 0);
+  const html = htmlOf(env);
+  assert.match(html, /Your threads: <span class="tfcc-rx">-<\/span> up, <span class="tfcc-rx">-<\/span> down <span class="tfcc-karma"/);
+  assert.match(html, /<span class="tfcc-rx">-<\/span><\/span>/);
+});

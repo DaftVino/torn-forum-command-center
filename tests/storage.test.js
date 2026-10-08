@@ -389,6 +389,9 @@ test('a genuinely corrupt thread entry is still reported as damage', () => {
     env.exports.loadAll(NOW);
     const notices = env.exports.state.notices.map((n) => n.text).join(' ');
     assert.match(notices, /Folders and tags were damaged/, name);
+  }
+});
+
 // The reaction fields (#10) are nested inside tfcc:mine.threads[], where #8's
 // isRecoveredValue (top-level keys only) does not reach. They are optional so
 // that an older blob round-trips byte for byte.

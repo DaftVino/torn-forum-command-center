@@ -105,6 +105,27 @@ const SCRIPT = `
       text: (el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 50),
     });
   });
+  // Non-text marks (#10's karma icon): an inline SVG painted in currentColor
+  // has no text node, so the walk above never sees it. WCAG 1.4.11 asks 3:1
+  // for a graphic that carries meaning.
+  panel.querySelectorAll('svg').forEach((el) => {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return;
+    const fg = parse(cs.color);
+    if (!fg) return;
+    const bg = effectiveBg(el);
+    const r = ratio(fg, bg);
+    if (r >= ${MIN_LARGE}) return;
+    out.push({
+      tag: 'svg',
+      cls: String((el.parentElement && el.parentElement.className) || '').slice(0, 40) + ' (icon)',
+      color: cs.color,
+      bg: 'rgb(' + bg.r + ', ' + bg.g + ', ' + bg.b + ')',
+      ratio: Math.round(r * 100) / 100,
+      need: ${MIN_LARGE},
+      text: el.parentElement ? (el.parentElement.getAttribute('aria-label') || '') : '',
+    });
+  });
   return JSON.stringify(out);
 })()
 `;
