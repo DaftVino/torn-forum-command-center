@@ -2276,6 +2276,10 @@
     mounted: false,
     route: null,
     replyBoxFound: false,
+    // Show all, per capped view, until the page reloads. Never persisted and
+    // never exported: the issue asks for "this session only", and a page load
+    // is the only session boundary a userscript can see.
+    showAll: {},
   };
 
   // Anything that makes an in-flight request's answer no longer wanted goes
@@ -3116,6 +3120,14 @@
     var totalUnread = 0;
     for (var i = 0; i < threadRows.length; i += 1) totalUnread += threadRows[i].unread;
 
+    // Each capped view caps its own sorted population, so the cap is the last
+    // step after every filter and the sort: the top N of what was asked for.
+    var sorted = sortThreads(visible, s.sort);
+    var threadsSorted = s.view === 'mine' ? sortThreads(viewRows(rows, 'threads', s, query), s.sort) : sorted;
+    var mineSorted = s.view === 'mine' ? sorted : sortThreads(viewRows(rows, 'mine', s, query), s.sort);
+    var catchUp = sortThreads(catchUpList(threadRows, state.organizer.lastCatchUpAt), 'activity');
+    var showAll = state.showAll || {};
+
     return {
       loading: false,
       version: SCRIPT_VERSION,
@@ -3135,7 +3147,8 @@
       folders: state.organizer.folders.slice(),
       tags: allTags(state.organizer),
       categories: state.feed.categories.slice(),
-      rows: sortThreads(visible, s.sort),
+      // Whole on purpose: Search lists these and deep search fetches them.
+      rows: sorted,
       allRows: threadRows,
       totals: {
         threads: threadRows.length,
@@ -3143,7 +3156,15 @@
         unread: totalUnread,
         drafts: draftList(state.drafts).length,
       },
-      catchUp: sortThreads(catchUpList(threadRows, state.organizer.lastCatchUpAt), 'activity'),
+      // Whole on purpose: the Catch up nav count reads its length.
+      catchUp: catchUp,
+      // What the capped views render. model.rows, model.catchUp and model.mine
+      // stay whole, so Search and the nav counts are uncapped by construction.
+      capped: {
+        threads: capRows(threadsSorted, s.rowsShown, showAll.threads === true),
+        catchup: capRows(catchUp, s.rowsShown, showAll.catchup === true),
+        mine: capRows(mineSorted, s.rowsShown, showAll.mine === true),
+      },
       mine: {
         total: mineAll.length,
         unread: mineAll.filter(function (r) { return r.unread > 0; }).length,
@@ -3169,6 +3190,7 @@
         hideTornBox: s.hideTornBox,
         autoHideOnOpen: s.autoHideOnOpen,
         deepSearchPages: s.deepSearchPages,
+        rowsShown: s.rowsShown,
       },
       now: now,
     };
@@ -3331,7 +3353,20 @@
     return out.join('');
   }
 
-  function renderThreadsView(model) {
+  // The line under a capped list. Nothing at all unless the cap is biting, so a
+  // user on All, or with a list no longer than the cap, never sees it.
+  function renderCapLine(cap, view) {
+    if (!cap || !cap.expandable) return '';
+    var text = cap.expanded ? 'Showing all ' + cap.total : 'Showing ' + cap.rows.length + ' of ' + cap.total;
+    var label = cap.expanded ? 'Show ' + cap.limit + ' only' : 'Show all';
+    return '<div class="tfcc-bar tfcc-cap"><span class="tfcc-note">' + escapeHtml(text) + '</span>'
+      + btn('rows-toggle', label, ' data-view="' + escapeHtml(view) + '" title="Until the page reloads"')
+      + '</div>';
+  }
+
+  // Threads and My posts share this list body; capView says whose cap applies.
+  function renderThreadsView(model, capView) {
+    var cv = capView === 'mine' ? 'mine' : 'threads';
     var out = [renderListBar(model)];
 
     if (!model.rows.length) {
@@ -3339,9 +3374,11 @@
         + (model.view === 'mine' || model.totals.subscribed ? 'Try clearing the filters.' : 'Refresh to load your subscribed threads.')
         + '</div>');
     } else {
+      var shown = model.capped[cv].rows;
       out.push('<div class="tfcc-rows">');
-      for (var r = 0; r < model.rows.length; r += 1) out.push(renderRow(model.rows[r], model));
+      for (var r = 0; r < shown.length; r += 1) out.push(renderRow(shown[r], model));
       out.push('</div>');
+      out.push(renderCapLine(model.capped[cv], cv));
     }
     return out.join('');
   }
@@ -3386,7 +3423,7 @@
         + (m.unchecked ? ' ' + m.unchecked + ' not checked yet.' : '') + '</div>');
       return out.join('');
     }
-    out.push(renderThreadsView(model));
+    out.push(renderThreadsView(model, 'mine'));
     return out.join('');
   }
 
