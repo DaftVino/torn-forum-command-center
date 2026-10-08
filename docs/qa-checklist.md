@@ -7,9 +7,9 @@ Run `npm test`, `npm run test:syntax` and `node tests/mutation-check.mjs` first.
 Everything here assumes those are green.
 
 You need a Torn API key that can read your subscribed threads. Make one at
-Settings, API Key. Use a **Custom** key with only `forumsubscribedthreads` and
-`forumfeed` ticked, which is the least access the script can work with, or a
-**Limited Access** key. **Public Only** will not work.
+Settings, API Key. Use a **Minimal Access** key, which is the least access the
+script can work with. A **Limited Access** key also works but is not needed.
+**Public Only** will not work.
 
 ## Before you start
 

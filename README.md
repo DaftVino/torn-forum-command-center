@@ -118,9 +118,9 @@ No separate mobile build exists. The same file runs in both places.
 Torn, Settings, API Key.
 
 The script reads exactly two of your own selections, `forumsubscribedthreads`
-and `forumfeed`, plus the public forum endpoints. So the least access that works
-is a **Custom** key with only those two ticked. If you would rather use a preset,
-**Limited Access** works. **Public Only** does not.
+and `forumfeed`, plus the public forum endpoints. Those two need a **Minimal
+Access** key, which is the level to create. **Limited Access** also works but is
+not needed. **Public Only** does not.
 
 Do not give it a Full Access key. It has no use for one and will not ask again
 if you give it less.

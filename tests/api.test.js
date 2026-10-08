@@ -146,11 +146,8 @@ test('Torn error codes become named, actionable messages', async () => {
   assert.match(api.mapTornError(2, 'Incorrect key').message, /not valid/i);
   assert.match(api.mapTornError(5, 'Too many requests').message, /rate limiting/i);
   assert.match(api.mapTornError(13, 'Key temporarily disabled').message, /inactive/i);
-  // Names the two selections rather than an access level: the API docs
-  // colour-code them as Minimal, but Torn's key page does not offer Minimal as
-  // a choice, so telling someone to pick it sends them looking for nothing.
-  assert.match(api.mapTornError(16, 'Access level').message, /forumsubscribedthreads/);
-  assert.doesNotMatch(api.mapTornError(16, 'Access level').message, /Minimal/);
+  // The exact wording is pinned in tests/style.test.js, with the key help.
+  assert.match(api.mapTornError(16, 'Access level').message, /Minimal Access/);
 
   // An unmapped code falls back to Torn's own words rather than inventing any.
   assert.strictEqual(api.mapTornError(999, 'Some new thing').message, 'Some new thing');

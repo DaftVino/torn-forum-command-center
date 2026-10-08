@@ -183,7 +183,7 @@ test('the API terms disclosure is rendered where the key is entered', () => {
     assert.match(html, row, 'the disclosure is missing a row: ' + row);
   }
   assert.match(html, /Nobody\. It never leaves this device/);
-  assert.match(html, /forumsubscribedthreads/, 'the access row must name the selections');
+  assert.match(html, /<th>Access level required<\/th><td>Minimal Access\./, 'the access row must name the level');
 
   // And it is in the same section as the input, not somewhere else entirely.
   const keySection = html.slice(html.indexOf('Torn API key'), html.indexOf('Refreshing'));

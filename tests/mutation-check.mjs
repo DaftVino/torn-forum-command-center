@@ -336,11 +336,11 @@ const MUTATIONS = [
     ),
   },
   {
-    name: 'the panel tells people to pick an access level that is not offered',
+    name: 'the Settings key help names Limited Access as the requirement again',
     suite: 'tests/style.test.js',
     apply: (s) => s.replace(
-      "      + '<code>forumsubscribedthreads</code> and <code>forumfeed</code> ticked; a <strong>Limited '",
-      "      + 'a <strong>Minimal</strong> access key; a <strong>Limited '",
+      "    out.push('<tr><th>Access level required</th><td>Minimal Access. Limited Access '\n      + 'also works but is not needed. Public Only does not.</td></tr>');",
+      "    out.push('<tr><th>Access level required</th><td>Limited Access. Public Only '\n      + 'does not.</td></tr>');",
     ),
   },
   {

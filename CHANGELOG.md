@@ -4,7 +4,13 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- The Settings key help, the error-16 message and the missing-key message now
+  name **Minimal Access** as the key level to create, say Limited Access also
+  works but is not needed, and keep saying Public Only does not work. They
+  previously recommended a Custom key or Limited Access, and never named
+  Minimal, which live probing showed is the actual minimum (#16).
 
 ## [0.1.0] - 2026-08-07
 

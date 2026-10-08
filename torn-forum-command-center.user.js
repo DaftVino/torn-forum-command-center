@@ -141,7 +141,7 @@
     10: 'That key owner is in federal jail.',
     11: 'That key has changed too recently.',
     13: 'That key has been disabled because the account is inactive.',
-    16: 'That key cannot read your subscribed threads. Use a Limited Access key, or a Custom key with the forumsubscribedthreads and forumfeed selections.',
+    16: 'That key cannot read your subscribed threads. Use a Minimal Access key; Limited Access also works. A Public Only key does not.',
     17: 'Torn had a backend error for that request.',
     18: 'That key has been paused by its owner.',
   });
@@ -1708,7 +1708,7 @@
     var opts = options || {};
     var key = opts.key === undefined ? loadApiKey() : opts.key;
     if (!isKeyShaped(key)) {
-      return Promise.resolve({ ok: false, reason: 'nokey', detail: 'Add a Torn API key in Settings. It needs the forumsubscribedthreads and forumfeed selections.' });
+      return Promise.resolve({ ok: false, reason: 'nokey', detail: 'Add a Torn API key in Settings. Use a Minimal Access key; Limited Access also works. A Public Only key does not.' });
     }
     // Nothing goes out while Torn has already refused this key. This gate is
     // in tornApiGet rather than in refreshAll so that enrichment, deep search
@@ -2855,9 +2855,9 @@
     var out = [];
     out.push('<div class="tfcc-section"><h4>Torn API key</h4>');
     out.push('<p class="tfcc-note">This script needs a key that can read your subscribed threads. On Torn, '
-      + 'go to Settings, API Key. The least access that works is a <strong>Custom</strong> key with only '
-      + '<code>forumsubscribedthreads</code> and <code>forumfeed</code> ticked; a <strong>Limited '
-      + 'Access</strong> key also works. A <strong>Public Only</strong> key does not.</p>');
+      + 'go to Settings, API Key, and create a <strong>Minimal Access</strong> key. A '
+      + '<strong>Limited Access</strong> key also works but is not needed. A '
+      + '<strong>Public Only</strong> key does not.</p>');
     // Torn's API terms require this to be stated clearly and visibly wherever
     // the user provides their key, in this table's form. It is rendered here
     // rather than buried in a readme because that is where the terms put it.
@@ -2867,8 +2867,8 @@
       + 'forum threads you subscribe to.</td></tr>');
     out.push('<tr><th>Storage</th><td>Key and cached thread data are stored in this browser only. '
       + 'Not shared, not uploaded, not included in an export.</td></tr>');
-    out.push('<tr><th>Access level required</th><td>Custom, with only forumsubscribedthreads '
-      + 'and forumfeed. Limited Access also works. Public Only does not.</td></tr>');
+    out.push('<tr><th>Access level required</th><td>Minimal Access. Limited Access '
+      + 'also works but is not needed. Public Only does not.</td></tr>');
     out.push('<tr><th>Requests made</th><td>GET only, to api.torn.com only. Never posts, replies, '
       + 'subscribes or changes anything on your account.</td></tr>');
     out.push('</tbody></table>');
