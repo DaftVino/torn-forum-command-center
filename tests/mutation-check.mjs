@@ -582,6 +582,50 @@ const MUTATIONS = [
     apply: (s) => s.replace('    function stale() { return generation !== state.generation; }\n    function fail(',
       '    function stale() { return false; }\n    function fail('),
   },
+  {
+    name: 'the rows shown cap is ignored',
+    suite: 'tests/rows-cap.test.js',
+    apply: (s) => s.replace('    var bites = lim > 0 && total > lim;', '    var bites = false;'),
+  },
+  {
+    name: 'the Threads cap runs before the sort',
+    suite: 'tests/rows-cap.test.js',
+    apply: (s) => s.replace('        threads: capRows(threadsSorted, s.rowsShown,', '        threads: capRows(visible, s.rowsShown,'),
+  },
+  {
+    name: 'the My posts cap runs before the sort',
+    suite: 'tests/rows-cap.test.js',
+    apply: (s) => s.replace("    var mineSorted = s.view === 'mine' ? sorted :", "    var mineSorted = s.view === 'mine' ? visible :"),
+  },
+  {
+    name: 'the Catch up nav count counts only the capped rows',
+    suite: 'tests/rows-cap.test.js',
+    apply: (s) => s.replace(
+      "      if (v === 'catchup' && model.catchUp.length) count = ' (' + model.catchUp.length + ')';",
+      "      if (v === 'catchup' && model.catchUp.length) count = ' (' + model.capped.catchup.rows.length + ')';",
+    ),
+  },
+  {
+    name: 'Search renders the capped list',
+    suite: 'tests/rows-cap.test.js',
+    apply: (s) => s.replace('    var matched = model.rows;', '    var matched = model.capped.threads.rows;'),
+  },
+  {
+    name: 'an off-menu rows shown is stored instead of falling back to All',
+    suite: 'tests/storage.test.js',
+    apply: (s) => s.replace(
+      "    out.rowsShown = typeof raw.rowsShown === 'number' && ROWS_SHOWN_OPTIONS.indexOf(raw.rowsShown) !== -1",
+      "    out.rowsShown = typeof raw.rowsShown === 'number' && raw.rowsShown >= 0",
+    ),
+  },
+  {
+    name: 'an upgrade from a blob without rowsShown is reported as damaged',
+    suite: 'tests/storage.test.js',
+    apply: (s) => s.replace(
+      'var recovered = isRecoveredValue(raw, value);',
+      'var recovered = raw !== null && JSON.stringify(raw) !== JSON.stringify(value);',
+    ),
+  },
 ];
 
 let failures = 0;
