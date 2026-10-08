@@ -167,3 +167,14 @@ test('escapeHtml neutralises every character that could break out of markup', ()
   assert.strictEqual(api.escapeHtml(undefined), '');
   assert.strictEqual(api.escapeHtml(5), '5');
 });
+
+test('is:started and is:posted pick My posts roles and are false elsewhere', () => {
+  const s = row({ mineRole: 'started' });
+  const p = row({ mineRole: 'posted' });
+  const n = row({ mineRole: null });
+  const started = api.parseQuery('is:started');
+  const posted = api.parseQuery('is:posted');
+  assert.deepStrictEqual([s, p, n].map((r) => api.matchThread(r, started)), [true, false, false]);
+  assert.deepStrictEqual([s, p, n].map((r) => api.matchThread(r, posted)), [false, true, false]);
+  assert.strictEqual(api.matchThread(n, api.parseQuery('-is:posted')), true);
+});

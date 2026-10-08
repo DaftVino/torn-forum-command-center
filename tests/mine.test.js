@@ -288,3 +288,41 @@ test('only organising state counts as organised; a read marker or a visit does n
   }
   assert.strictEqual(api.isOrganised(api.normaliseThreadEntry(null), true), true, 'a draft is organising');
 });
+
+function row(over) {
+  return Object.assign({
+    id: '1', numericId: 1, title: 'T', authorName: 'a', forumName: 'f', note: '', tags: [],
+    folderId: null, folderName: null, pinned: false, archived: false, unread: 0,
+    hasDraft: false, subscribed: false, lastVisitedAt: 0, mineRole: null, inThreads: true,
+    unreadSource: 'none',
+  }, over);
+}
+
+test('each view picks its own population', () => {
+  const rows = [row({ id: '1' }), row({ id: '2', mineRole: 'posted', inThreads: false }), row({ id: '3', mineRole: 'started', inThreads: true })];
+  const q = api.parseQuery('');
+  assert.deepStrictEqual(api.viewRows(rows, 'threads', {}, q).map((r) => r.id), ['1', '3']);
+  assert.deepStrictEqual(api.viewRows(rows, 'mine', {}, q).map((r) => r.id), ['2', '3']);
+});
+
+test('Unread only in My posts keeps only threads with new replies', () => {
+  const rows = [
+    row({ id: '1', mineRole: 'posted', inThreads: false, unread: 2, unreadSource: 'local' }),
+    row({ id: '2', mineRole: 'posted', inThreads: false, unread: 0, unreadSource: 'local' }),
+    row({ id: '3', mineRole: 'posted', inThreads: false, unread: 0, unreadSource: 'unchecked' }),
+  ];
+  assert.deepStrictEqual(api.viewRows(rows, 'mine', { unreadOnly: true }, api.parseQuery('')).map((r) => r.id), ['1']);
+});
+
+test('folder, tag, archive and the filter box apply in My posts exactly as in Threads', () => {
+  const rows = [
+    row({ id: '1', mineRole: 'started', folderId: 'g', tags: ['x'], authorName: 'bob' }),
+    row({ id: '2', mineRole: 'started', archived: true }),
+    row({ id: '3', mineRole: 'started', folderId: 'h' }),
+  ];
+  const all = api.parseQuery('');
+  assert.deepStrictEqual(api.viewRows(rows, 'mine', { folderFilter: 'g' }, all).map((r) => r.id), ['1']);
+  assert.deepStrictEqual(api.viewRows(rows, 'mine', { tagFilter: 'x' }, all).map((r) => r.id), ['1']);
+  assert.deepStrictEqual(api.viewRows(rows, 'mine', {}, api.parseQuery('by:bob')).map((r) => r.id), ['1']);
+  assert.ok(api.viewRows(rows, 'mine', {}, all).every((r) => r.id !== '2'), 'archived and quiet stays hidden');
+});

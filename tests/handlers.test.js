@@ -253,3 +253,17 @@ test('deep search fetches the threads currently listed, not every thread held', 
   const model = api.buildPanelModel(NOW);
   assert.deepStrictEqual(model.rows.map((r) => r.id), ['1'], 'the filter is what defines "listed"');
 });
+
+test('Mark all read writes no marker for a My posts-only thread', () => {
+  const env = loadUserscript({ location: forums(), now: NOW });
+  const api = env.exports;
+  api.state.feed.subscribed = [api.normaliseSubscribedRow({ id: 1, forum_id: 61, title: 'A', author: { id: 3, username: 's' }, posts: { new: 2, total: 10 } })];
+  const s = api.freshMine();
+  s.threads = [Object.assign(api.freshMineThread(50, NOW), { posted: true, totalKnown: true, postsTotal: 12, baselineTotal: 10 })];
+  api.state.mine = s;
+  api.recompute(NOW);
+  const handlers = api.makeHandlers(env.doc, env.win);
+  handlers.onAction('markall', { getAttribute: () => null });
+  assert.ok(api.state.organizer.threads['1'], 'the Threads row is marked');
+  assert.strictEqual(api.state.organizer.threads['50'], undefined, 'the My posts row is untouched');
+});

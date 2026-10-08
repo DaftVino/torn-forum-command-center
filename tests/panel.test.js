@@ -258,3 +258,41 @@ test('counts read as English, not as a template', () => {
   assert.strictEqual(api.plural(1, 'entry', 'entries'), 'entry');
   assert.strictEqual(api.plural(3, 'entry', 'entries'), 'entries');
 });
+
+function seedMine(env) {
+  const api = env.exports;
+  const s = api.freshMine();
+  s.selfId = 7;
+  s.fetchedAt = NOW;
+  s.threads = [
+    Object.assign(api.freshMineThread(50, NOW), { posted: true, title: 'Reply thread', totalKnown: true, postsTotal: 12, baselineTotal: 10 }),
+    Object.assign(api.freshMineThread(51, NOW), { started: true, title: 'My guide', totalKnown: true, postsTotal: 5, baselineTotal: 5 }),
+    Object.assign(api.freshMineThread(52, NOW), { posted: true, title: 'Unchecked thread' }),
+  ];
+  api.state.mine = s;
+  api.recompute(NOW);
+}
+
+test('My posts-only threads stay out of Threads, Catch up and the header count', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1, unread: 3 }]);
+  seedMine(env);
+  env.exports.state.settings.view = 'threads';
+  const model = env.exports.buildPanelModel(NOW);
+  assert.deepStrictEqual(model.rows.map((r) => r.id), ['1']);
+  assert.strictEqual(model.totals.unread, 3, 'the header badge counts Threads only');
+  assert.ok(model.catchUp.every((r) => r.id !== '50'));
+  assert.strictEqual(model.mine.unread, 1);
+  assert.strictEqual(model.mine.unchecked, 1);
+  assert.strictEqual(model.mine.total, 3);
+});
+
+test('the My posts model lists its own population, and Unread only narrows it', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1, unread: 3 }]);
+  seedMine(env);
+  env.exports.state.settings.view = 'mine';
+  assert.deepStrictEqual(env.exports.buildPanelModel(NOW).rows.map((r) => r.id).sort(), ['50', '51', '52']);
+  env.exports.state.settings.unreadOnly = true;
+  assert.deepStrictEqual(env.exports.buildPanelModel(NOW).rows.map((r) => r.id), ['50']);
+});

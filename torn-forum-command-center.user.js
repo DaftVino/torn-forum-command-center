@@ -1269,6 +1269,21 @@
     });
   }
 
+  // Every list view's population and filters, in one place. sortThreads runs
+  // after this, and a row cap (issue #3) goes after that, so the user always
+  // sees the top N of what they asked for.
+  function viewRows(rows, view, filters, query) {
+    var f = filters || {};
+    return rows.filter(function (r) {
+      if (view === 'mine' ? !r.mineRole : !r.inThreads) return false;
+      if (r.archived && !r.pinned && r.unread === 0) return false;
+      if (f.unreadOnly && r.unread === 0) return false;
+      if (f.folderFilter && r.folderId !== f.folderFilter) return false;
+      if (f.tagFilter && r.tags.indexOf(f.tagFilter) === -1) return false;
+      return matchThread(r, query);
+    });
+  }
+
   // -- query parsing and search --------------------------------------------
 
   var QUERY_PREFIXES = Object.freeze(['by', 'tag', 'folder', 'is']);
@@ -1320,6 +1335,8 @@
       if (v === 'subscribed') return row.subscribed;
       if (v === 'archived') return row.archived;
       if (v === 'visited') return row.lastVisitedAt > 0;
+      if (v === 'started') return row.mineRole === 'started';
+      if (v === 'posted') return row.mineRole === 'posted';
       return false;
     }
     var hay = [row.title, row.authorName, row.forumName, row.note, row.tags.join(' ')]
@@ -2921,16 +2938,14 @@
     var rows = state.rows;
     var query = parseQuery(state.searchQuery);
 
-    var visible = rows.filter(function (r) {
-      if (r.archived && !r.pinned && r.unread === 0) return false;
-      if (s.unreadOnly && r.unread === 0) return false;
-      if (s.folderFilter && r.folderId !== s.folderFilter) return false;
-      if (s.tagFilter && r.tags.indexOf(s.tagFilter) === -1) return false;
-      return matchThread(r, query);
-    });
+    // Threads, Catch up, the header badge and Search see only the Threads
+    // population. A My posts-only thread lives in its own view.
+    var threadRows = rows.filter(function (r) { return r.inThreads; });
+    var mineAll = viewRows(rows, 'mine', {}, parseQuery(''));
+    var visible = viewRows(rows, s.view === 'mine' ? 'mine' : 'threads', s, query);
 
     var totalUnread = 0;
-    for (var i = 0; i < rows.length; i += 1) totalUnread += rows[i].unread;
+    for (var i = 0; i < threadRows.length; i += 1) totalUnread += threadRows[i].unread;
 
     return {
       loading: false,
@@ -2952,14 +2967,22 @@
       tags: allTags(state.organizer),
       categories: state.feed.categories.slice(),
       rows: sortThreads(visible, s.sort),
-      allRows: rows,
+      allRows: threadRows,
       totals: {
-        threads: rows.length,
-        subscribed: rows.filter(function (r) { return r.subscribed; }).length,
+        threads: threadRows.length,
+        subscribed: threadRows.filter(function (r) { return r.subscribed; }).length,
         unread: totalUnread,
         drafts: draftList(state.drafts).length,
       },
-      catchUp: sortThreads(catchUpList(rows, state.organizer.lastCatchUpAt), 'activity'),
+      catchUp: sortThreads(catchUpList(threadRows, state.organizer.lastCatchUpAt), 'activity'),
+      mine: {
+        total: mineAll.length,
+        unread: mineAll.filter(function (r) { return r.unread > 0; }).length,
+        unchecked: mineAll.filter(function (r) { return r.unreadSource === 'unchecked'; }).length,
+        fetchedAt: state.mine.fetchedAt,
+        refreshing: state.refreshingMine,
+        error: state.mineError,
+      },
       lastCatchUpAt: state.organizer.lastCatchUpAt,
       drafts: draftList(state.drafts),
       searchQuery: state.searchQuery,
@@ -3855,6 +3878,8 @@
         }
         if (act === 'markall') {
           for (var i = 0; i < state.rows.length; i += 1) {
+            // Catch up's Mark all read covers the Threads population only.
+            if (!state.rows[i].inThreads) continue;
             state.organizer = markRead(state.organizer, state.rows[i].id, state.rows[i].postsTotal, now);
           }
           persist('organizer'); recompute(now); redraw(); return;
