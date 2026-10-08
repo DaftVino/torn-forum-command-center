@@ -83,7 +83,7 @@ There is **no `limit`**: a page is 20 posts. Response
 | Posts carry `is_topic`, `likes`, `dislikes` | **Verified** (schema) |
 | Without `from`, `offset=0` puts the thread's oldest post first, so the topic post is on page one | **Verified live.** Oldest first, 20 per page, `is_topic: true` at offset 0, on a 2-post thread (`forum-thread-posts-asc.json`) and on a 6,207-post thread (`forum-posts-large-offset0.json`). Size does not matter. |
 | A pinned reply (`is_pinned`) does not displace the topic post from page one | **Not observed** (no fixture has a pinned reply). Order is by time, a page holds 20 posts and only one is pinned, and the `is_topic` check, not position, picks the post. |
-| The topic post's `likes` / `dislikes` are the thumbs Torn shows for the thread | **API side captured, page side open.** Thread 16589908's topic post has `likes: 7, dislikes: 0` (`forum-thread-posts-asc.json`). Owner check 1 (plan Task 0) compares them with 7 up, 0 down on Torn's thread page. **Stop condition:** if they differ, the thumbs path is wrong and the spec is amended before Task 5. |
+| The topic post's `likes` / `dislikes` are the thumbs Torn shows for the thread | **Verified 2026-10-08** (owner check 1 passed: the page shows 7 up, 0 down). Thread 16589908's topic post has `likes: 7, dislikes: 0` (`forum-thread-posts-asc.json`). Owner check 1 (plan Task 0) compares them with 7 up, 0 down on Torn's thread page. **Stop condition:** if they differ, the thumbs path is wrong and the spec is amended before Task 5. |
 | `rating` = likes - dislikes of the topic post | **Consistent, not settled.** The thread has `rating: 7` (`forum-thread.json`, `user-forumthreads.json`) and its topic post 7 up, 0 down. With 0 dislikes, net and likes-only both give 7, so one sample cannot tell them apart. The label stays "net", hedged, and the code never derives up or down from it. Needs a topic post with dislikes (the 6,207-post thread's has 11, but its thread row was not captured). |
 | `rating` and `views` present in the live `user/forumthreads` answer | **Verified live** (`user-forumthreads.json`: `rating: 7`, `views: 218` on the owner's thread). |
 | `ForumThreadAuthor.karma` (required int32) on every thread and post row; `user/profile` returns `profile.karma` (int32, Public key) | **Verified live, and the sources agree.** `author.karma` on the thread row, on every post row and `profile.karma` are all 26 (`user-forumthreads.json`, `user-forumposts.json`, `user-profile-karma.json`); the post rows span months, so the row figure looks live, not frozen at post time. Owner check 2 compares it with the profile page. |
@@ -789,6 +789,8 @@ New section "Reactions tracker", Torn PDA and desktop:
 - [ ] A normal refresh of Threads makes no `user/profile` request.
 
 ## Release gate
+
+**Met on 2026-10-08:** owner checks 1 and 2 both passed and are recorded in the findings note. The text below is kept as the rule for any future re-check.
 
 Owner check 1 is a gate on the release, not only on the code: no release tag
 may carry this feature until the live note's "Owner checks" table records that

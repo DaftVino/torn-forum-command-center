@@ -72,10 +72,10 @@ What the fixtures already settle (spec, "What is verified"):
 
 Two owner page checks remain. The owner opens the pages; Claude does not (ADR 0001). Record each answer in the "Owner checks" table in `docs/reference/torn-api-live-findings-2026-10-08.md`:
 
-- [ ] **Owner check 1 (thumbs):** on the thread page for thread 16589908, read the thumbs on the topic post. API: 7 up, 0 down. Match means likes = up and dislikes = down. **If they differ, stop** (stop condition).
-- [ ] **Owner check 2 (karma):** on the owner's profile, read the karma. API: equal to `tests/fixtures/user-profile-karma.json`. A mismatch is a one-line tooltip rewording to "Your forum karma, as reported by Torn.", not a block.
+- [x] **Owner check 1 (thumbs): passed 2026-10-08.** The page showed 7 up, 0 down, matching the API. On the thread page for thread 16589908, read the thumbs on the topic post. API: 7 up, 0 down. Match means likes = up and dislikes = down. **If they differ, stop** (stop condition).
+- [x] **Owner check 2 (karma): passed 2026-10-08.** The profile showed 26, matching the API. On the owner's profile, read the karma. API: equal to `tests/fixtures/user-profile-karma.json`. A mismatch is a one-line tooltip rewording to "Your forum karma, as reported by Torn.", not a block.
 
-**Release gate:** both owner checks must be recorded before any tag carries this feature (spec, "Release gate"). Until then Tasks 1 to 10 may be built and reviewed. Check 2 gates only the tooltip wording; check 1 gates the thumbs half.
+**Release gate: met.** Both owner checks were recorded on 2026-10-08 in the findings note (spec, "Release gate"). Until then Tasks 1 to 10 may be built and reviewed. Check 2 gates only the tooltip wording; check 1 gates the thumbs half.
 
 No commit in this task; the evidence is #14's.
 
