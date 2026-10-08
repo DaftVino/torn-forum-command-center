@@ -23,7 +23,7 @@
 - **Tests use `.test.js` under `tests/`;** `npm test` runs `node --test tests/*.test.js`.
 - **Mutation check:** `node tests/mutation-check.mjs > mutation.log 2>&1`, then read `mutation.log`. Never pipe it into `head` or anything that closes the pipe.
 - **Commits:** Conventional Commits, no attribution trailer of any kind.
-- **Release convention (rule 8, same in the #2, #3 and #4 plans):** the feature PR does **not** bump the version. It adds its CHANGELOG entry under the existing `## [Unreleased]` heading and does not touch `@version`, `SCRIPT_VERSION` or `package.json`. One separate release commit, cut by the owner after the QA gate and Task 0, sets those three to the next minor after `origin/main`'s `@version` (0.2.0 if main is 0.1.0), renames `[Unreleased]` to `[X.Y.0] - date`, and is tagged `vX.Y.0`. `tests/metadata.test.js` only checks that the three strings agree.
+- **Release convention (rule 8, same in the #2, #3 and #4 plans):** the feature PR does **not** bump the version. It adds its CHANGELOG entry under the existing `## [Unreleased]` heading and does not touch `@version`, `SCRIPT_VERSION` or `package.json`. One separate release commit, cut by the owner after the QA gate and the Prerequisite owner checks, sets those three to the next minor after `origin/main`'s `@version` (0.2.0 if main is 0.1.0), renames `[Unreleased]` to `[X.Y.0] - date`, and is tagged `vX.Y.0`. `tests/metadata.test.js` only checks that the three strings agree.
 - **Cap (issue #3):** `viewRows` is the filter pipeline only. It never caps. The cap is #3's `capRows`, applied after `sortThreads`; see "If #3 has merged first / if #2 merges first" at the end of this plan.
 - **View id:** `mine`, in `VIEWS`, `data-view`, `CAPPED_VIEWS`, `VIEW_LABELS`, `state.showAll` and `model.capped`.
 - **My posts ignores #4's author-only setting.** On a thread you started, "only when the author posts" is meaningless, and the view exists to surface other people's replies.
@@ -35,6 +35,7 @@
 3. **Mark all read in Catch up** must not write read markers for My posts-only threads (it iterates `state.rows`, which now holds them). Pinned in Task 5.
 4. **A late My posts answer after Reset everything or Clear key** must be dropped. Pinned in Task 6 (staleness test).
 5. **A My posts row whose total was never looked up** must say `not checked yet` and be hidden by Unread only with a visible count, never render as a checked zero. Pinned in Tasks 4 and 8.
+6. **One unit for every total.** A thread object's `posts` counts replies; subscribed `posts.total` and `lastSeenTotal` count every post (live findings 3 and 4). Every stored `postsTotal` is `posts + 1`, converted only in `threadPostsTotal`. Pinned from the real fixtures in Tasks 2, 3 and 4.
 
 ## Files in scope
 
@@ -42,12 +43,12 @@
 |---|---|
 | `torn-forum-command-center.user.js` | Engine: mine normalisers, snapshot merge, unread, `viewRows`, `is:` terms, merge integration. Runtime: storage key, `refreshMine`, `enrichMine`, handlers, nav, view, styles, Settings text, debug counts. |
 | `tests/load-userscript.js` | New `EXPORT_NAMES`; `forumThreadsPayload`, `forumPostsPayload` |
-| `tests/fixtures/user-forumthreads.json`, `tests/fixtures/user-forumposts.json`, `tests/fixtures/forum-thread.json` | Created in Task 0 (redacted live responses) |
+| `tests/fixtures/*.json` | Read only. Added by #14 (PR #15); see Prerequisite |
 | `tests/mine.test.js` | New, engine |
 | `tests/mine-refresh.test.js` | New, runtime fetch |
 | `tests/merge.test.js`, `tests/search.test.js`, `tests/panel.test.js`, `tests/handlers.test.js`, `tests/style.test.js`, `tests/storage.test.js`, `tests/staleness.test.js`, `tests/read-only.test.js`, `tests/debug-report.test.js`, `tests/share.test.js`, `tests/api.test.js` | Extended |
 | `tests/render-preview.mjs` | Seed My posts data |
-| `tests/mutation-check.mjs` | Twelve entries |
+| `tests/mutation-check.mjs` | Fourteen entries |
 | `docs/architecture.md`, `docs/qa-checklist.md`, `docs/rules-compliance.md`, `README.md`, `CHANGELOG.md`, `package.json`, `docs/code-map.md` | Docs and release |
 
 No other file is in scope without amending this plan.
@@ -58,42 +59,43 @@ Stop and amend the spec before proceeding if any of these becomes necessary: a r
 
 ---
 
-### Task 0: Capture the real response shapes (owner, live API)
+### Prerequisite: #14 merged (fixtures in `tests/fixtures/`)
 
-This is the spec's open questions 1 and 2. It needs a real key and a browser, so it is done by the owner, not an agent. Tasks 1-12 proceed against the assumed shapes; **the release commit is blocked** until this task is done and the fixtures replace the assumed builders.
+The owner's live capture is done: PR #15 (issue #14) adds
+`docs/reference/torn-api-live-findings-2026-10-08.md` and redacted live
+responses in `tests/fixtures/`. This plan's tests `require` these files, so
+**rebase this branch onto `main` after #15 merges and before Task 1**; until
+then every fixture-backed test fails on a missing module, which is not the
+failure the failing-first steps expect.
 
-**Files:**
-- Create: `tests/fixtures/user-forumthreads.json`
-- Create: `tests/fixtures/user-forumposts.json`
-- Create: `tests/fixtures/forum-thread.json`
+Fixtures this plan reads (all from #14, none created here):
 
-- [ ] **Step 1: Fetch each selection once in a browser**
+| Fixture | Used for |
+|---|---|
+| `user-forumthreads.json` | Thread row template; `posts: 1` and `new_posts: 0` for thread 16589908 |
+| `user-forumposts.json` | Post row template (row 1 is a reply; row 0 is the topic); newest-first order |
+| `forum-thread.json` | `forum/{id}/thread` template; `posts: 1` for thread 16589908 |
+| `forum-thread-posts-asc.json` | Thread 16589908 holds 2 posts: the off-by-one, in one file |
+| `forum-posts-large-last-page.json` | Thread 16561608: last page at offset 6200 holds 7, so 6,207 posts against `posts: 6206` (the 6206 is in the note, finding 3) |
+| `user-forumsubscribedthreads.json` | Thread 16505837: subscribed `total: 1` against `posts: 0` from `forum/{id}/thread` (finding 4) |
 
-Open, signed in, with the user's own key (in the address bar only, never committed):
+What the fixtures settle is recorded in the spec ("Response shapes (verified
+2026-10-08)", "Assumptions", "Open questions"). **Owner checks that remain**
+(none blocks Tasks 1-12; all block the release commit with the QA gate):
 
-```
-https://api.torn.com/v2/user/forumthreads?limit=100&key=<KEY>
-https://api.torn.com/v2/user/forumposts?limit=100&key=<KEY>
-https://api.torn.com/v2/user/forumposts?key=<KEY>
-https://api.torn.com/v2/forum/<THREAD_ID>/thread?key=<KEY>
-```
-
-The third call answers open question 2 (default page size, and whether `limit` changed anything). The fourth, for any thread you posted in, settles whether `posts` (total) and `last_poster` exist; the spec lists both as unverified. Save it as `tests/fixtures/forum-thread.json`.
-
-- [ ] **Step 2: Redact and save**
-
-Keep two rows of each list and `_metadata` (the thread response is kept whole). Replace every `content` value with `"REDACTED"`, every `username` with `"user1"`/`"user2"`, every `title` with `"Thread title"`. Keep all field **names**, numbers and booleans exactly. Save as the two fixture files.
-
-- [ ] **Step 3: Record the answers in the spec**
-
-Edit the spec's "Assumed response shapes" heading to "Response shapes (verified 2026-MM-DD)", correct any field name, and strike resolved open questions. If a field name differs from the assumption, change `mineThreadFromApi` / `minePostFromApi` (Task 2) and `forumThreadsPayload` / `forumPostsPayload` (Task 1) to match, and run `npm test`.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add tests/fixtures docs/superpowers/specs/2026-10-08-my-posts-view-design.md
-git commit -m "test: record live forumthreads and forumposts shapes (#2)"
-```
+- [ ] **Minimal key.** The capture used a Limited key. Request
+  `user/forumthreads` and `user/forumposts` once with the Minimal key the
+  script asks for; confirm both answer, and whether `new_posts` is present.
+  If it is absent, nothing changes in code (rule 3 of "new" takes over); note
+  it in the spec.
+- [ ] **`new_posts` behaviour.** Covered by the QA checklist item for a
+  started thread: it rises when another account replies and clears after you
+  open the thread on Torn.
+- [ ] **Page size.** Only answerable with an account that has more than 20
+  posts: does `limit=100` return more than 20? Record the answer under the
+  spec's open question 2. The code does not depend on it.
+- [ ] **Still not probed:** `f=0` links (open question 4), deleted threads
+  (5), private forums (7). Walk them in the QA gate if the owner can.
 
 ---
 
@@ -103,7 +105,8 @@ git commit -m "test: record live forumthreads and forumposts shapes (#2)"
 - Modify: `tests/load-userscript.js` (`EXPORT_NAMES` array; payload builders beside `forumFeedPayload`; `module.exports`)
 
 **Interfaces:**
-- Produces: `forumThreadsPayload(threads)`, `forumPostsPayload(posts)` exported from `tests/load-userscript.js`; the export names listed in Step 1, which later tasks define in the userscript (a name that does not exist yet exports `undefined`, which is harmless).
+- Consumes: the fixtures listed under Prerequisite.
+- Produces: `forumThreadsPayload(threads)`, `forumPostsPayload(posts)`, `forumThreadPayload(thread)` and `FIXTURE_SELF_ID` exported from `tests/load-userscript.js`, each payload cloned from a live fixture row; the export names listed in Step 1, which later tasks define in the userscript (a name that does not exist yet exports `undefined`, which is harmless).
 
 - [ ] **Step 1: Add export names**
 
@@ -112,7 +115,7 @@ In `EXPORT_NAMES`, after the `// engine: drafts` group, add:
 ```js
   // engine: my posts
   'MINE_MAX_THREADS', 'freshMine', 'freshMineThread', 'normaliseMine', 'normaliseMineThread',
-  'mineThreadFromApi', 'minePostFromApi', 'pickList', 'parseThreadDetail',
+  'mineThreadFromApi', 'minePostFromApi', 'pickList', 'threadPostsTotal', 'parseThreadDetail',
   'mergeMineSnapshot', 'applyMineDetail', 'mineUnreadFor', 'isOrganised',
   'mineLookupTargets', 'mineIsDue', 'viewRows', 'ACTIVITY_SOURCES',
   // runtime: my posts
@@ -126,43 +129,79 @@ Grep `EXPORT_NAMES` first: if `ACTIVITY_SOURCES`, `refreshAll`, `recompute`, `st
 After `forumFeedPayload`:
 
 ```js
-// Assumed shapes until tests/fixtures/ holds the live ones (plan Task 0).
-// When the fixtures land, these builders must produce exactly their field names.
+// Cloned from the redacted live captures in tests/fixtures/ (issue #14), so
+// every field name, and every field the builder does not override, is what
+// Torn actually sent on 2026-10-08. Options override single values only.
+// `replies` is the raw API `posts` value, which counts REPLIES, not posts
+// (live finding 3); `total` is accepted as an alias so #10's tests, written
+// against the earlier builder, keep working. Either way it is the API value,
+// never the stored postsTotal.
+const FX_THREAD_ROW = require('./fixtures/user-forumthreads.json').forumThreads[0];
+const FX_POST_ROW = require('./fixtures/user-forumposts.json').forumPosts[1];   // a reply, not the topic
+const FX_THREAD = require('./fixtures/forum-thread.json').thread;
+const FIXTURE_SELF_ID = FX_THREAD_ROW.author.id;   // the key owner in every fixture (1000)
+
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+function pick(v, fallback) { return v === undefined ? fallback : v; }
+
 function forumThreadsPayload(threads) {
   return {
-    forumThreads: threads.map((t) => ({
-      id: t.id,
-      forum_id: t.forumId === undefined ? 61 : t.forumId,
-      title: t.title === undefined ? `Thread ${t.id}` : t.title,
-      posts: t.total === undefined ? 10 : t.total,
-      first_post_time: t.firstAt === undefined ? 1600000000 : t.firstAt,
-      last_post_time: t.lastAt === undefined ? 1600000000 : t.lastAt,
-      author: t.author || { id: 7, username: 'me', karma: 1 },
-      last_poster: t.lastPoster === undefined ? { id: 7, username: 'me' } : t.lastPoster,
-      is_locked: false,
-      is_sticky: false,
-    })),
+    forumThreads: threads.map((t) => {
+      const row = Object.assign(clone(FX_THREAD_ROW), {
+        id: t.id,
+        forum_id: pick(t.forumId, FX_THREAD_ROW.forum_id),
+        title: pick(t.title, `Thread ${t.id}`),
+        posts: pick(t.replies, pick(t.total, FX_THREAD_ROW.posts)),
+        first_post_time: pick(t.firstAt, FX_THREAD_ROW.first_post_time),
+        last_post_time: pick(t.lastAt, FX_THREAD_ROW.last_post_time),
+        new_posts: pick(t.newPosts, FX_THREAD_ROW.new_posts),
+      });
+      if (t.author) row.author = t.author;
+      if (t.lastPoster !== undefined) row.last_poster = t.lastPoster;
+      if (t.noNewPosts) delete row.new_posts;
+      return row;
+    }),
     _metadata: { links: { prev: null, next: null } },
   };
 }
 
 function forumPostsPayload(posts) {
   return {
-    forumPosts: posts.map((p) => ({
-      id: p.id,
-      thread_id: p.threadId,
-      author: p.author || { id: 7, username: 'me', karma: 1 },
-      created_time: p.at === undefined ? 1600000000 : p.at,
-      is_topic: p.isTopic === true,
-      is_edited: false,
-      content: p.content === undefined ? 'SECRET POST BODY ' + p.id : p.content,
-    })),
+    forumPosts: posts.map((p) => {
+      const row = Object.assign(clone(FX_POST_ROW), {
+        id: p.id,
+        thread_id: p.threadId,
+        created_time: pick(p.at, FX_POST_ROW.created_time),
+        is_topic: p.isTopic === true,
+        content: pick(p.content, 'SECRET POST BODY ' + p.id),
+      });
+      if (p.author) row.author = p.author;
+      return row;
+    }),
     _metadata: { links: { prev: null, next: null } },
   };
 }
+
+// forum/{id}/thread. `replies` is the raw `posts` value, as above.
+function forumThreadPayload(t) {
+  const thread = Object.assign(clone(FX_THREAD), {
+    id: t.id,
+    forum_id: pick(t.forumId, FX_THREAD.forum_id),
+    title: pick(t.title, `Thread ${t.id}`),
+    posts: pick(t.replies, FX_THREAD.posts),
+    last_post_time: pick(t.lastAt, FX_THREAD.last_post_time),
+  });
+  if (t.lastPoster !== undefined) thread.last_poster = t.lastPoster;
+  if (t.noPosts) delete thread.posts;
+  return { thread };
+}
 ```
 
-Add both to `module.exports`.
+The fixture's post row 1 belongs to thread 16561608 and has the owner as
+`author`; the thread row's `last_poster` is player 1001, not the owner. Tests
+that need "the last word is yours" pass `lastPoster: { id: FIXTURE_SELF_ID }`.
+
+Add the three builders and `FIXTURE_SELF_ID` to `module.exports`.
 
 - [ ] **Step 3: Verify nothing broke**
 
@@ -193,9 +232,10 @@ git commit -m "test: harness exports and payload builders for My posts (#2)"
   - `normaliseMineThread(raw) -> MineThread | null` (reads only its own stored shape)
   - `normaliseMine(raw) -> MineSnapshot`
   - `pickList(data, names) -> Array | null`
-  - `mineThreadFromApi(raw) -> { id, forumId, title, authorId, postsTotal, totalKnown, lastPostAt, lastPosterId, isLocked } | null`
+  - `threadPostsTotal(raw) -> int` (-1 when unknown): a numeric `posts` (replies, live finding 3) becomes `posts + 1`; a `posts.total` (every post, finding 4) is taken as it is. The **only** place the unit is converted.
+  - `mineThreadFromApi(raw) -> { id, forumId, title, authorId, postsTotal, totalKnown, lastPostAt, lastPosterId, isLocked, tornNew, tornNewKnown } | null` (`postsTotal` from `threadPostsTotal`; `tornNew` from `new_posts`)
   - `minePostFromApi(raw) -> { postId, threadId, authorId, at } | null` (never `content`)
-  - `MineThread = { id, forumId, title, started, posted, myLastPostAt, postsTotal, totalKnown, lastPostAt, lastPosterId, infoAt, baselineTotal, firstSeenAt, isLocked }`
+  - `MineThread = { id, forumId, title, started, posted, myLastPostAt, postsTotal, totalKnown, lastPostAt, lastPosterId, infoAt, baselineTotal, firstSeenAt, isLocked, tornNew, tornNewKnown }` (`postsTotal` and `baselineTotal` count every post including the topic; #10's optional fields go after `tornNewKnown`)
   - `STORAGE_KEYS.mine = 'tfcc:mine'`, `state.mine`, `persist('mine')`
 
 - [ ] **Step 1: Write the failing engine tests**
@@ -207,36 +247,77 @@ Create `tests/mine.test.js`:
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { loadUserscript, forumThreadsPayload, forumPostsPayload } = require('./load-userscript');
+const { loadUserscript, forumThreadsPayload, forumPostsPayload, forumThreadPayload, FIXTURE_SELF_ID } = require('./load-userscript');
+
+// Redacted live responses from issue #14. See
+// docs/reference/torn-api-live-findings-2026-10-08.md for what each shows.
+const FX_THREADS = require('./fixtures/user-forumthreads.json');
+const FX_POSTS = require('./fixtures/user-forumposts.json');
+const FX_THREAD = require('./fixtures/forum-thread.json');
+const FX_THREAD_POSTS = require('./fixtures/forum-thread-posts-asc.json');
+const FX_LAST_PAGE = require('./fixtures/forum-posts-large-last-page.json');
+const FX_SUBS = require('./fixtures/user-forumsubscribedthreads.json');
 
 const { exports: api } = loadUserscript();
 
-test('an API thread row becomes a started record with a known total', () => {
-  const raw = forumThreadsPayload([{ id: 5, total: 12, lastAt: 1600000100 }]).forumThreads[0];
+test('the live thread row becomes a started record', () => {
+  const raw = FX_THREADS.forumThreads[0];
   const t = api.mineThreadFromApi(raw);
-  assert.strictEqual(t.id, 5);
+  assert.strictEqual(t.id, 16589908);
   assert.strictEqual(t.forumId, 61);
-  assert.strictEqual(t.postsTotal, 12);
   assert.strictEqual(t.totalKnown, true);
-  assert.strictEqual(t.lastPostAt, 1600000100 * 1000);
-  assert.strictEqual(t.lastPosterId, 7);
-  assert.strictEqual(t.authorId, 7);
+  assert.strictEqual(t.lastPostAt, 1786067226 * 1000);
+  assert.strictEqual(t.lastPosterId, 1001);
+  assert.strictEqual(t.authorId, FIXTURE_SELF_ID);
+  assert.strictEqual(t.tornNew, 0);
+  assert.strictEqual(t.tornNewKnown, true, 'new_posts: 0 is a real zero, not a missing field');
 });
 
-test('a thread total is read as a number or as posts.total, and is unknown otherwise', () => {
-  assert.strictEqual(api.mineThreadFromApi({ id: 1, posts: { total: 4 } }).postsTotal, 4);
+// Live findings 3 and 4. A thread object's `posts` counts REPLIES; the
+// subscribed row's posts.total, and so lastSeenTotal, counts every post. If
+// the stored total kept the reply count, a thread read while subscribed would
+// hide its next reply in My posts. Written before threadPostsTotal exists, so
+// it fails first.
+test('a thread total counts the topic: posts + 1, from the live fixtures', () => {
+  const row = FX_THREADS.forumThreads[0];
+  assert.strictEqual(row.posts, 1, 'fixture: thread 16589908 reports one reply');
+  assert.strictEqual(FX_THREAD_POSTS.posts.length, 2, 'fixture: its post list holds the topic and that reply');
+  assert.strictEqual(api.mineThreadFromApi(row).postsTotal, 2);
+  assert.strictEqual(api.threadPostsTotal(FX_THREAD.thread), 2, 'forum/{id}/thread uses the same reply count');
+
+  // Thread 16561608: posts: 6206 in the note (finding 3); the fixture's last
+  // page sits at offset 6200 (its prev link is 6180, pages are 20) and holds 7.
+  const prevOffset = Number(/offset=(\d+)/.exec(FX_LAST_PAGE._metadata.links.prev)[1]);
+  const counted = prevOffset + 20 + FX_LAST_PAGE.posts.length;
+  assert.strictEqual(counted, 6207);
+  assert.strictEqual(api.threadPostsTotal({ posts: 6206 }), counted);
+
+  // A subscribed-shape total already counts the topic and is not shifted.
+  const sub = FX_SUBS.forumSubscribedThreads.find((r) => r.id === 16505837);
+  assert.strictEqual(sub.posts.total, 1);
+  assert.strictEqual(api.threadPostsTotal({ posts: sub.posts }), 1);
+  assert.strictEqual(api.threadPostsTotal({ posts: 0 }), 1, 'finding 4: the same thread said posts: 0 on forum/{id}/thread');
+});
+
+test('a missing total is unknown, never a checked zero, and a missing new_posts is not a zero', () => {
   const none = api.mineThreadFromApi({ id: 1 });
   assert.strictEqual(none.totalKnown, false, 'a missing total must be unknown, never a checked zero');
   assert.strictEqual(none.postsTotal, 0);
+  assert.strictEqual(api.threadPostsTotal({}), -1);
+  const noNew = api.mineThreadFromApi(forumThreadsPayload([{ id: 5, noNewPosts: true }]).forumThreads[0]);
+  assert.strictEqual(noNew.tornNewKnown, false);
 });
 
-test('a post row keeps its thread and time and drops the body', () => {
-  const raw = forumPostsPayload([{ id: 9, threadId: 5, at: 1600000200 }]).forumPosts[0];
-  const p = api.minePostFromApi(raw);
+test('the live post rows keep thread and time and drop the body', () => {
+  const p = api.minePostFromApi(FX_POSTS.forumPosts[1]);
   assert.deepStrictEqual(Object.keys(p).sort(), ['at', 'authorId', 'postId', 'threadId']);
-  assert.strictEqual(p.threadId, 5);
-  assert.strictEqual(p.at, 1600000200 * 1000);
-  assert.ok(JSON.stringify(p).indexOf('SECRET') === -1, 'post content must never be kept');
+  assert.strictEqual(p.threadId, 16561608);
+  assert.strictEqual(p.at, 1780173715 * 1000);
+  assert.strictEqual(p.authorId, FIXTURE_SELF_ID);
+  const built = api.minePostFromApi(forumPostsPayload([{ id: 9, threadId: 5 }]).forumPosts[0]);
+  assert.ok(JSON.stringify(built).indexOf('SECRET') === -1, 'post content must never be kept');
+  const all = FX_POSTS.forumPosts.map((r) => api.minePostFromApi(r));
+  assert.ok(all.every((x) => x && x.threadId > 0), 'every live row parses');
 });
 
 test('rows with no id are dropped rather than invented', () => {
@@ -259,7 +340,7 @@ test('a stored snapshot reads back unchanged', () => {
   snap.fetchedAt = 1000;
   snap.selfId = 7;
   const t = api.freshMineThread(5, 1000);
-  Object.assign(t, { started: true, postsTotal: 12, totalKnown: true, baselineTotal: 10, title: 'T' });
+  Object.assign(t, { started: true, postsTotal: 12, totalKnown: true, baselineTotal: 10, title: 'T', tornNew: 2, tornNewKnown: true });
   snap.threads.push(t);
   const once = api.normaliseMine(JSON.parse(JSON.stringify(snap)));
   assert.deepStrictEqual(once, snap);
@@ -301,7 +382,7 @@ Before writing the second test, `grep -n "gmStore" tests/storage.test.js` to see
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `node --test tests/mine.test.js tests/storage.test.js`
-Expected: FAIL, `api.mineThreadFromApi is not a function` and `STORAGE_KEYS.mine` undefined.
+Expected: FAIL, `api.mineThreadFromApi is not a function`, `api.threadPostsTotal is not a function` and `STORAGE_KEYS.mine` undefined. If a test fails with `Cannot find module './fixtures/...'` instead, the Prerequisite is not met: rebase onto a `main` that has #15.
 
 - [ ] **Step 3: Implement**
 
@@ -346,6 +427,8 @@ Directly after `normaliseFeed`, add:
       baselineTotal: 0,
       firstSeenAt: Math.max(0, toInt(now, 0)),
       isLocked: false,
+      tornNew: 0,
+      tornNewKnown: false,
     };
   }
 
@@ -369,6 +452,8 @@ Directly after `normaliseFeed`, add:
     t.baselineTotal = Math.max(0, toInt(raw.baselineTotal, 0));
     t.firstSeenAt = Math.max(0, toInt(raw.firstSeenAt, 0));
     t.isLocked = raw.isLocked === true;
+    t.tornNewKnown = raw.tornNewKnown === true;
+    t.tornNew = t.tornNewKnown ? Math.max(0, toInt(raw.tornNew, 0)) : 0;
     return t;
   }
 
@@ -387,15 +472,32 @@ Directly after `normaliseFeed`, add:
     return out;
   }
 
+  // Every postsTotal this script stores counts every post, topic included:
+  // the unit of posts.total on user/forumsubscribedthreads, and so of
+  // lastSeenTotal, which markRead writes from it. A thread object's `posts`
+  // (user/forumthreads, forum/{id}/thread) counts REPLIES, one fewer: thread
+  // 16589908 says posts: 1 and holds 2 posts. Live findings 3 and 4,
+  // docs/reference/torn-api-live-findings-2026-10-08.md. Convert here and
+  // nowhere else. -1 means unknown.
+  function threadPostsTotal(raw) {
+    if (!isPlainObject(raw)) return -1;
+    if (typeof raw.posts === 'number' && isFinite(raw.posts) && raw.posts >= 0) {
+      return Math.floor(raw.posts) + 1;
+    }
+    if (isPlainObject(raw.posts) && typeof raw.posts.total === 'number' && raw.posts.total >= 0) {
+      return Math.floor(raw.posts.total);
+    }
+    return -1;
+  }
+
   function mineThreadFromApi(raw) {
     if (!isPlainObject(raw)) return null;
     var id = toInt(raw.id, 0);
     if (id <= 0) return null;
     var author = isPlainObject(raw.author) ? raw.author : {};
     var last = isPlainObject(raw.last_poster) ? raw.last_poster : {};
-    var total = -1;
-    if (typeof raw.posts === 'number') total = toInt(raw.posts, -1);
-    else if (isPlainObject(raw.posts) && raw.posts.total !== undefined) total = toInt(raw.posts.total, -1);
+    var total = threadPostsTotal(raw);
+    var hasNew = typeof raw.new_posts === 'number' && isFinite(raw.new_posts);
     return {
       id: id,
       forumId: Math.max(0, toInt(raw.forum_id, 0)),
@@ -406,6 +508,9 @@ Directly after `normaliseFeed`, add:
       lastPostAt: secondsToMs(raw.last_post_time),
       lastPosterId: Math.max(0, toInt(last.id, 0)),
       isLocked: raw.is_locked === true,
+      // Torn's own unread count for a thread the key owner started (finding 1).
+      tornNew: hasNew ? Math.max(0, Math.floor(raw.new_posts)) : 0,
+      tornNewKnown: hasNew,
     };
   }
 
@@ -424,7 +529,7 @@ Directly after `normaliseFeed`, add:
   }
 ```
 
-Check before relying on it: `grep -n "function secondsToMs" -A5` and `grep -n "function toInt" -A5` - confirm `secondsToMs(undefined)` returns 0 and `toInt(x, -1)` returns -1 for a non-number. If `toInt` clamps negatives, use `typeof` checks instead of the `-1` sentinel.
+Check before relying on it: `grep -n "function secondsToMs" -A5` - confirm `secondsToMs(undefined)` returns 0. `threadPostsTotal` uses `typeof` checks rather than `toInt`, so a missing or non-numeric `posts` is -1 (unknown), never 0 + 1.
 
 Runtime: add `mine: freshMine(),` to `state` after `postCache`, plus `refreshingMine: false,` and `mineError: null,`. In `loadAll` add
 `var m = loadKey(STORAGE_KEYS.mine, normaliseMine, now);`, `state.mine = m.value;`, and `['My posts list', m]` to the damage-report array. In `persist`'s map add `mine: [STORAGE_KEYS.mine, state.mine],`. In the `reset-all` branch add `state.mine = freshMine(); state.mineError = null;` and `persist('mine');`.
@@ -452,7 +557,7 @@ git commit -m "feat: tfcc:mine record and normalisers for My posts (#2)"
 **Interfaces:**
 - Consumes: Task 2 records.
 - Produces:
-  - `parseThreadDetail(raw) -> { title, forumId, postsTotal, totalKnown, lastPostAt, lastPosterId, isLocked, isSticky } | null` (raw is `res.data.thread` from `forum/{id}/thread`; #4 reuses this)
+  - `parseThreadDetail(raw) -> { title, forumId, postsTotal, totalKnown, lastPostAt, lastPosterId, isLocked, isSticky } | null` (raw is `res.data.thread` from `forum/{id}/thread`; `postsTotal` comes from `threadPostsTotal`, so it is `posts + 1`; #4 may reuse this and must not add 1 again)
   - `mergeMineSnapshot(prev, started, posts, now, complete) -> MineSnapshot` (`started` from `mineThreadFromApi`, `posts` from `minePostFromApi`; `complete` false keeps `prev.fetchedAt`)
   - `applyMineDetail(snap, threadId, detail, now) -> MineSnapshot`
 
@@ -464,14 +569,18 @@ Append to `tests/mine.test.js`:
 const T0 = 1700000000000;
 const MIN = 60000;
 
-function started(id, total, lastAt, lastPosterId) {
-  return api.mineThreadFromApi({
-    id, forum_id: 61, title: 'T' + id, posts: total,
-    last_post_time: lastAt / 1000, author: { id: 7 }, last_poster: { id: lastPosterId },
-  });
+const SELF = FIXTURE_SELF_ID;   // the key owner in tests/fixtures/ (1000)
+
+// `total` here is the stored unit, every post including the topic. The API
+// row carries replies, one fewer (live finding 3), so the builder gets total - 1.
+function started(id, total, lastAt, lastPosterId, extra) {
+  return api.mineThreadFromApi(forumThreadsPayload([Object.assign({
+    id, forumId: 61, title: 'T' + id, replies: total - 1,
+    lastAt: lastAt / 1000, lastPoster: { id: lastPosterId },
+  }, extra || {})]).forumThreads[0]);
 }
 function post(threadId, at) {
-  return api.minePostFromApi({ id: threadId * 10, thread_id: threadId, author: { id: 7 }, created_time: at / 1000 });
+  return api.minePostFromApi(forumPostsPayload([{ id: threadId * 10, threadId, at: at / 1000 }]).forumPosts[0]);
 }
 
 test('first sight sets the baseline, so installing never floods history as new', () => {
@@ -480,7 +589,7 @@ test('first sight sets the baseline, so installing never floods history as new',
   assert.strictEqual(t.started, true);
   assert.strictEqual(t.postsTotal, 40);
   assert.strictEqual(t.baselineTotal, 40);
-  assert.strictEqual(s.selfId, 7);
+  assert.strictEqual(s.selfId, SELF);
   assert.strictEqual(s.fetchedAt, T0);
 });
 
@@ -493,7 +602,7 @@ test('a later fetch keeps the baseline, so new replies show as the difference', 
 
 test('when the last word is yours, the baseline catches up', () => {
   const a = api.mergeMineSnapshot(api.freshMine(), [started(1, 40, T0, 99)], [], T0, true);
-  const b = api.mergeMineSnapshot(a, [started(1, 44, T0 + MIN, 7)], [], T0 + MIN, true);
+  const b = api.mergeMineSnapshot(a, [started(1, 44, T0 + MIN, SELF)], [], T0 + MIN, true);
   assert.strictEqual(b.threads[0].baselineTotal, 44, 'your own post is not an unread reply');
 });
 
@@ -508,7 +617,8 @@ test('a posted-in thread has no total until a lookup supplies one', () => {
 
 test('a lookup sets the total, first sight baselines it, and a later lookup shows the gap', () => {
   let s = api.mergeMineSnapshot(api.freshMine(), [], [post(2, T0)], T0, true);
-  const detail = api.parseThreadDetail({ id: 2, forum_id: 5, title: 'Two', posts: 20, last_post_time: T0 / 1000 + 60, last_poster: { id: 99 } });
+  // 19 replies on the wire is 20 posts stored (live finding 3).
+  const detail = api.parseThreadDetail(forumThreadPayload({ id: 2, forumId: 5, title: 'Two', replies: 19, lastAt: T0 / 1000 + 60, lastPoster: { id: 99 } }).thread);
   s = api.applyMineDetail(s, 2, detail, T0 + MIN);
   assert.strictEqual(s.threads[0].totalKnown, true);
   assert.strictEqual(s.threads[0].baselineTotal, 20);
@@ -518,16 +628,29 @@ test('a lookup sets the total, first sight baselines it, and a later lookup show
   assert.strictEqual(s.threads[0].baselineTotal, 20);
 });
 
-test('thread detail reads total, last poster and lock state', () => {
-  const d = api.parseThreadDetail({ title: 'x', forum_id: 3, posts: 9, last_post_time: 100, last_poster: { id: 4 }, is_locked: true });
-  assert.deepStrictEqual(d, { title: 'x', forumId: 3, postsTotal: 9, totalKnown: true, lastPostAt: 100000, lastPosterId: 4, isLocked: true, isSticky: false });
+test('the live thread detail reads total, last poster and lock state', () => {
+  // forum-thread.json: thread 16589908, posts: 1 (one reply), so 2 posts.
+  const d = api.parseThreadDetail(FX_THREAD.thread);
+  assert.deepStrictEqual(d, {
+    title: '[title redacted]', forumId: 61, postsTotal: 2, totalKnown: true,
+    lastPostAt: 1786067226000, lastPosterId: 1001, isLocked: false, isSticky: false,
+  });
   assert.strictEqual(api.parseThreadDetail(null), null);
   assert.strictEqual(api.parseThreadDetail({ title: 'x' }).totalKnown, false);
+  assert.strictEqual(api.parseThreadDetail(forumThreadPayload({ id: 3, noPosts: true }).thread).totalKnown, false);
+});
+
+test('a started thread keeps Torn\'s new_posts, and a row without it forgets the old value', () => {
+  const a = api.mergeMineSnapshot(api.freshMine(), [started(1, 10, T0, 99, { newPosts: 3 })], [], T0, true);
+  assert.strictEqual(a.threads[0].tornNew, 3);
+  assert.strictEqual(a.threads[0].tornNewKnown, true);
+  const b = api.mergeMineSnapshot(a, [started(1, 10, T0, 99, { noNewPosts: true })], [], T0 + MIN, true);
+  assert.strictEqual(b.threads[0].tornNewKnown, false, 'a stale Torn count must not outlive the row that carried it');
 });
 
 test('a partial fetch does not reset the TTL clock', () => {
-  const a = api.mergeMineSnapshot(api.freshMine(), [started(1, 4, T0, 7)], [], T0, true);
-  const b = api.mergeMineSnapshot(a, [started(1, 4, T0, 7)], [], T0 + MIN, false);
+  const a = api.mergeMineSnapshot(api.freshMine(), [started(1, 4, T0, SELF)], [], T0, true);
+  const b = api.mergeMineSnapshot(a, [started(1, 4, T0, SELF)], [], T0 + MIN, false);
   assert.strictEqual(b.fetchedAt, T0);
 });
 
@@ -543,7 +666,7 @@ test('threads that drop out of the latest page are kept, newest first, up to the
 test('merging never mutates the snapshot it was given', () => {
   const a = api.mergeMineSnapshot(api.freshMine(), [started(1, 4, T0, 99)], [], T0, true);
   const frozen = JSON.stringify(a);
-  api.mergeMineSnapshot(a, [started(1, 9, T0 + MIN, 7)], [post(2, T0)], T0 + MIN, true);
+  api.mergeMineSnapshot(a, [started(1, 9, T0 + MIN, SELF)], [post(2, T0)], T0 + MIN, true);
   api.applyMineDetail(a, 1, api.parseThreadDetail({ posts: 50 }), T0 + MIN);
   assert.strictEqual(JSON.stringify(a), frozen);
 });
@@ -559,12 +682,11 @@ Expected: FAIL, `api.mergeMineSnapshot is not a function`.
 Append to the `// -- my posts` section:
 
 ```js
+  // postsTotal is posts + 1 via threadPostsTotal: same unit as posts.total.
   function parseThreadDetail(raw) {
     if (!isPlainObject(raw)) return null;
     var last = isPlainObject(raw.last_poster) ? raw.last_poster : {};
-    var total = -1;
-    if (typeof raw.posts === 'number') total = toInt(raw.posts, -1);
-    else if (isPlainObject(raw.posts) && raw.posts.total !== undefined) total = toInt(raw.posts.total, -1);
+    var total = threadPostsTotal(raw);
     return {
       title: safeString(raw.title, 300),
       forumId: Math.max(0, toInt(raw.forum_id, 0)),
@@ -625,6 +747,11 @@ Append to the `// -- my posts` section:
     var i;
     for (i = 0; i < base.threads.length; i += 1) {
       var k0 = String(base.threads[i].id);
+      // Torn's new_posts is only as fresh as the forumthreads page it came
+      // on. A started thread that dropped off the page falls back to the
+      // local count rather than keeping a count Torn no longer reports.
+      base.threads[i].tornNewKnown = false;
+      base.threads[i].tornNew = 0;
       byId[k0] = base.threads[i];
       order.push(k0);
     }
@@ -638,6 +765,8 @@ Append to the `// -- my posts` section:
       if (s.lastPostAt) r.lastPostAt = Math.max(r.lastPostAt, s.lastPostAt);
       if (s.lastPosterId) r.lastPosterId = s.lastPosterId;
       r.isLocked = s.isLocked === true;
+      r.tornNewKnown = s.tornNewKnown === true;
+      r.tornNew = r.tornNewKnown ? s.tornNew : 0;
       if (s.totalKnown) observeMineTotal(r, s.postsTotal, t0);
       if (!out.selfId && s.authorId) out.selfId = s.authorId;
     }
@@ -697,7 +826,7 @@ git commit -m "feat: My posts snapshot merge and local unread baseline (#2)"
 **Interfaces:**
 - Consumes: `MineSnapshot`, `unreadFor(apiRow, entry)`.
 - Produces:
-  - `mineUnreadFor(apiRow, entry, rec) -> { tornUnread, postsTotal, lastSeenTotal, dismissed, unread, unreadSource }`, `unreadSource` in `'torn' | 'local' | 'unchecked'`
+  - `mineUnreadFor(apiRow, entry, rec) -> { tornUnread, postsTotal, lastSeenTotal, dismissed, unread, unreadSource }`, `unreadSource` in `'torn' | 'local' | 'unchecked'`. `'torn'` covers both a subscribed row (`posts.new`) and a started row carrying `new_posts` (spec "new", rule 2).
   - `isOrganised(entry, hasDraft) -> boolean`
   - `mergeThreads({ ..., mine })` rows gain `mineRole: 'started' | 'posted' | null`, `inThreads: boolean`, `unreadSource: 'torn' | 'local' | 'unchecked' | 'none'`
   - `resolveLastActivity(entry, feedAt, now, maxAgeMs, extra)` where `extra = { mineAt, ownPostAt }` is optional
@@ -725,6 +854,48 @@ test('an unsubscribed thread counts posts since the baseline or the last Mark re
   assert.strictEqual(api.mineUnreadFor(null, api.normaliseThreadEntry(null), r).unreadSource, 'local');
   assert.strictEqual(api.mineUnreadFor(null, api.normaliseThreadEntry({ lastSeenTotal: 24 }), r).unread, 1);
   assert.strictEqual(api.mineUnreadFor(null, api.normaliseThreadEntry({ lastSeenTotal: 25 }), r).unread, 0);
+});
+
+test('a started thread with new_posts uses Torn\'s count, with the local dismissal layer', () => {
+  const r = rec({ started: true, totalKnown: true, postsTotal: 25, baselineTotal: 25, tornNew: 4, tornNewKnown: true });
+  const u = api.mineUnreadFor(null, api.normaliseThreadEntry(null), r);
+  assert.strictEqual(u.unread, 4, 'Torn\'s count, not the local 25 - 25 = 0');
+  assert.strictEqual(u.unreadSource, 'torn');
+  const read = api.mineUnreadFor(null, api.normaliseThreadEntry({ lastSeenTotal: 25 }), r);
+  assert.strictEqual(read.unread, 0, 'Mark read still dismisses it, as in Threads');
+  const absent = api.mineUnreadFor(null, api.normaliseThreadEntry(null), Object.assign({}, r, { tornNewKnown: false, baselineTotal: 20 }));
+  assert.strictEqual(absent.unread, 5, 'without new_posts the local count takes over');
+  assert.strictEqual(absent.unreadSource, 'local');
+});
+
+// Live findings 3 and 4, end to end through the real fixtures. lastSeenTotal
+// is written by markRead from the subscribed posts.total (every post); the
+// My posts total comes from a thread object's posts (replies). Both
+// directions of a unit mix are pinned: a reply hidden, and a phantom
+// "1 new" in Threads after Mark read in My posts.
+test('a read marker from a subscribed total and a My posts total agree', () => {
+  // Thread 16505837: subscribed total 1; forum/{id}/thread said posts: 0.
+  const subRaw = FX_SUBS.forumSubscribedThreads.find((r) => r.id === 16505837);
+  const sub = api.normaliseSubscribedRow(subRaw);
+  assert.strictEqual(sub.postsTotal, 1);
+  // Read while subscribed, then unsubscribed; it is one of the user's threads.
+  let org = api.markRead(api.freshOrganizer(T0), 16505837, sub.postsTotal, T0);
+  const lookup = (replies, at) => api.parseThreadDetail(forumThreadPayload({
+    id: 16505837, replies, lastAt: at / 1000, lastPoster: { id: 99 },
+  }).thread);
+  let snap = api.mergeMineSnapshot(api.freshMine(), [], [post(16505837, T0 - MIN)], T0, true);
+  snap = api.applyMineDetail(snap, 16505837, lookup(0, T0), T0);
+  let u = api.mineUnreadFor(null, org.threads['16505837'], snap.threads[0]);
+  assert.strictEqual(u.unread, 0, 'quiet thread, already read: nothing new');
+  snap = api.applyMineDetail(snap, 16505837, lookup(1, T0 + MIN), T0 + MIN);
+  u = api.mineUnreadFor(null, org.threads['16505837'], snap.threads[0]);
+  assert.strictEqual(u.unread, 1, 'one reply from someone else must show, not vanish into the unit gap');
+
+  // Mark read in My posts, then subscribe on Torn: Threads must see it as read.
+  org = api.markRead(org, 16505837, u.postsTotal, T0 + 2 * MIN);
+  const resub = api.normaliseSubscribedRow(Object.assign({}, subRaw, { posts: { new: 1, total: 2 } }));
+  assert.strictEqual(api.unreadFor(resub, org.threads['16505837']).dismissed, true,
+    'Mark read in My posts must count as read in Threads, not leave "1 new"');
 });
 
 test('an unknown total is unchecked, not a checked zero', () => {
@@ -821,9 +992,20 @@ After `unreadFor`:
   // A subscribed thread keeps Torn's own count, exactly as in Threads. Only a
   // thread Torn gives no count for is counted here, and an unknown total is
   // reported as unchecked so it can never pass for a thread checked and quiet.
+  // Every total compared here counts the topic post: rec.postsTotal and
+  // rec.baselineTotal are posts + 1 (threadPostsTotal), the same unit as the
+  // subscribed posts.total that lastSeenTotal is written from. Live findings
+  // 3 and 4, docs/reference/torn-api-live-findings-2026-10-08.md.
   function mineUnreadFor(apiRow, entry, rec) {
+    var u;
     if (apiRow) {
-      var u = unreadFor(apiRow, entry);
+      u = unreadFor(apiRow, entry);
+      u.unreadSource = 'torn';
+      return u;
+    }
+    // A started thread's new_posts is Torn's own unread count, like posts.new.
+    if (rec && rec.totalKnown && rec.tornNewKnown) {
+      u = unreadFor({ postsNew: rec.tornNew, postsTotal: rec.postsTotal }, entry);
       u.unreadSource = 'torn';
       return u;
     }
@@ -1140,7 +1322,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const {
   loadUserscript, FORUMS_LOCATION, subscribedThreadsPayload, forumFeedPayload,
-  forumThreadsPayload, forumPostsPayload,
+  forumThreadsPayload, forumPostsPayload, forumThreadPayload, FIXTURE_SELF_ID,
 } = require('./load-userscript');
 
 const KEY = 'abcdefghij123456';
@@ -1191,10 +1373,10 @@ const BASE = {
 
 function mineTable(extra) {
   const t = Object.assign({}, BASE, {
-    'user/forumthreads': forumThreadsPayload([{ id: 10, total: 4 }]),
+    'user/forumthreads': forumThreadsPayload([{ id: 10, replies: 3 }]),
     'user/forumposts': forumPostsPayload([{ id: 1, threadId: 20 }, { id: 2, threadId: 21 }]),
-    'forum/20/thread': { thread: { id: 20, forum_id: 61, title: 'Twenty', posts: 30, last_post_time: 1600000300, last_poster: { id: 99 } } },
-    'forum/21/thread': { thread: { id: 21, forum_id: 61, title: 'TwentyOne', posts: 8, last_post_time: 1600000400, last_poster: { id: 7 } } },
+    'forum/20/thread': forumThreadPayload({ id: 20, title: 'Twenty', replies: 29, lastAt: 1600000300, lastPoster: { id: 99 } }),
+    'forum/21/thread': forumThreadPayload({ id: 21, title: 'TwentyOne', replies: 7, lastAt: 1600000400, lastPoster: { id: FIXTURE_SELF_ID } }),
   });
   return Object.assign(t, extra || {});
 }
@@ -1221,6 +1403,9 @@ test('a My posts fetch is two lists then lookups, and never the category list', 
   assert.strictEqual(env.exports.state.mineError, null);
 });
 
+// Torn may ignore `limit` here, as it does on forum/{id}/posts (live finding
+// 7). This pins what the script asks for, not what Torn returns; nothing
+// downstream depends on the page size.
 test('both lists ask for one page of the agreed size', async () => {
   const env = await bootAndClear(mineTable());
   env.router.urls.length = 0;
@@ -1235,7 +1420,7 @@ test('with the default budget a fetch is at most 12 requests', async () => {
   const posts = [];
   for (let i = 0; i < 30; i += 1) posts.push({ id: i + 1, threadId: 100 + i });
   const table = mineTable({ 'user/forumposts': forumPostsPayload(posts) });
-  for (let i = 0; i < 30; i += 1) table['forum/' + (100 + i) + '/thread'] = { thread: { id: 100 + i, posts: 3 } };
+  for (let i = 0; i < 30; i += 1) table['forum/' + (100 + i) + '/thread'] = forumThreadPayload({ id: 100 + i, replies: 2 });
   const env = await bootAndClear(table);
   env.exports.refreshMine(NOW);
   await settle(env);
@@ -1265,9 +1450,9 @@ test('opened right after a maximal Threads refresh, the rolling minute never hol
   const posts = [];
   for (let i = 0; i < 40; i += 1) {
     posts.push({ id: 900 + i, threadId: 700 + i });
-    table['forum/' + (700 + i) + '/thread'] = { thread: { id: 700 + i, forum_id: 61, posts: 5, last_post_time: 1600000300, last_poster: { id: 99 } } };
+    table['forum/' + (700 + i) + '/thread'] = forumThreadPayload({ id: 700 + i, replies: 4, lastAt: 1600000300, lastPoster: { id: 99 } });
   }
-  for (let i = 0; i < 30; i += 1) table['forum/' + (500 + i) + '/thread'] = { thread: { id: 500 + i, forum_id: 61, posts: 9, last_post_time: 1600000300 } };
+  for (let i = 0; i < 30; i += 1) table['forum/' + (500 + i) + '/thread'] = forumThreadPayload({ id: 500 + i, replies: 8, lastAt: 1600000300 });
   table['user/forumposts'] = forumPostsPayload(posts);
   const env = boot(table);
   env.exports.state.settings.enrichBudget = env.exports.MAX_ENRICH_BUDGET;
@@ -1368,7 +1553,7 @@ Check `makeSandbox` in `tests/load-userscript.js` for how a `gmStore` entry is s
 Append to `tests/staleness.test.js`. The file's `gatedTransport` holds only the first call, which is `init`'s Threads refresh; this one holds a named path instead:
 
 ```js
-const { forumThreadsPayload, forumPostsPayload } = require('./load-userscript');
+const { forumThreadsPayload, forumPostsPayload } = require('./load-userscript');   // built from tests/fixtures/
 
 function gatedOn(table, heldPath) {
   let release = null;
@@ -1387,7 +1572,7 @@ function gatedOn(table, heldPath) {
 
 test('a reset while My posts is loading drops the late answer', async () => {
   const table = Object.assign({}, TABLE, {
-    'user/forumthreads': forumThreadsPayload([{ id: 10, total: 4 }]),
+    'user/forumthreads': forumThreadsPayload([{ id: 10, replies: 3 }]),
     'user/forumposts': forumPostsPayload([{ id: 1, threadId: 20 }]),
   });
   const t = gatedOn(table, 'user/forumthreads');
@@ -2177,6 +2362,16 @@ Each `apply` must match text that exists in the source **exactly**; a mutation t
       "dismissed: false, unread: 0, unreadSource: 'local' };"),
   },
   {
+    name: 'a thread\'s reply count is stored as its total (live findings 3 and 4)',
+    suite: 'tests/mine.test.js',
+    apply: (s) => s.replace('      return Math.floor(raw.posts) + 1;', '      return Math.floor(raw.posts);'),
+  },
+  {
+    name: 'Torn\'s new_posts is ignored for started threads',
+    suite: 'tests/mine.test.js',
+    apply: (s) => s.replace('    if (rec && rec.totalKnown && rec.tornNewKnown) {', '    if (false) {'),
+  },
+  {
     name: 'the My posts TTL is removed',
     suite: 'tests/mine-refresh.test.js',
     apply: (s) => s.replace('var MINE_TTL_MS = 15 * 60 * 1000;', 'var MINE_TTL_MS = 0;'),
@@ -2232,7 +2427,7 @@ git commit -m "test: mutation entries for every My posts promise (#2)"
 
 - [ ] **Step 1: Architecture**
 
-In `docs/architecture.md`: "The five endpoints" becomes seven, adding `user/forumthreads` and `user/forumposts` rows (Public, "My posts, fetched only for that view"); state that the key-access text is unchanged because both are Public; add the My posts budget sentence beside the 13-request paragraph; "Six independent keys" becomes seven with `tfcc:mine` and why it is separate (the `loadKey` damage report); add a short "My posts and the local unread count" subsection under the unread model with the `seen = max(lastSeenTotal, baselineTotal)` rule and the `inThreads` predicate.
+In `docs/architecture.md`: "The five endpoints" becomes seven, adding `user/forumthreads` and `user/forumposts` rows (Public, "My posts, fetched only for that view"); state that the key-access text is unchanged because both are Public; add the My posts budget sentence beside the 13-request paragraph; "Six independent keys" becomes seven with `tfcc:mine` and why it is separate (the `loadKey` damage report); add a short "My posts and the local unread count" subsection under the unread model with the `seen = max(lastSeenTotal, baselineTotal)` rule, the `new_posts` rule for started threads, the `inThreads` predicate, and one sentence on units: a thread object's `posts` counts replies, so every stored total is `posts + 1` (live findings 3 and 4), converted only in `threadPostsTotal`.
 
 - [ ] **Step 2: QA checklist and rules compliance**
 
@@ -2248,8 +2443,9 @@ README features list gains My posts. In `CHANGELOG.md`, replace "Nothing yet." u
 - A My posts view listing the threads you started or posted in, from the
   Public `user/forumthreads` and `user/forumposts` selections. It has the same
   row actions, filters and sort as Threads, plus `is:started` and `is:posted`.
-- A local unread count for threads you do not follow, counted from the first
-  time the script sees them, cleared by Mark read or by your own post, and
+- Torn's own unread count (`new_posts`) for threads you started, and a local
+  unread count for threads you only posted in, counted from the first time
+  the script sees them, cleared by Mark read or by your own post, and
   labelled as a local count. A thread not yet looked up says so.
 
 ### Changed
@@ -2272,14 +2468,14 @@ git commit -m "docs: changelog, architecture and QA entries for My posts (#2)"
 
 - [ ] **Step 4: Release commit (separate; cut by the owner, not part of the feature PR)**
 
-Blocked on the My posts section of `docs/qa-checklist.md` and on plan Task 0. When both are done, on `main`, set `@version`, `var SCRIPT_VERSION` and `package.json` `version` to X.Y.0, the next minor after the `@version` on `origin/main` (0.2.0 if main is still 0.1.0; later if #3 or #4 released first). Rename `## [Unreleased]` to `## [X.Y.0] - <date>`, add a fresh empty `## [Unreleased]` above it, and update the compare links. Run `npm test` (`tests/metadata.test.js` checks the three strings agree), then:
+Blocked on the My posts section of `docs/qa-checklist.md` and on the Prerequisite owner checks. When both are done, on `main`, set `@version`, `var SCRIPT_VERSION` and `package.json` `version` to X.Y.0, the next minor after the `@version` on `origin/main` (0.2.0 if main is still 0.1.0; later if #3 or #4 released first). Rename `## [Unreleased]` to `## [X.Y.0] - <date>`, add a fresh empty `## [Unreleased]` above it, and update the compare links. Run `npm test` (`tests/metadata.test.js` checks the three strings agree), then:
 
 ```bash
 git commit -m "chore: release X.Y.0"
 git tag vX.Y.0
 ```
 
-The tag goes on that commit on `main`, after the QA gate and Task 0. Do not tag a PR commit; a squash merge discards its SHA.
+The tag goes on that commit on `main`, after the QA gate and the owner checks. Do not tag a PR commit; a squash merge discards its SHA.
 
 - [ ] **Step 5: Refresh the code map**
 
@@ -2292,7 +2488,7 @@ git commit -m "docs: refresh the code map for My posts (#2)"
 
 - [ ] **Step 6: Pipeline**
 
-`/review`, then `/ship` (verify gate: `npm test`). PR description must state: no change to `@match`, `@grant` or `@connect`; two new Public GET selections; the contrast audit result (or that it could not be run); Task 0 status.
+`/review`, then `/ship` (verify gate: `npm test`). PR description must state: no change to `@match`, `@grant` or `@connect`; two new Public GET selections; the contrast audit result (or that it could not be run); the status of the Prerequisite owner checks.
 
 ---
 
@@ -2310,4 +2506,4 @@ Issue #3 (`docs/superpowers/plans/2026-10-08-rows-shown-cap.md` on its branch) a
 
 **If #2 merges first**, `renderNav`'s local `labels` map contains `mine`, `viewRows` exists, and My posts is uncapped. The #3 PR hoists the map into `VIEW_LABELS` in the commit that creates it, then does steps 1 to 4 above itself before review. Nothing in this PR needs to change for that.
 
-**My posts and #4.** #4's author-only "new" setting applies to Threads and Catch up only. My posts ignores it and keeps counting everyone's replies. #4 reads one page of `forum/{id}/posts` and does not depend on `parseThreadDetail` or `last_poster`, which this plan treats as unverified until Task 0.
+**My posts and #4.** #4's author-only "new" setting applies to Threads and Catch up only. My posts ignores it and keeps counting everyone's replies. #4 reads one page of `forum/{id}/posts` and does not depend on `parseThreadDetail` or `last_poster`. `last_poster` is now confirmed (finding 10). If #4 ever uses `parseThreadDetail`, its `postsTotal` is already `posts + 1`, the subscribed unit (findings 3 and 4); #4 must not add 1 again.

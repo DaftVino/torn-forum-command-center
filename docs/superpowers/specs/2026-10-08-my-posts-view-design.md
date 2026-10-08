@@ -1,6 +1,7 @@
 # My posts view - design
 
-**Status:** proposed, 2026-10-08. Awaiting `/plan-eng-review`.
+**Status:** proposed, 2026-10-08; aligned with the live API findings of
+2026-10-08 (`docs/reference/torn-api-live-findings-2026-10-08.md`, #14).
 **Issue:** #2. Interacts with #3 (row cap) and #4 (author-only "new").
 **Target release:** the next minor after the `@version` on `origin/main` at
 release time (0.2.0 if `main` is still 0.1.0). The feature PR does not bump it;
@@ -181,45 +182,75 @@ selection answers for the key owner, so no new key selection is needed and the
 Settings key-access text does not change.
 
 **What it does not confirm.** The saved page is the docs shell and the key
-builder. It contains **no response schema, no field names and no pagination
-parameters** for either selection. Everything below about shapes is an
-**unverified assumption** from memory of Torn's public swagger, to be checked
-against the live API before the normaliser tests are frozen (plan Task 0).
+builder. It contains no response schema, no field names and no pagination
+parameters for either selection. The live capture of 2026-10-08 settles that
+instead: `docs/reference/torn-api-live-findings-2026-10-08.md` (issue #14,
+PR #15), with redacted responses in `tests/fixtures/`. Where the note and the
+OpenAPI document disagree, the note wins.
 
-### Assumed response shapes (unverified)
+### Response shapes (verified 2026-10-08)
 
-`user/forumthreads`:
+`user/forumthreads` (finding 1, `tests/fixtures/user-forumthreads.json`):
 
 ```
 { forumThreads: [ {
-    id, forum_id, title,
-    posts,                    // integer total  (fallback: posts.total)
-    first_post_time, last_post_time,     // unix seconds
+    id, title, forum_id,
+    posts,                    // integer, counts REPLIES, not posts (finding 3)
+    rating, views,
     author: { id, username, karma },
-    last_poster: { id, username } | null,   // may be absent
-    is_locked, is_sticky,
-    new_posts                  // may exist; IGNORED until verified
+    last_poster: { id, username, karma },   // finding 10
+    first_post_time, last_post_time,        // unix seconds
+    has_poll, is_locked, is_sticky,
+    new_posts                 // integer, Torn's own unread count (finding 1)
   } ],
   _metadata: { links: { prev, next } } }
 ```
 
-`user/forumposts`:
+`user/forumposts` (finding 2, `tests/fixtures/user-forumposts.json`):
 
 ```
 { forumPosts: [ {
     id, thread_id,
     author: { id, username, karma },
-    created_time,              // unix seconds  (fallback: timestamp)
-    is_topic, is_edited,
-    content                    // NEVER stored, never logged
+    is_legacy, is_topic, is_edited, is_pinned,
+    created_time,             // unix seconds
+    edited_by, has_quote, quoted_post_id,
+    content,                  // NEVER stored, never logged
+    likes, dislikes
   } ],
   _metadata: { links: { prev, next } } }
 ```
 
-Pagination is assumed to be `limit` (default 20, max 100), `from`/`to`
-timestamps and `sort`, with `_metadata.links.next` for the next page.
+`forum/{id}/thread` (`tests/fixtures/forum-thread.json`) answers
+`{ thread: { ...the forumThreads row without new_posts, plus content,
+content_raw, poll } }`. Its `posts` is the same reply count (finding 3).
 
-**Fallbacks, so a wrong assumption fails loudly rather than silently:**
+**The off-by-one (findings 3 and 4).** A thread object's `posts` counts
+replies: thread 16589908 reports `posts: 1` in both `user-forumthreads.json`
+and `forum-thread.json`, and `forum-thread-posts-asc.json` holds two posts for
+it, the topic and one reply. Thread 16561608 reports `posts: 6206` and its
+last page (`forum-posts-large-last-page.json`, offset 6200) holds 7 posts:
+6,207 in all. The subscribed row's `posts.total` counts every post including
+the topic (thread 16505837: `total: 1` in `user-forumsubscribedthreads.json`,
+`posts: 0` from `forum/{id}/thread`, compared live). `lastSeenTotal` is written
+by `markRead` from that subscribed unit. So **every `postsTotal` this design
+stores is in the subscribed unit**: the two API readers, `mineThreadFromApi`
+and `parseThreadDetail`, convert a numeric `posts` to `posts + 1` through one
+helper, `threadPostsTotal`, and nothing else in the design ever sees the raw
+reply count. A `posts.total` (the subscribed shape) is taken as it is.
+
+**Page size and order (open question 2, partly settled).** Both captured lists
+fit on one page: `user-forumthreads.json` has 1 row and `user-forumposts.json`
+15, each with `next: null`. So the fixtures are consistent with any page of at
+least 15 and prove neither 100 nor 20. `user/forumposts` is newest first by
+default (`created_time` descends through the fixture). On `forum/{id}/posts`,
+`limit` and `sort` are ignored and the page is 20 (findings 6 and 7), so this
+design assumes the same may hold here: it still sends `limit=100`, which is
+harmless if ignored, and **never depends on the page size**. If Torn caps the
+page at 20, the window is the user's last 20 posts.
+
+**Fallbacks, so a wrong assumption fails loudly rather than silently.** The
+shapes are now verified, but Torn can change them; the tolerance stays:
 
 - The list key is read as `forumThreads`, then `forum_threads`, then `threads`
   (and `forumPosts`, `forum_posts`, `posts`), the same tolerance
@@ -227,8 +258,9 @@ timestamps and `sort`, with `_metadata.links.next` for the next page.
 - Each field reads both the snake_case API name and the camelCase name the
   normaliser itself stores (the c4d91e1 lesson: a normaliser must read back its
   own output).
-- `posts` is read as a number, else `posts.total`; if neither, the row's total
-  is **unknown** and it becomes a lookup target, never a zero.
+- `posts` is read as a number (replies, stored as `posts + 1`), else
+  `posts.total` (every post, stored as it is); if neither, the row's total is
+  **unknown** and it becomes a lookup target, never a zero.
 - A response with no recognisable list is a named `parse` failure: "Torn's
   answer for your threads was not in the shape this version expects." The
   debug report records the response's **top-level key names only**.
@@ -240,9 +272,10 @@ timestamps and `sort`, with `_metadata.links.next` for the next page.
 
 ### What is fetched and stored
 
-One page of each list, `limit=100` (`MINE_PAGE_LIMIT`), newest first. The
-user's last 100 posts cover their active conversations; older threads stay in
-the list until the cap evicts them (below). `_metadata.links.next` is **not**
+One page of each list, `limit=100` (`MINE_PAGE_LIMIT`, which Torn may ignore;
+see "Page size and order"), newest first. The user's latest page of posts
+covers their active conversations; older threads stay in the list until the
+cap evicts them (below), so a 20-row page loses nothing already seen. `_metadata.links.next` is **not**
 followed. This is a deliberate bound, not an oversight.
 
 Stored under a **new seventh storage key, `tfcc:mine`**, not inside `tfcc:feed`.
@@ -261,12 +294,15 @@ tfcc:mine = {
     id, forumId, title,
     started: bool, posted: bool,
     myLastPostAt: ms,       // newest own post seen in this thread
-    postsTotal: int, totalKnown: bool,
+    postsTotal: int,        // every post incl. the topic: the subscribed unit
+    totalKnown: bool,
     lastPostAt: ms, lastPosterId: int,
     infoAt: ms,             // when postsTotal/lastPostAt were last observed
-    baselineTotal: int,     // see "new" below
+    baselineTotal: int,     // see "new" below; same unit as postsTotal
     firstSeenAt: ms,
-    isLocked: bool
+    isLocked: bool,
+    tornNew: int,           // new_posts from user/forumthreads
+    tornNewKnown: bool      // false when the last forumthreads row lacked it
   } ]
 }
 ```
@@ -283,12 +319,19 @@ tfcc:mine = {
 
 ### "New" on a thread the user does not subscribe to
 
-`posts.new` exists only on `user/forumsubscribedthreads` rows. The definition:
+Torn gives its own unread count in two places: `posts.new` on
+`user/forumsubscribedthreads` rows, and `new_posts` on `user/forumthreads`
+rows for threads the key owner started (finding 1). The definition, first
+match wins:
 
 1. **Subscribed** (the thread is in `state.feed.subscribed`): exactly
    Threads' rule, `unreadFor(apiRow, entry)` - Torn's count with the local
    dismissal layer. `unreadSource = 'torn'`.
-2. **Not subscribed, total known:** a local count.
+2. **Started, not subscribed, `new_posts` present** (`tornNewKnown` and
+   `totalKnown`): the same rule with `new_posts` in place of `posts.new`,
+   `unreadFor({ postsNew: tornNew, postsTotal }, entry)`.
+   `unreadSource = 'torn'`. No `local count` note.
+3. **Not subscribed, total known, no Torn count:** a local count.
    ```
    seen     = max(entry.lastSeenTotal, mine.baselineTotal)
    unread   = max(0, postsTotal - seen)
@@ -303,7 +346,15 @@ tfcc:mine = {
      to a thread whose last word is yours.
    - Mark read sets `entry.lastSeenTotal = postsTotal` through the existing
      `markRead`, exactly as in Threads.
-3. **Not subscribed, total unknown** (not yet looked up, or the lookup was cut
+   - **One unit throughout.** `postsTotal`, `baselineTotal` and
+     `lastSeenTotal` all count every post including the topic, because
+     `postsTotal` is stored as `posts + 1` (findings 3 and 4, above). Mixing
+     units fails both ways: a thread read while subscribed (`lastSeenTotal`
+     = N + 1) and later counted from a raw `posts` of N would hide its next
+     reply, and a My posts Mark read that wrote N would leave the same thread
+     one short of dismissed in Threads, showing Torn's "1 new" after the user
+     marked it read. `tests/mine.test.js` pins both from the fixtures.
+4. **Not subscribed, total unknown** (not yet looked up, or the lookup was cut
    by the budget or throttling): `unread = 0`, `unreadSource = 'unchecked'`.
    The row shows `not checked yet` instead of a badge. This is #4's rule 3 too:
    the row must never look checked when it was not.
@@ -311,6 +362,23 @@ tfcc:mine = {
 If `tfcc:mine` is lost, baselines reset to "first sight" and the user sees 0
 new until something moves. That under-reports rather than floods, which is
 the safe direction.
+
+**Why `new_posts` replaces the local count rather than cross-checking it.**
+`new_posts` is Torn's own unread count, the same kind of number as `posts.new`
+on subscribed rows, which Threads already trusts. It knows what the local
+count cannot: that the user read the thread on Torn itself, on another device,
+or before the script was installed, so it needs no first-sight baseline and
+cannot drift by a unit. A cross-check has no honest output: when the two
+disagree there is no rule for which to show, and showing both puts two numbers
+on one badge. So rule 2 uses it whenever the row carries it, keeps the local
+dismissal layer (Mark read still zeroes it, as in Threads), and falls back to
+the local count only when the field is absent - which matters because it was
+seen with a Limited key (finding 1) and this script asks for a Minimal one, so
+its presence with a Minimal key is an owner check, not a fact. It covers only
+threads the user started; posted-in threads keep the local count. The single
+sample (`new_posts: 0` on thread 16589908, whose last poster is not the owner)
+is consistent with "read on Torn" but cannot show when Torn increments or
+clears it; the QA checklist walks that.
 
 ### Last activity on My posts rows
 
@@ -438,11 +506,14 @@ fails until it has.
 - **Shared plumbing, not a dependency.** This design adds `lastPosterId` to
   the record parsed from `forum/{id}/thread`, in a pure `parseThreadDetail(raw)`
   helper. #4 chose one page of `forum/{id}/posts` (with `from`) as its data
-  source and treats `last_poster` as unverified, so #4 does **not** depend on
-  this helper. It is available to #4 if `last_poster` is ever confirmed live
-  (plan Task 0 checks it for #2). My posts uses `last_poster` only for the
-  "your own last post clears the count" shortcut; if the field is absent,
-  `myLastPostAt >= lastPostAt` still covers it. The `unreadSource` field and
+  source, so #4 does **not** depend on this helper. `last_poster` is now
+  confirmed live as `{ id, username, karma }` (finding 10), so the helper is
+  available to #4 if it wants it. Note for #4: `parseThreadDetail` returns
+  `postsTotal` already converted to the subscribed unit (`posts + 1`,
+  findings 3 and 4), so it compares directly with `posts.total` and
+  `lastSeenTotal`; a caller must not add 1 again. My posts uses `last_poster`
+  only for the "your own last post clears the count" shortcut; if the field is
+  ever absent, `myLastPostAt >= lastPostAt` still covers it. The `unreadSource` field and
   the `unchecked` state are the shape #4's "data not available yet" rule needs
   too.
 
@@ -471,7 +542,7 @@ vice versa. Every detail passes through `scrubDetail`.
 - **Engine purity.** Every new decision function lives in the engine section
   and takes `now` as an argument: `normaliseMineThreadRow`,
   `normaliseMinePostRow`, `freshMine`, `normaliseMine`, `mergeMineSnapshot`,
-  `parseThreadDetail`, `applyMineDetail`, `mineUnreadFor`, `isOrganised`,
+  `threadPostsTotal`, `parseThreadDetail`, `applyMineDetail`, `mineUnreadFor`, `isOrganised`,
   `mineLookupTargets`, `viewRows`. `tests/purity.test.js` covers them with no
   change. All network, storage and rendering stays in the runtime section.
 - **Read-only.** Two more GETs to `api.torn.com`. No write verbs, no new
@@ -494,10 +565,15 @@ vice versa. Every detail passes through `scrubDetail`.
 
 New suites:
 
-- `tests/mine.test.js` - engine: both normalisers (API shape, stored shape,
-  read-back round trip, content dropped, alternate list keys), `mergeMineSnapshot`
+- `tests/mine.test.js` - engine: both normalisers (API shape read from the
+  real fixtures, stored shape, read-back round trip, content dropped,
+  alternate list keys), the off-by-one (`posts + 1`, pinned from
+  `user-forumthreads.json`, `forum-thread.json`,
+  `forum-thread-posts-asc.json`, `forum-posts-large-last-page.json` and
+  `user-forumsubscribedthreads.json`, written failing first), `mergeMineSnapshot`
   (first-sight baseline, own-post baseline advance, retain and cap at 200,
-  order), `parseThreadDetail`, `mineUnreadFor` (all three sources), `isOrganised`,
+  order, `new_posts` kept), `parseThreadDetail`, `mineUnreadFor` (subscribed,
+  `new_posts`, local, unchecked), `isOrganised`,
   `mineLookupTargets` (budget, TTL, subscribed and started-with-total excluded,
   order), `viewRows` per view.
 - `tests/mine-refresh.test.js` - runtime: exact request sequence and params
@@ -531,8 +607,10 @@ Extended suites:
   My posts thread title.
 - `tests/share.test.js` - the export carries nothing from `tfcc:mine`.
 - `tests/api.test.js` - no key in a My posts failure detail.
-- `tests/load-userscript.js` - new exports and two payload builders,
-  `forumThreadsPayload` and `forumPostsPayload`, built from the Task 0 fixture.
+- `tests/load-userscript.js` - new exports and three payload builders,
+  `forumThreadsPayload`, `forumPostsPayload` and `forumThreadPayload`, each
+  cloned from a row of the live fixtures in `tests/fixtures/` (issue #14), so
+  every field name is the one Torn sends.
 - `tests/render-preview.mjs` - seeds My posts data so the `mine` previews are
   meaningful for the contrast audit.
 
@@ -547,6 +625,8 @@ Mutation-check entries (`tests/mutation-check.mjs`), each tied to one promise:
 | first sight no longer sets the baseline (history floods as new) | `tests/mine.test.js` |
 | own last post no longer advances the baseline | `tests/mine.test.js` |
 | an unknown total counts as 0 checked instead of unchecked | `tests/mine.test.js` |
+| a thread's `posts` is stored as the total, without the `+ 1` | `tests/mine.test.js` |
+| `new_posts` is ignored (started threads fall back to the local count) | `tests/mine.test.js` |
 | `MINE_TTL_MS` set to 0 | `tests/mine-refresh.test.js` |
 | lookups ignore the budget | `tests/mine-refresh.test.js` |
 | post `content` is kept by the normaliser | `tests/mine.test.js` |
@@ -571,8 +651,14 @@ New section "My posts", walked on both Torn PDA and desktop:
 - [ ] Closing and reopening within 15 minutes makes no request (key log).
 - [ ] A thread you started and do not follow appears with `started`.
 - [ ] A thread you replied in and do not follow appears with `posted in`.
-- [ ] Have a second account reply in such a thread; Refresh in My posts; it
-      shows `1 new` with `local count`.
+- [ ] Have a second account reply in a thread you **posted in** and do not
+      follow; Refresh in My posts; it shows `1 new` with `local count`.
+- [ ] Have a second account reply in a thread you **started** and do not
+      follow; Refresh in My posts; it shows `1 new` with **no** `local count`
+      note (Torn's `new_posts`). Open the thread on Torn, come back after 15
+      minutes or press Refresh; it shows no count.
+- [ ] Mark read on a thread you posted in, then subscribe to it on Torn and
+      Refresh Threads; it shows no new until someone replies (the units agree).
 - [ ] Mark read zeroes it, survives a reload, and the thread does **not**
       appear in Threads.
 - [ ] Pin it; it now appears in Threads as not subscribed, and in My posts.
@@ -583,44 +669,66 @@ New section "My posts", walked on both Torn PDA and desktop:
 
 ## Assumptions
 
-1. `user/forumthreads` and `user/forumposts` with no `id` answer for the key
-   owner, with any key that can already read `forumsubscribedthreads`.
-2. The response shapes above, including `thread_id` and `created_time` on posts
-   and a numeric `posts` total on threads. Normalisers tolerate the listed
-   alternates.
-3. `limit=100` is accepted. If Task 0 finds it is not, `MINE_PAGE_LIMIT` is
-   dropped from the params before release and the default page (20) is used.
-4. A Torn thread link with `f=0` still opens the thread when the forum id is
-   unknown; once a lookup supplies `forum_id`, the link is exact.
-5. The user's latest 100 posts are a sufficient window for "my conversations".
-6. `forum/{id}/thread` returns `posts` (total) and `last_poster.id`. The v0.1.0
-   spec lists them, but v0.1.0 code only reads `last_post_time`, `is_locked`
-   and `is_sticky`, so **neither field has been seen live**. Task 0 captures
-   one `forum/{id}/thread` response to settle it. Fallbacks: no `posts` means
-   the total stays unknown and the row is `not checked yet`, never a zero; no
-   `last_poster` means the "own last post" shortcut falls back to
-   `myLastPostAt >= lastPostAt`, and the worst outcome is a count that clears
-   one refresh late.
-7. Thread totals count every post including the opening one, the same unit
-   `posts.total` uses, so baselines compare like with like.
+Settled by the live capture of 2026-10-08 (`docs/reference/torn-api-live-findings-2026-10-08.md`):
+
+1. **Settled, with one owner check left.** `user/forumthreads` and
+   `user/forumposts` with no `id` answer for the key owner: every row in
+   `user-forumthreads.json` and the topic post in `user-forumposts.json` has
+   the owner as `author` (player 1000, whose karma matches
+   `user-profile-karma.json`, finding 12). The capture used a Limited key; that
+   a Minimal key gets the same answer is the owner check in plan
+   "Prerequisite".
+2. **Settled.** The response shapes are as listed under "Response shapes
+   (verified 2026-10-08)", including `thread_id` and `created_time` on posts,
+   a numeric `posts` on threads, and `new_posts` (findings 1 and 2). The
+   normalisers keep tolerating the listed alternates in case Torn changes them.
+3. **Partly settled.** Nothing captured shows whether `limit=100` is honoured
+   on these two selections: both lists fit on one page (1 and 15 rows,
+   `next: null`). `forum/{id}/posts` ignores `limit` (finding 7). The design
+   keeps sending `limit=100`, which is harmless if ignored, and does not depend
+   on it.
+4. **Open.** A Torn thread link with `f=0` still opens the thread when the
+   forum id is unknown; once a lookup supplies `forum_id`, the link is exact.
+   Not probed.
+5. The user's latest page of posts (100 if `limit` is honoured, possibly 20)
+   is a sufficient window for "my conversations", because the cap keeps every
+   thread already seen.
+6. **Settled.** `forum/{id}/thread` returns `posts` and `last_poster`
+   (`forum-thread.json`; finding 10, `last_poster` is `{ id, username, karma }`).
+   The fallbacks stay: no `posts` means the total stays unknown and the row is
+   `not checked yet`, never a zero; no `last_poster` means the "own last post"
+   shortcut falls back to `myLastPostAt >= lastPostAt`.
+7. **Refuted, and the design changed.** Thread totals do **not** count the
+   opening post: `posts` on `user/forumthreads` and `forum/{id}/thread` counts
+   replies, while `posts.total` on subscribed rows counts every post
+   (findings 3 and 4; `user-forumthreads.json` and `forum-thread.json` say
+   `posts: 1` for thread 16589908, whose post list in
+   `forum-thread-posts-asc.json` holds 2). The readers store `posts + 1`, so
+   baselines and read markers compare like with like.
 
 ## Open questions (need the live API or real hardware)
 
-1. **Shapes.** Do the two responses, and `forum/{id}/thread`'s `posts` and
-   `last_poster`, match the assumed fields? Capture one real
-   response of each, strip `content` and names, and commit it as a fixture
-   (plan Task 0).
-2. **Pagination parameters.** Are `limit`, `from`, `to`, `sort` accepted, and
-   what is the maximum page? Is order newest first by default?
-3. **`new_posts` on `forumthreads`.** If a real unread count exists for
-   threads you started, should it replace the local count for those rows?
-   (Designed for, not built: it would set `unreadSource = 'torn'`.)
+1. ~~**Shapes.**~~ **Closed** by findings 1, 2, 3 and 10 and the fixtures
+   `user-forumthreads.json`, `user-forumposts.json` and `forum-thread.json`.
+2. **Pagination parameters. Partly closed.** Order is newest first by default
+   (`created_time` descends through `user-forumposts.json`). Page size and
+   whether `limit`, `from`, `to` or `sort` are honoured on these two
+   selections are still unknown: the owner's lists fit on one page each. On
+   `forum/{id}/posts`, `limit` and `sort` are ignored (findings 6 and 7), so
+   the design does not rely on either. Settling it needs an account with more
+   than 20 posts; the design is correct either way.
+3. ~~**`new_posts` on `forumthreads`.**~~ **Closed.** It exists, with a
+   Limited key (finding 1, `user-forumthreads.json`: `new_posts: 0`). It
+   replaces the local count for started threads that carry it; see "Why
+   `new_posts` replaces the local count". When Torn increments and clears it
+   is a QA item, and its presence with a Minimal key is an owner check.
 4. **Links without a forum id.** Does `forums.php#/p=threads&f=0&t=<id>` open
-   the thread?
+   the thread? Not probed.
 5. **Deleted posts and threads.** Does a deleted thread drop out of
    `forumposts`, and does a lookup on it return an error code that should
-   remove it from `tfcc:mine`?
+   remove it from `tfcc:mine`? Not probed.
 6. **Catch up.** Do users want replies to their own unsubscribed threads in
    Catch up? Deferred to after real use.
 7. **Faction and private forums.** Do posts in forums the key cannot see
    publicly come back from a Public selection, and if so do their lookups fail?
+   Not probed.
