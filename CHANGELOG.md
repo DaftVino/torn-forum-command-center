@@ -15,6 +15,11 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   every API call site, so a new endpoint fails the suite until its selection is
   added. The link format is unverified, and release is gated on the QA
   checklist comparing it with a link generated on torn.com/api.html.
+- Settings, Appearance: **Hide the panel when I open a thread**, off by
+  default. A plain click on a thread link in the panel (Threads, Catch up,
+  Search, Drafts, and My posts) collapses the panel and leaves Expand, then the
+  thread opens. Show brings it back. New-tab clicks and Torn's own links leave
+  the panel alone. (#8)
 
 ### Fixed
 
@@ -23,6 +28,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   works but is not needed, and keep saying Public Only does not work. They
   previously recommended a Custom key or Limited Access, and never named
   Minimal, which live probing showed is the actual minimum (#16).
+- Upgrading no longer reports "Settings were damaged and have been reset" just
+  because a release added a setting. Nothing was being reset. (#8)
 
 ## [0.1.0] - 2026-08-07
 

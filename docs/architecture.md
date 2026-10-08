@@ -34,6 +34,14 @@ So no data path touches Torn's markup. DOM access exists in exactly two places,
 choosing a mount container and finding the reply textarea, and both degrade
 visibly rather than failing silently.
 
+The panel's own markup is not one of those places and is not a data path. Its
+single delegated click listener on `#tfcc-panel` also recognises the thread
+links the panel rendered, by a `data-tfcc-thread` attribute only the panel
+writes, so the "Hide the panel when I open a thread" setting can persist a
+collapse before the browser follows the link. The lookup (`threadLinkOf`)
+stops at the panel and never reads Torn's nodes. The script still initiates no
+navigation: the user's click does.
+
 ### The five endpoints
 
 | Endpoint | Access | Used for |
