@@ -153,3 +153,102 @@ test('inactive time and no thread never credit', () => {
 test('the dwell threshold is fifteen seconds', () => {
   assert.strictEqual(api.DWELL_MS, 15000);
 });
+
+// ---- catalogue -----------------------------------------------------------------
+
+const ZERO_FACTS = { switchedOn: 0, ownFoldersFilled: 0, subscribed: 0, unfiledSubscribed: 0 };
+
+test('the catalogue is exactly these fifteen badges, all visible', () => {
+  assert.deepStrictEqual(api.BADGES.map((b) => [b.id, b.name, b.tier, b.metric, b.target]), [
+    ['switched-on', 'Switched on', 'bronze', 'switchedOn', 1],
+    ['first-folder', 'First folder', 'bronze', 'ownFoldersFilled', 1],
+    ['caught-up', 'Caught up', 'bronze', 'checkinDays', 1],
+    ['reader', 'Reader', 'bronze', 'visits', 25],
+    ['bookworm', 'Bookworm', 'gold', 'visits', 500],
+    ['explorer', 'Explorer', 'bronze', 'forums', 3],
+    ['well-travelled', 'Well travelled', 'silver', 'forums', 7],
+    ['cartographer', 'Cartographer', 'gold', 'forums', 12],
+    ['tidy-desk', 'Tidy desk', 'silver', 'tidy', 1],
+    ['backlog-buster', 'Backlog buster', 'silver', 'bigBacklog', 20],
+    ['streak-3', 'Three days', 'bronze', 'best', 3],
+    ['streak-10', 'Ten days', 'silver', 'best', 10],
+    ['streak-25', 'Twenty-five days', 'silver', 'best', 25],
+    ['streak-100', 'Hundred days', 'gold', 'best', 100],
+    ['streak-500', 'Five hundred days', 'legend', 'best', 500],
+  ]);
+  for (const b of api.BADGES) {
+    assert.ok(b.rule && !/\bread\b/i.test(b.rule), b.id + ' has a rule and never says read');
+    assert.strictEqual(b.hidden, undefined, 'nothing is hidden');
+  }
+});
+
+test('every metric the catalogue names is computed', () => {
+  const m = api.badgeMetrics(api.freshBadges(), ZERO_FACTS);
+  for (const b of api.BADGES) assert.strictEqual(typeof m[b.metric], 'number', b.metric);
+});
+
+function recordWith(metric, value) {
+  const r = api.freshBadges();
+  const facts = Object.assign({}, ZERO_FACTS);
+  if (metric === 'visits') r.visits = value;
+  else if (metric === 'checkinDays') r.checkinDays = value;
+  else if (metric === 'bigBacklog') r.bigBacklog = value;
+  else if (metric === 'best') r.streak = { current: value, best: value, lastDay: 20000 };
+  else if (metric === 'forums') r.forums = Array.from({ length: value }, (_, i) => i + 1);
+  else if (metric === 'switchedOn') facts.switchedOn = value;
+  else if (metric === 'ownFoldersFilled') facts.ownFoldersFilled = value;
+  else if (metric === 'tidy') { facts.subscribed = 10; facts.unfiledSubscribed = value ? 0 : 1; }
+  return { r, facts };
+}
+
+test('each badge is earned at its target and not one below it', () => {
+  for (const b of api.BADGES) {
+    const below = recordWith(b.metric, b.target - 1);
+    assert.ok(!api.evaluateBadges(below.r, below.facts).newly.includes(b.id), b.id + ' below target');
+    const at = recordWith(b.metric, b.target);
+    assert.ok(api.evaluateBadges(at.r, at.facts).newly.includes(b.id), b.id + ' at target');
+  }
+});
+
+test('an earned badge stays earned when its condition stops holding', () => {
+  const r = api.freshBadges();
+  r.earned['tidy-desk'] = NOON;
+  const ev = api.evaluateBadges(r, ZERO_FACTS);
+  assert.ok(!ev.newly.includes('tidy-desk'));
+  assert.strictEqual(ev.progress.find((p) => p.id === 'tidy-desk').earned, NOON);
+});
+
+test('facts: a starter folder is not your own, and Tidy desk needs ten followed', () => {
+  const org = {
+    v: 1,
+    folders: [{ id: 'guides', name: 'Guides', order: 0, forumIds: [] }, { id: 'mine', name: 'Mine', order: 1, forumIds: [] }],
+    threads: { 1: Object.assign(api.normaliseThreadEntry(null), { folderId: 'guides' }) },
+    lastCatchUpAt: 0,
+  };
+  const feed = { subscribed: [{ id: '1' }], fetchedAt: NOON };
+  assert.strictEqual(api.badgeFacts({ organizer: org, feed, hasKey: true, keyRejected: 0 }).ownFoldersFilled, 0);
+  org.threads[2] = Object.assign(api.normaliseThreadEntry(null), { folderId: 'mine' });
+  const facts = api.badgeFacts({ organizer: org, feed, hasKey: true, keyRejected: 0 });
+  assert.deepStrictEqual(facts, { switchedOn: 1, ownFoldersFilled: 1, subscribed: 1, unfiledSubscribed: 0 });
+  assert.strictEqual(api.badgeMetrics(api.freshBadges(), facts).tidy, 0, 'one followed thread is under the floor of 10');
+  assert.strictEqual(api.badgeFacts({ organizer: org, feed, hasKey: true, keyRejected: 2 }).switchedOn, 0);
+  assert.strictEqual(api.badgeFacts({ organizer: org, feed: { subscribed: [], fetchedAt: 0 }, hasKey: true, keyRejected: 0 }).switchedOn, 0);
+});
+
+test('the next goal is the closest unearned badge', () => {
+  const r = api.freshBadges();
+  r.visits = 20;                                        // reader 20/25 = 0.8
+  r.forums = [1, 2];                                    // explorer 2/3 = 0.67
+  const next = api.nextBadge(api.evaluateBadges(r, ZERO_FACTS).progress);
+  assert.strictEqual(next.id, 'reader');
+});
+
+test('the toast names the badge, its tier, and the next rung of the same ladder', () => {
+  const r = api.freshBadges();
+  r.visits = 25;
+  assert.strictEqual(api.badgeToastText(['reader'], r, ZERO_FACTS),
+    'Badge earned: Reader (Bronze). 475 more focused visits to Bookworm.');
+  assert.strictEqual(api.badgeToastText(['streak-10', 'tidy-desk'], r, ZERO_FACTS),
+    '2 badges earned: Ten days, Tidy desk.');
+  assert.strictEqual(api.badgeToastText(['switched-on'], r, ZERO_FACTS), 'Badge earned: Switched on (Bronze).');
+});

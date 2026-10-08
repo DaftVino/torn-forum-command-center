@@ -2611,6 +2611,155 @@
     return out;
   }
 
+  var STARTER_FOLDER_IDS = Object.freeze(['guides', 'scripts', 'faction']);
+  var BADGE_GROUPS = Object.freeze([
+    Object.freeze({ id: 'setup', label: 'Setup' }),
+    Object.freeze({ id: 'presence', label: 'Presence' }),
+    Object.freeze({ id: 'attention', label: 'Attention' }),
+    Object.freeze({ id: 'care', label: 'Care' }),
+    Object.freeze({ id: 'streak', label: 'Streaks' }),
+  ]);
+  var BADGE_TIER_LABELS = Object.freeze({ bronze: 'Bronze', silver: 'Silver', gold: 'Gold', legend: 'Legendary' });
+  var BADGE_TIER_RANK = Object.freeze({ bronze: 1, silver: 2, gold: 3, legend: 4 });
+  var BADGE_UNITS = Object.freeze({ visits: 'focused visits', forums: 'forums', best: 'days' });
+
+  function badgeDef(id, name, group, tier, glyph, metric, target, rule) {
+    return Object.freeze({ id: id, group: group, tier: tier, name: name, glyph: glyph,
+      metric: metric, target: target, rule: rule });
+  }
+
+  // The whole catalogue. The evaluator, the progress bars and the Settings text
+  // all read this table, so a rule and its description cannot drift apart.
+  var BADGES = Object.freeze([
+    badgeDef('switched-on', 'Switched on', 'setup', 'bronze', 'plug', 'switchedOn', 1,
+      'Save an API key and finish a refresh.'),
+    badgeDef('first-folder', 'First folder', 'setup', 'bronze', 'folder', 'ownFoldersFilled', 1,
+      'Create a folder of your own and file a thread in it.'),
+    badgeDef('caught-up', 'Caught up', 'presence', 'bronze', 'check', 'checkinDays', 1,
+      'Finish a Torn day with Catch up empty.'),
+    badgeDef('reader', 'Reader', 'attention', 'bronze', 'book', 'visits', 25,
+      'Make 25 focused thread visits.'),
+    badgeDef('bookworm', 'Bookworm', 'attention', 'gold', 'book', 'visits', 500,
+      'Make 500 focused thread visits.'),
+    badgeDef('explorer', 'Explorer', 'attention', 'bronze', 'compass', 'forums', 3,
+      'Make focused visits in 3 different forums.'),
+    badgeDef('well-travelled', 'Well travelled', 'attention', 'silver', 'compass', 'forums', 7,
+      'Make focused visits in 7 different forums.'),
+    badgeDef('cartographer', 'Cartographer', 'attention', 'gold', 'compass', 'forums', 12,
+      'Make focused visits in 12 different forums.'),
+    badgeDef('tidy-desk', 'Tidy desk', 'care', 'silver', 'trays', 'tidy', 1,
+      'Follow at least 10 threads and leave none of them Unfiled.'),
+    badgeDef('backlog-buster', 'Backlog buster', 'care', 'silver', 'broom', 'bigBacklog', 20,
+      'Start a Torn day with 20 or more in Catch up, make focused visits to 10 of those threads, '
+        + 'and finish with Catch up empty.'),
+    badgeDef('streak-3', 'Three days', 'streak', 'bronze', 'flame', 'best', 3,
+      'Finish 3 Torn days in a row with Catch up empty.'),
+    badgeDef('streak-10', 'Ten days', 'streak', 'silver', 'flame', 'best', 10,
+      'Finish 10 Torn days in a row with Catch up empty.'),
+    badgeDef('streak-25', 'Twenty-five days', 'streak', 'silver', 'flame', 'best', 25,
+      'Finish 25 Torn days in a row with Catch up empty.'),
+    badgeDef('streak-100', 'Hundred days', 'streak', 'gold', 'flame', 'best', 100,
+      'Finish 100 Torn days in a row with Catch up empty.'),
+    badgeDef('streak-500', 'Five hundred days', 'streak', 'legend', 'flame', 'best', 500,
+      'Finish 500 Torn days in a row with Catch up empty.'),
+  ]);
+
+  function badgeById(id) {
+    for (var i = 0; i < BADGES.length; i += 1) if (BADGES[i].id === id) return BADGES[i];
+    return null;
+  }
+
+  function badgeFacts(input) {
+    var org = input.organizer;
+    var feed = input.feed;
+    var filed = {};
+    var ids = Object.keys(org.threads);
+    for (var i = 0; i < ids.length; i += 1) {
+      var fid = org.threads[ids[i]].folderId;
+      if (fid) filed[fid] = (filed[fid] || 0) + 1;
+    }
+    var own = 0;
+    for (var j = 0; j < org.folders.length; j += 1) {
+      var f = org.folders[j];
+      if (STARTER_FOLDER_IDS.indexOf(f.id) === -1 && filed[f.id] > 0) own += 1;
+    }
+    var subs = feed.subscribed || [];
+    var unfiled = 0;
+    for (var k = 0; k < subs.length; k += 1) {
+      var e = Object.prototype.hasOwnProperty.call(org.threads, String(subs[k].id)) ? org.threads[String(subs[k].id)] : null;
+      if (!e || !e.folderId) unfiled += 1;
+    }
+    return {
+      switchedOn: input.hasKey && !input.keyRejected && toInt(feed.fetchedAt, 0) > 0 ? 1 : 0,
+      ownFoldersFilled: own,
+      subscribed: subs.length,
+      unfiledSubscribed: unfiled,
+    };
+  }
+
+  function badgeMetrics(record, facts) {
+    return {
+      switchedOn: facts.switchedOn,
+      ownFoldersFilled: facts.ownFoldersFilled,
+      checkinDays: record.checkinDays,
+      visits: record.visits,
+      forums: record.forums.length,
+      tidy: facts.subscribed >= 10 && facts.unfiledSubscribed === 0 ? 1 : 0,
+      bigBacklog: record.bigBacklog,
+      best: record.streak.best,
+    };
+  }
+
+  function evaluateBadges(record, facts) {
+    var m = badgeMetrics(record, facts);
+    var newly = [];
+    var progress = [];
+    for (var i = 0; i < BADGES.length; i += 1) {
+      var b = BADGES[i];
+      var value = m[b.metric];
+      var earnedAt = Object.prototype.hasOwnProperty.call(record.earned, b.id) ? record.earned[b.id] : 0;
+      if (!earnedAt && value >= b.target) newly.push(b.id);
+      progress.push({ id: b.id, value: Math.min(value, b.target), target: b.target, earned: earnedAt });
+    }
+    return { newly: newly, progress: progress };
+  }
+
+  function nextBadge(progress) {
+    var best = null;
+    for (var i = 0; i < progress.length; i += 1) {
+      var p = progress[i];
+      if (p.earned || p.value >= p.target) continue;
+      if (!best || p.value / p.target > best.value / best.target) best = p;
+    }
+    return best;
+  }
+
+  function badgeToastText(ids, record, facts) {
+    var known = [];
+    for (var i = 0; i < ids.length; i += 1) {
+      var b = badgeById(ids[i]);
+      if (b) known.push(b);
+    }
+    if (!known.length) return '';
+    if (known.length > 1) {
+      return known.length + ' badges earned: ' + known.map(function (x) { return x.name; }).join(', ') + '.';
+    }
+    var one = known[0];
+    var text = 'Badge earned: ' + one.name + ' (' + BADGE_TIER_LABELS[one.tier] + ').';
+    var unit = Object.prototype.hasOwnProperty.call(BADGE_UNITS, one.metric) ? BADGE_UNITS[one.metric] : '';
+    if (unit) {
+      var value = badgeMetrics(record, facts)[one.metric];
+      for (var j = 0; j < BADGES.length; j += 1) {
+        var n = BADGES[j];
+        if (n.metric === one.metric && n.target > one.target) {
+          text += ' ' + Math.max(0, n.target - value) + ' more ' + unit + ' to ' + n.name + '.';
+          break;
+        }
+      }
+    }
+    return text;
+  }
+
   // ---- ENGINE END ------------------------------------------------------
 
   // -- storage runtime -----------------------------------------------------
