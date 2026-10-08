@@ -4251,7 +4251,12 @@
         mineStarted: state.mine.threads.filter(function (t) { return t.started; }).length,
         minePosted: state.mine.threads.filter(function (t) { return t.posted; }).length,
         mineUnchecked: state.mine.threads.filter(function (t) { return !t.totalKnown; }).length,
+        // Issue #4: rows Torn cannot answer (too many new) apart from rows
+        // simply not reached yet. Counts only, never an author.
+        authorUnchecked: state.rows.filter(function (r) { return r.authorState === 'unchecked'; }).length,
+        authorTooMany: state.rows.filter(function (r) { return r.authorReason === 'too-many'; }).length,
       },
+      authorOnly: state.settings.authorOnly === true,
       lastFetchedAt: state.feed.fetchedAt,
       mineFetchedAt: state.mine.fetchedAt,
       // Reason only: a My posts detail can quote Torn's free text.
@@ -4292,6 +4297,8 @@
       'my posts unchecked: ' + c.counts.mineUnchecked,
       'my posts fetched: ' + (c.mineFetchedAt ? 'set' : 'never'),
       'my posts error: ' + (c.mineError ? safeString(c.mineError, 20) : 'none'),
+      'author only: ' + (c.authorOnly ? 'on' : 'off'),
+      'author unchecked: ' + c.counts.authorUnchecked + ' (too many new: ' + c.counts.authorTooMany + ')',
     ];
     return lines.join('\n');
   }
