@@ -437,3 +437,57 @@ test('a visit recorded in one tab survives a write from another tab', () => {
   assert.deepStrictEqual(rec.today.visitIds, ['7', '8']);
   assert.deepStrictEqual(rec.forums, [61, 4]);
 });
+
+// ---- reconciled with #4 (author-only): unknown is not clear (panel ruling 9) ----
+
+function authorOnlyEnv(entry) {
+  const env = loadUserscript({ location: forums(), now: NOW, gmStore: [['tfcc:key', KEY]] });
+  const api = env.exports;
+  api.state.settings.authorOnly = true;
+  api.state.organizer.threads['9'] = api.normaliseThreadEntry(Object.assign({ lastVisitedAt: NOW - 1000 }, entry || {}));
+  // One subscribed row with Torn-reported new posts. With no author check yet,
+  // #4 lists it under "Not yet checked", not in the main Catch up list.
+  api.state.feed.subscribed = [api.normaliseSubscribedRow({ id: 9, forum_id: 61, title: 'T',
+    author: { id: 3, username: 'a', karma: 1 }, posts: { new: 2, total: 50 } })];
+  api.state.feed.fetchedAt = NOW;
+  api.recompute(NOW);
+  return env;
+}
+
+test('an unchecked-only Catch up does not credit a check-in', () => {
+  const env = authorOnlyEnv();
+  const api = env.exports;
+  assert.strictEqual(api.catchUpRowsNow().length, 0, 'the main list is empty');
+  assert.strictEqual(api.buildPanelModel(NOW).catchUpUnchecked.length, 1, 'the row waits in Not yet checked');
+  const r = api.recordBadgeEvent({ type: 'refreshed' }, NOW);
+  assert.strictEqual(r.record.today.firstLook, 1, 'the unchecked row is a blocker');
+  assert.deepStrictEqual(r.record.today.backlogIds, ['9']);
+  assert.strictEqual(r.record.checkinDays, 0, 'no day is credited while a row is unchecked');
+});
+
+test('after a refresh checks them, a same-day check-in credits', () => {
+  const env = authorOnlyEnv();
+  const api = env.exports;
+  assert.strictEqual(api.recordBadgeEvent({ type: 'refreshed' }, NOW).record.checkinDays, 0);
+  // A later ordinary refresh the same Torn day checks the thread: no author post.
+  Object.assign(api.state.organizer.threads['9'], { authorCheckedAt: NOW + 30000, authorCheckTotal: 50,
+    authorCheckSince: NOW - 1000, authorNewCount: 0, authorCheckComplete: true });
+  api.recompute(NOW + 60000);
+  assert.strictEqual(api.buildPanelModel(NOW + 60000).catchUpUnchecked.length, 0, 'the row is now known');
+  const r = api.recordBadgeEvent({ type: 'catchup-changed' }, NOW + 60000);
+  assert.strictEqual(r.record.checkinDays, 1);
+  assert.strictEqual(r.record.streak.lastDay, 20734, 'credited to the same Torn day, never an earlier one');
+});
+
+test('with author-only off, the unchecked group never blocks', () => {
+  const env = authorOnlyEnv();
+  const api = env.exports;
+  api.state.settings.authorOnly = false;
+  api.recompute(NOW);
+  // In any-poster mode the same row is simply unread, so it blocks as Catch up.
+  assert.strictEqual(api.catchUpRowsNow().length, 1);
+  assert.strictEqual(api.buildPanelModel(NOW).catchUpUnchecked.length, 0);
+  assert.strictEqual(api.recordBadgeEvent({ type: 'refreshed' }, NOW).record.today.firstLook, 1,
+    'counted once, as Catch up, not twice');
+});
+
