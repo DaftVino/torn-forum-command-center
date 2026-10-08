@@ -3438,7 +3438,17 @@
     out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '"'
       + threadLinkAttr(row.id) + '>'
       + escapeHtml(row.title) + '</a></span>');
-    if (row.unread > 0) {
+    // Author-only mode (issue #4) never shows Torn's any-poster count, and an
+    // unknown is named, never left blank.
+    var amode = row.authorState || 'off';
+    if (amode === 'author' || amode === 'author-atleast') {
+      out.push('<span class="tfcc-unread">' + formatCount(row.authorNew) + (amode === 'author-atleast' ? '+' : '')
+        + ' new by author</span>');
+    } else if (amode === 'unchecked') {
+      out.push('<span class="tfcc-note tfcc-unchecked" title="'
+        + escapeHtml(AUTHOR_REASON_TEXT[row.authorReason] || AUTHOR_REASON_TEXT.never)
+        + '">author: not checked' + (row.authorReason === 'too-many' ? ' (too many new)' : '') + '</span>');
+    } else if (amode === 'off' && row.unread > 0) {
       if (row.unreadSource === 'local') {
         // A count this script made, never passed off as Torn's.
         out.push('<span class="tfcc-unread" title="Counted on this device since you last marked it read or posted. '
@@ -3615,8 +3625,21 @@
     out.push('</div>');
     out.push('<p class="tfcc-note">Marking read here hides a thread from this list. '
       + 'It cannot clear Torn\'s own new-post counter, which only clears when you open the thread.</p>');
+    // Author-only mode (issue #4): threads not yet checked are listed apart,
+    // so an unknown never reads as caught up.
+    var unchecked = '';
+    var pending = model.catchUpUnchecked || [];
+    if (pending.length) {
+      var u = ['<div class="tfcc-section"><h4>Not yet checked for author posts (' + pending.length
+        + ')</h4><div class="tfcc-rows">'];
+      for (var p = 0; p < pending.length; p += 1) u.push(renderRow(pending[p], model));
+      u.push('</div></div>');
+      unchecked = u.join('');
+    }
     if (!model.catchUp.length) {
-      out.push('<div class="tfcc-empty">Nothing new. You are caught up.</div>');
+      out.push('<div class="tfcc-empty">' + (model.authorOnly && pending.length
+        ? 'No author updates in the threads checked.' : 'Nothing new. You are caught up.') + '</div>');
+      out.push(unchecked);
       return out.join('');
     }
     // Cap the flat, activity-sorted list first, then group what is shown.
@@ -3637,6 +3660,7 @@
       out.push('</div></div>');
     }
     out.push(renderCapLine(model.capped.catchup, 'catchup'));
+    out.push(unchecked);
     return out.join('');
   }
 
@@ -3808,6 +3832,20 @@
       + '; at the largest setting of ' + MAX_ENRICH_BUDGET + ', ' + (3 + MAX_ENRICH_BUDGET) + ' and '
       + (2 + MAX_ENRICH_BUDGET) + '. '
       + 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.</p>');
+    out.push('<div class="tfcc-kv"><label for="tfcc-author">Only flag new posts by the thread author</label>'
+      + '<input id="tfcc-author" type="checkbox" data-act="author-only"'
+      + (model.settings.authorOnly ? ' checked' : '') + '></div>');
+    // Shown whether the setting is on or off, so the limits are read first.
+    out.push('<p class="tfcc-note">With this on, a thread in Threads and Catch up counts as new only when its '
+      + 'author has posted since you last looked. Each activity lookup then reads the thread\'s posts since '
+      + 'you last looked, ' + POSTS_PER_PAGE + ' at a time, newest first, instead of its last-post time. '
+      + 'Each page is one lookup from the same allowance, so the cost does not change: with your setting of '
+      + model.settings.enrichBudget + ', a Threads refresh is at most ' + (3 + model.settings.enrichBudget)
+      + ' requests a refresh, on or off. A thread gets at most ' + AUTHOR_MAX_PAGES + ' pages, and only once '
+      + 'every other thread has had its first. With more new posts than that, a count shows as a minimum '
+      + '(N+), or as "not checked (too many new)" when none of the posts read is by the author. Threads not '
+      + 'checked yet show "not checked". My posts ignores this setting. Posts from before you started using '
+      + 'this script are not flagged, and edits are not detected.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Appearance</h4>');
@@ -3913,7 +3951,11 @@
     out.push('<div class="tfcc-head">');
     out.push('<span class="tfcc-title">Forum Command Center</span>');
     if (model.totals.unread > 0) {
-      out.push('<span class="tfcc-badge">' + formatCount(model.totals.unread) + ' new</span>');
+      out.push('<span class="tfcc-badge">' + formatCount(model.totals.unread)
+        + (model.authorOnly ? ' new by author' : ' new') + '</span>');
+    }
+    if (model.authorOnly && model.totals.unchecked > 0) {
+      out.push('<span class="tfcc-note">' + model.totals.unchecked + ' not checked</span>');
     }
     out.push('<span class="tfcc-note">' + model.totals.subscribed + ' subscribed</span>');
     out.push(btn('refresh', model.refreshing ? 'Refreshing...' : 'Refresh'));
@@ -4533,6 +4575,10 @@
         if (act === 'hide-torn-box') {
           state.settings.hideTornBox = !!el.checked;
           persist('settings'); applyHideTornBox(doc); redraw(); return;
+        }
+        if (act === 'author-only') {
+          state.settings.authorOnly = !!el.checked;
+          persist('settings'); recompute(now); redraw(); return;
         }
         if (act === 'autosave') {
           state.settings.autosaveDrafts = !!el.checked;

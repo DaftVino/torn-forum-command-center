@@ -343,3 +343,26 @@ test('Mark all read in author mode leaves unchecked threads unmarked', () => {
   assert.strictEqual(api.state.organizer.threads['1'].lastSeenTotal, 0, 'an unchecked thread must keep its unseen author posts');
   assert.strictEqual(api.state.organizer.threads['2'].lastSeenTotal, 9);
 });
+
+test('the author-only toggle saves, survives a reload, and turning it off restores the count', () => {
+  const env = loadUserscript({ location: forums(), now: NOW });
+  const api = env.exports;
+  api.state.feed.subscribed = [api.normaliseSubscribedRow({
+    id: 5, forum_id: 61, title: 'T', author: { id: 1, username: 'a', karma: 0 }, posts: { new: 2, total: 7 },
+  })];
+  api.recompute(NOW);
+  const handlers = api.makeHandlers(env.doc, env.win);
+  const box = (checked) => ({ getAttribute: () => null, checked, value: checked ? 'on' : '' });
+
+  handlers.onChange('author-only', box(true));
+  assert.strictEqual(JSON.parse(env.gmStore.get('tfcc:settings')).authorOnly, true);
+  assert.strictEqual(api.state.rows[0].authorState, 'unchecked', 'the rows are recomputed, not only redrawn');
+  assert.strictEqual(api.state.rows[0].unread, 0);
+
+  const again = loadUserscript({ location: forums(), now: NOW,
+    gmStore: [['tfcc:settings', env.gmStore.get('tfcc:settings')]] });
+  assert.strictEqual(again.exports.state.settings.authorOnly, true);
+
+  handlers.onChange('author-only', box(false));
+  assert.strictEqual(api.state.rows[0].unread, 2, 'off means Torn\'s count again');
+});
