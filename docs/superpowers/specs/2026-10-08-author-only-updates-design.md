@@ -54,7 +54,7 @@ are from that commit; the code map may lag).
   `is_locked`, `is_sticky` and `title`, and nothing about the poster. So
   3 + 10 = 13 at most by default.
 - **`fetchThread` is not enrichment.** It is the inner page loop of
-  `runDeepSearch` (l.2042). It reads `forum/{id}/posts` with
+  `runDeepSearch` (`runDeepSearch` l.2025, `fetchThread` l.2042). It reads `forum/{id}/posts` with
   `offset = n * POSTS_PER_PAGE` (20) and keeps `id`, `author.id`,
   `author.username`, `created_time` and `content`. It is the only existing
   reader of post authorship, and it runs only on an explicit deep search.
@@ -185,6 +185,15 @@ from what came back, whatever the order:
   filter cannot hide an unknown as if it were known-empty. An archived
   `unchecked` row stays hidden: Archive is an explicit hide, and the row comes
   back once a check finds an author post.
+- **`is:unread`** matches `unchecked` rows as well as rows with a count, for the
+  same reason as Unread only: a search must not turn an unknown into a known
+  empty.
+- **Mark all read** skips `unchecked` rows in author mode. Marking one moves
+  both the read point and `lastSeenTotal` past author posts the user was never
+  told about. A single-row Mark read is the user's explicit act and stays as is.
+- **Catch up empty state**: when the author list is empty but the `unchecked`
+  group is not, the text reads "No author updates in the threads checked."
+  rather than "You are caught up."
 - **Header badge**: `N new by author`, plus `M not checked` when M > 0.
 
 With the setting off, every path behaves exactly as today. Tests pin the
@@ -221,11 +230,12 @@ rows for the cap. The nav count does not include it.
   "A refresh makes two requests, plus one a day for forum names. Each activity
   lookup adds one more (at most N per refresh, so at most N+3 in total), and
   only runs for a thread that has unread posts and no recent check. The script
-  keeps itself under 40 requests a minute regardless." With author-only on, it
-  adds: "Each lookup reads one page of the thread's newest posts instead of its
+  keeps itself under 40 requests a minute regardless." A second note is always
+  shown, so the limits are visible before the setting is turned on: "Author-only
+  mode reads one page of the thread's newest posts per lookup instead of its
   last-post time, so the cost is the same. Threads not checked yet show 'not
-  checked'. Posts from before you started using this script, and edits, are
-  not detected."
+  checked'. Posts from before you started using this script are not flagged, and
+  edits are not detected."
 
 ### Persisted state and migration
 

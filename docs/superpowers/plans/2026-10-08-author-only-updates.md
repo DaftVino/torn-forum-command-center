@@ -101,15 +101,18 @@ test('a v0.1.0 organizer entry with no author fields loads unchanged otherwise',
 });
 
 test('an export never carries author-check cache fields', () => {
+  const env = loadUserscript();
+  const api = env.exports;
   const o = api.freshOrganizer(0);
   o.threads['7'] = api.normaliseThreadEntry({ pinned: true, authorNewCount: 3, authorCheckedAt: 9 });
-  const text = api.encodeState(o, api.freshDrafts(), (s) => Buffer.from(s, 'binary').toString('base64'));
-  const json = Buffer.from(text.slice(api.EXPORT_PREFIX.length), 'base64').toString('binary');
+  const text = api.encodeState(o, api.freshDrafts(), env.sandbox.btoa);
+  const json = api.b64DecodeUtf8(text.slice(api.EXPORT_PREFIX.length), env.sandbox.atob);
+  assert.ok(json.indexOf('"pinned":true') !== -1, 'the thread must be in the export, or this proves nothing');
   assert.ok(!/author(Check|NewCount|LatestAt)/.test(json), json);
 });
 ```
 
-(Before writing the third test, check how `tests/share.test.js` calls `encodeState`, and reuse its btoa helper if one exists.)
+(The third test builds its own `env` because it needs `env.sandbox.btoa`. Its first assertion makes sure the thread was exported at all, so the absence check cannot pass on an empty export.)
 
 - [ ] **Step 2: Run them and confirm the first fails** (`node --test tests/storage.test.js`). The export test may already pass. That is fine: it guards the allow-list in `encodeState` against future drift.
 - [ ] **Step 3: Implement.** Add the seven defaults to the `e` literal in `normaliseThreadEntry`, then:
@@ -132,7 +135,7 @@ Add this near the other frozen constants (~l.98): `var AUTHOR_CHECK_REASONS = Ob
 
 **Files:**
 - Modify: the engine, next to `unreadFor` (~l.708, "merge, unread, sort")
-- Modify: `tests/load-userscript.js` `EXPORT_NAMES`. Add `'summariseAuthorPosts', 'authorSinceFor', 'authorStateFor', 'catchUpUnchecked', 'checkAuthorPosts', 'AUTHOR_REASON_TEXT'` to the "engine: merge, unread, sort" line. A name that does not exist yet fails the harness, so add each name in the task that creates it.
+- Modify: `tests/load-userscript.js` `EXPORT_NAMES`. Add `'summariseAuthorPosts', 'authorSinceFor', 'authorStateFor', 'catchUpUnchecked', 'checkAuthorPosts', 'AUTHOR_REASON_TEXT'` to the "engine: merge, unread, sort" line. The harness guards each name with `typeof`, so a name that does not exist yet is `undefined` and its test fails with "not a function". Add each name in the task that creates it.
 - Create: `tests/author.test.js`
 
 **Interfaces:**
@@ -404,6 +407,13 @@ test('setting on: an unchecked row is not an update, but is listed as unchecked'
   assert.strictEqual(api.catchUpUnchecked([r]).length, 1);
 });
 
+test('setting on: is:unread keeps an unchecked row, setting off it does not', () => {
+  const q = api.parseQuery('is:unread');
+  assert.strictEqual(api.matchThread(merged(true, {}), q), true, 'an unknown must not be filtered out as known-empty');
+  assert.strictEqual(api.matchThread(merged(true, { authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 0, authorCheckComplete: true }), q), false);
+  assert.strictEqual(api.matchThread(merged(false, {}), q), true);
+});
+
 test('catchUpList with no mode behaves exactly as before', () => {
   const r = merged(false, {});
   assert.deepStrictEqual(api.catchUpList([r], 0).map((x) => x.id), api.catchUpList([r], 0, 'any').map((x) => x.id));
@@ -427,7 +437,30 @@ test('author mode: Unread only keeps unchecked rows visible', () => {
 });
 ```
 
-- [ ] **Step 3: Run them and confirm they fail** (`node --test tests/author.test.js tests/panel.test.js`).
+  In `tests/handlers.test.js`, add (model it on the `hide-torn-box` test: `makeHandlers(env.doc, env.win)`, `{ getAttribute: () => null }` element stubs):
+
+```js
+test('Mark all read in author mode leaves unchecked threads unmarked', () => {
+  const env = loadUserscript({ location: forums(), now: NOW });
+  const api = env.exports;
+  api.state.settings.authorOnly = true;
+  api.state.organizer.threads['1'] = api.normaliseThreadEntry({ lastVisitedAt: NOW - 1000 });
+  api.state.feed.subscribed = [1, 2].map((id) => api.normaliseSubscribedRow({
+    id, forum_id: 61, title: 'T' + id, author: { id: 3, username: 'a', karma: 1 }, posts: { new: 2, total: 9 },
+  }));
+  api.state.organizer.threads['2'] = api.normaliseThreadEntry({
+    lastVisitedAt: NOW - 1000, authorCheckedAt: 1, authorCheckTotal: 9, authorCheckSince: NOW - 1000,
+    authorNewCount: 0, authorCheckComplete: true });
+  api.recompute(NOW);
+  api.makeHandlers(env.doc, env.win).onAction('markall', { getAttribute: () => null });
+  assert.strictEqual(api.state.organizer.threads['1'].lastSeenTotal, 0, 'an unchecked thread must keep its unseen author posts');
+  assert.strictEqual(api.state.organizer.threads['2'].lastSeenTotal, 9);
+});
+```
+
+  (`onAction(act, el)` is the click handler, defined just above `onChange` (~l.3360). The assertion pair is what matters: thread 1 is unchecked and stays unmarked, thread 2 is known-empty and is marked.)
+
+- [ ] **Step 3: Run them and confirm they fail** (`node --test tests/author.test.js tests/panel.test.js tests/handlers.test.js`).
 - [ ] **Step 4: Implement.**
   - In `mergeThreads`, after `var ttl = ...` add `var authorOnly = !!(input && input.authorOnly);`. After `var u = unreadFor(api, entry);` add `var au = authorOnly ? authorStateFor(api, entry, u) : null;`. In the `rows.push` literal, replace `unread: u.unread,` with these lines:
 
@@ -467,6 +500,8 @@ test('author mode: Unread only keeps unchecked rows visible', () => {
     - Count `totalUnchecked` in the same loop as `totalUnread` (`if (rows[i].authorState === 'unchecked') totalUnchecked += 1;`) and add `unchecked: totalUnchecked` to `totals`.
     - Change the catch-up line to `catchUp: sortThreads(catchUpList(rows, state.organizer.lastCatchUpAt, s.authorOnly ? 'author' : 'any'), 'activity'),`
     - Add `catchUpUnchecked: s.authorOnly ? sortThreads(catchUpUnchecked(rows), 'activity') : [],`, `authorOnly: s.authorOnly === true,`, and `authorOnly: s.authorOnly,` inside `settings`.
+  - In `matchThread` (~l.965), change the `is:unread` line to `if (v === 'unread') return row.unread > 0 || row.authorState === 'unchecked';`. For rows with the setting off, `authorState` is `'off'`, so nothing changes.
+  - In the `markall` handler (~l.3397), skip unknown rows in author mode. Add as the first line inside the `for` loop: `if (state.settings.authorOnly === true && state.rows[i].authorState === 'unchecked') continue;`.
   - Add the toggle handler near `hide-torn-box` (~l.3530):
 
 ```js
@@ -476,7 +511,7 @@ test('author mode: Unread only keeps unchecked rows visible', () => {
         }
 ```
 
-    (Check that `now` is in scope in `onChange`. If it is not, use `Date.now()`, as that handler block already does.)
+    (`now` is in scope: `onChange` declares `var now = Date.now();` on its first line.)
 - [ ] **Step 5: Run `npm test`.** Expected: PASS, and every pre-existing panel and merge test unchanged.
 - [ ] **Step 6: Commit** with `git commit -am "feat: author state drives unread, catch up and Unread only (#4)"`
 
@@ -519,6 +554,8 @@ test('catch up lists unchecked threads under their own heading', () => {
   env.exports.state.settings.view = 'catchup';
   const html = env.exports.renderCatchUpView(env.exports.buildPanelModel(NOW));
   assert.match(html, /Not yet checked for author posts \(1\)/);
+  assert.doesNotMatch(html, /You are caught up/, 'an unchecked thread means we cannot claim that');
+  assert.match(html, /No author updates in the threads checked/);
 });
 
 test('settings states the author-only option and the real request cost', () => {
@@ -527,24 +564,42 @@ test('settings states the author-only option and the real request cost', () => {
   assert.match(html, /Only flag new posts by the thread author/);
   assert.match(html, /data-act="author-only"/);
   assert.match(html, /at most 13 requests/);
-  assert.match(html, /edits are not detected/i);
+  assert.match(html, /edits are not detected/i, 'the limit is shown before the setting is turned on');
+  // The figure must be computed from the user's budget, not hard-coded. 13
+  // alone would also pass with a constant string, so use a different budget.
+  env.exports.state.settings.enrichBudget = 4;
+  assert.match(env.exports.renderSettingsView(env.exports.buildPanelModel(NOW)), /at most 7 requests a refresh/);
 });
 ```
 
   In `tests/handlers.test.js`, model the test on the existing `hide-torn-box` reload test (~l.219-238):
 
 ```js
-test('the author-only toggle saves and survives a reload', () => {
-  const env = loadUserscript({ location: FORUMS_LOCATION });
-  const handlers = env.exports.makeHandlers(/* same args as the hide-torn-box test */);
-  handlers.onChange('author-only', { getAttribute: () => null, checked: true, value: 'on' });
+test('the author-only toggle saves, survives a reload, and turning it off restores the count', () => {
+  const env = loadUserscript({ location: forums(), now: NOW });
+  const api = env.exports;
+  api.state.feed.subscribed = [api.normaliseSubscribedRow({
+    id: 5, forum_id: 61, title: 'T', author: { id: 1, username: 'a', karma: 0 }, posts: { new: 2, total: 7 },
+  })];
+  api.recompute(NOW);
+  const handlers = api.makeHandlers(env.doc, env.win);
+  const box = (checked) => ({ getAttribute: () => null, checked, value: checked ? 'on' : '' });
+
+  handlers.onChange('author-only', box(true));
   assert.strictEqual(JSON.parse(env.gmStore.get('tfcc:settings')).authorOnly, true);
-  const again = loadUserscript({ location: FORUMS_LOCATION, gmStore: [['tfcc:settings', JSON.stringify({ v: 1, authorOnly: true })]] });
+  assert.strictEqual(api.state.rows[0].authorState, 'unchecked', 'the rows are recomputed, not only redrawn');
+  assert.strictEqual(api.state.rows[0].unread, 0);
+
+  const again = loadUserscript({ location: forums(), now: NOW,
+    gmStore: [['tfcc:settings', env.gmStore.get('tfcc:settings')]] });
   assert.strictEqual(again.exports.state.settings.authorOnly, true);
+
+  handlers.onChange('author-only', box(false));
+  assert.strictEqual(api.state.rows[0].unread, 2, 'off means Torn\'s count again');
 });
 ```
 
-  (Copy the `makeHandlers` arguments and the GM-store accessor from the neighbouring test exactly. The names above are placeholders for that file's own helpers.)
+  (`forums()` and `NOW` are defined at the top of `tests/handlers.test.js`.)
 - [ ] **Step 2: Run them and confirm they fail.**
 - [ ] **Step 3: Implement.**
   - `renderRow`: replace the `if (row.unread > 0) {...}` block with:
@@ -564,7 +619,7 @@ test('the author-only toggle saves and survives a reload', () => {
 ```
 
   - `panelHtml` header: make the badge text `formatCount(model.totals.unread) + (model.authorOnly ? ' new by author' : ' new')`, then add `if (model.authorOnly && model.totals.unchecked > 0) out.push('<span class="tfcc-note">' + model.totals.unchecked + ' not checked</span>');`
-  - `renderCatchUpView`: build `var unchecked = '';` from `model.catchUpUnchecked` before the empty-state check, as a section with heading `'Not yet checked for author posts (' + n + ')'` whose rows are `renderRow(...)`. Append it before **both** `return out.join('')` statements, so it shows even when the author list is empty.
+  - `renderCatchUpView`: build `var unchecked = '';` from `model.catchUpUnchecked` before the empty-state check, as a section with heading `'Not yet checked for author posts (' + n + ')'` whose rows are `renderRow(...)`. Append it before **both** `return out.join('')` statements, so it shows even when the author list is empty. When `model.authorOnly` is on and `model.catchUp` is empty, the empty-state text is `'No author updates in the threads checked.'` if the unchecked list is not empty, and `'Nothing new. You are caught up.'` otherwise. The old text claims more than we know while any thread is unchecked.
   - `renderSettingsView`, in the Refreshing section: replace the cost note (l.2894-2896) with the copy below, and add the checkbox.
 
 ```js
@@ -575,16 +630,14 @@ test('the author-only toggle saves and survives a reload', () => {
       + 'lookup adds one more, and only runs for a thread that has unread posts and no recent check: '
       + 'at most ' + (3 + model.settings.enrichBudget) + ' requests a refresh with your setting, at most 13 '
       + 'requests by default. The script keeps itself under 40 requests a minute regardless.</p>');
-    if (model.settings.authorOnly) {
-      out.push('<p class="tfcc-note">With author-only on, each lookup reads one page of the thread\'s newest '
-        + 'posts instead of its last-post time, so the cost is the same. Threads not checked yet show '
-        + '"not checked". Posts from before you started using this script are not flagged, and edits are '
-        + 'not detected.</p>');
-    }
+    out.push('<p class="tfcc-note">Author-only mode reads one page of the thread\'s newest posts per lookup '
+      + 'instead of its last-post time, so the cost is the same. Threads not checked yet show '
+      + '"not checked". Posts from before you started using this script are not flagged, and '
+      + 'edits are not detected.</p>');
 ```
 
-  The test above renders with the setting off, but it asserts the edits sentence. Either render that sentence unconditionally (preferred: the user should know the limit before turning the setting on) or set `authorOnly` in the test. Pick the unconditional version and move "edits are not detected" into the always-shown text: "Author-only mode cannot detect edits."
-- [ ] **Step 4: Run `npm test` and `node tests/contrast-audit.mjs`.** The new `.tfcc-unchecked` reuses `.tfcc-note` colours. If the audit lists classes, add it there. Expected: PASS.
+  The second note is always shown, not only when the setting is on, so the user reads the limits before turning it on. The settings test above renders with the setting off and relies on that.
+- [ ] **Step 4: Run `npm test`.** Expected: PASS. `.tfcc-unchecked` reuses the `.tfcc-note` colours, so no new colour is introduced. `tests/contrast-audit.mjs` needs the gstack browse binary, which this repo does not use (CLAUDE.md "Off"). If it is not available it exits with a message: record that in the PR, and leave the contrast check to the QA checklist.
 - [ ] **Step 5: Commit** with `git commit -am "feat: author-only badges, catch-up group and settings copy (#4)"`
 
 ### Task 7: The runtime lookup: `checkAuthorPosts` and target selection in `refreshAll`
@@ -738,7 +791,26 @@ test('a failed posts lookup leaves the row unchecked and the refresh ok', async 
 - Modify: `gatherDebugContext` (~l.3153 `counts`), `buildDebugReport` (~l.3172)
 - Test: `tests/debug-report.test.js`
 
-- [ ] **Step 1: Write the failing test.** Following that file's pattern, seed one row with `authorCheckReason: 'filter-ignored'` and `authorOnly: true`. Assert that the report contains `author only: on` and `author unchecked: 1 (filter-ignored 1)`, and that it still does **not** contain the key or any author name.
+- [ ] **Step 1: Write the failing test** (append to `tests/debug-report.test.js`, reusing its `loaded()` helper, which seeds thread 1 with author `SecretPlanner`, `posts.new` 2 and `posts.total` 9):
+
+```js
+test('the report shows author-check health without leaking who the author is', () => {
+  const env = loaded();
+  const api = env.exports;
+  api.state.settings.authorOnly = true;
+  Object.assign(api.state.organizer.threads['1'], {
+    lastVisitedAt: NOW - 1000, authorCheckedAt: 1, authorCheckTotal: 9, authorCheckSince: NOW - 1000,
+    authorCheckComplete: true, authorCheckReason: 'filter-ignored',
+  });
+  api.recompute(NOW);
+  const report = api.buildDebugReport();
+  assert.match(report, /author only: on/);
+  assert.match(report, /author unchecked: 1 \(filter-ignored 1\)/);
+  assert.strictEqual(report.indexOf('SecretPlanner'), -1);
+  assert.strictEqual(report.indexOf('abcdefghij123456'), -1, 'the key must never appear');
+});
+```
+
 - [ ] **Step 2: Run it and confirm it fails.**
 - [ ] **Step 3: Implement.** In `counts`, add `authorUnchecked` and `authorFilterIgnored`, counted from `state.rows` (`authorState === 'unchecked'`, `authorReason === 'filter-ignored'`), and add `authorOnly: state.settings.authorOnly === true` to the context. In the lines, add `'author only: ' + (c.authorOnly ? 'on' : 'off')` and `'author unchecked: ' + c.counts.authorUnchecked + ' (filter-ignored ' + c.counts.authorFilterIgnored + ')'`. This makes open question 1 (does Torn honour `from`) answerable from one pasted report.
 - [ ] **Step 4: Run `npm test`.** Expected: PASS.
@@ -785,7 +857,7 @@ test('a failed posts lookup leaves the row unchecked and the refresh ok', async 
   },
 ```
 
-- [ ] **Step 2: Run it** with `node tests/mutation-check.mjs > "$TMPDIR/mutation.txt" 2>&1; echo exit=$?`, then read the file with the Read tool. **Do not pipe into `head`.** Expected: every mutation, old and new, reported as caught, and exit 0. If one of them reports "replacement did not apply", the anchor string drifted. Fix the string, not the test.
+- [ ] **Step 2: Run it** with `node tests/mutation-check.mjs > "${TMPDIR:-/tmp}/tfcc-mutation.txt" 2>&1; echo exit=$?`, then read the file with the Read tool. **Do not pipe into `head`.** Expected: every mutation, old and new, reported as caught, and exit 0. If one of them reports "replacement did not apply", the anchor string drifted. Fix the string, not the test.
 - [ ] **Step 3: Confirm the source is pristine** with `git diff --stat torn-forum-command-center.user.js`. Expected: only your intended changes. If anything else changed, the check died mid-run. Restore from `.mutation-backup` per the script header.
 - [ ] **Step 4: Commit** with `git commit -am "test: mutation-check guards for author-only mode (#4)"`
 
@@ -809,7 +881,7 @@ test('a failed posts lookup leaves the row unchecked and the refresh ok', async 
 ```
 npm test
 npm run test:syntax
-node tests/mutation-check.mjs > "$TMPDIR/mutation.txt" 2>&1
+node tests/mutation-check.mjs > "${TMPDIR:-/tmp}/tfcc-mutation.txt" 2>&1
 ```
 
   Read the mutation file with the Read tool. Expected: all pass, all mutations caught.
