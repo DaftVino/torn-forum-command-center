@@ -228,6 +228,32 @@ Owner checks for the live API (spec "Prerequisite"; all block release):
 - [ ] If possible: a deleted thread, and a thread in a faction or private
       forum, in My posts (spec open questions 5 and 7; not probed).
 
+### Author-only (#4)
+
+- [ ] Turn on **Only flag new posts by the thread author** and confirm the
+      counts read "by author" (row and header).
+- [ ] Follow a busy thread where only others post: no badge, and nothing in
+      Catch up.
+- [ ] Have the author post (or find a thread where they did): "N new by
+      author", and the thread is in Catch up.
+- [ ] With Activity lookups set to 1, the other threads show
+      "author: not checked", and Catch up lists them under "Not yet checked
+      for author posts".
+- [ ] On a thread with 21 to about 55 posts since the last visit, and Activity
+      lookups above the number of unread threads: an exact "N new by author"
+      or no badge (the walk reached the marker).
+- [ ] On a thread with far more than 58 new posts: "N+ new by author" or
+      "author: not checked (too many new)", never a bare count or nothing.
+      Then open the thread on Torn and confirm the badge clears.
+- [ ] Paste the debug report and note the request count of one refresh in the
+      key log: it must not exceed 3 + Activity lookups.
+- [ ] Open a thread, refresh at once: the last post you saw is not flagged as
+      new (the inclusive `from` boundary).
+- [ ] My posts shows the same counts with the setting on and off.
+- [ ] Turn it off: Torn's counts come back at once.
+- [ ] Record any deleted author post seen during QA (spec open question 6,
+      deleted posts in `posts.total`, still open).
+
 ## Desktop regression
 
 Tampermonkey, on the same build.

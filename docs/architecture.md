@@ -50,7 +50,7 @@ navigation: the user's click does.
 | `user/forumfeed` | own selection | Recency and catch-up |
 | `forum/categories` | Public | Real forum names, fetched at most once a day |
 | `forum/{id}/thread` | Public | `last_post_time` enrichment, budgeted |
-| `forum/{id}/posts` | Public | Deep search only, explicit and bounded |
+| `forum/{id}/posts` | Public | Deep search, and author-only lookups (budgeted, replacing `thread`) |
 | `user/forumthreads` | Public | My posts: threads the key owner started, fetched only for that view |
 | `user/forumposts` | Public | My posts: threads the key owner posted in, fetched only for that view |
 
@@ -102,6 +102,22 @@ effectiveUnread = dismissed ? 0 : tornUnread
 "Mark read" suppresses a thread locally until Torn reports more posts. It
 cannot clear Torn's own counter, which only clears when the thread is opened,
 and the panel says so rather than implying a sync that does not exist.
+
+**Author-only mode (#4).** With the setting on, Threads and Catch up count a
+thread as new only when its author posted after the marker (the last visit or
+Mark read, else first seen). Each activity lookup then reads
+`forum/{id}/posts?from=<marker seconds + 1>` instead of `forum/{id}/thread`:
+`from` is inclusive and returns the newest 20, newest first; further pages go
+back with `to=<oldest created_time read>`, also inclusive, so the shared
+boundary post is de-duplicated by id. A thread gets at most 3 pages, every page
+is one unit of the same lookup budget, and further pages are fetched only while
+one request stays reserved for each thread not yet started, so a default
+refresh stays at 13 requests. The result is cached per thread
+(`authorCheck*` fields, never exported) and keyed to the marker and the
+subscribed `posts.total`. A row's author state is `none`, `author` (exact),
+`author-atleast` (a walk cut short) or `unchecked` with a reason; an unknown is
+never shown as none, and Torn's any-poster count is never shown under an
+author label. My posts ignores the setting.
 
 ### My posts and the local unread count
 
