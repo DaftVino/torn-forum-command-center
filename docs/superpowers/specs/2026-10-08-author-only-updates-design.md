@@ -1,6 +1,6 @@
 # Only flag author updates - design
 
-Issue: #4 (FORGE-450). Status: proposed, 2026-10-08.
+Issue: #4. Status: proposed, 2026-10-08.
 Related: #2 (My posts view), #3 (row cap). ADR 0001 (no DOM data paths) governs.
 
 ## Problem
