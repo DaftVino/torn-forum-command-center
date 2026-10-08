@@ -663,6 +663,23 @@ test('My posts shows each started thread its thumbs, or a labelled net', () => {
   assert.strictEqual((html.match(/class="tfcc-note"[^>]*>(\d+ up|net )/g) || []).length, 2, 'Gamma gets no meta');
 });
 
+test('author-only mode (#4) changes neither the reactions line nor the My posts thumbs', () => {
+  const env = loadUserscript({ location: forums(), gmStore: KEY_STORE });
+  seed(env, []);
+  const api = env.exports;
+  withMine(env, [startedRec(api, 41, TH(12, 3), 'Alpha'), startedRec(api, 42, NET(9), 'Beta')]);
+  withKarma(env, 26);
+  api.state.settings.view = 'mine';
+  const off = htmlOf(env);
+  api.state.settings.authorOnly = true;
+  api.recompute(NOW);
+  const on = htmlOf(env);
+  const sub = (h) => h.slice(h.indexOf('<div class="tfcc-subhead">'), h.indexOf('</div>', h.indexOf('<div class="tfcc-subhead">')));
+  assert.strictEqual(sub(on), sub(off));
+  assert.match(on, /<span class="tfcc-note">12 up, 3 down<\/span>/);
+  assert.match(on, /<span class="tfcc-note" title="[^"]*">net \+9<\/span>/);
+});
+
 test('the karma line is also present before My posts has loaded, as "-"', () => {
   const env = bootPanel();
   withMine(env, [], 0);

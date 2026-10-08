@@ -184,6 +184,21 @@ test('a Threads refresh never reads an opening post', async () => {
   assert.strictEqual(topicCalls(env).length, 0);
 });
 
+test('with author-only on (#4), My posts still reads opening posts, and a Threads refresh never reads a started thread', async () => {
+  const env = await boot(table(3));
+  env.exports.state.settings.authorOnly = true;
+  env.exports.refreshMine(NOW);
+  await settle(env);
+  const ids = topicCalls(env).map((u) => Number(/\/forum\/(\d+)\/posts/.exec(u)[1])).sort();
+  assert.deepStrictEqual(ids, [100, 101, 102]);
+  assert.ok(topicCalls(env).every((u) => !/[?&]from=/.test(u)), 'the topic read is offset=0, never a from-filtered page');
+  assert.ok(env.exports.state.mine.threads.filter((t) => t.up === 7).length === 3);
+  env.router.urls.length = 0;
+  env.exports.refreshAll(NOW + 13 * HOUR);
+  await settle(env);
+  assert.ok(!topicCalls(env).some((u) => /\/forum\/10\d\/posts/.test(u)), 'author-only lookups target subscribed threads only');
+});
+
 test('a late topic answer after Reset everything is dropped', async () => {
   const tbl = table(1);
   const r = router(tbl);
