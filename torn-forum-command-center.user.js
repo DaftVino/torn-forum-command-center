@@ -2843,6 +2843,8 @@
       '  --tfcc-text-sm: 12px; --tfcc-text: 14px; --tfcc-text-lg: 1.2em;',
       '  --tfcc-gap-xs: 4px; --tfcc-gap-sm: 6px; --tfcc-gap: 8px; --tfcc-gap-lg: 14px;',
       '  --tfcc-focus-ring: 2px solid var(--tm-good-text);',
+      '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
+      '  --tfcc-mine-text: #141414; --tfcc-mine-border: #d9d9d9;',
       '}',
       '#' + PANEL_ID + '.tfcc-theme-light {',
       '  --tm-bg: #f2f2f2; --tm-bg-2: #e8e8e8; --tm-bg-3: #ffffff; --tm-hover: #dcdcdc;',
@@ -2850,6 +2852,10 @@
       '  --tm-text: #141414; --tm-muted: #4a4a4a; --tm-meta: #3a3a3a;',
       '  --tm-good-bg: #cfe8d4; --tm-good-text: #1c5c2c; --tm-bad-text: #a11414;',
       '  --tm-warn-text: #7a5600; --tm-accent-text: #14507d;',
+      // Same fill and text as dark; only the border differs, because a light
+      // grey fill on the light panel is not itself a visible boundary.
+      '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
+      '  --tfcc-mine-text: #141414; --tfcc-mine-border: #5c5c5c;',
       '}',
       '#' + FALLBACK_ID + ' { position: fixed; right: 12px; bottom: 12px; z-index: 2147483000;',
       '  box-sizing: border-box; width: min(960px, calc(100vw - 24px)); max-width: calc(100vw - 24px);',
@@ -2905,6 +2911,19 @@
       '  color: var(--tm-text); }',
       '#' + PANEL_ID + ' .tfcc-nav { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
       '  margin-bottom: var(--tfcc-gap); }',
+      // My posts stands apart from the other five: last, pushed right, and
+      // light grey with dark text in every theme. Each rule names the button
+      // element so it is (1,1,1) or more and beats the generic button,
+      // :hover and aria-pressed rules above. Pressed is shown by an underline
+      // bar as well as the fill, so it never depends on colour alone.
+      // Measured: text on fill 13.05, on hover 11.01, on pressed 8.49; fill
+      // on the dark panel 11.68; light border on the light panel 5.97.
+      '#' + PANEL_ID + ' button.tfcc-nav-mine { margin-left: auto; background: var(--tfcc-mine-bg);',
+      '  color: var(--tfcc-mine-text); border-color: var(--tfcc-mine-border); font-weight: bold; }',
+      '#' + PANEL_ID + ' button.tfcc-nav-mine:hover { background: var(--tfcc-mine-hover);',
+      '  color: var(--tfcc-mine-text); }',
+      '#' + PANEL_ID + ' button.tfcc-nav-mine[aria-pressed="true"] { background: var(--tfcc-mine-pressed);',
+      '  color: var(--tfcc-mine-text); box-shadow: inset 0 -3px 0 var(--tfcc-mine-text); }',
       '#' + PANEL_ID + ' .tfcc-bar { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
       '  align-items: center; margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-grow { flex: 1 1 180px; min-width: 0; }',

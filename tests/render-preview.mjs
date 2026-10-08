@@ -98,6 +98,26 @@ api.state.replyBoxFound = true;
 // The preview has no transport, so the refresh the bootstrap started never
 // finishes and every header would read "Refreshing...".
 api.state.refreshing = false;
+
+// My posts: one thread with a local count, one started and quiet, one whose
+// total was never looked up, so the mine previews show every row mark.
+const mine = api.freshMine();
+mine.fetchedAt = NOW - 4 * MIN;
+mine.threads = [
+  Object.assign(api.freshMineThread(16600001, NOW), {
+    posted: true, title: 'Bazaar pricing etiquette', forumId: 2, totalKnown: true,
+    postsTotal: 14, baselineTotal: 12, lastPostAt: NOW - 20 * MIN, myLastPostAt: NOW - 90 * MIN,
+  }),
+  Object.assign(api.freshMineThread(16600002, NOW), {
+    started: true, title: 'My crime 2.0 notes', forumId: 2, totalKnown: true,
+    postsTotal: 5, baselineTotal: 5, lastPostAt: NOW - 300 * MIN, myLastPostAt: NOW - 300 * MIN,
+    tornNew: 0, tornNewKnown: true,
+  }),
+  Object.assign(api.freshMineThread(16600003, NOW), {
+    posted: true, title: 'Faction recruitment thread', myLastPostAt: NOW - 600 * MIN,
+  }),
+];
+api.state.mine = mine;
 api.recompute(NOW);
 
 const css = api.panelStyleText();
