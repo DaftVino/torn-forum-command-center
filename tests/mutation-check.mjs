@@ -505,6 +505,83 @@ const MUTATIONS = [
       'var seen = raw;',
     ),
   },
+  // My posts (#2)
+  {
+    name: 'My posts is no longer the last nav button',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace("['threads', 'catchup', 'search', 'drafts', 'settings', 'mine']",
+      "['threads', 'catchup', 'search', 'drafts', 'mine', 'settings']"),
+  },
+  {
+    name: 'the My posts button is no longer right-aligned',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace(' button.tfcc-nav-mine { margin-left: auto; ', ' button.tfcc-nav-mine { '),
+  },
+  {
+    name: 'the My posts pressed rule loses to the generic one',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace(' button.tfcc-nav-mine[aria-pressed="true"] {', ' .tfcc-nav-mine-x[aria-pressed="true"] {'),
+  },
+  {
+    name: 'Unread only is ignored in My posts',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace('      if (f.unreadOnly && r.unread === 0) return false;',
+      "      if (f.unreadOnly && r.unread === 0 && view !== 'mine') return false;"),
+  },
+  {
+    name: 'first sight no longer sets the baseline, so history floods as new',
+    suite: 'tests/mine.test.js',
+    apply: (s) => s.replace('    if (!t.totalKnown) t.baselineTotal = total;', ''),
+  },
+  {
+    name: 'your own last post no longer clears the count',
+    suite: 'tests/mine.test.js',
+    apply: (s) => s.replace('    if (lastIsMine) t.baselineTotal = Math.max(t.baselineTotal, t.postsTotal);', ''),
+  },
+  {
+    name: 'an unknown total passes for a checked zero',
+    suite: 'tests/mine.test.js',
+    apply: (s) => s.replace("dismissed: false, unread: 0, unreadSource: 'unchecked' };",
+      "dismissed: false, unread: 0, unreadSource: 'local' };"),
+  },
+  {
+    name: 'a thread\'s reply count is stored as its total (live findings 3 and 4)',
+    suite: 'tests/mine.test.js',
+    apply: (s) => s.replace('      return Math.floor(raw.posts) + 1;', '      return Math.floor(raw.posts);'),
+  },
+  {
+    name: 'Torn\'s new_posts is ignored for started threads',
+    suite: 'tests/mine.test.js',
+    apply: (s) => s.replace('    if (rec && rec.totalKnown && rec.tornNewKnown) {', '    if (false) {'),
+  },
+  {
+    name: 'the My posts TTL is removed',
+    suite: 'tests/mine-refresh.test.js',
+    apply: (s) => s.replace('var MINE_TTL_MS = 15 * 60 * 1000;', 'var MINE_TTL_MS = 0;'),
+  },
+  {
+    name: 'My posts lookups ignore the budget',
+    suite: 'tests/mine-refresh.test.js',
+    apply: (s) => s.replace('for (var j = 0; j < snap.threads.length && out.length < n; j += 1) {',
+      'for (var j = 0; j < snap.threads.length; j += 1) {'),
+  },
+  {
+    name: 'a post body is kept',
+    suite: 'tests/mine.test.js',
+    apply: (s) => s.replace('      threadId: threadId,\n      authorId:',
+      '      threadId: threadId,\n      content: raw.content,\n      authorId:'),
+  },
+  {
+    name: 'every My posts thread floods Threads',
+    suite: 'tests/merge.test.js',
+    apply: (s) => s.replace('        inThreads: !!api || !rec || isOrganised(entry, !!draft),', '        inThreads: true,'),
+  },
+  {
+    name: 'the My posts staleness guard is removed',
+    suite: 'tests/staleness.test.js',
+    apply: (s) => s.replace('    function stale() { return generation !== state.generation; }\n    function fail(',
+      '    function stale() { return false; }\n    function fail('),
+  },
 ];
 
 let failures = 0;
