@@ -62,10 +62,6 @@ Limited or a Custom key and never name Minimal. A Custom key restricted to
 
 ## Still open
 
-- Whether the thumbs shown on Torn's thread page equal the topic post's
-  `likes` and `dislikes`, and whether the karma on the profile page equals the
-  API value. The owner reads these off pages they open themselves; the answers
-  are recorded below when given.
 - Whether `rating` is net or likes-only. This needs a topic post with
   dislikes.
 - What `type` means on `user/forumfeed` rows. Not probed.
@@ -76,5 +72,5 @@ Limited or a Custom key and never name Minimal. A Custom key restricted to
 
 | Check | API value | Page value | Match |
 |---|---|---|---|
-| Thumbs on the topic post of thread 16589908 | 7 up, 0 down | | |
-| Karma on the owner's profile | (see fixture) | | |
+| Thumbs on the topic post of thread 16589908 | 7 up, 0 down | 7 up, 0 down | **Yes** (owner, 2026-10-08) |
+| Karma on the owner's profile | 26 (all three sources) | 26 | **Yes** (owner, 2026-10-08) |
