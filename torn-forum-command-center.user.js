@@ -4287,14 +4287,22 @@
       + '" value="' + model.settings.enrichBudget + '" data-act="enrich-budget"></div>');
     // The numbers are computed from the constants, so this promise cannot
     // drift from what the code does (CLAUDE.md constraint 7).
+    var thumbsAt = function (b) { return Math.min(REACTION_LOOKUPS_PER_RUN, b); };
     out.push('<p class="tfcc-note">A refresh of Threads makes two requests, plus one for the forum list at '
       + 'most once a day. Opening My posts, or refreshing while it is open, makes two requests of its own, '
       + 'at most once every ' + Math.round(MINE_TTL_MS / 60000) + ' minutes unless you press Refresh. '
       + 'Each activity lookup adds one more to either, and only runs for a thread with no recent time. '
+      + 'My posts also reads the opening post of up to ' + REACTION_LOOKUPS_PER_RUN + ' threads you started, '
+      + 'for their thumbs up and down, each at most once every ' + Math.round(TOPIC_TTL_MS / 3600000) + ' hours; '
+      + 'with lookups set to 0 it reads none. '
+      + 'If you have started no threads and written no posts, My posts instead reads your profile once '
+      + 'for your forum karma, at most once every ' + Math.round(KARMA_TTL_MS / 3600000) + ' hours, '
+      + 'which is 3 requests in all. '   // two lists + user/profile, at any lookup setting
       + 'With the default of ' + DEFAULT_ENRICH_BUDGET + ', a Threads refresh is at most '
-      + (3 + DEFAULT_ENRICH_BUDGET) + ' requests and My posts at most ' + (2 + DEFAULT_ENRICH_BUDGET)
+      + (3 + DEFAULT_ENRICH_BUDGET) + ' requests and My posts at most '
+      + (2 + DEFAULT_ENRICH_BUDGET + thumbsAt(DEFAULT_ENRICH_BUDGET))
       + '; at the largest setting of ' + MAX_ENRICH_BUDGET + ', ' + (3 + MAX_ENRICH_BUDGET) + ' and '
-      + (2 + MAX_ENRICH_BUDGET) + '. '
+      + (2 + MAX_ENRICH_BUDGET + thumbsAt(MAX_ENRICH_BUDGET)) + '. '
       + 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.</p>');
     out.push('<div class="tfcc-kv"><label for="tfcc-author">Only flag new posts by the thread author</label>'
       + '<input id="tfcc-author" type="checkbox" data-act="author-only"'
@@ -4671,6 +4679,9 @@
         // simply not reached yet. Counts only, never an author.
         authorUnchecked: state.rows.filter(function (r) { return r.authorState === 'unchecked'; }).length,
         authorTooMany: state.rows.filter(function (r) { return r.authorReason === 'too-many'; }).length,
+        // Thread reactions (#10): counts of records only, never a figure.
+        mineThumbsChecked: state.mine.threads.filter(function (t) { return t.started && t.topicAt > 0; }).length,
+        mineThumbsFound: state.mine.threads.filter(function (t) { return t.started && typeof t.up === 'number'; }).length,
       },
       authorOnly: state.settings.authorOnly === true,
       lastFetchedAt: state.feed.fetchedAt,
@@ -4711,6 +4722,8 @@
       'my posts started: ' + c.counts.mineStarted,
       'my posts posted in: ' + c.counts.minePosted,
       'my posts unchecked: ' + c.counts.mineUnchecked,
+      'my posts thumbs checked: ' + c.counts.mineThumbsChecked,
+      'my posts thumbs found: ' + c.counts.mineThumbsFound,
       'my posts fetched: ' + (c.mineFetchedAt ? 'set' : 'never'),
       'my posts error: ' + (c.mineError ? safeString(c.mineError, 20) : 'none'),
       'author only: ' + (c.authorOnly ? 'on' : 'off'),

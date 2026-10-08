@@ -376,11 +376,20 @@ test('Settings states both request budgets, from the constants', () => {
   env.exports.state.settings.view = 'settings';
   const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
   const api = env.exports;
+  const thumbs = (b) => Math.min(api.REACTION_LOOKUPS_PER_RUN, b);
   assert.strictEqual(3 + api.DEFAULT_ENRICH_BUDGET, 13);
-  assert.strictEqual(2 + api.DEFAULT_ENRICH_BUDGET, 12);
   assert.match(html, /Opening My posts, or refreshing while it is open, makes two requests of its own/);
   assert.match(html, new RegExp('at most once every ' + (api.MINE_TTL_MS / 60000) + ' minutes'));
-  assert.match(html, /a Threads refresh is at most 13\s+requests and My posts at most 12; at the largest setting of 25, 28 and 27\./);
+  assert.match(html, new RegExp('My posts also reads the opening post of up to ' + api.REACTION_LOOKUPS_PER_RUN
+    + ' threads you started, for their thumbs up and down, each at most once every '
+    + (api.TOPIC_TTL_MS / 3600000) + ' hours; with lookups set to 0 it reads none\\.'));
+  assert.match(html, new RegExp('a Threads refresh is at most ' + (3 + api.DEFAULT_ENRICH_BUDGET)
+    + '\\s+requests and My posts at most ' + (2 + api.DEFAULT_ENRICH_BUDGET + thumbs(api.DEFAULT_ENRICH_BUDGET))
+    + '; at the largest setting of ' + api.MAX_ENRICH_BUDGET + ', ' + (3 + api.MAX_ENRICH_BUDGET) + ' and '
+    + (2 + api.MAX_ENRICH_BUDGET + thumbs(api.MAX_ENRICH_BUDGET)) + '\\.'));
+  assert.match(html, new RegExp('If you have started no threads and written no posts, My posts instead reads your profile once for your forum karma, at most once every '
+    + (api.KARMA_TTL_MS / 3600000) + ' hours, which is 3 requests in all\\.'));
+  assert.match(html, /a Threads refresh is at most 13\s+requests and My posts at most 17; at the largest setting of 25, 28 and 32\./);
   assert.match(html, /under 40 requests a minute/);
 });
 
