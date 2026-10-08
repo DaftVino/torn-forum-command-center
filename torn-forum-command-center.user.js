@@ -384,6 +384,8 @@
       deepSearchPages: DEEP_SEARCH_MAX_PAGES,
       // 0 is All. See ROWS_SHOWN_OPTIONS.
       rowsShown: 0,
+      // Issue #9. On by default; Settings has the off switch.
+      badges: true,
     };
   }
 
@@ -404,6 +406,7 @@
     out.hideTornBox = raw.hideTornBox === true;
     out.authorOnly = raw.authorOnly === true;
     out.autoHideOnOpen = raw.autoHideOnOpen === true;
+    out.badges = raw.badges !== false;
     out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1
       ? 0 : toInt(raw.keyRejected, 0);
     out.folderFilter = typeof raw.folderFilter === 'string' ? safeString(raw.folderFilter, 64) : null;
