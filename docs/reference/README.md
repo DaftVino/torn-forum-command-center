@@ -27,11 +27,18 @@ on 2026-10-08. Unlike the page above, this one answered an automated request.
 It keeps only the forum paths, schemas and parameters that issue #10 (thread
 reactions tracker) and issue #2 (My posts) rely on: `user/forumthreads`,
 `user/forumposts`, `forum/{threadId}/thread`, `forum/{threadId}/posts`,
-`ForumThreadBase`, `ForumThreadUserExtended`, `ForumPost`, `ForumPostsResponse`
-and `ForumFeedTypeEnum`, plus the `offset` and `sort` parameters, among others.
+`ForumThreadBase`, `ForumThreadUserExtended`, `ForumThreadAuthor` (with its
+`karma`), `ForumPost`, `ForumPostsResponse` and `ForumFeedTypeEnum`, plus the
+`offset` and `sort` parameters, among others. It also carries `user/profile`
+and `profile.karma` (the schema pruned to that one property), for the forum
+karma fallback.
 It is a schema, not a captured response: it says which fields Torn promises,
 not what a live answer holds. Regenerate it from the full document if the
 schema moves; do not edit it by hand.
+
+## `karma-endless-knot.svg`
+
+Supplied by the owner, 2026-10-08, used as the karma icon.
 
 ## What is not here
 

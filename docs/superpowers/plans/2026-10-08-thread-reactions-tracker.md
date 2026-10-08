@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Show one line under the panel header, `Your threads: 34 up, 5 down`, totalling the real thumbs up and thumbs down (the topic post's `likes` and `dislikes`) across the threads the key owner started, with Torn's `rating` as a labelled `net` fallback until a thread is checked, and `-` (never 0) when unknown.
+**Goal:** Show one line under the panel header, `Your threads: 34 up, 5 down`, totalling the real thumbs up and thumbs down (the topic post's `likes` and `dislikes`) across the threads the key owner started, with Torn's `rating` as a labelled `net` fallback until a thread is checked, and `-` (never 0) when unknown. The same line ends with the owner's forum karma, shown as an endless-knot icon and a number (no word), read from the `author` on rows already fetched and, only when the user has no threads and no posts, from one `user/profile` request.
 
-**Architecture:** Two sources, both inside #2's `refreshMine`. #2's `user/forumthreads` answer supplies each started thread's `rating` at no extra cost. A new bounded loop, `enrichReactions`, reads `forum/{id}/posts?sort=ASC&offset=0` for at most `min(5, enrichBudget)` started threads per run, each at most once every 12 hours, and keeps the `is_topic` post's `likes`/`dislikes`. Both land as optional, canonically ordered fields on `tfcc:mine` records through one writer, `setReactionFields`. A pure `reactionTotals` sums them; the runtime renders a `.tfcc-subhead` block below `.tfcc-head`, after the collapsed early return.
+**Architecture:** Two sources, both inside #2's `refreshMine`. #2's `user/forumthreads` answer supplies each started thread's `rating` at no extra cost. A new bounded loop, `enrichReactions`, reads `forum/{id}/posts?sort=ASC&offset=0` for at most `min(5, enrichBudget)` started threads per run, each at most once every 12 hours, and keeps the `is_topic` post's `likes`/`dislikes`. Both land as optional, canonically ordered fields on `tfcc:mine` records through one writer, `setReactionFields`. Karma lands as two optional top-level fields, `karma` and `karmaAt`, through one writer, `setKarma`, taken from `author.karma` on the lists `refreshMine` already reads, with a one-request `user/profile` fallback when both lists are empty. A pure `reactionTotals` sums them; the runtime renders a `.tfcc-subhead` block below `.tfcc-head`, after the collapsed early return.
 
 **Tech Stack:** One ES5-style IIFE userscript (`torn-forum-command-center.user.js`), Node `node:test` suites run through the `vm` harness in `tests/load-userscript.js`. No dependencies.
 
@@ -17,13 +17,14 @@
 - **Never read `torn-forum-command-center.user.js` whole.** For every symbol: `grep -n "function <name>\|var <name>" torn-forum-command-center.user.js`, then `Read` with `offset`/`limit`. `docs/code-map.md` may be stale; the grep is the truth.
 - **ASCII only** in the userscript (`tests/metadata.test.js`). No emoji thumbs; the words `up`, `down`, `net`. Write `Torn\'s`, never a curly apostrophe.
 - **Engine purity** (`tests/purity.test.js`): `isReactionNumber`, `setReactionFields`, `applyReactions`, `topicPostFromApi`, `applyTopicPost`, `reactionLookupTargets`, `reactionTotals`, `formatSigned`, `reactionsTitle` live between `// ---- ENGINE START` and `// ---- ENGINE END`; time is an argument.
-- **Budget:** default Threads refresh <= 13, unchanged. My posts run <= 2 + `enrichBudget` + `min(5, enrichBudget)`: 17 at defaults, 2 at 0, 32 at 25. Limiter 40 per rolling minute. Topic lookups run only inside `refreshMine`, after #2's lookups, never after a throttle. The Settings note states these numbers, computed from the constants.
+- **Budget:** default Threads refresh <= 13, unchanged. My posts run <= 2 + `enrichBudget` + `min(5, enrichBudget)`: 17 at defaults, 2 at 0, 32 at 25. The karma fallback replaces that run when both lists are empty and is exactly 3 requests (two lists + `user/profile`) at any setting, at most once per 12 hours, only in `refreshMine`, never in `refreshAll`; worst minute stays 30 of 40 at defaults and 40 of 40 at the maximum. Limiter 40 per rolling minute. Topic lookups run only inside `refreshMine`, after #2's lookups, never after a throttle. The Settings note states these numbers, computed from the constants.
 - **Up and down are only ever sums of real topic-post counts.** `rating` is shown only as `net`, never split, added to or subtracted from them.
 - **Unknown is `-`, never `0`.** Numbers are read with `isReactionNumber` (`typeof`, `isFinite`); `toInt(null, 0)` is 0, which is the trap.
 - **No subscriber figure.** Torn's API has none; every tooltip ends `Torn\'s API has no subscriber count, so none is shown.`
-- **Upgrade safety:** the five record fields (`reactAt`, `rating`, `topicAt`, `up`, `down`) are optional, written only through `setReactionFields`, in that order. No top-level field, no new key, no new setting.
+- **Upgrade safety:** the five record fields (`reactAt`, `rating`, `topicAt`, `up`, `down`) are optional, written only through `setReactionFields`, in that order. The only top-level additions are `karma` and `karmaAt` on `tfcc:mine`, optional, never back-filled, written only through `setKarma`. No new key, no new setting.
+- **Karma:** unknown is `-`, never `0` (a real 0 shows `0`). The word "karma" is never visible text; the icon (`KARMA_ICON_SVG`, ASCII, `fill="currentColor"`, never `#000000`, `aria-hidden="true"`, `focusable="false"`) sits in a `.tfcc-karma` span with `aria-label="Karma"` and a `title`. The meaning ("Net likes on your forum posts, as reported by Torn.") is unverified; Task 0 step 6 checks it. Only `profile.karma` is read from `user/profile`.
 - **Post `content`** is never read, stored, rendered or reported.
-- **No change to `.tfcc-head`'s contents or `.tfcc-title`.** Hidden when collapsed, without a key, in loading/fatal shells, and when no threads were started.
+- **No change to `.tfcc-head`'s contents or `.tfcc-title`.** Hidden when collapsed, without a key, in loading/fatal shells, and when no threads were started and karma is unknown (with karma known and no threads, the line shows the karma alone).
 - **Read-only**, `@match`/`@grant`/`@connect` unchanged, no DOM data path (ADR 0001), errors through `scrubDetail`.
 - **Mutation check:** `node tests/mutation-check.mjs > mutation.log 2>&1`, then read `mutation.log`. Never pipe it into `head` or anything that closes the pipe.
 - **Commits:** Conventional Commits, no attribution trailer of any kind.
@@ -36,22 +37,25 @@
 3. **A max-budget Threads refresh followed by My posts** must never put a 41st request in the minute, and topic lookups must not start after #2's lookups were throttled. Pinned in Task 5.
 4. **Narrowest PDA width:** the tracker must not push Refresh, Expand or Hide off the header row. Pinned structurally in Task 6 and by QA.
 5. **A thread with both thumbs and a rating** must count once (by thumbs). Pinned in Task 4.
+6. **The karma fallback** must fire only when both lists are empty and never from `refreshAll`; unknown karma must show `-`, never 0; the icon must stay `currentColor`. Pinned in Tasks 5A and 6A and by five mutations.
 
 ## Files in scope
 
 | File | Change |
 |---|---|
-| `torn-forum-command-center.user.js` | Engine: the nine functions above, `mineThreadFromApi` field, `normaliseMineThread` fields, `mergeMineSnapshot` call, `NO_SUBSCRIBERS`. Runtime: constants, `enrichReactions`, `refreshMine` hook, model field, `renderReactions`, `panelHtml`, styles, `mergeThreads` row fields, `renderRow` meta, Settings note, debug counts. |
+| `torn-forum-command-center.user.js` | Engine: the nine functions above, `mineThreadFromApi` field, `normaliseMineThread` fields, `mergeMineSnapshot` call, `NO_SUBSCRIBERS`. Karma (Task 5A): `karmaFromAuthors`, `karmaFromProfile`, `setKarma`, `karmaFallbackDue`, `formatKarma`, `normaliseMine` top-level pair, `KARMA_TTL_MS`, `KARMA_ICON_SVG`, `readKarmaProfile`, the `refreshMine` hooks. Runtime: constants, `enrichReactions`, `refreshMine` hook, model field, `renderReactions`, `panelHtml`, styles, `mergeThreads` row fields, `renderRow` meta, Settings note, debug counts. |
 | `tests/load-userscript.js` | `EXPORT_NAMES`; `forumThreadsPayload` gains `rating`; new `threadPostsPayload` |
 | `tests/reactions.test.js`, `tests/reactions-lookups.test.js` | New |
+| `tests/karma.test.js`, `tests/karma-refresh.test.js` | New (Tasks 5A, 6A) |
+| `docs/reference/karma-endless-knot.svg`, `docs/reference/README.md` | The owner's icon, committed unchanged, with its provenance line (done with the spec) |
 | `tests/storage.test.js`, `tests/panel.test.js`, `tests/style.test.js`, `tests/debug-report.test.js`, `tests/read-only.test.js` | Extended |
 | `tests/render-preview.mjs` | Seed figures |
-| `tests/mutation-check.mjs` | Thirteen entries |
+| `tests/mutation-check.mjs` | Eighteen entries |
 | `CHANGELOG.md`, `docs/qa-checklist.md`, `docs/architecture.md`, `README.md`, `docs/code-map.md` | Docs |
 
 ## Stop conditions
 
-Stop and amend the spec if: Task 0 finds the topic post's likes/dislikes differ from the thumbs on Torn's thread page; a request outside `user/forumthreads`, `user/forumposts`, `forum/{id}/thread`, `forum/{id}/posts` is needed; topic lookups would run outside `refreshMine`; a My posts run would exceed 2 + `enrichBudget` + 5; anything derives up or down from `rating`; any label says "like" or "subscriber" as a figure; an element is added inside `.tfcc-head`; a new key, setting or top-level field is needed.
+Stop and amend the spec if: Task 0 finds the topic post's likes/dislikes differ from the thumbs on Torn's thread page; a request outside `user/forumthreads`, `user/forumposts`, `forum/{id}/thread`, `forum/{id}/posts` is needed; topic lookups would run outside `refreshMine`; a My posts run would exceed 2 + `enrichBudget` + 5; anything derives up or down from `rating`; any label says "like" or "subscriber" as a figure; an element is added inside `.tfcc-head`; a new key, setting or top-level field other than `karma`/`karmaAt` is needed; `user/profile` would be called from anywhere but `refreshMine`'s fallback; anything but `profile.karma` is read from the profile; the word "karma" would be visible text.
 
 ---
 
@@ -64,6 +68,7 @@ Shared with #2's plan Task 0. Do it once for both.
 - [ ] **Step 3 (paging):** For one of your threads with more than 20 posts, request `forum/<id>/posts?sort=ASC&offset=0` and `forum/<id>/posts?offset=0` (no sort). Record: is the first post of the `ASC` page `is_topic: true`? What order does the unsorted page use? Does a pinned reply move? Remove `content` and usernames; commit the `ASC` page as `tests/fixtures/forum-thread-posts-asc.json`. If `ASC` does not put the topic first, change `TOPIC_POST_PARAMS` (Task 5) per spec open question 2 before Task 5.
 - [ ] **Step 4 (meaning):** For the same thread, note Torn's thumbs up, thumbs down on its thread page, the topic post's `likes`/`dislikes`, and the thread's `rating`. Record in the spec's open question 1 whether likes = up, dislikes = down, and rating = up - down. **If likes/dislikes differ from Torn's thumbs, stop** (stop condition).
 - [ ] **Step 5:** Check whether `forum/<id>/posts` page 1 ever has two `is_topic` posts (it should not).
+- [ ] **Step 6 (karma):** With the Task 0 step 1 fixture, note `author.karma` on the newest `user/forumthreads` row and on a `user/forumposts` row, and request `user/profile` once (Public key) for `profile.karma`. Compare all three with the karma shown on your own Torn profile and, once built, with the number beside the knot icon in the tracker line. Record in the spec's open question 5 whether the row figure equals the live figure. If they differ, reword the tooltip to "Your forum karma, as reported by Torn." (no code change); if the row figure is only the value at post time, take karma from `user/profile` only (spec assumption 8). Strip `username` and `content` from anything committed.
 
 **Release gate:** steps 3 and 4 gate the release, not only the code (spec, "Release gate"). Until both are recorded as passing in the spec's "What is verified" table, Tasks 1 to 10 may be built and reviewed but no tag may carry this feature.
 
@@ -78,7 +83,7 @@ Commit: `git add tests/fixtures docs/superpowers/specs/2026-10-08-thread-reactio
 
 **Interfaces:**
 - Consumes: #2's `forumThreadsPayload(threads)`.
-- Produces: `forumThreadsPayload` rows carry `rating` (from `t.rating`, default `0`, omitted when `t.noRating`); `threadPostsPayload(posts) -> { posts: ForumPost[], _metadata }` where each input `{ id, threadId, isTopic, likes, dislikes, noLikes, isPinned, at, content }`. Export names for every function and constant in this plan (undefined until defined; harmless).
+- Produces: `profilePayload(karma)`; `author.karma` on thread and post rows; `forumThreadsPayload` rows carry `rating` (from `t.rating`, default `0`, omitted when `t.noRating`); `threadPostsPayload(posts) -> { posts: ForumPost[], _metadata }` where each input `{ id, threadId, isTopic, likes, dislikes, noLikes, isPinned, at, content }`. Export names for every function and constant in this plan (undefined until defined; harmless).
 
 - [ ] **Step 1: Edit `forumThreadsPayload`**
 
@@ -116,6 +121,16 @@ function threadPostsPayload(posts) {
 }
 ```
 
+- [ ] **Step 2b: Karma on the author, and a profile payload.** In `forumThreadsPayload` (#2's) and `forumPostsPayload`, make each row's `author` `{ id: 7, username: 'me', karma }` where `karma` is `t.karma` (default `100`), and omit the `karma` key when `t.noKarma` is set (`grep -n "author" tests/load-userscript.js` for the real lines; `ForumThreadAuthor` requires `id`, `username`, `karma`). Add beside `threadPostsPayload`, and export it:
+
+```js
+// user/profile, UserProfileResponse. Only karma matters here; the rest of the
+// required profile fields are not read by the script.
+function profilePayload(karma) {
+  return { profile: Object.assign({ id: 7, name: 'me', level: 1 }, karma === undefined ? {} : { karma }) };
+}
+```
+
 - [ ] **Step 3: Export names.** In `EXPORT_NAMES`, after #2's my-posts names:
 
 ```js
@@ -124,6 +139,9 @@ function threadPostsPayload(posts) {
   'reactionLookupTargets', 'reactionTotals', 'formatSigned', 'reactionsTitle', 'renderReactions',
   'enrichReactions', 'REACTIONS_STALE_MS', 'TOPIC_TTL_MS', 'REACTION_LOOKUPS_PER_RUN', 'TOPIC_POST_PARAMS',
   'MAX_ENRICH_BUDGET', 'DEFAULT_ENRICH_BUDGET', 'REQUESTS_PER_WINDOW',
+  // forum karma (#10)
+  'karmaFromAuthors', 'karmaFromProfile', 'setKarma', 'karmaFallbackDue', 'formatKarma', 'readKarmaProfile',
+  'KARMA_TTL_MS', 'KARMA_ICON_SVG', 'refreshMine', 'refreshAll',
 ```
 
 (Skip any name `EXPORT_NAMES` already lists.)
@@ -700,6 +718,8 @@ After `reactionLookupTargets`:
     var out = {
       state: 'unloaded', started: 0, up: null, down: null, thumbThreads: 0,
       net: null, netThreads: 0, updatedAt: 0, stale: false,
+      // Forum karma (Task 5A): whatever the state, never defaulted to 0.
+      karma: isPlainObject(mine) && isReactionNumber(mine.karma, true) ? Math.floor(mine.karma) : null,
     };
     var threads = isPlainObject(mine) && Array.isArray(mine.threads) ? mine.threads : [];
     for (var i = 0; i < threads.length; i += 1) {
@@ -961,6 +981,9 @@ In `tests/read-only.test.js`, extend `a refresh cannot exceed the request budget
   assert.strictEqual(2 + 0 + thumbs(0), 2, 'lookups set to 0 means two requests');
   assert.ok(13 + 17 <= api.REQUESTS_PER_WINDOW, 'a default Threads refresh and a default My posts run fit one minute');
   assert.ok(32 <= api.REQUESTS_PER_WINDOW, 'a maximal My posts run alone fits one minute');
+  // The karma fallback run: two lists + user/profile, replacing (never adding to) the runs above.
+  assert.ok(3 < 17 && 3 < 32, 'the fallback run is smaller than the runs it stands in for');
+  assert.ok(28 + 3 <= api.REQUESTS_PER_WINDOW, 'a maximal Threads refresh then a fallback run fits one minute');
 ```
 
 - [ ] **Step 2:** Run `node --test tests/reactions-lookups.test.js tests/read-only.test.js`. Expected: FAIL, no `forum/<id>/posts` calls.
@@ -1021,6 +1044,380 @@ Expected: PASS. If #2's `tests/mine-refresh.test.js` fails, each failure must be
 ```bash
 git add torn-forum-command-center.user.js tests/reactions-lookups.test.js tests/read-only.test.js tests/mine-refresh.test.js
 git commit -m "feat: check opening posts for thumbs inside the My posts run (#10)"
+```
+
+---
+
+### Task 5A: Forum karma - source, store, fallback
+
+**Files:**
+- Modify: `torn-forum-command-center.user.js` - engine, directly after `reactionsTitle`: `karmaFromAuthors`, `karmaFromProfile`, `setKarma`, `karmaFallbackDue`, `formatKarma`; `normaliseMine` (the optional top-level pair); runtime: `KARMA_TTL_MS`, `KARMA_ICON_SVG` beside `TOPIC_TTL_MS`, `readKarmaProfile` after `enrichReactions`, two hooks in `refreshMine`.
+- Create: `tests/karma.test.js`, `tests/karma-refresh.test.js`
+- Modify: `tests/storage.test.js`
+
+**Interfaces:**
+- Consumes: `isReactionNumber`, `normaliseMine`, `toInt`, `tornApiGet`, `pickList`; inside `refreshMine`: the two parsed row arrays (below `threadRows` and `postRows`; use #2's real names, `grep -n "function refreshMine"`), `options`, `generation`, `stale()`.
+- Produces: `karmaFromAuthors(rows, timeField, selfId) -> number | null`; `karmaFromProfile(data) -> number | null`; `setKarma(snap, karma, now) -> snap`; `karmaFallbackDue(snap, now, ttl, threadRowCount, postRowCount) -> boolean`; `formatKarma(n) -> string`; `readKarmaProfile(now, opts, generation) -> Promise<{ ok }>`; `KARMA_TTL_MS = 12 h`; `KARMA_ICON_SVG`.
+
+- [ ] **Step 1: Write the failing tests (engine and icon)**
+
+Create `tests/karma.test.js`:
+
+```js
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+const { loadUserscript, FORUMS_LOCATION } = require('./load-userscript');
+
+const NOW = 1700000000000;
+const HOUR = 60 * 60 * 1000;
+const api = loadUserscript({ location: FORUMS_LOCATION, now: NOW }).exports;
+
+const trow = (at, karma, id) => ({ id: at, first_post_time: at, author: { id: id === undefined ? 7 : id, username: 'me', karma } });
+
+test('karma is read from an owned forumthreads row, newest first', () => {
+  assert.strictEqual(api.karmaFromAuthors([trow(100, 5), trow(300, 34), trow(200, 9)], 'first_post_time', 7), 34);
+  // The newest row has no usable figure: the next newest is used, never 0.
+  assert.strictEqual(api.karmaFromAuthors([trow(300, null), trow(200, 9)], 'first_post_time', 7), 9);
+  // Someone else's row is never taken when the owner is known...
+  assert.strictEqual(api.karmaFromAuthors([trow(100, 5, 99)], 'first_post_time', 7), null);
+  // ...and is taken on trust when it is not.
+  assert.strictEqual(api.karmaFromAuthors([trow(100, 5, 99)], 'first_post_time', 0), 5);
+  // forumposts rows use created_time.
+  assert.strictEqual(api.karmaFromAuthors([{ created_time: 5, author: { id: 7, karma: -4 } }], 'created_time', 7), -4);
+});
+
+test('karma is unknown when nothing usable is there, and unknown shows "-" not 0', () => {
+  assert.strictEqual(api.karmaFromAuthors([], 'first_post_time', 7), null);
+  assert.strictEqual(api.karmaFromAuthors(null, 'first_post_time', 7), null);
+  assert.strictEqual(api.karmaFromAuthors([trow(1, '12')], 'first_post_time', 7), null, 'a string is not a number');
+  assert.strictEqual(api.karmaFromAuthors([trow(1, NaN)], 'first_post_time', 7), null);
+  assert.strictEqual(api.karmaFromAuthors([{ first_post_time: 1 }], 'first_post_time', 7), null, 'no author');
+  for (const unknown of [null, undefined, NaN, '5', Infinity]) {
+    assert.strictEqual(api.formatKarma(unknown), '-');
+  }
+  assert.strictEqual(api.formatKarma(0), '0', 'a real zero is shown');
+  assert.strictEqual(api.formatKarma(1208), '1,208');
+  assert.strictEqual(api.formatKarma(-12), '-12');
+  assert.strictEqual(api.formatKarma(-1208), '-1,208');
+  assert.strictEqual(api.formatKarma(1234567), '1,234,567');
+});
+
+test('karmaFromProfile reads profile.karma only', () => {
+  assert.strictEqual(api.karmaFromProfile({ profile: { karma: 1208 } }), 1208);
+  assert.strictEqual(api.karmaFromProfile({ profile: { karma: 0 } }), 0);
+  assert.strictEqual(api.karmaFromProfile({ profile: { karma: null } }), null);
+  assert.strictEqual(api.karmaFromProfile({ profile: {} }), null);
+  assert.strictEqual(api.karmaFromProfile({ karma: 5 }), null);
+  assert.strictEqual(api.karmaFromProfile(null), null);
+});
+
+test('the fallback is due only with no threads and no posts, and a stale or absent figure', () => {
+  const fresh = api.freshMine();
+  assert.strictEqual(api.karmaFallbackDue(fresh, NOW, api.KARMA_TTL_MS, 0, 0), true);
+  assert.strictEqual(api.karmaFallbackDue(fresh, NOW, api.KARMA_TTL_MS, 1, 0), false, 'a started thread');
+  assert.strictEqual(api.karmaFallbackDue(fresh, NOW, api.KARMA_TTL_MS, 0, 1), false, 'a post');
+  assert.strictEqual(api.karmaFallbackDue(fresh, NOW, api.KARMA_TTL_MS, null, 0), false, 'a list that failed is unknown, not empty');
+  assert.strictEqual(api.karmaFallbackDue(fresh, NOW, api.KARMA_TTL_MS, 0, undefined), false);
+  const known = api.setKarma(fresh, 10, NOW);
+  assert.strictEqual(api.karmaFallbackDue(known, NOW + api.KARMA_TTL_MS - 1, api.KARMA_TTL_MS, 0, 0), false, 'cached for 12 hours');
+  assert.strictEqual(api.karmaFallbackDue(known, NOW + api.KARMA_TTL_MS, api.KARMA_TTL_MS, 0, 0), true, 'due at the boundary');
+  assert.strictEqual(api.KARMA_TTL_MS, 12 * HOUR);
+});
+
+test('setKarma writes both fields together, last, and clears on a non-number', () => {
+  const snap = api.setKarma(api.freshMine(), 34, NOW);
+  assert.strictEqual(snap.karma, 34);
+  assert.strictEqual(snap.karmaAt, NOW);
+  const keys = Object.keys(snap);
+  assert.deepStrictEqual(keys.slice(-2), ['karma', 'karmaAt']);
+  assert.deepStrictEqual(api.normaliseMine(JSON.parse(JSON.stringify(snap))), snap, 'round trips');
+  const cleared = api.setKarma(snap, null, NOW);
+  assert.ok(!('karma' in cleared) && !('karmaAt' in cleared));
+  assert.strictEqual(api.setKarma(api.freshMine(), 0, NOW).karma, 0, 'a real zero is stored');
+});
+
+test('the icon is ASCII, follows the theme colour, and carries nothing active', () => {
+  const svg = api.KARMA_ICON_SVG;
+  assert.match(svg, /^[\x00-\x7F]+$/, 'ASCII only (tests/metadata.test.js rule, Torn PDA rewrites the rest)');
+  assert.ok(svg.includes('currentColor'));
+  assert.ok(!svg.includes('#000000'), 'the owner file is black; it must follow the theme instead');
+  assert.ok(svg.includes('aria-hidden="true"') && svg.includes('focusable="false"'));
+  assert.ok(svg.includes('viewBox="149 50 702 900"'));
+  for (const banned of ['<title', '<desc', '<script', '<?xml', 'xmlns', 'http', 'href', 'javascript:']) {
+    assert.ok(!svg.includes(banned), 'no ' + banned);
+  }
+  assert.doesNotMatch(svg, /\son[a-z]+=/i, 'no event attribute');
+});
+
+test('the inline icon draws the same path as the committed owner file', () => {
+  const file = fs.readFileSync(path.join(__dirname, '..', 'docs', 'reference', 'karma-endless-knot.svg'), 'utf8');
+  const d = /\sd="([^"]+)"/.exec(file)[1];
+  assert.ok(api.KARMA_ICON_SVG.includes(' d="' + d + '"'), 'path data drifted from docs/reference/karma-endless-knot.svg');
+});
+```
+
+Append to `tests/storage.test.js`:
+
+```js
+test('a tfcc:mine blob with no karma loads silently and stays without karma', () => {
+  const mine = api.freshMine();                       // no karma, no karmaAt
+  const { back } = roundTrip(mine);                   // use the file's existing loadKey helper
+  assert.strictEqual(back.recovered, false);
+  assert.ok(!('karma' in back.value) && !('karmaAt' in back.value), 'never back-filled');
+});
+
+test('a stored karma pair reloads unchanged; a half pair is dropped', () => {
+  const withPair = api.setKarma(api.freshMine(), 34, 1700000000000);
+  assert.deepStrictEqual(api.normaliseMine(JSON.parse(JSON.stringify(withPair))), withPair);
+  const half = Object.assign(api.freshMine(), { karma: 5 });
+  assert.ok(!('karma' in api.normaliseMine(JSON.parse(JSON.stringify(half)))), 'karma without karmaAt');
+});
+```
+
+(Adapt the first test to the `roundTrip`/`loadKey` helper Task 2 added to this file; `grep -n "recovered" tests/storage.test.js`.)
+
+- [ ] **Step 2: Write the failing runtime tests**
+
+Create `tests/karma-refresh.test.js`. Copy `settle`, `router`, `boot` and `limiterAllowing` verbatim from `tests/reactions-lookups.test.js` (Task 5), then:
+
+```js
+const { forumThreadsPayload, forumPostsPayload, profilePayload } = require('./load-userscript');
+// (add the names to the existing destructured require)
+
+const profileCalls = (env) => env.router.seen.filter((p) => p === 'user/profile');
+
+function tbl(threads, posts, extra) {
+  return Object.assign({
+    'user/forumsubscribedthreads': subscribedThreadsPayload([{ id: 1 }]),
+    'user/forumfeed': forumFeedPayload([]),
+    'forum/categories': { categories: [{ id: 61, title: 'Tutorials', acronym: 'TG' }] },
+    'user/forumthreads': forumThreadsPayload(threads),
+    'user/forumposts': forumPostsPayload(posts),
+    'user/profile': profilePayload(1208),
+  }, extra || {});
+}
+
+test('the fallback fires once when you have no threads and no posts: 3 requests', async () => {
+  const env = await boot(tbl([], []));
+  env.exports.refreshMine(NOW);
+  await settle(env);
+  assert.deepStrictEqual(env.router.seen.slice().sort(), ['user/forumposts', 'user/forumthreads', 'user/profile']);
+  assert.strictEqual(env.exports.state.mine.karma, 1208);
+  assert.strictEqual(env.exports.state.mine.karmaAt, NOW);
+});
+
+test('the fallback figure is cached for 12 hours, then read again', async () => {
+  const env = await boot(tbl([], []));
+  env.exports.refreshMine(NOW);
+  await settle(env);
+  env.router.seen.length = 0;
+  env.exports.refreshMine(NOW + 11 * HOUR, { force: true });
+  await settle(env);
+  assert.strictEqual(profileCalls(env).length, 0);
+  env.exports.refreshMine(NOW + 12 * HOUR, { force: true });
+  await settle(env);
+  assert.strictEqual(profileCalls(env).length, 1);
+});
+
+test('the fallback never fires when a thread or a post exists; karma comes free from the row', async () => {
+  const withThread = await boot(tbl([{ id: 100, total: 3, rating: 1, lastAt: 1600000000, karma: 77 }], []));
+  withThread.exports.refreshMine(NOW);
+  await settle(withThread);
+  assert.strictEqual(profileCalls(withThread).length, 0);
+  assert.strictEqual(withThread.exports.state.mine.karma, 77);
+  const withPost = await boot(tbl([], [{ id: 1, threadId: 20, karma: 55 }]));
+  withPost.exports.refreshMine(NOW);
+  await settle(withPost);
+  assert.strictEqual(profileCalls(withPost).length, 0);
+  assert.strictEqual(withPost.exports.state.mine.karma, 55);
+});
+
+test('a row without karma leaves it unknown and still makes no profile request', async () => {
+  const env = await boot(tbl([{ id: 100, total: 3, rating: 1, lastAt: 1600000000, noKarma: true }], []));
+  env.exports.refreshMine(NOW);
+  await settle(env);
+  assert.strictEqual(profileCalls(env).length, 0);
+  assert.ok(!('karma' in env.exports.state.mine), 'unknown, never 0');
+});
+
+test('the fallback never runs in the default refresh, auto refresh or page load', async () => {
+  const env = await boot(tbl([], []));
+  env.exports.refreshAll(NOW + 13 * HOUR);
+  await settle(env);
+  assert.strictEqual(profileCalls(env).length, 0);
+  // Page load: boot() dropped init's requests; rebuild and look at them.
+  const r = router(tbl([], []));
+  const loaded = loadUserscript({ location: FORUMS_LOCATION, now: NOW, gmStore: [['tfcc:key', KEY]], fetch: r.fetch });
+  await settle(loaded);
+  assert.ok(!r.seen.includes('user/profile'), 'init made a profile request: ' + r.seen.join(','));
+  assert.ok(r.seen.length <= 13, 'the default refresh stays at 13 or fewer');
+});
+
+test('a failed list means emptiness is unknown: no fallback', async () => {
+  const t = tbl([], []);
+  delete t['user/forumposts'];                    // the router answers an error
+  const env = await boot(t);
+  env.exports.refreshMine(NOW);
+  await settle(env);
+  assert.strictEqual(profileCalls(env).length, 0);
+});
+
+test('a throttled profile read leaves karma unknown and the run intact', async () => {
+  const env = await boot(tbl([], []));
+  env.exports.refreshMine(NOW, { limiter: limiterAllowing(2) });   // the two lists only
+  await settle(env);
+  assert.strictEqual(profileCalls(env).length, 0);
+  assert.ok(!('karma' in env.exports.state.mine));
+});
+```
+
+(If `refreshMine`'s second argument is not an options bag with `force`, use the Refresh path #2's tests use to bypass the TTL; `grep -n "refreshMine(" tests/mine-refresh.test.js`.)
+
+- [ ] **Step 3:** Run `node --test tests/karma.test.js tests/karma-refresh.test.js tests/storage.test.js`. Expected: FAIL, `karmaFromAuthors is not a function`.
+
+- [ ] **Step 4: Implement the engine**
+
+Directly after `reactionsTitle`:
+
+```js
+  // -- forum karma (#10) -----------------------------------------------------
+  // ForumThreadAuthor.karma (required int32, undocumented) is the key owner's
+  // figure on every row of user/forumthreads and user/forumposts; user/profile
+  // returns profile.karma. A figure is taken only if it is a finite number:
+  // toInt(null, 0) would turn "unknown" into 0, which is the trap.
+  function karmaFromAuthors(rows, timeField, selfId) {
+    if (!Array.isArray(rows)) return null;
+    var best = null;
+    var bestAt = -1;
+    for (var i = 0; i < rows.length; i += 1) {
+      var r = rows[i];
+      var a = isPlainObject(r) && isPlainObject(r.author) ? r.author : null;
+      if (!a || !isReactionNumber(a.karma, true)) continue;
+      if (selfId && a.id !== selfId) continue;
+      var at = typeof r[timeField] === 'number' ? r[timeField] : 0;
+      if (at > bestAt) { best = Math.floor(a.karma); bestAt = at; }
+    }
+    return best;
+  }
+
+  function karmaFromProfile(data) {
+    var p = isPlainObject(data) && isPlainObject(data.profile) ? data.profile : null;
+    return p && isReactionNumber(p.karma, true) ? Math.floor(p.karma) : null;
+  }
+
+  // The only writer. Both fields together or neither; removing and re-adding
+  // puts them last, which is where normaliseMine writes them.
+  function setKarma(snap, karma, now) {
+    var out = normaliseMine(snap);
+    delete out.karma;
+    delete out.karmaAt;
+    if (isReactionNumber(karma, true) && toInt(now, 0) > 0) {
+      out.karma = Math.floor(karma);
+      out.karmaAt = toInt(now, 0);
+    }
+    return out;
+  }
+
+  // Both counts must be the number 0: null/undefined mean the list failed or
+  // was not parsed, and an unknown is not an empty list.
+  function karmaFallbackDue(snap, now, ttl, threadRowCount, postRowCount) {
+    if (threadRowCount !== 0 || postRowCount !== 0) return false;
+    var at = toInt(snap && snap.karmaAt, 0);
+    return at <= 0 || toInt(now, 0) - at >= ttl;
+  }
+
+  function formatKarma(n) {
+    if (!isReactionNumber(n, true)) return '-';
+    var digits = String(Math.abs(Math.floor(n)));
+    var out = '';
+    for (var i = 0; i < digits.length; i += 1) {
+      if (i > 0 && (digits.length - i) % 3 === 0) out += ',';
+      out += digits.charAt(i);
+    }
+    return (n < 0 ? '-' : '') + out;
+  }
+```
+
+In `normaliseMine`, directly before the `return` of the finished snapshot (use the parameter and result names #2 uses; `grep -n "function normaliseMine"`):
+
+```js
+    // Optional forum karma (#10): a whole pair or nothing, and never added
+    // when the stored blob lacked it, so an old cache round-trips unchanged.
+    var karmaAt = Math.max(0, toInt(raw.karmaAt, 0));
+    if (karmaAt > 0 && isReactionNumber(raw.karma, true)) {
+      out.karma = Math.floor(raw.karma);
+      out.karmaAt = karmaAt;
+    }
+```
+
+Runtime constants, beside `TOPIC_TTL_MS`:
+
+```js
+  var KARMA_TTL_MS = 12 * 60 * 60 * 1000;   // fallback profile read cache
+  // Endless-knot karma icon, supplied by the owner (docs/reference/karma-endless-knot.svg).
+  // Changes from that file: fill is currentColor so it follows the theme; prolog,
+  // title, desc, role, aria-labelledby and xmlns dropped; aria-hidden and focusable
+  // added; sized to the text. ASCII only: Torn PDA rewrites anything else.
+  var KARMA_ICON_SVG = '<svg viewBox="149 50 702 900" aria-hidden="true" focusable="false" style="height:1em;width:auto">'
+    + '<path fill="currentColor" fill-rule="evenodd" d="@@D@@"/></svg>';
+```
+
+Replace `@@D@@` with the path data of `docs/reference/karma-endless-knot.svg` (the `d` attribute), copied exactly:
+
+```
+M 697 264 L 834 403 L 749 486 L 712 447 L 758 401 L 697 341 L 550 487 L 513 448 Z M 450 511 L 488 551 L 303 736 L 165 600 L 254 512 L 291 550 L 242 600 L 303 659 Z M 301 264 L 389 351 L 350 389 L 301 341 L 242 402 L 390 549 L 353 587 L 165 402 Z M 450 610 L 637 796 L 501 934 L 363 798 L 450 709 L 488 749 L 440 798 L 499 857 L 560 798 L 413 650 Z M 449 314 L 488 353 L 350 489 L 313 450 Z M 499 66 L 637 202 L 550 291 L 511 252 L 560 202 L 501 143 L 440 202 L 588 351 L 551 390 L 363 204 Z M 649 413 L 835 598 L 699 736 L 610 648 L 650 611 L 699 659 L 758 598 L 611 452 Z M 648 511 L 686 551 L 548 686 L 511 648 Z M 451 413 L 587 548 L 551 587 L 413 452 Z
+```
+
+After `enrichReactions`:
+
+```js
+  // The karma fallback (#10): one user/profile request, only from refreshMine,
+  // only when the caller found both lists empty (karmaFallbackDue). Reads
+  // profile.karma and nothing else. A throttle or failure leaves karma unknown.
+  function readKarmaProfile(now, opts, generation) {
+    return tornApiGet('user/profile', {}, opts).then(function (res) {
+      if (generation !== state.generation || !res.ok) return { ok: false };
+      var k = karmaFromProfile(res.data);
+      if (k !== null) state.mine = setKarma(state.mine, k, now);
+      return { ok: true };
+    });
+  }
+```
+
+In `refreshMine`, two edits. Directly after the statement that assigns `state.mine = mergeMineSnapshot(...)` (the lists are both parsed there; `threadRows` and `postRows` stand for #2's row arrays, and a list that failed or did not parse is `null`, which `karmaFallbackDue` treats as unknown):
+
+```js
+          // Forum karma for free: the author of rows already fetched (#10).
+          var seenKarma = karmaFromAuthors(threadRows, 'first_post_time', state.mine.selfId);
+          if (seenKarma === null) seenKarma = karmaFromAuthors(postRows, 'created_time', state.mine.selfId);
+          if (seenKarma !== null) state.mine = setKarma(state.mine, seenKarma, now);
+```
+
+and, as the first step of the chain that currently begins `return enrichMine(ids, now, options, generation)...`, wrap it:
+
+```js
+          var karmaDue = karmaFallbackDue(state.mine, now, KARMA_TTL_MS,
+            Array.isArray(threadRows) ? threadRows.length : null, Array.isArray(postRows) ? postRows.length : null);
+          return (karmaDue ? readKarmaProfile(now, options, generation) : Promise.resolve({ ok: true }))
+            .then(function () { return stale() ? outcome : enrichMine(ids, now, options, generation).then(...); });
+```
+
+(Keep #2's and Task 5's `.then` chain unchanged inside; when `karmaDue` both lists are empty, so `ids` is empty and `enrichMine`/`enrichReactions` make no request, which is why the run is exactly 3.) `refreshAll` is not edited: a test pins that it never calls `readKarmaProfile`.
+
+- [ ] **Step 5: Run**
+
+Run: `node --test tests/karma.test.js tests/karma-refresh.test.js tests/storage.test.js tests/reactions-lookups.test.js && npm test && npm run test:syntax`
+Expected: PASS (purity: the five engine functions touch no DOM, network or clock; ASCII: the icon constant has no non-ASCII byte).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add torn-forum-command-center.user.js tests/karma.test.js tests/karma-refresh.test.js tests/storage.test.js tests/load-userscript.js
+git commit -m "feat: forum karma from the author on fetched rows, with a one-request profile fallback (#10)"
 ```
 
 ---
@@ -1166,6 +1563,8 @@ test('the reactions pill is its own line and wraps rather than overflowing', () 
 
 - [ ] **Step 3: Implement**
 
+(`renderReactions` below is replaced by Task 6A's version, which adds karma; build Task 6 as written, then 6A.)
+
 In `buildPanelModel`'s returned object, after `drafts: draftList(state.drafts),`:
 
 ```js
@@ -1264,6 +1663,178 @@ git commit -m "feat: thumbs up and down line under the panel header (#10)"
 
 ---
 
+### Task 6A: The karma icon in the line
+
+**Files:**
+- Modify: `torn-forum-command-center.user.js` - `renderReactions` (replace Task 6's version), `panelStyleText`.
+- Modify: `tests/panel.test.js`, `tests/style.test.js`, `tests/render-preview.mjs`, `tests/contrast-audit.mjs`
+
+**Interfaces:**
+- Consumes: `formatKarma`, `KARMA_ICON_SVG`, `reactionTotals(...).karma`.
+- Produces: `renderKarma(karma) -> string`; `renderReactions` showing the karma after the thumbs, and alone when no thread was started.
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `tests/panel.test.js` (helpers from Task 6):
+
+```js
+const visibleText = (html) => html.replace(/<[^>]*>/g, '');
+
+function withKarma(env, karma) {
+  const api = env.exports;
+  api.state.mine = api.setKarma(api.state.mine, karma, NOW);
+  api.recompute(NOW);
+}
+
+test('karma follows the thumbs as the icon and a number, with an aria-label and no visible word', () => {
+  const env = bootPanel();
+  withMine(env, [startedRec(env.exports, 1, TH(34, 5))]);
+  withKarma(env, 1208);
+  const html = htmlOf(env);
+  assert.match(html, /<span class="tfcc-rx">5<\/span> down <span class="tfcc-karma" role="group" aria-label="Karma" title="Karma: 1,208\. Net likes on your forum posts, as reported by Torn\.">/);
+  assert.ok(html.includes(env.exports.KARMA_ICON_SVG), 'the icon constant is what is injected');
+  assert.match(html, /<span class="tfcc-rx">1,208<\/span><\/span>/);
+  assert.ok(html.indexOf('tfcc-karma') > html.indexOf('down'), 'karma follows thumbs up and down');
+  assert.doesNotMatch(visibleText(html), /karma/i, 'the word is never visible text');
+  assert.match(htmlOf(env), /aria-label="[^"]*Karma: 1,208\./, 'the button speaks it too');
+});
+
+test('unknown karma shows "-", never 0, and a real 0 shows 0', () => {
+  const env = bootPanel();
+  withMine(env, [startedRec(env.exports, 1, TH(34, 5))]);
+  let html = htmlOf(env);
+  assert.match(html, /title="Karma: unknown\. Net likes on your forum posts, as reported by Torn\."/);
+  assert.match(html, /<span class="tfcc-rx">-<\/span><\/span>/);
+  assert.doesNotMatch(visibleText(html), /karma/i);
+  withKarma(env, 0);
+  html = htmlOf(env);
+  assert.match(html, /<span class="tfcc-rx">0<\/span><\/span>/);
+  assert.match(html, /title="Karma: 0\./);
+  withKarma(env, -12);
+  assert.match(htmlOf(env), /<span class="tfcc-rx">-12<\/span><\/span>/);
+});
+
+test('with no threads started, known karma is shown alone; unknown stays hidden', () => {
+  const env = bootPanel();
+  withMine(env, [], NOW);
+  assert.doesNotMatch(htmlOf(env), /tfcc-subhead/, 'nothing to say yet');
+  withKarma(env, 1208);
+  const html = htmlOf(env);
+  assert.match(html, /<div class="tfcc-subhead"><button type="button" class="tfcc-reactions" data-act="view" data-view="mine"/);
+  assert.doesNotMatch(visibleText(html), /Your threads/);
+  assert.match(html, /<span class="tfcc-rx">1,208<\/span>/);
+  assert.doesNotMatch(visibleText(html), /karma/i);
+});
+
+test('the karma line is also present before My posts has loaded, as "-"', () => {
+  const env = bootPanel();
+  withMine(env, [], 0);
+  const html = htmlOf(env);
+  assert.match(html, /Your threads: <span class="tfcc-rx">-<\/span> up, <span class="tfcc-rx">-<\/span> down <span class="tfcc-karma"/);
+  assert.match(html, /<span class="tfcc-rx">-<\/span><\/span>/);
+});
+```
+
+Append to `tests/style.test.js`:
+
+```js
+test('the karma icon is sized to the text and takes the theme colour', () => {
+  const karma = blockFor('#tfcc-panel .tfcc-karma');
+  assert.match(karma, /display: inline-flex/);
+  assert.match(karma, /white-space: nowrap/);
+  assert.match(karma, /color: var\(--tm-text\)/, 'currentColor resolves to a themed colour, not black');
+  assert.match(blockFor('#tfcc-panel .tfcc-karma svg'), /flex: none/);
+  assert.ok(api.KARMA_ICON_SVG.includes('style="height:1em;width:auto"'));
+});
+```
+
+(`api` is the file's existing loaded export object; use its name.)
+
+- [ ] **Step 2:** Run `node --test tests/panel.test.js tests/style.test.js`. Expected: FAIL.
+
+- [ ] **Step 3: Implement**
+
+Replace Task 6's `renderReactions` with:
+
+```js
+  // The karma figure: the owner's endless-knot icon (currentColor, so it
+  // follows the theme) and a number. No visible word; the span carries the
+  // meaning for assistive tech and the tooltip. The meaning is Torn's report and
+  // unverified (spec, "What it means"); Task 0 step 6 checks it.
+  var KARMA_MEANING = '. Net likes on your forum posts, as reported by Torn.';
+  function renderKarma(karma) {
+    var n = formatKarma(karma);
+    var title = 'Karma: ' + (n === '-' ? 'unknown' : n) + KARMA_MEANING;
+    return '<span class="tfcc-karma" role="group" aria-label="Karma" title="' + escapeHtml(title) + '">'
+      + KARMA_ICON_SVG + '<span class="tfcc-rx">' + escapeHtml(n) + '</span></span>';
+  }
+
+  // The thread reactions line (#10). Its own block under .tfcc-head, never in
+  // it: the header row belongs to the title, #9's badges and Refresh, Expand
+  // and Hide. Rendered after the collapsed early return, so hidden when
+  // collapsed. Up and down are real topic-post sums; net is labelled. Karma
+  // follows them; with no started threads and a known karma, it stands alone.
+  function renderReactions(model) {
+    var r = model.reactions;
+    if (!model.hasKey || !r) return '';
+    var karma = isReactionNumber(r.karma, true) ? r.karma : null;
+    if (r.state === 'empty' && karma === null) return '';
+    var known = r.state === 'known';
+    var stale = known && r.stale;
+    var rx = function (v) { return '<span class="tfcc-rx">' + escapeHtml(v) + '</span>'; };
+    var parts = '';
+    var spoken = '';
+    if (r.state !== 'empty') {
+      if (known && r.thumbThreads > 0) {
+        var more = r.netThreads > 0 ? ', net ' + formatSigned(r.net) + ' on ' + r.netThreads + ' more' : '';
+        parts = rx(formatCount(r.up)) + ' up, ' + rx(formatCount(r.down)) + ' down'
+          + (r.netThreads > 0 ? ', net ' + rx(formatSigned(r.net)) + ' on ' + r.netThreads + ' more' : '');
+        spoken = formatCount(r.up) + ' up, ' + formatCount(r.down) + ' down' + more;
+      } else if (known) {
+        parts = 'net ' + rx(formatSigned(r.net));
+        spoken = 'net ' + formatSigned(r.net);
+      } else {
+        parts = rx('-') + ' up, ' + rx('-') + ' down';
+        spoken = 'thumbs unknown';
+      }
+    }
+    var age = stale ? ' (' + formatRelativeTime(r.updatedAt, model.now) + ')' : '';
+    var title = reactionsTitle(r, model.now, MINE_PAGE_LIMIT);
+    var said = (r.state === 'empty' ? '' : 'Your threads: ' + spoken + age + '. ')
+      + 'Karma: ' + (karma === null ? 'unknown' : formatKarma(karma)) + '. ';
+    var lead = r.state === 'empty' ? '' : 'Your threads: ' + parts + escapeHtml(age) + ' ';
+    return '<div class="tfcc-subhead"><button type="button" class="tfcc-reactions' + (stale ? ' tfcc-stale' : '')
+      + '" data-act="view" data-view="mine" title="' + escapeHtml(title) + '" aria-label="'
+      + escapeHtml(said + title) + '">' + lead + renderKarma(karma) + '</button></div>';
+  }
+```
+
+In `panelStyleText`, after Task 6's `.tfcc-rx` rule:
+
+```js
+      '#' + PANEL_ID + ' .tfcc-karma { display: inline-flex; align-items: center; gap: 0.25em;',
+      '  white-space: nowrap; color: var(--tm-text); }',
+      '#' + PANEL_ID + ' .tfcc-karma svg { flex: none; }',
+```
+
+In `tests/render-preview.mjs`, extend Task 6's seed block: `mine = api.setKarma(mine, 1208, NOW - 5 * MIN);` just before `api.state.mine = mine;`.
+
+In `tests/contrast-audit.mjs`, `grep -n "tfcc-rx\|tm-text" tests/contrast-audit.mjs`: the icon is `currentColor` = `--tm-text` on the pill's `--tm-bg-3`, the same pair the bold figures use. Add an explicit labelled pair for it ("karma icon") in every theme (Dark, Light, Match Torn) at the 3:1 non-text threshold, in the audit's own pair-list format; if the figures' pair is already audited at 4.5:1, the new line documents that the icon rides on it.
+
+- [ ] **Step 4: Run**
+
+Run: `node --test tests/panel.test.js tests/style.test.js && npm test && npm run test:syntax`
+Then `node tests/render-preview.mjs && node tests/contrast-audit.mjs > contrast.log 2>&1`, read `contrast.log`. Expected: OK in every theme, including the karma icon pair.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add torn-forum-command-center.user.js tests/panel.test.js tests/style.test.js tests/render-preview.mjs tests/contrast-audit.mjs
+git commit -m "feat: show forum karma as the endless-knot icon after the thumbs (#10)"
+```
+
+---
+
 ### Task 7: Per-thread figures in My posts
 
 **Files:**
@@ -1357,6 +1928,8 @@ In `tests/panel.test.js`, replace the body of #2's `Settings states both request
     + '\\s+requests and My posts at most ' + (2 + api.DEFAULT_ENRICH_BUDGET + thumbs(api.DEFAULT_ENRICH_BUDGET))
     + '; at the largest setting of ' + api.MAX_ENRICH_BUDGET + ', ' + (3 + api.MAX_ENRICH_BUDGET) + ' and '
     + (2 + api.MAX_ENRICH_BUDGET + thumbs(api.MAX_ENRICH_BUDGET)) + '\\.'));
+  assert.match(html, new RegExp('If you have started no threads and written no posts, My posts instead reads your profile once for your forum karma, at most once every '
+    + (api.KARMA_TTL_MS / 3600000) + ' hours, which is 3 requests in all\\.'));
   assert.match(html, /a Threads refresh is at most 13\s+requests and My posts at most 17; at the largest setting of 25, 28 and 32\./);
   assert.match(html, /under 40 requests a minute/);
 ```
@@ -1385,6 +1958,9 @@ Replace #2's whole budget note `out.push(...)` (the one starting `'<p class="tfc
       + 'My posts also reads the opening post of up to ' + REACTION_LOOKUPS_PER_RUN + ' threads you started, '
       + 'for their thumbs up and down, each at most once every ' + Math.round(TOPIC_TTL_MS / 3600000) + ' hours; '
       + 'with lookups set to 0 it reads none. '
+      + 'If you have started no threads and written no posts, My posts instead reads your profile once '
+      + 'for your forum karma, at most once every ' + Math.round(KARMA_TTL_MS / 3600000) + ' hours, '
+      + 'which is 3 requests in all. '   // two lists + user/profile, at any lookup setting
       + 'With the default of ' + DEFAULT_ENRICH_BUDGET + ', a Threads refresh is at most '
       + (3 + DEFAULT_ENRICH_BUDGET) + ' requests and My posts at most '
       + (2 + DEFAULT_ENRICH_BUDGET + thumbsAt(DEFAULT_ENRICH_BUDGET))
@@ -1499,6 +2075,38 @@ git commit -m "feat: Settings states the thumbs lookups and their cost; debug co
     apply: (s) => s.replace("var NO_SUBSCRIBERS = ' Torn\\'s API has no subscriber count, so none is shown.';",
       "var NO_SUBSCRIBERS = '';"),
   },
+  // -- forum karma (#10) -----------------------------------------------------
+  {
+    name: 'unknown karma renders 0',
+    suite: 'tests/karma.test.js',
+    apply: (s) => s.replace("if (!isReactionNumber(n, true)) return '-';", "if (!isReactionNumber(n, true)) return '0';"),
+  },
+  {
+    name: 'the panel turns unknown karma into 0',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace('var karma = isReactionNumber(r.karma, true) ? r.karma : null;',
+      'var karma = isReactionNumber(r.karma, true) ? r.karma : 0;'),
+  },
+  {
+    name: 'the karma fallback runs in the default refresh',
+    suite: 'tests/karma-refresh.test.js',
+    // refreshAll must never call readKarmaProfile. If the grep for its
+    // signature finds a different shape, fix this pattern to match it.
+    apply: (s) => s.replace(/(function refreshAll\([^)]*\)\s*\{)/,
+      '$1 readKarmaProfile(toInt(arguments[0], 0), {}, state.generation);'),
+  },
+  {
+    name: 'the karma fallback runs although a thread or post exists',
+    suite: 'tests/karma-refresh.test.js',
+    // Killed by the "row without karma" test: only an unknown karma leaves the
+    // fallback due, so that is where the guard has to hold.
+    apply: (s) => s.replace('if (threadRowCount !== 0 || postRowCount !== 0) return false;', ''),
+  },
+  {
+    name: 'the karma icon keeps the owner file black instead of currentColor',
+    suite: 'tests/karma.test.js',
+    apply: (s) => s.replace('<path fill="currentColor" fill-rule="evenodd"', '<path fill="#000000" fill-rule="evenodd"'),
+  },
 ```
 
 (The last search string contains a backslash before the apostrophe, exactly as in the source; in the `.mjs` double-quoted literal that is written `\\'`.)
@@ -1532,6 +2140,11 @@ git commit -m "test: mutation entries for the reactions tracker (#10)"
   Torn's net rating, labelled "net". It shows "-" until My posts has loaded and
   never a guessed number. Torn's API has no subscriber count, so none is shown
   (#10).
+- The same line shows your forum karma after the thumbs, as an endless-knot
+  icon and a number (no word), read from the author on lists My posts already
+  fetches. Only when you have started no threads and written no posts does My
+  posts read your profile once for it, at most every 12 hours (3 requests in
+  all). It shows "-" until known (#10).
 
 ### Changed
 
@@ -1541,9 +2154,9 @@ git commit -m "test: mutation entries for the reactions tracker (#10)"
 
 Do **not** touch `@version`, `var SCRIPT_VERSION` or `package.json`.
 
-- [ ] **Step 2: QA.** Add `### Reactions tracker` after #2's My posts section in `docs/qa-checklist.md`, with exactly the twelve items in the spec's "QA checklist additions".
+- [ ] **Step 2: QA.** Add `### Reactions tracker` after #2's My posts section in `docs/qa-checklist.md`, with every item in the spec's "QA checklist additions" (including the five karma items).
 
-- [ ] **Step 3: Architecture and README.** `docs/architecture.md`: under the endpoints list, add `forum/{id}/posts?sort=ASC&offset=0` for topic-post thumbs (started threads, inside My posts only); under "Storage", the five optional `tfcc:mine` record fields, why they are optional (nested fields, `loadKey` damage rule, #8 covers top level only) and the single writer. README feature list: one bullet, the CHANGELOG's first sentence.
+- [ ] **Step 3: Architecture and README.** `docs/architecture.md`: under the endpoints list, add `forum/{id}/posts?sort=ASC&offset=0` for topic-post thumbs (started threads, inside My posts only); under "Storage", the optional top-level `karma`/`karmaAt` pair (absent stays absent, one writer `setKarma`), the committed `docs/reference/karma-endless-knot.svg` and `KARMA_ICON_SVG`, the five optional `tfcc:mine` record fields, why they are optional (nested fields, `loadKey` damage rule, #8 covers top level only) and the single writer. README feature list: one bullet, the CHANGELOG's first sentence.
 
 - [ ] **Step 4: Verify.** `npm test && npm run test:syntax && node tests/mutation-check.mjs > mutation.log 2>&1`, then read `mutation.log`. Expected: all PASS, every mutant killed.
 
@@ -1556,7 +2169,7 @@ git add CHANGELOG.md docs/qa-checklist.md docs/architecture.md README.md docs/co
 git commit -m "docs: changelog, QA and code map for the reactions tracker (#10)"
 ```
 
-- [ ] **Step 7: Review and ship.** `/review`, then `/ship` (verify gate `npm test`). The PR description states: no change to `@match`, `@grant`, `@connect`; one more GET path (`forum/{id}/posts`, already used by deep search); the new My posts maximum (17 / 32) and the unchanged Threads maximum (13); the contrast audit result; Task 0 status (the release gate), including what `rating` turned out to mean and whether `ASC` puts the topic first. No attribution footer. The release commit is separate and owner-cut, after the QA gate (rule 8).
+- [ ] **Step 7: Review and ship.** `/review`, then `/ship` (verify gate `npm test`). The PR description states: no change to `@match`, `@grant`, `@connect`; two more GET paths (`forum/{id}/posts`, already used by deep search, and `user/profile`, Public key, called only by the karma fallback and reading only `profile.karma`); the new My posts maximum (17 / 32), the 3-request karma-fallback run (an alternative to those, worst minute still 30 of 40 at defaults and 40 of 40 at the maximum) and the unchanged Threads maximum (13); the contrast audit result; Task 0 status (the release gate), including what `rating` turned out to mean and whether `ASC` puts the topic first. No attribution footer. The release commit is separate and owner-cut, after the QA gate (rule 8).
 
 ---
 
@@ -1680,8 +2293,9 @@ Add `refreshingReactions: false,` to `state`, and beside `act === 'view'`:
         }
 ```
 
-- [ ] **Substitutions:** Task 6's `renderReactions` uses `data-act="reactions-load"` with no `data-view`, and `reactionsTitle(r, model.now, MINE_PAGE_LIMIT, 'Tap here')`; its tap test asserts `data-act="reactions-load"`. Task 8's Settings note appends to the existing v0.1.0 note (ending `'under 40 requests a minute regardless.</p>');`) the sentence `Tapping the thumbs line under the title loads the threads you started (one request, at most once every 15 minutes) and reads the opening post of up to 5 of them, each at most once every 12 hours.` with the numbers from the constants; its test pins that sentence; debug counts are appended after `cachedPosts`. Task 9: the two Task 5 mutation entries become `'the reactions run ignores its topic cap'` (replace `Math.min(REACTION_LOOKUPS_PER_RUN, budget)` with `1000` in `refreshReactions`) and `'the reactions list ignores its TTL'` (replace `toInt(now, 0) - state.mine.fetchedAt < MINE_TTL_MS` with `false`), suite `tests/reactions-refresh.test.js`.
-- [ ] **Budget:** at most 1 + `min(5, enrichBudget)` per tap: 6 at defaults, 1 at 0. Worst minute at defaults 13 + 6 = 19 of 40; at the largest setting 28 + 6 = 34. Default refresh unchanged.
+- [ ] **Substitutions:** Task 6's and 6A's `renderReactions` use `data-act="reactions-load"` with no `data-view`, and `reactionsTitle(r, model.now, MINE_PAGE_LIMIT, 'Tap here')`; its tap test asserts `data-act="reactions-load"`. Task 8's Settings note appends to the existing v0.1.0 note (ending `'under 40 requests a minute regardless.</p>');`) the sentence `Tapping the thumbs line under the title loads the threads you started (one request, at most once every 15 minutes) and reads the opening post of up to 5 of them, each at most once every 12 hours.` with the numbers from the constants; its test pins that sentence; debug counts are appended after `cachedPosts`. Task 9: the two Task 5 mutation entries become `'the reactions run ignores its topic cap'` (replace `Math.min(REACTION_LOOKUPS_PER_RUN, budget)` with `1000` in `refreshReactions`) and `'the reactions list ignores its TTL'` (replace `toInt(now, 0) - state.mine.fetchedAt < MINE_TTL_MS` with `false`), suite `tests/reactions-refresh.test.js`.
+- [ ] **Karma (interim):** after `mergeStartedReactions`, call `karmaFromAuthors(rows, 'first_post_time', state.mine.selfId)` and `setKarma`; if `karmaFallbackDue(state.mine, now, KARMA_TTL_MS, rows.length, 0)` (there is no posts list on this path, so only the started-thread count matters), run `readKarmaProfile` after the list and skip the topic loop (there are no threads). Tests, in `tests/reactions-refresh.test.js`: a tap with no started threads makes exactly 2 requests (`user/forumthreads`, `user/profile`) and none within 12 hours; a tap with threads makes none to `user/profile`; `refreshAll` never does. Task 5A's `refreshMine` hooks and `tests/karma-refresh.test.js` move to `refreshReactions` unchanged in spirit.
+- [ ] **Budget:** at most 1 + `min(5, enrichBudget)` per tap: 6 at defaults, 1 at 0. Worst minute at defaults 13 + 6 = 19 of 40; at the largest setting 28 + 6 = 34. With no threads the tap is 2 requests (list + profile). Default refresh unchanged.
 - [ ] Commit `feat: load your threads' thumbs on tap, ahead of My posts (#10)`.
 
 ### When #2 then merges (done in #2's PR)
