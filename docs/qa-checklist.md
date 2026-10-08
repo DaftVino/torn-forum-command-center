@@ -118,6 +118,18 @@ time **END**.
       as the panel says.
 - [ ] A thread you unsubscribe from on Torn keeps its notes and tags and shows
       as not subscribed after the next refresh.
+- [ ] Settings, Rows shown, 3. Threads shows three rows and "Showing 3 of N"
+      with Show all. Show all lists every row. Show 3 only caps the list again.
+- [ ] With Rows shown at 3, pin four threads. Threads shows three pinned rows.
+- [ ] With Rows shown at 3, Unread only and a folder filter still narrow the
+      list before the cap. The count in "Showing 3 of N" is the filtered total.
+- [ ] Catch up and My posts each show three rows. The nav buttons still read
+      the full counts.
+- [ ] Search and Drafts show every row with Rows shown at 3.
+- [ ] Click Show all, navigate to another forum page within forums.php, and
+      come back. Still expanded. Reload the page. Capped again.
+- [ ] Reload the page. Rows shown is still 3. Set it to All. No "Showing" line
+      anywhere.
 
 ### Catch up
 
