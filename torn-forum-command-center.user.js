@@ -2272,7 +2272,7 @@
     return decodeURIComponent(pct);
   }
 
-  function encodeState(organizer, drafts, btoaFn) {
+  function encodeState(organizer, drafts, btoaFn, badges) {
     var payload = {
       v: SCHEMA_VERSION,
       folders: organizer.folders.map(function (f) {
@@ -2301,6 +2301,7 @@
         title: drafts.byThread[dids[j]].title,
       };
     }
+    if (badges) payload.badges = exportBadges(badges);
     return EXPORT_PREFIX + b64EncodeUtf8(JSON.stringify(payload), btoaFn);
   }
 
@@ -2337,7 +2338,7 @@
 
   // Import is additive and reports its effect before it is applied. Nothing is
   // written on a rejection, so a partially valid export cannot half-land.
-  function importState(organizer, drafts, text, atobFn) {
+  function importState(organizer, drafts, text, atobFn, badges) {
     var decoded = decodeState(text, atobFn);
     if (!decoded.ok) return decoded;
     var payload = decoded.payload;
@@ -2404,11 +2405,23 @@
       }
     }
 
+    var nextBadges = badges ? normaliseBadges(badges) : null;
+    var addedBadges = 0;
+    if (nextBadges && isPlainObject(payload.badges)) {
+      var merged = mergeBadgeRecords(nextBadges, payload.badges);
+      addedBadges = Object.keys(merged.earned).filter(function (id) {
+        return !Object.prototype.hasOwnProperty.call(nextBadges.earned, id);
+      }).length;
+      nextBadges = merged;
+    }
+
     return {
       ok: true,
       organizer: org,
       drafts: nextDrafts,
-      summary: { addedFolders: addedFolders, changedThreads: changedThreads, addedDrafts: addedDrafts },
+      badges: nextBadges,
+      summary: { addedFolders: addedFolders, changedThreads: changedThreads, addedDrafts: addedDrafts,
+        addedBadges: addedBadges },
     };
   }
 
@@ -2831,6 +2844,48 @@
       stamped.push(ev.newly[i]);
     }
     return { record: r, newly: stamped, changed: JSON.stringify(r) !== before };
+  }
+
+  function exportBadges(record) {
+    var r = normaliseBadges(record);
+    return {
+      visits: r.visits,
+      checkinDays: r.checkinDays,
+      bigBacklog: r.bigBacklog,
+      firstCheckinAt: r.firstCheckinAt,
+      streak: r.streak,
+      forums: r.forums,
+      earned: r.earned,
+    };
+  }
+
+  // Max, never sum: importing your own export twice changes nothing, and a
+  // second device cannot inflate the first. Two devices' real activity is
+  // under-counted, which is the safe direction.
+  function mergeBadgeRecords(local, incoming) {
+    var a = normaliseBadges(local);
+    var b = normaliseBadges(Object.assign({ v: SCHEMA_VERSION }, incoming));
+    var out = normaliseBadges(a);
+    out.visits = Math.max(a.visits, b.visits);
+    out.checkinDays = Math.max(a.checkinDays, b.checkinDays);
+    out.bigBacklog = Math.max(a.bigBacklog, b.bigBacklog);
+    out.firstCheckinAt = a.firstCheckinAt && b.firstCheckinAt
+      ? Math.min(a.firstCheckinAt, b.firstCheckinAt)
+      : (a.firstCheckinAt || b.firstCheckinAt);
+    var takeB = b.streak.lastDay > a.streak.lastDay
+      || (b.streak.lastDay === a.streak.lastDay && b.streak.current > a.streak.current);
+    var chosen = takeB ? b.streak : a.streak;
+    out.streak = { current: chosen.current, best: Math.max(a.streak.best, b.streak.best), lastDay: chosen.lastDay };
+    for (var i = 0; i < b.forums.length && out.forums.length < BADGE_FORUMS_MAX; i += 1) {
+      if (out.forums.indexOf(b.forums[i]) === -1) out.forums.push(b.forums[i]);
+    }
+    var ids = Object.keys(b.earned);
+    for (var j = 0; j < ids.length; j += 1) {
+      var has = Object.prototype.hasOwnProperty.call(out.earned, ids[j]);
+      if (!has && Object.keys(out.earned).length >= BADGE_EARNED_MAX) continue;
+      if (!has || b.earned[ids[j]] < out.earned[ids[j]]) out.earned[ids[j]] = b.earned[ids[j]];
+    }
+    return out;
   }
 
   // ---- ENGINE END ------------------------------------------------------

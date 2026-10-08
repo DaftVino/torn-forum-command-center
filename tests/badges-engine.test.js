@@ -372,3 +372,64 @@ test('a repeated event reports no change, and a tick only evaluates', () => {
   assert.deepStrictEqual(tick.newly, ['switched-on', 'first-folder']);
   assert.strictEqual(tick.record.checkinDays, 0);
 });
+
+// ---- merge, export, import -----------------------------------------------------
+
+const btoa = (s) => Buffer.from(String(s), 'binary').toString('base64');
+const atob = (s) => Buffer.from(String(s), 'base64').toString('binary');
+
+function rec(over) {
+  return Object.assign(api.freshBadges(), {
+    visits: 30, checkinDays: 8, bigBacklog: 0, firstCheckinAt: NOON - 10 * 86400000,
+    streak: { current: 4, best: 6, lastDay: D }, forums: [61, 4], earned: { reader: NOON - 5000 },
+  }, over || {});
+}
+
+test('merging a record with itself changes nothing', () => {
+  const r = api.normaliseBadges(rec());
+  assert.deepStrictEqual(api.mergeBadgeRecords(r, r), r);
+});
+
+test('merge takes the larger counter, never the sum', () => {
+  const m = api.mergeBadgeRecords(rec(), rec({ visits: 12, checkinDays: 20 }));
+  assert.strictEqual(m.visits, 30);
+  assert.strictEqual(m.checkinDays, 20);
+});
+
+test('merge unions earned with the earlier time, and forums', () => {
+  const m = api.mergeBadgeRecords(rec(), rec({ earned: { reader: NOON - 9000, explorer: NOON }, forums: [4, 2] }));
+  assert.deepStrictEqual(m.earned, { reader: NOON - 9000, explorer: NOON });
+  assert.deepStrictEqual(m.forums, [61, 4, 2]);
+});
+
+test('merge keeps the streak with the later day, and the larger best', () => {
+  const m = api.mergeBadgeRecords(rec(), rec({ streak: { current: 2, best: 11, lastDay: D + 1 } }));
+  assert.deepStrictEqual(m.streak, { current: 2, best: 11, lastDay: D + 1 });
+  const tie = api.mergeBadgeRecords(rec(), rec({ streak: { current: 9, best: 9, lastDay: D } }));
+  assert.deepStrictEqual(tie.streak, { current: 9, best: 9, lastDay: D });
+});
+
+test('an export carries the badges block and never the day scratch', () => {
+  const text = api.encodeState(api.freshOrganizer(0), api.freshDrafts(), btoa, rec());
+  const payload = api.decodeState(text, atob).payload;
+  assert.deepStrictEqual(Object.keys(payload.badges).sort(),
+    ['bigBacklog', 'checkinDays', 'earned', 'firstCheckinAt', 'forums', 'streak', 'visits']);
+});
+
+test('import restores badges, and importing twice is a no-op', () => {
+  const text = api.encodeState(api.freshOrganizer(0), api.freshDrafts(), btoa, rec());
+  const once = api.importState(api.freshOrganizer(0), api.freshDrafts(), text, atob, api.freshBadges());
+  assert.strictEqual(once.badges.visits, 30);
+  assert.strictEqual(once.summary.addedBadges, 1);
+  const twice = api.importState(api.freshOrganizer(0), api.freshDrafts(), text, atob, once.badges);
+  assert.deepStrictEqual(twice.badges, once.badges);
+  assert.strictEqual(twice.summary.addedBadges, 0);
+});
+
+test('an export from before badges imports and leaves badges alone', () => {
+  const old = api.encodeState(api.freshOrganizer(0), api.freshDrafts(), btoa);
+  const local = api.normaliseBadges(rec());
+  const out = api.importState(api.freshOrganizer(0), api.freshDrafts(), old, atob, local);
+  assert.strictEqual(out.ok, true);
+  assert.deepStrictEqual(out.badges, local);
+});
