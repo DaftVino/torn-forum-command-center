@@ -4,7 +4,7 @@
 
 **Goal:** Show one line under the panel header, `Your threads: 34 up, 5 down`, totalling the real thumbs up and thumbs down (the topic post's `likes` and `dislikes`) across the threads the key owner started, with Torn's `rating` as a labelled `net` fallback until a thread is checked, and `-` (never 0) when unknown. The same line ends with the owner's forum karma, shown as an endless-knot icon and a number (no word), read from the `author` on rows already fetched and, only when the user has no threads and no posts, from one `user/profile` request.
 
-**Architecture:** Two sources, both inside #2's `refreshMine`. #2's `user/forumthreads` answer supplies each started thread's `rating` at no extra cost. A new bounded loop, `enrichReactions`, reads `forum/{id}/posts?sort=ASC&offset=0` for at most `min(5, enrichBudget)` started threads per run, each at most once every 12 hours, and keeps the `is_topic` post's `likes`/`dislikes`. Both land as optional, canonically ordered fields on `tfcc:mine` records through one writer, `setReactionFields`. Karma lands as two optional top-level fields, `karma` and `karmaAt`, through one writer, `setKarma`, taken from `author.karma` on the lists `refreshMine` already reads, with a one-request `user/profile` fallback when both lists are empty. A pure `reactionTotals` sums them; the runtime renders a `.tfcc-subhead` block below `.tfcc-head`, after the collapsed early return.
+**Architecture:** Two sources, both inside #2's `refreshMine`. #2's `user/forumthreads` answer supplies each started thread's `rating` at no extra cost. A new bounded loop, `enrichReactions`, reads `forum/{id}/posts?offset=0` for at most `min(5, enrichBudget)` started threads per run, each at most once every 12 hours, and keeps the `is_topic` post's `likes`/`dislikes`. Both land as optional, canonically ordered fields on `tfcc:mine` records through one writer, `setReactionFields`. Karma lands as two optional top-level fields, `karma` and `karmaAt`, through one writer, `setKarma`, taken from `author.karma` on the lists `refreshMine` already reads, with a one-request `user/profile` fallback when both lists are empty. A pure `reactionTotals` sums them; the runtime renders a `.tfcc-subhead` block below `.tfcc-head`, after the collapsed early return.
 
 **Tech Stack:** One ES5-style IIFE userscript (`torn-forum-command-center.user.js`), Node `node:test` suites run through the `vm` harness in `tests/load-userscript.js`. No dependencies.
 
@@ -15,6 +15,7 @@
 ## Global Constraints
 
 - **Never read `torn-forum-command-center.user.js` whole.** For every symbol: `grep -n "function <name>\|var <name>" torn-forum-command-center.user.js`, then `Read` with `offset`/`limit`. `docs/code-map.md` may be stale; the grep is the truth.
+- **A thread's `posts` counts replies, not posts** (`docs/reference/torn-api-live-findings-2026-10-08.md`, finding 3). #10 never reads it: its figures come from `rating`, `likes`, `dislikes` and `karma`, and "no threads and no posts" means the empty `user/forumthreads` and `user/forumposts` lists. Any total built from `posts` (#2, #4) adds 1.
 - **ASCII only** in the userscript (`tests/metadata.test.js`). No emoji thumbs; the words `up`, `down`, `net`. Write `Torn\'s`, never a curly apostrophe.
 - **Engine purity** (`tests/purity.test.js`): `isReactionNumber`, `setReactionFields`, `applyReactions`, `topicPostFromApi`, `applyTopicPost`, `reactionLookupTargets`, `reactionTotals`, `formatSigned`, `reactionsTitle` live between `// ---- ENGINE START` and `// ---- ENGINE END`; time is an argument.
 - **Budget:** default Threads refresh <= 13, unchanged. My posts run <= 2 + `enrichBudget` + `min(5, enrichBudget)`: 17 at defaults, 2 at 0, 32 at 25. The karma fallback replaces that run when both lists are empty and is exactly 3 requests (two lists + `user/profile`) at any setting, at most once per 12 hours, only in `refreshMine`, never in `refreshAll`; worst minute stays 30 of 40 at defaults and 40 of 40 at the maximum. Limiter 40 per rolling minute. Topic lookups run only inside `refreshMine`, after #2's lookups, never after a throttle. The Settings note states these numbers, computed from the constants.
@@ -22,7 +23,7 @@
 - **Unknown is `-`, never `0`.** Numbers are read with `isReactionNumber` (`typeof`, `isFinite`); `toInt(null, 0)` is 0, which is the trap.
 - **No subscriber figure.** Torn's API has none; every tooltip ends `Torn\'s API has no subscriber count, so none is shown.`
 - **Upgrade safety:** the five record fields (`reactAt`, `rating`, `topicAt`, `up`, `down`) are optional, written only through `setReactionFields`, in that order. The only top-level additions are `karma` and `karmaAt` on `tfcc:mine`, optional, never back-filled, written only through `setKarma`. No new key, no new setting.
-- **Karma:** unknown is `-`, never `0` (a real 0 shows `0`). The word "karma" is never visible text; the icon (`KARMA_ICON_SVG`, ASCII, `fill="currentColor"`, never `#000000`, `aria-hidden="true"`, `focusable="false"`) sits in a `.tfcc-karma` span with `aria-label="Karma"` and a `title`. The meaning is defined by the Torn wiki (spec, "Karma definition"); Task 0 step 6 checks the value against the profile. Only `profile.karma` is read from `user/profile`.
+- **Karma:** unknown is `-`, never `0` (a real 0 shows `0`). The word "karma" is never visible text; the icon (`KARMA_ICON_SVG`, ASCII, `fill="currentColor"`, never `#000000`, `aria-hidden="true"`, `focusable="false"`) sits in a `.tfcc-karma` span with `aria-label="Karma"` and a `title`. The meaning is defined by the Torn wiki (spec, "Karma definition"); owner check 2 (Task 0) compares the value with the profile. Only `profile.karma` is read from `user/profile`.
 - **Post `content`** is never read, stored, rendered or reported.
 - **No change to `.tfcc-head`'s contents or `.tfcc-title`.** Hidden when collapsed, without a key, in loading/fatal shells, and when no threads were started and karma is unknown (with karma known and no threads, the line shows the karma alone).
 - **Read-only**, `@match`/`@grant`/`@connect` unchanged, no DOM data path (ADR 0001), errors through `scrubDetail`.
@@ -44,7 +45,7 @@
 | File | Change |
 |---|---|
 | `torn-forum-command-center.user.js` | Engine: the nine functions above, `mineThreadFromApi` field, `normaliseMineThread` fields, `mergeMineSnapshot` call, `NO_SUBSCRIBERS`. Karma (Task 5A): `karmaFromAuthors`, `karmaFromProfile`, `setKarma`, `karmaFallbackDue`, `formatKarma`, `normaliseMine` top-level pair, `KARMA_TTL_MS`, `KARMA_ICON_SVG`, `readKarmaProfile`, the `refreshMine` hooks. Runtime: constants, `enrichReactions`, `refreshMine` hook, model field, `renderReactions`, `panelHtml`, styles, `mergeThreads` row fields, `renderRow` meta, Settings note, debug counts. |
-| `tests/load-userscript.js` | `EXPORT_NAMES`; `forumThreadsPayload` gains `rating`; new `threadPostsPayload` |
+| `tests/load-userscript.js` | `EXPORT_NAMES`; `forumThreadsPayload` gains `rating`; new `loadFixture` and `fixturePosts` (real #14 fixtures, no invented topic-post builder) |
 | `tests/reactions.test.js`, `tests/reactions-lookups.test.js` | New |
 | `tests/karma.test.js`, `tests/karma-refresh.test.js` | New (Tasks 5A, 6A) |
 | `docs/reference/karma-endless-knot.svg`, `docs/reference/README.md` | The owner's icon, committed unchanged, with its provenance line (done with the spec) |
@@ -55,24 +56,28 @@
 
 ## Stop conditions
 
-Stop and amend the spec if: Task 0 finds the topic post's likes/dislikes differ from the thumbs on Torn's thread page; a request outside `user/forumthreads`, `user/forumposts`, `forum/{id}/thread`, `forum/{id}/posts` is needed; topic lookups would run outside `refreshMine`; a My posts run would exceed 2 + `enrichBudget` + 5; anything derives up or down from `rating`; any label says "like" or "subscriber" as a figure; an element is added inside `.tfcc-head`; a new key, setting or top-level field other than `karma`/`karmaAt` is needed; `user/profile` would be called from anywhere but `refreshMine`'s fallback; anything but `profile.karma` is read from the profile; the word "karma" would be visible text.
+Stop and amend the spec if: owner check 1 (Task 0) finds the topic post's likes/dislikes differ from the thumbs on Torn's thread page; a request outside `user/forumthreads`, `user/forumposts`, `forum/{id}/thread`, `forum/{id}/posts` is needed; topic lookups would run outside `refreshMine`; a My posts run would exceed 2 + `enrichBudget` + 5; anything derives up or down from `rating`; any label says "like" or "subscriber" as a figure; an element is added inside `.tfcc-head`; a new key, setting or top-level field other than `karma`/`karmaAt` is needed; `user/profile` would be called from anywhere but `refreshMine`'s fallback; anything but `profile.karma` is read from the profile; the word "karma" would be visible text.
 
 ---
 
-### Task 0: Live evidence (owner, signed in; not code)
+### Task 0: Prerequisite: #14 merged (fixtures in `tests/fixtures/`)
 
-Shared with #2's plan Task 0. Do it once for both.
+The live capture is done. #14 merged puts the redacted answers in `tests/fixtures/` and the findings in `docs/reference/torn-api-live-findings-2026-10-08.md`; this plan reads them and calls Torn for nothing. Do not start Task 1 until `git ls-files tests/fixtures` lists at least: `forum-thread-posts-asc.json`, `forum-posts-large-offset0.json`, `forum-posts-large-sort-desc-ignored.json`, `forum-thread.json`, `user-forumthreads.json`, `user-forumposts.json`, `user-profile-karma.json`. Shared with #2's plan; nothing here needs doing twice.
 
-- [ ] **Step 1:** Request `https://api.torn.com/v2/user/forumthreads?limit=100` with your Minimal key. Remove `title` and every `username` value; keep every key and number, including `rating`. Commit as `tests/fixtures/user-forumthreads.json` (or check #2's copy has `rating`).
-- [ ] **Step 2:** Confirm `rating` is present and numeric on every row.
-- [ ] **Step 3 (paging):** For one of your threads with more than 20 posts, request `forum/<id>/posts?sort=ASC&offset=0` and `forum/<id>/posts?offset=0` (no sort). Record: is the first post of the `ASC` page `is_topic: true`? What order does the unsorted page use? Does a pinned reply move? Remove `content` and usernames; commit the `ASC` page as `tests/fixtures/forum-thread-posts-asc.json`. If `ASC` does not put the topic first, change `TOPIC_POST_PARAMS` (Task 5) per spec open question 2 before Task 5.
-- [ ] **Step 4 (meaning):** For the same thread, note Torn's thumbs up, thumbs down on its thread page, the topic post's `likes`/`dislikes`, and the thread's `rating`. Record in the spec's open question 1 whether likes = up, dislikes = down, and rating = up - down. **If likes/dislikes differ from Torn's thumbs, stop** (stop condition).
-- [ ] **Step 5:** Check whether `forum/<id>/posts` page 1 ever has two `is_topic` posts (it should not).
-- [ ] **Step 6 (karma):** With the Task 0 step 1 fixture, note `author.karma` on the newest `user/forumthreads` row and on a `user/forumposts` row, and request `user/profile` once (Public key) for `profile.karma`. Compare all three with the karma shown on your own Torn profile and, once built, with the number beside the knot icon in the tracker line. Record in the spec's open question 5 whether the row figure equals the live figure. If they differ, reword the tooltip to "Your forum karma, as reported by Torn." (no code change); if the row figure is only the value at post time, take karma from `user/profile` only (spec assumption 8). Strip `username` and `content` from anything committed.
+What the fixtures already settle (spec, "What is verified"):
 
-**Release gate:** steps 3 and 4 gate the release, not only the code (spec, "Release gate"). Until both are recorded as passing in the spec's "What is verified" table, Tasks 1 to 10 may be built and reviewed but no tag may carry this feature.
+- Without `from`, `forum/{id}/posts` is oldest first, 20 per page, topic post (`is_topic: true`) at offset 0 (`forum-thread-posts-asc.json`, `forum-posts-large-offset0.json`). `sort` is ignored (`forum-posts-large-sort-desc-ignored.json` is byte-identical to the offset 0 page), so the request sends `offset=0` only.
+- Karma agrees across the thread row, the post rows and the profile (`user-forumthreads.json`, `user-forumposts.json`, `user-profile-karma.json`).
+- `rating` and `views` are present on the thread row; the owner's thread has `rating: 7` and a topic post with `likes: 7, dislikes: 0`.
 
-Commit: `git add tests/fixtures docs/superpowers/specs/2026-10-08-thread-reactions-tracker-design.md && git commit -m "test: live fixtures for thread rating and topic post thumbs (#10)"`
+Two owner page checks remain. The owner opens the pages; Claude does not (ADR 0001). Record each answer in the "Owner checks" table in `docs/reference/torn-api-live-findings-2026-10-08.md`:
+
+- [ ] **Owner check 1 (thumbs):** on the thread page for thread 16589908, read the thumbs on the topic post. API: 7 up, 0 down. Match means likes = up and dislikes = down. **If they differ, stop** (stop condition).
+- [ ] **Owner check 2 (karma):** on the owner's profile, read the karma. API: equal to `tests/fixtures/user-profile-karma.json`. A mismatch is a one-line tooltip rewording to "Your forum karma, as reported by Torn.", not a block.
+
+**Release gate:** both owner checks must be recorded before any tag carries this feature (spec, "Release gate"). Until then Tasks 1 to 10 may be built and reviewed. Check 2 gates only the tooltip wording; check 1 gates the thumbs half.
+
+No commit in this task; the evidence is #14's.
 
 ---
 
@@ -83,7 +88,7 @@ Commit: `git add tests/fixtures docs/superpowers/specs/2026-10-08-thread-reactio
 
 **Interfaces:**
 - Consumes: #2's `forumThreadsPayload(threads)`.
-- Produces: `profilePayload(karma)`; `author.karma` on thread and post rows; `forumThreadsPayload` rows carry `rating` (from `t.rating`, default `0`, omitted when `t.noRating`); `threadPostsPayload(posts) -> { posts: ForumPost[], _metadata }` where each input `{ id, threadId, isTopic, likes, dislikes, noLikes, isPinned, at, content }`. Export names for every function and constant in this plan (undefined until defined; harmless).
+- Produces: `profilePayload(karma)`; `author.karma` on thread and post rows; `forumThreadsPayload` rows carry `rating` (from `t.rating`, default `0`, omitted when `t.noRating`); `loadFixture(name) -> object` (a fresh parse of `tests/fixtures/<name>.json`, so a test may mutate its copy) and `fixturePosts(name, threadId, body?) -> object` (that fixture re-pointed at `threadId`, optionally with every `content` set to `body`). There is no invented topic-post builder: topic-post pages come from the real fixtures. Export names for every function and constant in this plan (undefined until defined; harmless).
 
 - [ ] **Step 1: Edit `forumThreadsPayload`**
 
@@ -94,34 +99,31 @@ After `is_sticky: false,` add:
       ...(t.noRating ? {} : { rating: t.rating === undefined ? 0 : t.rating }),
 ```
 
-- [ ] **Step 2: Add `threadPostsPayload`** after `forumPostsPayload`, and add it to `module.exports`:
+- [ ] **Step 2: Add the fixture helpers** beside the other payload builders, and add them to `module.exports`:
 
 ```js
-// forum/{threadId}/posts, ForumPostsResponse. Every ForumPost field the schema
-// requires, so a normaliser that reads the wrong one fails here, not live.
-function threadPostsPayload(posts) {
-  return {
-    posts: posts.map((p) => ({
-      id: p.id,
-      thread_id: p.threadId,
-      author: p.author || { id: 7, username: 'me', karma: 1 },
-      is_legacy: false,
-      is_topic: p.isTopic === true,
-      is_edited: false,
-      is_pinned: p.isPinned === true,
-      created_time: p.at === undefined ? 1600000000 : p.at,
-      edited_by: null,
-      has_quote: false,
-      quoted_post_id: null,
-      content: p.content === undefined ? 'SECRET TOPIC BODY ' + p.id : p.content,
-      ...(p.noLikes ? {} : { likes: p.likes === undefined ? 0 : p.likes, dislikes: p.dislikes === undefined ? 0 : p.dislikes }),
-    })),
-    _metadata: { links: { prev: null, next: null } },
-  };
+// A real, redacted Torn answer saved by #14 (tests/fixtures/). Every call parses
+// afresh, so a test may mutate its copy without touching the next test's.
+function loadFixture(name) {
+  return JSON.parse(require('node:fs').readFileSync(
+    require('node:path').join(__dirname, 'fixtures', name + '.json'), 'utf8'));
+}
+
+// One real posts page standing in for many threads: every post's thread_id is
+// set to `threadId`, and `body`, when given, replaces every post's content so a
+// test can prove a post body never reaches storage or a report. Nothing else is
+// changed, so the likes, dislikes and is_topic flags stay Torn's own.
+function fixturePosts(name, threadId, body) {
+  const page = loadFixture(name);
+  page.posts.forEach((p) => {
+    p.thread_id = threadId;
+    if (body !== undefined) p.content = body;
+  });
+  return page;
 }
 ```
 
-- [ ] **Step 2b: Karma on the author, and a profile payload.** In `forumThreadsPayload` (#2's) and `forumPostsPayload`, make each row's `author` `{ id: 7, username: 'me', karma }` where `karma` is `t.karma` (default `100`), and omit the `karma` key when `t.noKarma` is set (`grep -n "author" tests/load-userscript.js` for the real lines; `ForumThreadAuthor` requires `id`, `username`, `karma`). Add beside `threadPostsPayload`, and export it:
+- [ ] **Step 2b: Karma on the author, and a profile payload.** In `forumThreadsPayload` (#2's) and `forumPostsPayload`, make each row's `author` `{ id: 7, username: 'me', karma }` where `karma` is `t.karma` (default `100`), and omit the `karma` key when `t.noKarma` is set (`grep -n "author" tests/load-userscript.js` for the real lines; `ForumThreadAuthor` requires `id`, `username`, `karma`). Add beside `fixturePosts`, and export it:
 
 ```js
 // user/profile, UserProfileResponse. Only karma matters here; the rest of the
@@ -181,7 +183,7 @@ Create `tests/reactions.test.js`:
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { loadUserscript, forumThreadsPayload, threadPostsPayload } = require('./load-userscript');
+const { loadUserscript, forumThreadsPayload, loadFixture } = require('./load-userscript');
 
 const { exports: api } = loadUserscript();
 const NOW = 1700000000000;
@@ -418,41 +420,56 @@ git commit -m "feat: optional reaction fields on My posts records, and the net r
 - [ ] **Step 1: Write the failing tests** (append to `tests/reactions.test.js`)
 
 ```js
-test('the topic post supplies thumbs up and down', () => {
-  const page = threadPostsPayload([
-    { id: 1, threadId: 5, isTopic: true, likes: 12, dislikes: 3 },
-    { id: 2, threadId: 5, likes: 99, dislikes: 99 },
-  ]);
-  assert.deepStrictEqual(api.topicPostFromApi(page, 5), { up: 12, down: 3 });
+// Topic-post pages come from #14's real fixtures. Only the malformed cases
+// below edit a copy, because Torn has not sent us a malformed one.
+test('the real opening-post page yields the topic post thumbs', () => {
+  const page = loadFixture('forum-thread-posts-asc');
+  assert.strictEqual(page.posts[0].is_topic, true, 'the topic post leads page one');
+  assert.deepStrictEqual(api.topicPostFromApi(page, 16589908), { up: 7, down: 0 },
+    'the reply on the page (3 likes) is not added');
 });
 
-test('the topic post is found wherever it sits on the page, and zero is a real count', () => {
-  const page = threadPostsPayload([
-    { id: 2, threadId: 5, isPinned: true, likes: 50, dislikes: 0 },
-    { id: 1, threadId: 5, isTopic: true, likes: 0, dislikes: 0 },
-  ]);
-  assert.deepStrictEqual(api.topicPostFromApi(page, 5), { up: 0, down: 0 });
+test('a large thread: page one still leads with the topic post, and dislikes are read', () => {
+  const page = loadFixture('forum-posts-large-offset0');
+  assert.strictEqual(page.posts.length, 20);
+  assert.strictEqual(page.posts[0].is_topic, true);
+  assert.deepStrictEqual(api.topicPostFromApi(page, 16561608), { up: 916, down: 11 });
+});
+
+test('Torn ignores sort, so the request sends offset only', () => {
+  assert.deepStrictEqual(loadFixture('forum-posts-large-sort-desc-ignored'), loadFixture('forum-posts-large-offset0'),
+    'sort=DESC returned the same oldest-first page');
+  assert.deepStrictEqual(Object.keys(api.TOPIC_POST_PARAMS), ['offset']);
+  assert.strictEqual(api.TOPIC_POST_PARAMS.offset, 0);
+});
+
+test('the topic post is found wherever it sits on the page', () => {
+  const page = loadFixture('forum-thread-posts-asc');
+  page.posts.reverse();
+  assert.strictEqual(page.posts[0].is_topic, false);
+  assert.deepStrictEqual(api.topicPostFromApi(page, 16589908), { up: 7, down: 0 });
 });
 
 test('no usable topic post is null, never a zero', () => {
-  assert.strictEqual(api.topicPostFromApi(threadPostsPayload([{ id: 2, threadId: 5, likes: 4 }]), 5), null);
-  assert.strictEqual(api.topicPostFromApi(threadPostsPayload([{ id: 1, threadId: 6, isTopic: true, likes: 4 }]), 5), null,
+  const noTopic = loadFixture('forum-thread-posts-asc');
+  noTopic.posts = noTopic.posts.filter((p) => p.is_topic !== true);
+  assert.strictEqual(api.topicPostFromApi(noTopic, 16589908), null);
+  assert.strictEqual(api.topicPostFromApi(loadFixture('forum-thread-posts-asc'), 5), null,
     'a topic post from another thread');
-  assert.strictEqual(api.topicPostFromApi(threadPostsPayload([{ id: 1, threadId: 5, isTopic: true, likes: null, dislikes: 1 }]), 5), null);
-  assert.strictEqual(api.topicPostFromApi(threadPostsPayload([{ id: 1, threadId: 5, isTopic: true, noLikes: true }]), 5), null);
+  const nullLikes = loadFixture('forum-thread-posts-asc');
+  nullLikes.posts[0].likes = null;
+  assert.strictEqual(api.topicPostFromApi(nullLikes, 16589908), null);
+  const noLikes = loadFixture('forum-thread-posts-asc');
+  delete noLikes.posts[0].likes;
+  delete noLikes.posts[0].dislikes;
+  assert.strictEqual(api.topicPostFromApi(noLikes, 16589908), null);
 });
 
-test('the live opening-post page (plan Task 0) yields real thumbs', {
-  skip: !require('node:fs').existsSync(require('node:path').join(__dirname, 'fixtures', 'forum-thread-posts-asc.json'))
-    && 'Task 0 fixture not captured yet',
-}, () => {
-  // The builders above are assumptions until this fixture exists; this ties the
-  // reader to Torn's real field names, not to our own payload builder.
-  const page = JSON.parse(require('node:fs').readFileSync(
-    require('node:path').join(__dirname, 'fixtures', 'forum-thread-posts-asc.json'), 'utf8'));
-  const topic = page.posts.find((p) => p.is_topic === true);
-  assert.ok(topic, 'the ASC page must contain the topic post');
-  assert.deepStrictEqual(api.topicPostFromApi(page, topic.thread_id), { up: topic.likes, down: topic.dislikes });
+test('the thread row rating is consistent with the topic post (one sample: net or likes-only is still open)', () => {
+  const row = loadFixture('user-forumthreads').forumThreads[0];
+  assert.strictEqual(api.mineThreadFromApi(row).rating, 7);
+  const topic = api.topicPostFromApi(loadFixture('forum-thread-posts-asc'), row.id);
+  assert.strictEqual(topic.up - topic.down, 7, 'true for net and for likes-only alike, so the label stays net');
 });
 
 test('an unrecognised answer is undefined, so nothing is stamped', () => {
@@ -462,8 +479,9 @@ test('an unrecognised answer is undefined, so nothing is stamped', () => {
 });
 
 test('the post body never reaches the result', () => {
-  const page = threadPostsPayload([{ id: 1, threadId: 5, isTopic: true, likes: 1, dislikes: 1 }]);
-  assert.strictEqual(JSON.stringify(api.topicPostFromApi(page, 5)).indexOf('SECRET'), -1);
+  const page = loadFixture('forum-thread-posts-asc');
+  page.posts[0].content = 'SECRET TOPIC BODY';
+  assert.strictEqual(JSON.stringify(api.topicPostFromApi(page, 16589908)).indexOf('SECRET'), -1);
 });
 
 test('applyTopicPost stamps the check, and a miss clears old thumbs', () => {
@@ -509,10 +527,12 @@ Beside `var DEFAULT_ENRICH_BUDGET = 10;`:
   // min(REACTION_LOOKUPS_PER_RUN, enrichBudget) per My posts run.
   var TOPIC_TTL_MS = 12 * 60 * 60 * 1000;
   var REACTION_LOOKUPS_PER_RUN = 5;
-  // ASC + offset 0: the opening post is the oldest, so it leads page one.
-  // Unverified until plan Task 0 step 3; if Torn ignores sort in offset mode,
-  // this is the one line to change.
-  var TOPIC_POST_PARAMS = Object.freeze({ sort: 'ASC', offset: 0 });
+  // Without `from`, forum/{id}/posts is oldest first, 20 per page, with the
+  // topic post at offset 0. Torn IGNORES `sort` and `limit`, so neither is sent:
+  // a `sort=ASC` here would suggest a guarantee that does not exist. Evidence:
+  // docs/reference/torn-api-live-findings-2026-10-08.md, findings 5 to 7. The
+  // is_topic check in topicPostFromApi stays the real guarantee.
+  var TOPIC_POST_PARAMS = Object.freeze({ offset: 0 });
 ```
 
 After `applyReactions`:
@@ -808,7 +828,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const {
   loadUserscript, FORUMS_LOCATION, subscribedThreadsPayload, forumFeedPayload,
-  forumThreadsPayload, forumPostsPayload, threadPostsPayload,
+  forumThreadsPayload, forumPostsPayload, fixturePosts,
 } = require('./load-userscript');
 
 const KEY = 'abcdefghij123456';
@@ -840,7 +860,9 @@ function router(table) {
   };
 }
 
-// n started threads (ids 100..), one posted-in thread (20), each with a topic page.
+// n started threads (ids 100..), one posted-in thread (20), each with a real
+// topic page (#14's forum-thread-posts-asc: topic post 7 up, 0 down) re-pointed
+// at the thread. The body is a sentinel, to prove no post body is stored.
 function table(n) {
   const threads = Array.from({ length: n }, (_, i) => ({ id: 100 + i, total: 3, rating: 1, lastAt: 1600000000 + i }));
   const t = {
@@ -850,10 +872,10 @@ function table(n) {
     'user/forumthreads': forumThreadsPayload(threads),
     'user/forumposts': forumPostsPayload([{ id: 1, threadId: 20 }]),
     'forum/20/thread': { thread: { id: 20, forum_id: 61, title: 'Twenty', posts: 30, last_post_time: 1600000300 } },
-    'forum/20/posts': threadPostsPayload([{ id: 200, threadId: 20, isTopic: true, likes: 9, dislikes: 9 }]),
+    'forum/20/posts': fixturePosts('forum-thread-posts-asc', 20, 'SECRET TOPIC BODY'),
   };
   threads.forEach((th) => {
-    t['forum/' + th.id + '/posts'] = threadPostsPayload([{ id: th.id * 10, threadId: th.id, isTopic: true, likes: 2, dislikes: 1 }]);
+    t['forum/' + th.id + '/posts'] = fixturePosts('forum-thread-posts-asc', th.id, 'SECRET TOPIC BODY');
   });
   return t;
 }
@@ -879,14 +901,16 @@ test('a My posts run reads at most 5 opening posts, newest activity first, only 
   const calls = topicCalls(env);
   assert.strictEqual(calls.length, 5);
   for (const u of calls) {
-    assert.match(u, /[?&]sort=ASC(&|$)/);
+    assert.doesNotMatch(u, /[?&]sort=/, 'Torn ignores sort; the request must not suggest otherwise');
     assert.match(u, /[?&]offset=0(&|$)/);
   }
   assert.ok(!calls.some((u) => /\/forum\/20\/posts/.test(u)), 'a thread you only posted in is never checked');
   // Threads 100..107 have rising last-post times, so the newest five go first.
   assert.deepStrictEqual(calls.map((u) => Number(/\/forum\/(\d+)\/posts/.exec(u)[1])), [107, 106, 105, 104, 103]);
   assert.ok(env.router.seen.length <= 2 + 10 + 5, 'at most 17 requests at defaults, got ' + env.router.seen.length);
-  assert.strictEqual(env.exports.state.mine.threads.filter((t) => typeof t.up === 'number').length, 5);
+  const read = env.exports.state.mine.threads.filter((t) => typeof t.up === 'number');
+  assert.strictEqual(read.length, 5);
+  assert.ok(read.every((t) => t.up === 7 && t.down === 0), 'the fixture topic post: 7 up, 0 down');
   assert.strictEqual(JSON.stringify(env.exports.state.mine).indexOf('SECRET'), -1, 'no post body stored');
 });
 
@@ -999,7 +1023,7 @@ After #2's `enrichMine`:
   function enrichReactions(ids, now, opts, generation) {
     function step(i) {
       if (i >= ids.length) return Promise.resolve({ ok: true });
-      var params = { sort: TOPIC_POST_PARAMS.sort, offset: TOPIC_POST_PARAMS.offset };
+      var params = { offset: TOPIC_POST_PARAMS.offset };
       return tornApiGet('forum/' + ids[i] + '/posts', params, opts).then(function (res) {
         if (generation !== state.generation) return { ok: false, reason: 'stale' };
         if (res.ok) {
@@ -2156,7 +2180,7 @@ Do **not** touch `@version`, `var SCRIPT_VERSION` or `package.json`.
 
 - [ ] **Step 2: QA.** Add `### Reactions tracker` after #2's My posts section in `docs/qa-checklist.md`, with every item in the spec's "QA checklist additions" (including the five karma items).
 
-- [ ] **Step 3: Architecture and README.** `docs/architecture.md`: under the endpoints list, add `forum/{id}/posts?sort=ASC&offset=0` for topic-post thumbs (started threads, inside My posts only); under "Storage", the optional top-level `karma`/`karmaAt` pair (absent stays absent, one writer `setKarma`), the committed `docs/reference/karma-endless-knot.svg` and `KARMA_ICON_SVG`, the five optional `tfcc:mine` record fields, why they are optional (nested fields, `loadKey` damage rule, #8 covers top level only) and the single writer. README feature list: one bullet, the CHANGELOG's first sentence.
+- [ ] **Step 3: Architecture and README.** `docs/architecture.md`: under the endpoints list, add `forum/{id}/posts?offset=0` for topic-post thumbs (started threads, inside My posts only); under "Storage", the optional top-level `karma`/`karmaAt` pair (absent stays absent, one writer `setKarma`), the committed `docs/reference/karma-endless-knot.svg` and `KARMA_ICON_SVG`, the five optional `tfcc:mine` record fields, why they are optional (nested fields, `loadKey` damage rule, #8 covers top level only) and the single writer. README feature list: one bullet, the CHANGELOG's first sentence.
 
 - [ ] **Step 4: Verify.** `npm test && npm run test:syntax && node tests/mutation-check.mjs > mutation.log 2>&1`, then read `mutation.log`. Expected: all PASS, every mutant killed.
 
@@ -2169,7 +2193,7 @@ git add CHANGELOG.md docs/qa-checklist.md docs/architecture.md README.md docs/co
 git commit -m "docs: changelog, QA and code map for the reactions tracker (#10)"
 ```
 
-- [ ] **Step 7: Review and ship.** `/review`, then `/ship` (verify gate `npm test`). The PR description states: no change to `@match`, `@grant`, `@connect`; two more GET paths (`forum/{id}/posts`, already used by deep search, and `user/profile`, Public key, called only by the karma fallback and reading only `profile.karma`); the new My posts maximum (17 / 32), the 3-request karma-fallback run (an alternative to those, worst minute still 30 of 40 at defaults and 40 of 40 at the maximum) and the unchanged Threads maximum (13); the contrast audit result; Task 0 status (the release gate), including what `rating` turned out to mean and whether `ASC` puts the topic first. No attribution footer. The release commit is separate and owner-cut, after the QA gate (rule 8).
+- [ ] **Step 7: Review and ship.** `/review`, then `/ship` (verify gate `npm test`). The PR description states: no change to `@match`, `@grant`, `@connect`; two more GET paths (`forum/{id}/posts`, already used by deep search, and `user/profile`, Public key, called only by the karma fallback and reading only `profile.karma`); the new My posts maximum (17 / 32), the 3-request karma-fallback run (an alternative to those, worst minute still 30 of 40 at defaults and 40 of 40 at the maximum) and the unchanged Threads maximum (13); the contrast audit result; Task 0 status (the release gate), including the two owner page checks (thumbs on thread 16589908, profile karma) and the still-open question of whether `rating` is net or likes-only. No attribution footer. The release commit is separate and owner-cut, after the QA gate (rule 8).
 
 ---
 
@@ -2237,7 +2261,7 @@ test('mergeStartedReactions marks started threads and never sets a baseline', ()
 
 ### Task F3: `refreshReactions`, on tap only
 
-- [ ] Failing tests in `tests/reactions-refresh.test.js`, with the `settle`/`router`/`table`/`boot`/`limiterAllowing` helpers from Task 5's test file (drop `user/forumposts` and `forum/20/*` from `table`): one tap with 8 started threads makes 1 list request plus 5 `forum/<id>/posts` requests with `sort=ASC&offset=0`; a second tap within `MINE_TTL_MS` makes no list request and only topic lookups still due; with `enrichBudget` 0 a tap makes exactly 1 request; two taps at once make one run (single flight); no key makes none; a throttled list request makes no topic request; Reset everything mid-run drops the late answer; a failure detail containing the key is scrubbed; `refreshAll` never requests `user/forumthreads` or `forum/<id>/posts`.
+- [ ] Failing tests in `tests/reactions-refresh.test.js`, with the `settle`/`router`/`table`/`boot`/`limiterAllowing` helpers from Task 5's test file (drop `user/forumposts` and `forum/20/*` from `table`): one tap with 8 started threads makes 1 list request plus 5 `forum/<id>/posts` requests with `offset=0` and no `sort`; a second tap within `MINE_TTL_MS` makes no list request and only topic lookups still due; with `enrichBudget` 0 a tap makes exactly 1 request; two taps at once make one run (single flight); no key makes none; a throttled list request makes no topic request; Reset everything mid-run drops the late answer; a failure detail containing the key is scrubbed; `refreshAll` never requests `user/forumthreads` or `forum/<id>/posts`.
 - [ ] Implement after `enrichThreads`, plus Task 5's `enrichReactions` verbatim:
 
 ```js

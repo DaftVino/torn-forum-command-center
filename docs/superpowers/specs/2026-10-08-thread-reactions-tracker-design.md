@@ -1,7 +1,8 @@
 # Thread reactions tracker - design
 
 **Status:** proposed, 2026-10-08, revised the same day (thumbs from the topic
-post; forum karma added). Awaiting `/plan-eng-review`.
+post; forum karma added), then aligned with the live API capture of 2026-10-08
+(`docs/reference/torn-api-live-findings-2026-10-08.md`, from #14). Awaiting `/plan-eng-review`.
 **Issue:** #10. Depends on #2 (My posts, PR #5) for its data and its action.
 Shares the panel header with #9 (badges).
 **Target release:** whichever minor release first carries both #2 and this.
@@ -77,15 +78,16 @@ There is **no `limit`**: a page is 20 posts. Response
 
 | Claim | Status |
 |---|---|
-| `forum/{id}/posts` exists, Public, 20 per page, `offset` and `sort` accepted | **Verified** (schema) |
+| `forum/{id}/posts` exists, Public, 20 per page | **Verified** (schema and live: `forum-posts-large-offset0.json` holds 20 posts) |
+| `sort` and `limit` have any effect on `forum/{id}/posts` | **Refuted live.** `sort=DESC` returned the same page as no sort (`forum-posts-large-sort-desc-ignored.json` equals `forum-posts-large-offset0.json`), and `limit=50` returned 20 (`forum-posts-large-limit50-ignored.json`). The request sends neither. |
 | Posts carry `is_topic`, `likes`, `dislikes` | **Verified** (schema) |
-| `sort=ASC&offset=0` puts the thread's oldest post first, so the topic post is on page one | **Unverified.** The schema gives `sort` no default and describes it only as "sorted by the greatest timestamps"; it does not say whether `sort` applies in offset mode. The topic post is by definition the oldest, so if `ASC` applies, it is first. Owner Task 0, step 3. |
-| A pinned reply (`is_pinned`) does not displace the topic post from page one under `ASC` | **Unverified.** Task 0, step 3. Even if it did, a page holds 20 posts and only one is pinned, so the topic would still be on page one. |
-| The topic post's `likes` / `dislikes` are the thumbs Torn shows for the thread | **Unverified.** `ForumFeedTypeEnum` lists "X liked your thread" (3) and "X liked your post" (5) separately, which could mean two counters. Task 0, step 4 compares them with Torn's thread page. **Stop condition:** if they differ, the thumbs path is wrong and the spec is amended before Task 5. |
-| `rating` = likes - dislikes of the topic post | **Unverified**, plausible. Task 0, step 4. The label is "net" either way, and the code never derives up or down from it. |
-| `rating` and `views` present in the live `user/forumthreads` answer | **Verified in schema, values unverified.** Task 0, steps 1 to 2. |
-| `ForumThreadAuthor.karma` (required int32) on every thread and post row; `user/profile` returns `profile.karma` (int32, Public key) | **Verified** (schema v6.13.8, both in the excerpt). Values unverified: Task 0, steps 1 and 6. |
-| What `karma` measures | **Defined by the Torn wiki** (Karma page, supplied by the owner 2026-10-08): the likes and dislikes a player's forum posts have received, floored at 0. Posts under 30 characters, locked or graveyard threads, and faction, company and elimination forums do not count, nor do ratings from new or long-inactive players or from mass-rating. 1000 karma unlocks the VIP Corner forum. The OpenAPI schema itself has no description. Task 0 step 6 still checks the value against the owner's profile. |
+| Without `from`, `offset=0` puts the thread's oldest post first, so the topic post is on page one | **Verified live.** Oldest first, 20 per page, `is_topic: true` at offset 0, on a 2-post thread (`forum-thread-posts-asc.json`) and on a 6,207-post thread (`forum-posts-large-offset0.json`). Size does not matter. |
+| A pinned reply (`is_pinned`) does not displace the topic post from page one | **Not observed** (no fixture has a pinned reply). Order is by time, a page holds 20 posts and only one is pinned, and the `is_topic` check, not position, picks the post. |
+| The topic post's `likes` / `dislikes` are the thumbs Torn shows for the thread | **API side captured, page side open.** Thread 16589908's topic post has `likes: 7, dislikes: 0` (`forum-thread-posts-asc.json`). Owner check 1 (plan Task 0) compares them with 7 up, 0 down on Torn's thread page. **Stop condition:** if they differ, the thumbs path is wrong and the spec is amended before Task 5. |
+| `rating` = likes - dislikes of the topic post | **Consistent, not settled.** The thread has `rating: 7` (`forum-thread.json`, `user-forumthreads.json`) and its topic post 7 up, 0 down. With 0 dislikes, net and likes-only both give 7, so one sample cannot tell them apart. The label stays "net", hedged, and the code never derives up or down from it. Needs a topic post with dislikes (the 6,207-post thread's has 11, but its thread row was not captured). |
+| `rating` and `views` present in the live `user/forumthreads` answer | **Verified live** (`user-forumthreads.json`: `rating: 7`, `views: 218` on the owner's thread). |
+| `ForumThreadAuthor.karma` (required int32) on every thread and post row; `user/profile` returns `profile.karma` (int32, Public key) | **Verified live, and the sources agree.** `author.karma` on the thread row, on every post row and `profile.karma` are all 26 (`user-forumthreads.json`, `user-forumposts.json`, `user-profile-karma.json`); the post rows span months, so the row figure looks live, not frozen at post time. Owner check 2 compares it with the profile page. |
+| What `karma` measures | **Defined by the Torn wiki** (Karma page, supplied by the owner 2026-10-08): the likes and dislikes a player's forum posts have received, floored at 0. Posts under 30 characters, locked or graveyard threads, and faction, company and elimination forums do not count, nor do ratings from new or long-inactive players or from mass-rating. 1000 karma unlocks the VIP Corner forum. The OpenAPI schema itself has no description. Owner check 2 (plan Task 0) still compares the value with the owner's profile page. |
 
 Every unverified field is read defensively: a value that is not a finite
 number is unknown, a page without an `is_topic` post is "not found", and both
@@ -148,7 +150,7 @@ from the Torn wiki's Karma page, supplied by the owner on 2026-10-08 (see
 "Karma definition" at the end of this spec): the likes and dislikes on the
 player's forum posts, never below 0, with some posts excluded. The tooltip
 says "Likes and dislikes on your forum posts, never below 0; some posts do not
-count." Owner Task 0 step 6 still compares the tracker's figure with the karma
+count." Owner check 2 (plan Task 0) still compares the tracker's figure with the karma
 on the owner's Torn profile, which checks the value, not the meaning. The code
 only displays the integer and derives nothing from it.
 
@@ -190,7 +192,7 @@ Two sources, both inside #2's My posts action:
    until that thread's topic post has been read.
 2. **Thumbs, one lookup per thread.** For a started thread whose topic data is
    missing or older than `TOPIC_TTL_MS`, request
-   `forum/{id}/posts?sort=ASC&offset=0` and take the post with
+   `forum/{id}/posts?offset=0` (no `sort`: Torn ignores it) and take the post with
    `is_topic === true` (and, if present, `thread_id` equal to the thread).
    Its `likes` and `dislikes` are stored as `up` and `down` with `topicAt`. A
    page with no such post, or with non-numeric counts, stamps `topicAt` with
@@ -199,11 +201,20 @@ Two sources, both inside #2's My posts action:
    nothing and is retried next run. Post `content` is never read.
 
 The request parameters live in one constant,
-`TOPIC_POST_PARAMS = { sort: 'ASC', offset: 0 }`, so if Task 0 shows `ASC` is
-ignored in offset mode, the fix is one line (the alternative, `to` set to the
-thread's `first_post_time`, filters to the opening post by time; it needs the
-list's `first_post_time`, which #2 does not yet store, so it is the fallback,
-not the default).
+`TOPIC_POST_PARAMS = { offset: 0 }`. `sort` is deliberately absent: Torn ignores
+it (`forum-posts-large-sort-desc-ignored.json`), and sending `sort=ASC` would
+suggest an ordering guarantee that does not exist. The oldest-first order
+without `from` is observed behaviour, so the `is_topic === true` check stays
+the guarantee: if Torn ever changes the order, the page yields "not found" and
+the thread shows net, never a wrong figure. The earlier fallback (`to` set to
+the thread's `first_post_time`) is dropped: it is not needed, and `from`/`to`
+change the paging (findings 8 and 9 of the live note).
+
+**A thread's `posts` counts replies, not posts** (live note, finding 3), so
+total posts is `posts + 1`. #10 never reads `posts`: thumbs come from the
+topic post, net from `rating`, and "no threads and no posts" in the karma
+fallback means the empty `user/forumthreads` and `user/forumposts` lists.
+Nothing here needs the correction; #2 and #4, which do compare totals, apply it.
 
 **No double fetch.** #2's lookups (`forum/{id}/thread`) target threads that
 are **not** started (a started thread's list row already carries its total and
@@ -669,6 +680,13 @@ Task 7. Stored `topicAt`/`up`/`down` carry over unchanged.
 
 ## Testing strategy
 
+- **Fixtures, not invented payloads.** Every topic-post page in the tests is
+  one of #14's real files in `tests/fixtures/` (`forum-thread-posts-asc.json`,
+  `forum-posts-large-offset0.json`, `forum-posts-large-sort-desc-ignored.json`),
+  loaded through `loadFixture` / `fixturePosts`; the thread row and profile
+  come from `user-forumthreads.json` and `user-profile-karma.json`. A test
+  edits a copy only to make a malformed case (null likes, no topic post, a body
+  sentinel). Each is still written failing first.
 - `tests/reactions.test.js` (new, engine): `mineThreadFromApi` rating
   (absent, null, string, negative, zero); `setReactionFields` order in every
   write sequence; `applyReactions` keep-on-omission; `topicPostFromApi`
@@ -680,7 +698,7 @@ Task 7. Stored `topicAt`/`up`/`down` carry over unchanged.
   `reactionsTitle`.
 - `tests/reactions-lookups.test.js` (new, runtime through `refreshMine` with
   the router transport): at most `min(5, enrichBudget)` `forum/{id}/posts`
-  requests, each with `sort=ASC&offset=0`, only for started threads, after
+  requests, each with `offset=0` and no `sort`, only for started threads, after
   #2's lookups; none when the budget is 0; none within 12 h of a check; none
   after a throttle; `refreshAll` never requests `forum/{id}/posts` for a
   started thread; total requests at defaults <= 17; a late answer after Reset
@@ -746,8 +764,8 @@ New section "Reactions tracker", Torn PDA and desktop:
       `forum/<id>/posts` ones are only for threads you started.
 - [ ] Pick a thread you started with visible thumbs. On Torn's thread page
       note thumbs up, thumbs down. In My posts its row shows the same
-      `N up, M down`. If they differ, stop: file it against the spec (Task 0
-      stop condition).
+      `N up, M down`. If they differ, stop: file it against the spec (owner
+      check 1, stop condition).
 - [ ] A thread not yet checked shows `net +N` in its row, and the tracker
       says `net ... on K more`.
 - [ ] Sum check: tracker up and down equal the sums of the row figures.
@@ -764,7 +782,7 @@ New section "Reactions tracker", Torn PDA and desktop:
       "karma" on screen. Before My posts has ever loaded it shows `-`, not 0.
 - [ ] The icon takes the text colour in Dark, Light and Match Torn (visible,
       not black on dark).
-- [ ] The karma figure equals the karma on your Torn profile (Task 0, step 6).
+- [ ] The karma figure equals the karma on your Torn profile (owner check 2).
 - [ ] A test account with no threads and no posts: opening My posts shows the
       karma alone, and the key log shows exactly 3 requests for that open
       (`user/profile` once); reopening within 12 hours shows no `user/profile`.
@@ -772,14 +790,16 @@ New section "Reactions tracker", Torn PDA and desktop:
 
 ## Release gate
 
-Task 0 steps 3 and 4 are an owner gate on the release, not only on the code:
-no release tag may carry this feature until the spec's "What is verified"
-table records (a) that `sort=ASC&offset=0` puts the `is_topic` post first and
-(b) that its `likes`/`dislikes` equal the thumbs on Torn's own thread page. The
-QA checklist item "Pick a thread you started" repeats (b) on the released
-build. Karma has no gate beyond its tooltip: Task 0 step 6 compares it with
-the owner's profile, and a mismatch is a one-line wording change, not a block. If either fails, the thumbs half is amended or dropped, and the net
-fallback is the only figure shown.
+Owner check 1 is a gate on the release, not only on the code: no release tag
+may carry this feature until the live note's "Owner checks" table records that
+the topic post's `likes`/`dislikes` equal the thumbs on Torn's own thread page
+(thread 16589908: API 7 up, 0 down). Owner check 2, karma on the profile page
+against `user-profile-karma.json`, is recorded in the same table and gates
+only the tooltip wording: a mismatch is a one-line change, not a block. The
+QA checklist item "Pick a thread you started" repeats check 1 on the released
+build. If check 1 fails, the thumbs half is amended or dropped, and the net
+fallback is the only figure shown. That the topic post leads `offset=0` is no
+longer a gate: it is verified live.
 
 ## Assumptions
 
@@ -788,30 +808,41 @@ fallback is the only figure shown.
    returning `{ stoppedEarly: true }` on throttle, `pickList`, `freshMine`,
    `freshMineThread`, `MINE_PAGE_LIMIT`, `MINE_TTL_MS`, `state.mine`,
    `renderRow` meta for `mineRole`). If #2 renames any, this follows.
-2. `sort=ASC&offset=0` returns the oldest posts first (Task 0).
-3. The topic post's `likes`/`dislikes` are the thread's thumbs (Task 0; stop
+2. `offset=0`, with no `sort`, returns the oldest posts first, topic post at
+   offset 0 (verified live; `sort` is ignored).
+3. The topic post's `likes`/`dislikes` are the thread's thumbs (owner check 1; stop
    condition if not).
 4. Net `rating` may be negative.
 5. Five lookups per run and a 12-hour TTL are enough: uncovered threads show
    net meanwhile.
 6. 24 hours is a sensible "old" threshold for the line.
 7. `author.karma` on `user/forumthreads` and `user/forumposts` rows is the key
-   owner's current karma, the same figure as `profile.karma` (Task 0, step 6).
+   owner's current karma, the same figure as `profile.karma` (verified live
+   for thread, post and profile; owner check 2 compares the page).
 8. The newest row's `author.karma` is as current as any other row's (Torn is
    assumed to report the owner's present karma on each, not a value frozen at
-   post time). If Task 0 shows otherwise, take `user/profile` only.
+   post time). Settled live: the figure is identical on rows months apart and
+   on the profile.
 
 ## Open questions
 
-1. What `rating` measures exactly (Task 0, step 4). Label is `net` regardless.
-2. Does `sort` apply in offset mode? If not, switch `TOPIC_POST_PARAMS` to a
-   `to` filter on `first_post_time` (needs #2 to store it).
+1. What `rating` measures exactly: net (likes minus dislikes) or likes-only.
+   The live sample (`rating: 7`, topic post 7 up, 0 down) fits both. Needs a
+   started thread whose topic post has dislikes. Label is `net` regardless,
+   hedged.
+2. ~~Does `sort` apply in offset mode?~~ **Answered:** no, `sort` and `limit`
+   are ignored; the topic post is at offset 0 without them
+   (`forum-posts-large-sort-desc-ignored.json`). `TOPIC_POST_PARAMS` is
+   `{ offset: 0 }`; no `to` fallback.
 3. Do legacy threads (`is_legacy` posts) carry `is_topic`? If not, they stay
-   on net.
+   on net. Not probed.
 4. Should a thread whose last activity is newer than its `topicAt` be
    re-checked before the TTL? Deferred; it would raise the request rate.
-5. Is `author.karma` the live figure or the value at post time? Assumption 8;
-   Task 0 step 6 compares a thread row, a post row and the profile.
+5. ~~Is `author.karma` the live figure or the value at post time?~~
+   **Answered:** live. Thread row, post rows (months apart) and
+   `profile.karma` all equal 26 (`user-forumthreads.json`,
+   `user-forumposts.json`, `user-profile-karma.json`). Owner check 2 still
+   compares the profile page.
 
 ## Karma definition (Torn wiki)
 
