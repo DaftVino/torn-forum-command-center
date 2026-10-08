@@ -101,7 +101,7 @@ Line numbers are from `884f614`. Grep before trusting them.
   `.tfcc-title` has `margin-right: auto` (l.2353).
 - **Click delegation reads `ev.target.getAttribute('data-act')` directly**
   (l.3107-3111). It does not walk up to an ancestor. A click that lands on an
-  SVG inside a button reaches no handler. This spec handles that in 8.2.
+  SVG inside a button reaches no handler. This spec handles that in 8.1.
 - `loadKey` (l.1568) reports damage whenever
   `JSON.stringify(raw) !== JSON.stringify(normalised)` (see 6.2).
 - `persist(which)` writes one key's whole in-memory value. No tab hears
@@ -161,7 +161,8 @@ tctDay(now) = Math.floor(now / 86400000)     // now: epoch ms. TCT is UTC.
 ```
 
 **Decision: a TCT day, not a local day.** Torn's own daily reset, and so
-everything Torn players plan their day around, is TCT midnight. A UTC day
+everything Torn players plan their day around, is understood to be TCT
+midnight (not verified in this repo; `formatAbsoluteTime` already shows TCT). A UTC day
 has no DST, no travel, no offset argument and no setting, so the panel cut a
 whole class of edge cases and tests. The cost is that a player at UTC-8 has
 their "day" turn over at 16:00 local. That is how Torn's own day works, and
@@ -419,7 +420,9 @@ pick it up at their next `recordBadgeEvent` or reload.
 `BADGES` is a frozen engine table of
 `{ id, group, tier, name, glyph, metric, target, rule }`. The evaluator, the
 progress bars and the catalogue text all read it. `metric` is a key of the
-pure `badgeMetrics(record, facts, now)` result.
+pure `badgeMetrics(record, facts)` result. The metrics take no clock; the
+only time-dependent badge rules live in `applyBadgeEvent`, which takes `now`
+in its context.
 
 | # | id | Name | Group | Tier | Metric | Target | Rule text (as shown) | Why |
 |---|---|---|---|---|---|---|---|---|
@@ -453,8 +456,11 @@ streak-25). Gold 3 (bookworm, cartographer, streak-100). Legendary 1
   already carry the "next goal" pull.
 - **Forums 3 / 7 / 12.** These are counted in distinct forum ids, not
   visits. The thresholds are spaced so each needs a deliberate visit to new
-  territory. 12 assumes the public board has well over 12 forums; open
-  question 1 confirms that from a real `forum/categories`.
+  territory. 12 assumes the public board has well over 12 forums. **That
+  count is not evidenced anywhere in this repo** (the `forum/categories`
+  fixtures in `tests/` hold one or two entries), so Cartographer's target is a
+  release gate, not a settled number: see open question 1 and the QA
+  checklist.
 - **Streaks 3 / 10 / 25 / 100 / 500**, as the owner set. All of them use
   `best`, so an earned streak badge is never in doubt after a break.
 
@@ -572,8 +578,8 @@ subhead is hidden when collapsed:
 | Forum Command Center [U8 ^12]|
 |     [Refresh][Expand][Show]  |
 | Badge earned: Reader         |
-| (Bronze). 475 visits to      |
-| Bookworm.                [x] |
+| (Bronze). 475 more focused   |
+| visits to Bookworm.      [x] |
 +------------------------------+
 ```
 
@@ -590,19 +596,20 @@ pushed off their own line.
   the streak sentence, the "next" goal with a progress bar, up to 6 earned
   badges as icon plus name (highest tier first, then newest), then
   `+K more`, the earned count, and **All badges**. That button
-  (`data-act="badges-all"`) switches to Settings, opens the catalogue and
+  (`data-act="badges-all"`) expands the panel if it is collapsed (Settings
+  cannot be seen collapsed), switches to Settings, opens the catalogue and
   closes the shelf.
 - When #8's auto-hide collapses the panel, it also closes the shelf
-  (reconciliation in 10.4). Manual Hide leaves the shelf open.
+  (reconciliation in 10.1). Manual Hide leaves the shelf open.
 
 ### 8.4 The earn toast
 
 - An in-panel line under the head (and under the shelf if it is open),
   **rendered when collapsed too**. For example: `Badge earned: Reader
-  (Bronze). 475 visits to Bookworm.` It names the next rung of the same ladder
+  (Bronze). 475 more focused visits to Bookworm.` It names the next rung of the same ladder
   when there is one.
 - Several at once make one toast: `2 badges earned: Ten days, Tidy desk.`
-- Removed after `TOAST_MS = 6000` by a runtime timer, or by its dismiss button
+- Removed after `BADGE_TOAST_MS = 6000` by a runtime timer, or by its dismiss button
   (`data-act="badges-toast-dismiss"`). The removal redraw is a background
   redraw, so the existing guard defers it while an input has focus.
 - **No sound, no modal, no focus change.** `role="status"` is present only on
@@ -646,10 +653,12 @@ so it is covered by them.
 Every pair clears 4.5:1, so the tokens are safe for tier label text as well.
 Icons need 3:1. `tests/contrast-audit.mjs` measures text only and cannot see
 an SVG fill. `tests/style.test.js` therefore computes every `--tfcc-tier-*`
-and `--tfcc-locked` token against `--tm-bg` and `--tm-bg-3` in both blocks and
-requires at least 3:1. The `--tfcc-` tokens join the "light overrides every
-colour" check: that check currently matches `--tm-` only, so it is extended
-to cover them.
+and `--tfcc-locked` token against `--tm-bg`, `--tm-bg-2` (the shelf and toast
+surface; its weakest pair is `--tfcc-locked` in light, about 4.2:1) and
+`--tm-bg-3` in both blocks and requires at least 3:1. The existing "light
+overrides every colour" check matches `--tm-` only, so a companion check
+requires every `--tfcc-tier-*` and `--tfcc-locked` token set in the dark block
+to be set in the light block too.
 
 ### 8.7 The Settings catalogue and the off toggle
 
@@ -818,7 +827,9 @@ second PR fail until it is done.
   focus and blur and `visibilitychange`. These are page lifecycle signals,
   not markup. No ADR and no outbox note are needed.
 - **`@match`, `@grant`, `@connect`:** unchanged.
-- **Requests:** zero. `tests/read-only.test.js` gains a case.
+- **Requests:** zero. `tests/badges-runtime.test.js` has the case "badge events
+  never make a request", and the existing `tests/read-only.test.js` still
+  holds because nothing here calls the transport.
 
 ## 12. Testing strategy (detailed in the plan)
 
@@ -836,6 +847,9 @@ second PR fail until it is done.
   per day. Two tabs sharing one store. Renders never write. Check-in
   triggers. Toast. Chip in collapsed, loading and fatal heads. Off writes
   nothing. Reset, export, import. Handler coverage.
+- `tests/harness.test.js`: the two opt-in harness options the sampler and
+  multi-tab tests depend on, `stepClock` (Date.now moves with each timer) and
+  `sharedGmStore` (two sandboxes over one store), each proven on its own.
 - `tests/badges-storage.test.js`: upgrade silence (6.2) and `isRecoveredValue`.
 - `tests/style.test.js`: tokens in both blocks, 3:1 computed, the icon fill
   rule, `pointer-events: none` in the chip, motion only under
@@ -847,9 +861,13 @@ second PR fail until it is done.
 
 ## 13. Open questions
 
-1. **How many forums does `forum/categories` list for a normal account?** If
-   fewer than about 15, Cartographer at 12 is near-total and should drop to
-   10. Check from a real account's cached categories during QA.
+1. **How many forums does `forum/categories` list for a normal account?**
+   **Release gate.** The Debug report already prints `categories: N` (the
+   cached `forum/categories` count). If N is under 15, Cartographer at 12 is
+   near-total and its target drops to 10 before release (the `BADGES` table,
+   its test row, this table and the CHANGELOG text). A forum outside that list
+   (a faction forum) can still count, so N is a lower bound on what is
+   reachable. The plan puts this in `docs/qa-checklist.md` as a blocking line.
 2. **Torn PDA cross-tab storage.** Does PDA's `GM_getValue` see another PDA
    tab's write? If not, two PDA tabs can each count the same visit once. This
    is accepted under best-effort accounting.
