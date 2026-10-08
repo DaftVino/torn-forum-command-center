@@ -54,6 +54,7 @@
     drafts: 'tfcc:drafts',
     feed: 'tfcc:feed',
     postCache: 'tfcc:postcache',
+    badges: 'tfcc:badges',
     mine: 'tfcc:mine',
   });
 
@@ -384,6 +385,8 @@
       deepSearchPages: DEEP_SEARCH_MAX_PAGES,
       // 0 is All. See ROWS_SHOWN_OPTIONS.
       rowsShown: 0,
+      // Issue #9. On by default; Settings has the off switch.
+      badges: true,
     };
   }
 
@@ -404,6 +407,7 @@
     out.hideTornBox = raw.hideTornBox === true;
     out.authorOnly = raw.authorOnly === true;
     out.autoHideOnOpen = raw.autoHideOnOpen === true;
+    out.badges = raw.badges !== false;
     out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1
       ? 0 : toInt(raw.keyRejected, 0);
     out.folderFilter = typeof raw.folderFilter === 'string' ? safeString(raw.folderFilter, 64) : null;
@@ -2268,7 +2272,7 @@
     return decodeURIComponent(pct);
   }
 
-  function encodeState(organizer, drafts, btoaFn) {
+  function encodeState(organizer, drafts, btoaFn, badges) {
     var payload = {
       v: SCHEMA_VERSION,
       folders: organizer.folders.map(function (f) {
@@ -2297,6 +2301,7 @@
         title: drafts.byThread[dids[j]].title,
       };
     }
+    if (badges) payload.badges = exportBadges(badges);
     return EXPORT_PREFIX + b64EncodeUtf8(JSON.stringify(payload), btoaFn);
   }
 
@@ -2333,7 +2338,7 @@
 
   // Import is additive and reports its effect before it is applied. Nothing is
   // written on a rejection, so a partially valid export cannot half-land.
-  function importState(organizer, drafts, text, atobFn) {
+  function importState(organizer, drafts, text, atobFn, badges) {
     var decoded = decodeState(text, atobFn);
     if (!decoded.ok) return decoded;
     var payload = decoded.payload;
@@ -2400,11 +2405,23 @@
       }
     }
 
+    var nextBadges = badges ? normaliseBadges(badges) : null;
+    var addedBadges = 0;
+    if (nextBadges && isPlainObject(payload.badges)) {
+      var merged = mergeBadgeRecords(nextBadges, payload.badges);
+      addedBadges = Object.keys(merged.earned).filter(function (id) {
+        return !Object.prototype.hasOwnProperty.call(nextBadges.earned, id);
+      }).length;
+      nextBadges = merged;
+    }
+
     return {
       ok: true,
       organizer: org,
       drafts: nextDrafts,
-      summary: { addedFolders: addedFolders, changedThreads: changedThreads, addedDrafts: addedDrafts },
+      badges: nextBadges,
+      summary: { addedFolders: addedFolders, changedThreads: changedThreads, addedDrafts: addedDrafts,
+        addedBadges: addedBadges },
     };
   }
 
@@ -2454,6 +2471,463 @@
     function pad(n) { return (n < 10 ? '0' : '') + n; }
     return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate())
       + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ' TCT';
+  }
+
+  // -- badges (issue #9) ------------------------------------------------------
+  // Spec: docs/superpowers/specs/2026-10-08-badges-design.md. Every rule here is
+  // pure and takes the time as an argument. A day is a Torn day (UTC).
+
+  var DAY_MS = 86400000;
+
+  function tctDay(now) {
+    return Math.floor(toInt(now, 0) / DAY_MS);
+  }
+
+  // Strict: a missed day resets the run. The clock going backwards (a fix to a
+  // wrong device clock; UTC has no other way back) rebases to today without
+  // crediting or costing anything, so a stored future day cannot block later
+  // days.
+  function creditDay(streak, today) {
+    var s = { current: streak.current, best: streak.best, lastDay: streak.lastDay };
+    var d = toInt(today, 0);
+    if (s.lastDay < 0) {
+      s.current = 1;
+      s.lastDay = d;
+      s.best = Math.max(s.best, 1);
+      return { streak: s, credited: true };
+    }
+    var delta = d - s.lastDay;
+    if (delta === 0) return { streak: s, credited: false };
+    if (delta < 0) { s.lastDay = d; return { streak: s, credited: false }; }
+    s.current = delta === 1 ? s.current + 1 : 1;
+    s.lastDay = d;
+    s.best = Math.max(s.best, s.current);
+    return { streak: s, credited: true };
+  }
+
+  function streakView(streak, today) {
+    if (!streak || streak.lastDay < 0) {
+      return { state: 'none', current: 0, best: streak ? streak.best : 0 };
+    }
+    var delta = toInt(today, 0) - streak.lastDay;
+    if (delta <= 0) return { state: 'counted', current: streak.current, best: streak.best };
+    if (delta === 1) return { state: 'open', current: streak.current, best: streak.best };
+    return { state: 'broken', current: 0, best: streak.best };
+  }
+
+  // A focused thread visit: 15 s on one thread route, counted only while the
+  // page is visible and focused. Time away is never added (an inactive sample
+  // clears lastAt), a route change starts again, and one sample adds at most
+  // DWELL_MAX_STEP_MS so a throttled or sleeping timer cannot fake 15 s.
+  var DWELL_MS = 15000;
+  var DWELL_TICK_MS = 1000;
+  var DWELL_MAX_STEP_MS = 2000;
+
+  function freshDwell() {
+    return { threadId: '', accMs: 0, lastAt: 0, done: false };
+  }
+
+  function dwellStep(dwell, threadId, active, now) {
+    var d = dwell || freshDwell();
+    var id = threadId ? String(threadId) : '';
+    var t = toInt(now, 0);
+    if (id !== d.threadId) {
+      return { dwell: { threadId: id, accMs: 0, lastAt: id && active ? t : 0, done: false }, credit: null };
+    }
+    var next = { threadId: d.threadId, accMs: d.accMs, lastAt: d.lastAt, done: d.done };
+    if (next.done || !id) return { dwell: next, credit: null };
+    if (!active) { next.lastAt = 0; return { dwell: next, credit: null }; }
+    if (next.lastAt === 0) { next.lastAt = t; return { dwell: next, credit: null }; }
+    next.accMs += clamp(t - next.lastAt, 0, DWELL_MAX_STEP_MS);
+    next.lastAt = t;
+    if (next.accMs >= DWELL_MS) {
+      next.done = true;
+      return { dwell: next, credit: id };
+    }
+    return { dwell: next, credit: null };
+  }
+
+  var BADGE_VISIT_IDS_MAX = 200;   // a storage bound on one day's ids, not a rule
+  var BADGE_BACKLOG_IDS_MAX = 100;
+  var BADGE_FORUMS_MAX = 64;
+  var BADGE_EARNED_MAX = 64;
+
+  function freshBadges() {
+    return {
+      v: SCHEMA_VERSION,
+      visits: 0,
+      checkinDays: 0,
+      bigBacklog: 0,
+      firstCheckinAt: 0,
+      streak: { current: 0, best: 0, lastDay: -1 },
+      forums: [],
+      today: { day: -1, firstLook: -1, backlogIds: [], visitIds: [] },
+      earned: {},
+    };
+  }
+
+  function badgeIdList(raw, max) {
+    var out = [];
+    if (!Array.isArray(raw)) return out;
+    for (var i = 0; i < raw.length && out.length < max; i += 1) {
+      var s = raw[i];
+      if (typeof s !== 'string' || !/^[0-9]{1,12}$/.test(s)) continue;
+      if (out.indexOf(s) === -1) out.push(s);
+    }
+    return out;
+  }
+
+  // Total, bounded, and it reads back its own output byte for byte: loadKey calls
+  // anything else damage. Counters are top-level on purpose, so a later counter
+  // is an absent top-level key that isRecoveredValue forgives. streak and today
+  // are frozen for v1; changing them needs a v bump and a migration.
+  function normaliseBadges(raw) {
+    var out = freshBadges();
+    if (!isPlainObject(raw)) return out;
+    if (toInt(raw.v, 0) > SCHEMA_VERSION) return out;
+    out.visits = Math.max(0, toInt(raw.visits, 0));
+    out.checkinDays = Math.max(0, toInt(raw.checkinDays, 0));
+    out.bigBacklog = Math.max(0, toInt(raw.bigBacklog, 0));
+    out.firstCheckinAt = Math.max(0, toInt(raw.firstCheckinAt, 0));
+    var s = isPlainObject(raw.streak) ? raw.streak : {};
+    out.streak = {
+      current: Math.max(0, toInt(s.current, 0)),
+      best: Math.max(0, toInt(s.best, 0)),
+      lastDay: Math.max(-1, toInt(s.lastDay, -1)),
+    };
+    if (out.streak.best < out.streak.current) out.streak.best = out.streak.current;
+    if (Array.isArray(raw.forums)) {
+      for (var i = 0; i < raw.forums.length && out.forums.length < BADGE_FORUMS_MAX; i += 1) {
+        var f = raw.forums[i];
+        if (typeof f !== 'number' || f <= 0 || Math.floor(f) !== f) continue;
+        if (out.forums.indexOf(f) === -1) out.forums.push(f);
+      }
+    }
+    var t = isPlainObject(raw.today) ? raw.today : {};
+    out.today = {
+      day: Math.max(-1, toInt(t.day, -1)),
+      firstLook: Math.max(-1, toInt(t.firstLook, -1)),
+      backlogIds: badgeIdList(t.backlogIds, BADGE_BACKLOG_IDS_MAX),
+      visitIds: badgeIdList(t.visitIds, BADGE_VISIT_IDS_MAX),
+    };
+    if (isPlainObject(raw.earned)) {
+      var ids = Object.keys(raw.earned);
+      var kept = 0;
+      for (var j = 0; j < ids.length && kept < BADGE_EARNED_MAX; j += 1) {
+        var at = raw.earned[ids[j]];
+        if (!/^[a-z0-9-]{1,32}$/.test(ids[j])) continue;
+        if (typeof at !== 'number' || at <= 0 || Math.floor(at) !== at) continue;
+        out.earned[ids[j]] = at;
+        kept += 1;
+      }
+    }
+    return out;
+  }
+
+  var STARTER_FOLDER_IDS = Object.freeze(['guides', 'scripts', 'faction']);
+  var BADGE_GROUPS = Object.freeze([
+    Object.freeze({ id: 'setup', label: 'Setup' }),
+    Object.freeze({ id: 'presence', label: 'Presence' }),
+    Object.freeze({ id: 'attention', label: 'Attention' }),
+    Object.freeze({ id: 'care', label: 'Care' }),
+    Object.freeze({ id: 'streak', label: 'Streaks' }),
+  ]);
+  var BADGE_TIER_LABELS = Object.freeze({ bronze: 'Bronze', silver: 'Silver', gold: 'Gold', legend: 'Legendary' });
+  var BADGE_TIER_RANK = Object.freeze({ bronze: 1, silver: 2, gold: 3, legend: 4 });
+  var BADGE_UNITS = Object.freeze({ visits: 'focused visits', forums: 'forums', best: 'days' });
+
+  function badgeDef(id, name, group, tier, glyph, metric, target, rule) {
+    return Object.freeze({ id: id, group: group, tier: tier, name: name, glyph: glyph,
+      metric: metric, target: target, rule: rule });
+  }
+
+  // The whole catalogue. The evaluator, the progress bars and the Settings text
+  // all read this table, so a rule and its description cannot drift apart.
+  var BADGES = Object.freeze([
+    badgeDef('switched-on', 'Switched on', 'setup', 'bronze', 'plug', 'switchedOn', 1,
+      'Save an API key and finish a refresh.'),
+    badgeDef('first-folder', 'First folder', 'setup', 'bronze', 'folder', 'ownFoldersFilled', 1,
+      'Create a folder of your own and file a thread in it.'),
+    badgeDef('caught-up', 'Caught up', 'presence', 'bronze', 'check', 'checkinDays', 1,
+      'Finish a Torn day with Catch up empty.'),
+    badgeDef('reader', 'Reader', 'attention', 'bronze', 'book', 'visits', 25,
+      'Make 25 focused thread visits.'),
+    badgeDef('bookworm', 'Bookworm', 'attention', 'gold', 'book', 'visits', 500,
+      'Make 500 focused thread visits.'),
+    badgeDef('explorer', 'Explorer', 'attention', 'bronze', 'compass', 'forums', 3,
+      'Make focused visits in 3 different forums.'),
+    badgeDef('well-travelled', 'Well travelled', 'attention', 'silver', 'compass', 'forums', 7,
+      'Make focused visits in 7 different forums.'),
+    badgeDef('cartographer', 'Cartographer', 'attention', 'gold', 'compass', 'forums', 12,
+      'Make focused visits in 12 different forums.'),
+    badgeDef('tidy-desk', 'Tidy desk', 'care', 'silver', 'trays', 'tidy', 1,
+      'Follow at least 10 threads and leave none of them Unfiled.'),
+    badgeDef('backlog-buster', 'Backlog buster', 'care', 'silver', 'broom', 'bigBacklog', 20,
+      'Start a Torn day with 20 or more in Catch up, make focused visits to 10 of those threads, '
+        + 'and finish with Catch up empty.'),
+    badgeDef('streak-3', 'Three days', 'streak', 'bronze', 'flame', 'best', 3,
+      'Finish 3 Torn days in a row with Catch up empty.'),
+    badgeDef('streak-10', 'Ten days', 'streak', 'silver', 'flame', 'best', 10,
+      'Finish 10 Torn days in a row with Catch up empty.'),
+    badgeDef('streak-25', 'Twenty-five days', 'streak', 'silver', 'flame', 'best', 25,
+      'Finish 25 Torn days in a row with Catch up empty.'),
+    badgeDef('streak-100', 'Hundred days', 'streak', 'gold', 'flame', 'best', 100,
+      'Finish 100 Torn days in a row with Catch up empty.'),
+    badgeDef('streak-500', 'Five hundred days', 'streak', 'legend', 'flame', 'best', 500,
+      'Finish 500 Torn days in a row with Catch up empty.'),
+  ]);
+
+  function badgeById(id) {
+    for (var i = 0; i < BADGES.length; i += 1) if (BADGES[i].id === id) return BADGES[i];
+    return null;
+  }
+
+  function badgeFacts(input) {
+    var org = input.organizer;
+    var feed = input.feed;
+    var filed = {};
+    var ids = Object.keys(org.threads);
+    for (var i = 0; i < ids.length; i += 1) {
+      var fid = org.threads[ids[i]].folderId;
+      if (fid) filed[fid] = (filed[fid] || 0) + 1;
+    }
+    var own = 0;
+    for (var j = 0; j < org.folders.length; j += 1) {
+      var f = org.folders[j];
+      if (STARTER_FOLDER_IDS.indexOf(f.id) === -1 && filed[f.id] > 0) own += 1;
+    }
+    var subs = feed.subscribed || [];
+    var unfiled = 0;
+    for (var k = 0; k < subs.length; k += 1) {
+      var e = Object.prototype.hasOwnProperty.call(org.threads, String(subs[k].id)) ? org.threads[String(subs[k].id)] : null;
+      if (!e || !e.folderId) unfiled += 1;
+    }
+    return {
+      switchedOn: input.hasKey && !input.keyRejected && toInt(feed.fetchedAt, 0) > 0 ? 1 : 0,
+      ownFoldersFilled: own,
+      subscribed: subs.length,
+      unfiledSubscribed: unfiled,
+    };
+  }
+
+  function badgeMetrics(record, facts) {
+    return {
+      switchedOn: facts.switchedOn,
+      ownFoldersFilled: facts.ownFoldersFilled,
+      checkinDays: record.checkinDays,
+      visits: record.visits,
+      forums: record.forums.length,
+      tidy: facts.subscribed >= 10 && facts.unfiledSubscribed === 0 ? 1 : 0,
+      bigBacklog: record.bigBacklog,
+      best: record.streak.best,
+    };
+  }
+
+  function evaluateBadges(record, facts) {
+    var m = badgeMetrics(record, facts);
+    var newly = [];
+    var progress = [];
+    for (var i = 0; i < BADGES.length; i += 1) {
+      var b = BADGES[i];
+      var value = m[b.metric];
+      var earnedAt = Object.prototype.hasOwnProperty.call(record.earned, b.id) ? record.earned[b.id] : 0;
+      if (!earnedAt && value >= b.target) newly.push(b.id);
+      progress.push({ id: b.id, value: Math.min(value, b.target), target: b.target, earned: earnedAt });
+    }
+    return { newly: newly, progress: progress };
+  }
+
+  function nextBadge(progress) {
+    var best = null;
+    for (var i = 0; i < progress.length; i += 1) {
+      var p = progress[i];
+      if (p.earned || p.value >= p.target) continue;
+      if (!best || p.value / p.target > best.value / best.target) best = p;
+    }
+    return best;
+  }
+
+  function badgeToastText(ids, record, facts) {
+    var known = [];
+    for (var i = 0; i < ids.length; i += 1) {
+      var b = badgeById(ids[i]);
+      if (b) known.push(b);
+    }
+    if (!known.length) return '';
+    if (known.length > 1) {
+      return known.length + ' badges earned: ' + known.map(function (x) { return x.name; }).join(', ') + '.';
+    }
+    var one = known[0];
+    var text = 'Badge earned: ' + one.name + ' (' + BADGE_TIER_LABELS[one.tier] + ').';
+    var unit = Object.prototype.hasOwnProperty.call(BADGE_UNITS, one.metric) ? BADGE_UNITS[one.metric] : '';
+    if (unit) {
+      var value = badgeMetrics(record, facts)[one.metric];
+      for (var j = 0; j < BADGES.length; j += 1) {
+        var n = BADGES[j];
+        if (n.metric === one.metric && n.target > one.target) {
+          text += ' ' + Math.max(0, n.target - value) + ' more ' + unit + ' to ' + n.name + '.';
+          break;
+        }
+      }
+    }
+    return text;
+  }
+
+  var CHECKIN_FRESH_MS = 30 * 60 * 1000;
+  var BACKLOG_MIN_SIZE = 20;
+  var BACKLOG_MIN_VISITS = 10;
+
+  // A check-in: fresh data today, something followed, and nothing left in
+  // Catch up. ctx.blockers is the Catch up count the panel shows (plus #4's
+  // not-yet-checked rows when that mode is on); the runtime computes it.
+  function checkinEligible(record, ctx, day) {
+    var now = toInt(ctx.now, 0);
+    var fetchedAt = toInt(ctx.fetchedAt, 0);
+    return record.today.day === day
+      && record.today.firstLook >= 0
+      && fetchedAt > 0
+      && fetchedAt >= now - CHECKIN_FRESH_MS
+      && toInt(ctx.subscribed, 0) >= 1
+      && toInt(ctx.blockers, 0) === 0;
+  }
+
+  function tryCheckin(r, ctx, day) {
+    if (!checkinEligible(r, ctx, day)) return;
+    var res = creditDay(r.streak, day);
+    r.streak = res.streak;
+    if (!res.credited) return;
+    r.checkinDays += 1;
+    if (!r.firstCheckinAt) r.firstCheckinAt = toInt(ctx.now, 0);
+    if (r.today.firstLook >= BACKLOG_MIN_SIZE) {
+      var hits = 0;
+      for (var i = 0; i < r.today.visitIds.length; i += 1) {
+        if (r.today.backlogIds.indexOf(r.today.visitIds[i]) !== -1) hits += 1;
+      }
+      if (hits >= BACKLOG_MIN_VISITS) r.bigBacklog = Math.max(r.bigBacklog, r.today.firstLook);
+    }
+  }
+
+  function applyBadgeEvent(record, event, ctx) {
+    var before = JSON.stringify(normaliseBadges(record));
+    var r = normaliseBadges(record);
+    var now = toInt(ctx.now, 0);
+    var day = tctDay(now);
+    if (r.today.day !== day) r.today = { day: day, firstLook: -1, backlogIds: [], visitIds: [] };
+    var type = event && event.type;
+
+    if (type === 'visit') {
+      var id = String(event.threadId || '');
+      if (/^[0-9]{1,12}$/.test(id) && r.today.visitIds.indexOf(id) === -1
+        && r.today.visitIds.length < BADGE_VISIT_IDS_MAX) {
+        r.today.visitIds.push(id);
+        r.visits += 1;
+        var forumId = toInt(event.forumId, 0);
+        if (forumId > 0 && r.forums.indexOf(forumId) === -1 && r.forums.length < BADGE_FORUMS_MAX) {
+          r.forums.push(forumId);
+        }
+      }
+    } else if (type === 'refreshed') {
+      if (r.today.firstLook < 0) {
+        r.today.firstLook = Math.max(0, toInt(ctx.blockers, 0));
+        r.today.backlogIds = badgeIdList(ctx.catchUpIds || [], BADGE_BACKLOG_IDS_MAX);
+      }
+      tryCheckin(r, ctx, day);
+    } else if (type === 'catchup-changed') {
+      tryCheckin(r, ctx, day);
+    }
+
+    var stamped = [];
+    var ev = evaluateBadges(r, ctx.facts);
+    for (var i = 0; i < ev.newly.length; i += 1) {
+      if (Object.keys(r.earned).length >= BADGE_EARNED_MAX) break;
+      r.earned[ev.newly[i]] = now;
+      stamped.push(ev.newly[i]);
+    }
+    return { record: r, newly: stamped, changed: JSON.stringify(r) !== before };
+  }
+
+  function exportBadges(record) {
+    var r = normaliseBadges(record);
+    return {
+      visits: r.visits,
+      checkinDays: r.checkinDays,
+      bigBacklog: r.bigBacklog,
+      firstCheckinAt: r.firstCheckinAt,
+      streak: r.streak,
+      forums: r.forums,
+      earned: r.earned,
+    };
+  }
+
+  // Max, never sum: importing your own export twice changes nothing, and a
+  // second device cannot inflate the first. Two devices' real activity is
+  // under-counted, which is the safe direction.
+  function mergeBadgeRecords(local, incoming) {
+    var a = normaliseBadges(local);
+    var b = normaliseBadges(Object.assign({ v: SCHEMA_VERSION }, incoming));
+    var out = normaliseBadges(a);
+    out.visits = Math.max(a.visits, b.visits);
+    out.checkinDays = Math.max(a.checkinDays, b.checkinDays);
+    out.bigBacklog = Math.max(a.bigBacklog, b.bigBacklog);
+    out.firstCheckinAt = a.firstCheckinAt && b.firstCheckinAt
+      ? Math.min(a.firstCheckinAt, b.firstCheckinAt)
+      : (a.firstCheckinAt || b.firstCheckinAt);
+    var takeB = b.streak.lastDay > a.streak.lastDay
+      || (b.streak.lastDay === a.streak.lastDay && b.streak.current > a.streak.current);
+    var chosen = takeB ? b.streak : a.streak;
+    out.streak = { current: chosen.current, best: Math.max(a.streak.best, b.streak.best), lastDay: chosen.lastDay };
+    for (var i = 0; i < b.forums.length && out.forums.length < BADGE_FORUMS_MAX; i += 1) {
+      if (out.forums.indexOf(b.forums[i]) === -1) out.forums.push(b.forums[i]);
+    }
+    var ids = Object.keys(b.earned);
+    for (var j = 0; j < ids.length; j += 1) {
+      var has = Object.prototype.hasOwnProperty.call(out.earned, ids[j]);
+      if (!has && Object.keys(out.earned).length >= BADGE_EARNED_MAX) continue;
+      if (!has || b.earned[ids[j]] < out.earned[ids[j]]) out.earned[ids[j]] = b.earned[ids[j]];
+    }
+    return out;
+  }
+
+  // Icons are SVG paths written in ASCII: no emoji, no icon font, no <text>.
+  // Frames carry the tier by shape as well as colour.
+  var BADGE_FRAMES = Object.freeze({
+    bronze: 'M1 8a7 7 0 1 0 14 0a7 7 0 1 0 -14 0zM2.5 8a5.5 5.5 0 1 1 11 0a5.5 5.5 0 1 1 -11 0z',
+    silver: 'M8 0.8L14.2 4.4V11.6L8 15.2L1.8 11.6V4.4ZM8 2.5L12.7 5.2V10.8L8 13.5L3.3 10.8V5.2Z',
+    gold: 'M5.1 1H10.9L15 5.1V10.9L10.9 15H5.1L1 10.9V5.1ZM5.7 2.5H10.3L13.5 5.7V10.3L10.3 13.5H5.7L2.5 10.3V5.7Z',
+    legend: 'M1 8a7 7 0 1 0 14 0a7 7 0 1 0 -14 0zM2 8a6 6 0 1 1 12 0a6 6 0 1 1 -12 0z'
+      + 'M3 8a5 5 0 1 0 10 0a5 5 0 1 0 -10 0zM4 8a4 4 0 1 1 8 0a4 4 0 1 1 -8 0z',
+  });
+  var BADGE_GLYPHS = Object.freeze({
+    plug: 'M6 4h1v2h2V4h1v2h1v2a3 3 0 0 1 -2.5 3V12h-1v-1A3 3 0 0 1 5 8V6h1z',
+    folder: 'M4.5 5.5h2.5l1 1h3.5v4.5h-7z',
+    check: 'M5 8.2l1 -1 1.5 1.5 3.5 -3.5 1 1 -4.5 4.5z',
+    book: 'M4.5 5.5h3v5h-3zM8.5 5.5h3v5h-3z',
+    compass: 'M8 4.5l1.2 3.5 -1.2 3.5 -1.2 -3.5z',
+    trays: 'M4.5 5h7v1.5h-7zM4.5 7.5h7V9h-7zM4.5 10h7v1.5h-7z',
+    broom: 'M9.5 4l1 0.6 -2 3.4 1.5 0.9 -2.5 3.6 -3 -1.8 2.5 -3.4 1.4 0.8z',
+    flame: 'M8 4c1.5 1.5 3 3 3 4.8A3 3 0 0 1 5 8.8C5 7.5 6 7 6.5 6c0.3 1 1 1.3 1.5 1.5C8.2 6.5 8 5.2 8 4z',
+    // Chip glyphs fill the whole 16 x 16 box.
+    cup: 'M3 2h10v1h2v3a3 3 0 0 1 -3 3h-0.2A4 4 0 0 1 9 11.4V13h2v2H5v-2h2v-1.6A4 4 0 0 1 4.2 9H4'
+      + 'a3 3 0 0 1 -3 -3V3h2zM2.5 4.5v1.5a1.5 1.5 0 0 0 0.6 1.2V4.5zM13 4.5v2.7a1.5 1.5 0 0 0 0.5 -1.2V4.5z',
+    'cup-outline': 'M3 2h10v1h2v3a3 3 0 0 1 -3 3h-0.2A4 4 0 0 1 9 11.4V13h2v2H5v-2h2v-1.6A4 4 0 0 1 4.2 9H4'
+      + 'a3 3 0 0 1 -3 -3V3h2zM4.5 3.5h7v4a3.5 3.5 0 0 1 -7 0z',
+    'streak-on': 'M8 1c2.5 2.5 5 5 5 8a5 5 0 0 1 -10 0c0 -2 1.5 -3 2.3 -4.5c0.5 1.5 1.5 2 2.2 2.3C7.8 5 8 3 8 1z',
+    'streak-off': 'M8 1c2.5 2.5 5 5 5 8a5 5 0 0 1 -10 0c0 -2 1.5 -3 2.3 -4.5c0.5 1.5 1.5 2 2.2 2.3C7.8 5 8 3 8 1z'
+      + 'M8 4.5c1.5 1.6 3.5 3.3 3.5 4.5a3.5 3.5 0 0 1 -7 0c0 -1 0.6 -1.8 1.1 -2.6c0.6 1 1.6 1.4 2.4 1.6z',
+  });
+
+  // cls is 'bronze' | 'silver' | 'gold' | 'legend' | 'locked' | 'plain'.
+  // glyph names a BADGE_GLYPHS entry. framed draws the tier frame around it.
+  function badgeIcon(cls, glyph, size, framed) {
+    var px = toInt(size, 16);
+    var colour = cls === 'locked' ? 'tfcc-locked' : (cls === 'plain' ? '' : 'tfcc-tier-' + cls);
+    var frameKey = cls === 'locked' ? 'bronze' : cls;
+    var paths = [];
+    if (framed && Object.prototype.hasOwnProperty.call(BADGE_FRAMES, frameKey)) paths.push(BADGE_FRAMES[frameKey]);
+    if (Object.prototype.hasOwnProperty.call(BADGE_GLYPHS, glyph)) paths.push(BADGE_GLYPHS[glyph]);
+    return '<svg class="tfcc-ico' + (colour ? ' ' + colour : '') + '" viewBox="0 0 16 16" width="' + px
+      + '" height="' + px + '" aria-hidden="true" focusable="false">'
+      + paths.map(function (d) { return '<path d="' + d + '"/>'; }).join('') + '</svg>';
   }
 
   // ---- ENGINE END ------------------------------------------------------
@@ -2718,6 +3192,11 @@
     drafts: freshDrafts(),
     feed: freshFeed(),
     postCache: freshPostCache(),
+    badges: freshBadges(),
+    badgeShelfOpen: false,
+    badgeCatalogueOpen: false,
+    badgeToast: null,
+    dwell: freshDwell(),
     mine: freshMine(),
     refreshingMine: false,
     mineError: null,
@@ -2792,15 +3271,18 @@
     var f = loadKey(STORAGE_KEYS.feed, normaliseFeed, now);
     var p = loadKey(STORAGE_KEYS.postCache, normalisePostCache, now);
     var m = loadKey(STORAGE_KEYS.mine, normaliseMine, now);
+    var b = loadKey(STORAGE_KEYS.badges, normaliseBadges, now);
     state.settings = s.value;
     state.organizer = o.value;
     state.drafts = d.value;
     state.feed = f.value;
     state.postCache = p.value;
     state.mine = m.value;
+    state.badges = b.value;
     // A key that failed normalisation is reported rather than silently reset,
     // because a user who loses their folders deserves to know it happened.
-    [['Settings', s], ['Folders and tags', o], ['Drafts', d], ['Cached thread list', f], ['Post cache', p], ['My posts list', m]]
+    [['Settings', s], ['Folders and tags', o], ['Drafts', d], ['Cached thread list', f], ['Post cache', p], ['My posts list', m],
+      ['Badges', b]]
       .forEach(function (pair) {
         if (pair[1].recovered) notice(pair[0] + ' were damaged and have been reset.', 'warn');
       });
@@ -2814,6 +3296,7 @@
       feed: [STORAGE_KEYS.feed, state.feed],
       postCache: [STORAGE_KEYS.postCache, state.postCache],
       mine: [STORAGE_KEYS.mine, state.mine],
+      badges: [STORAGE_KEYS.badges, state.badges],
     };
     var pair = map[which];
     if (!pair) return { ok: true };
@@ -2833,6 +3316,69 @@
       now: now,
       authorOnly: state.settings.authorOnly === true,
     });
+  }
+
+  // ---- badges runtime (issue #9) ---------------------------------------------
+
+  var BADGE_TOAST_MS = 6000;
+
+  // The one Catch up list. buildPanelModel renders it and the badge check-in
+  // counts it, so the two cannot disagree. Like the panel, it sees only the
+  // Threads population: a My posts-only thread lives in its own view.
+  function catchUpRowsNow() {
+    var threadRows = state.rows.filter(function (r) { return r.inThreads; });
+    var mode = state.settings.authorOnly ? 'author' : 'any';
+    return sortThreads(catchUpList(threadRows, state.organizer.lastCatchUpAt, mode), 'activity');
+  }
+
+  // Author-only mode (issue #4): the "Not yet checked" group beside Catch up.
+  // Empty when the mode is off, exactly as the panel shows it.
+  function catchUpUncheckedNow() {
+    if (!state.settings.authorOnly) return [];
+    var threadRows = state.rows.filter(function (r) { return r.inThreads; });
+    return sortThreads(catchUpUnchecked(threadRows), 'activity');
+  }
+
+  function badgeContext(now) {
+    // Unknown is not clear (panel ruling 9): a not-yet-checked row blocks the
+    // check-in now, and a later ordinary refresh the same Torn day can credit it.
+    var cu = catchUpRowsNow().concat(catchUpUncheckedNow());
+    return {
+      now: now,
+      facts: badgeFacts({
+        organizer: state.organizer,
+        feed: state.feed,
+        hasKey: isKeyShaped(loadApiKey()),
+        keyRejected: state.settings.keyRejected,
+      }),
+      blockers: cu.length,
+      catchUpIds: cu.map(function (r) { return r.id; }),
+      subscribed: state.feed.subscribed.length,
+      fetchedAt: state.feed.fetchedAt,
+    };
+  }
+
+  function queueBadgeToast(ids, now) {
+    var ctx = badgeContext(now);
+    state.badgeToast = { text: badgeToastText(ids, state.badges, ctx.facts), until: now + BADGE_TOAST_MS, announced: false };
+  }
+
+  // Every badge write goes through here. It applies one event to a FRESH read
+  // of storage, so two tabs usually see each other's work. Best effort only:
+  // cross-tab propagation is asynchronous, and no badge depends on an exact
+  // count near a cap.
+  function recordBadgeEvent(event, now) {
+    if (!state.settings.badges) return null;
+    try {
+      var stored = loadKey(STORAGE_KEYS.badges, normaliseBadges, now).value;
+      var res = applyBadgeEvent(stored, event, badgeContext(now));
+      state.badges = res.record;
+      if (res.changed) persist('badges');
+      if (res.newly.length) queueBadgeToast(res.newly, now);
+      return res;
+    } catch (e) {
+      return null;
+    }
   }
 
   // ---- data acquisition --------------------------------------------------
@@ -2919,6 +3465,10 @@
           recompute(now);
           persist('feed');
           persist('organizer');
+          // A refresh that succeeded today: feed.fetchedAt is set only on success.
+          if (state.lastError === null && state.feed.fetchedAt === now) {
+            recordBadgeEvent({ type: 'refreshed' }, now);
+          }
         }
         return res || { ok: true };
       })
@@ -3290,6 +3840,70 @@
     return { changed: true, route: route, threadId: id };
   }
 
+  // ---- focused thread visits (issue #9) --------------------------------------
+
+  // Reads the page's own visibility and focus, never Torn's markup (ADR 0001).
+  // Takeover covers the thread, so time in takeover is not time on the thread.
+  function dwellActive(doc) {
+    try {
+      if (!state.route || !state.route.isThread) return false;
+      if (doc.hidden === true) return false;
+      if (typeof doc.hasFocus === 'function' && doc.hasFocus() !== true) return false;
+      return !state.settings.takeover;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function sampleDwell(doc, win, now) {
+    var id = state.route && state.route.isThread ? String(state.route.threadId) : '';
+    var step = dwellStep(state.dwell, id, dwellActive(doc), now);
+    state.dwell = step.dwell;
+    if (!step.credit) return false;
+    var entry = Object.prototype.hasOwnProperty.call(state.organizer.threads, step.credit)
+      ? state.organizer.threads[step.credit] : null;
+    var forumId = (state.route && state.route.forumId) || (entry ? entry.forumId : 0) || 0;
+    recordBadgeEvent({ type: 'visit', threadId: step.credit, forumId: forumId }, now);
+    return true;
+  }
+
+  var dwellTimer = null;
+  var DWELL_FLAG = '__tfccDwellObserved';
+
+  // A self-rescheduling timeout rather than setInterval, so a missed tick can
+  // never queue a burst, and the step cap in dwellStep absorbs a late one.
+  function startDwell(doc, win) {
+    if (dwellTimer !== null) return;
+    function tick() {
+      dwellTimer = null;
+      try {
+        if (!isForumsPage(win.location)) return;
+        var now = Date.now();
+        var changed = sampleDwell(doc, win, now);
+        if (state.badgeToast && now >= state.badgeToast.until) { state.badgeToast = null; changed = true; }
+        if (changed) drawIfStillHere(doc, win, makeHandlers(doc, win));
+      } catch (e) { /* the sampler must never throw onto Torn's page */ }
+      dwellTimer = setTimeout(tick, DWELL_TICK_MS);
+    }
+    dwellTimer = setTimeout(tick, DWELL_TICK_MS);
+    try {
+      if (win && !win[DWELL_FLAG]) {
+        win[DWELL_FLAG] = true;
+        var onChange = function () {
+          try { if (isForumsPage(win.location)) sampleDwell(doc, win, Date.now()); } catch (e) { /* never */ }
+        };
+        win.addEventListener('focus', onChange);
+        win.addEventListener('blur', onChange);
+        if (doc && typeof doc.addEventListener === 'function') doc.addEventListener('visibilitychange', onChange);
+      }
+    } catch (e2) { /* listeners are an accuracy aid; the tick still samples */ }
+  }
+
+  function stopDwell() {
+    if (dwellTimer !== null) { clearTimeout(dwellTimer); dwellTimer = null; }
+    state.dwell = freshDwell();
+  }
+
   // ---- reply box and drafts ----------------------------------------------
 
   var REPLY_SELECTORS = Object.freeze([
@@ -3497,6 +4111,8 @@
       '  --tfcc-text-sm: 12px; --tfcc-text: 14px; --tfcc-text-lg: 1.2em;',
       '  --tfcc-gap-xs: 4px; --tfcc-gap-sm: 6px; --tfcc-gap: 8px; --tfcc-gap-lg: 14px;',
       '  --tfcc-focus-ring: 2px solid var(--tm-good-text);',
+      '  --tfcc-tier-bronze: #d6955b; --tfcc-tier-silver: #c3ccd6; --tfcc-tier-gold: #e8c06a;',
+      '  --tfcc-tier-legend: #c9a2ff; --tfcc-locked: #8a8a8a;',
       '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
       '  --tfcc-mine-text: #141414; --tfcc-mine-border: #d9d9d9;',
       '}',
@@ -3506,6 +4122,8 @@
       '  --tm-text: #141414; --tm-muted: #4a4a4a; --tm-meta: #3a3a3a;',
       '  --tm-good-bg: #cfe8d4; --tm-good-text: #1c5c2c; --tm-bad-text: #a11414;',
       '  --tm-warn-text: #7a5600; --tm-accent-text: #14507d;',
+      '  --tfcc-tier-bronze: #8c4e17; --tfcc-tier-silver: #4f5966; --tfcc-tier-gold: #7a5600;',
+      '  --tfcc-tier-legend: #6a2fb5; --tfcc-locked: #6e6e6e;',
       // Same fill and text as dark; only the border differs, because a light
       // grey fill on the light panel is not itself a visible boundary.
       '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
@@ -3535,7 +4153,38 @@
       '  overflow-y: auto; overflow-x: hidden; padding: 12px; }',
       '#' + PANEL_ID + ' .tfcc-head { display: flex; align-items: center; gap: var(--tfcc-gap);',
       '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap); }',
-      '#' + PANEL_ID + ' .tfcc-title { font-weight: bold; margin-right: auto; }',
+      '#' + PANEL_ID + ' .tfcc-title { font-weight: bold; }',
+      // Title group left, control group right. The buttons are one nowrap unit,
+      // so at 320-360 px the control group wraps onto its own line WHOLE and
+      // Refresh, Expand and Hide stay together, in order.
+      '#' + PANEL_ID + ' .tfcc-head-id { display: flex; align-items: center; gap: var(--tfcc-gap-sm);',
+      '  flex-wrap: wrap; min-width: 0; }',
+      '#' + PANEL_ID + ' .tfcc-head-ctl { display: flex; align-items: center; gap: var(--tfcc-gap);',
+      '  flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }',
+      '#' + PANEL_ID + ' .tfcc-head-btns { display: inline-flex; gap: var(--tfcc-gap-xs); flex-wrap: nowrap; }',
+      '#' + PANEL_ID + ' button.tfcc-chip { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto;',
+      '  white-space: nowrap; min-height: 28px; padding: 2px 8px; border-radius: 14px;',
+      '  font-size: var(--tfcc-text-sm); font-weight: bold; }',
+      '#' + PANEL_ID + ' .tfcc-chip * { pointer-events: none; }',
+      '#' + PANEL_ID + ' .tfcc-ico { display: inline-block; vertical-align: middle; flex: 0 0 auto; }',
+      '#' + PANEL_ID + ' .tfcc-ico path { fill: currentColor; fill-rule: evenodd; stroke: none; }',
+      '#' + PANEL_ID + ' .tfcc-tier-bronze { color: var(--tfcc-tier-bronze); }',
+      '#' + PANEL_ID + ' .tfcc-tier-silver { color: var(--tfcc-tier-silver); }',
+      '#' + PANEL_ID + ' .tfcc-tier-gold { color: var(--tfcc-tier-gold); }',
+      '#' + PANEL_ID + ' .tfcc-tier-legend { color: var(--tfcc-tier-legend); }',
+      '#' + PANEL_ID + ' .tfcc-locked { color: var(--tfcc-locked); }',
+      '#' + PANEL_ID + ' .tfcc-shelf, #' + PANEL_ID + ' .tfcc-toast { border: 1px solid var(--tm-border);',
+      '  border-radius: 4px; padding: var(--tfcc-gap-sm) var(--tfcc-gap); margin-bottom: var(--tfcc-gap);',
+      '  background: var(--tm-bg-2); }',
+      '#' + PANEL_ID + ' .tfcc-badge-row { display: flex; gap: var(--tfcc-gap-sm); align-items: center;',
+      '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap-xs); }',
+      '#' + PANEL_ID + ' .tfcc-bar-track { display: inline-block; background: var(--tm-bg-3);',
+      '  border: 1px solid var(--tm-border); border-radius: 3px; height: 8px; width: 120px; max-width: 40%; }',
+      '#' + PANEL_ID + ' .tfcc-bar-fill { display: block; background: var(--tm-good-text); height: 100%; }',
+      '@media (prefers-reduced-motion: no-preference) {',
+      '  #' + PANEL_ID + ' .tfcc-toast-new { animation: tfcc-fade-in 160ms ease-out; }',
+      '}',
+      '@keyframes tfcc-fade-in { from { opacity: 0; } to { opacity: 1; } }',
       '#' + PANEL_ID + ' .tfcc-badge { background: var(--tm-good-bg); color: var(--tm-text);',
       '  border-radius: 10px; padding: 0 8px; font-size: var(--tfcc-text-sm); font-weight: bold; }',
       '#' + PANEL_ID + ' button, #' + PANEL_ID + ' select, #' + PANEL_ID + ' input,',
@@ -3702,6 +4351,35 @@
 
   // ---- panel model and rendering -----------------------------------------
 
+  function badgeModel(now) {
+    if (!state.settings.badges) return { enabled: false };
+    var facts = badgeFacts({
+      organizer: state.organizer, feed: state.feed,
+      hasKey: isKeyShaped(loadApiKey()), keyRejected: state.settings.keyRejected,
+    });
+    var ev = evaluateBadges(state.badges, facts);
+    var earned = BADGES.filter(function (b) {
+      return Object.prototype.hasOwnProperty.call(state.badges.earned, b.id);
+    }).sort(function (a, b) {
+      var t = BADGE_TIER_RANK[b.tier] - BADGE_TIER_RANK[a.tier];
+      return t !== 0 ? t : state.badges.earned[b.id] - state.badges.earned[a.id];
+    });
+    var next = nextBadge(ev.progress);
+    return {
+      enabled: true,
+      earnedCount: earned.length,
+      total: BADGES.length,
+      bestTier: earned.length ? earned[0].tier : '',
+      streak: streakView(state.badges.streak, tctDay(now)),
+      earnedList: earned,
+      next: next ? { badge: badgeById(next.id), value: next.value, target: next.target } : null,
+      progress: ev.progress,
+      shelfOpen: state.badgeShelfOpen,
+      catalogueOpen: state.badgeCatalogueOpen,
+      toast: state.badgeToast ? { text: state.badgeToast.text, announce: !state.badgeToast.announced } : null,
+    };
+  }
+
   function loadingModel(now) {
     return {
       loading: true,
@@ -3713,6 +4391,7 @@
       notices: [],
       rows: [],
       now: now,
+      badges: badgeModel(now),
     };
   }
 
@@ -3728,6 +4407,7 @@
       notices: [],
       rows: [],
       now: now,
+      badges: badgeModel(now),
     };
   }
 
@@ -3758,7 +4438,7 @@
     var sorted = sortThreads(visible, s.sort);
     var threadsSorted = s.view === 'mine' ? sortThreads(viewRows(rows, 'threads', s, query), s.sort) : sorted;
     var mineSorted = s.view === 'mine' ? sorted : sortThreads(viewRows(mineRows, 'mine', s, query), s.sort);
-    var catchUp = sortThreads(catchUpList(threadRows, state.organizer.lastCatchUpAt, s.authorOnly ? 'author' : 'any'), 'activity');
+    var catchUp = catchUpRowsNow();
     var showAll = state.showAll || {};
 
     return {
@@ -3792,6 +4472,7 @@
       },
       // Whole on purpose: the Catch up nav count reads its length.
       catchUp: catchUp,
+      badges: badgeModel(now),
       // What the capped views render. model.rows, model.catchUp and model.mine
       // stay whole, so Search and the nav counts are uncapped by construction.
       capped: {
@@ -3799,7 +4480,7 @@
         catchup: capRows(catchUp, s.rowsShown, showAll.catchup === true),
         mine: capRows(mineSorted, s.rowsShown, showAll.mine === true),
       },
-      catchUpUnchecked: s.authorOnly ? sortThreads(catchUpUnchecked(threadRows), 'activity') : [],
+      catchUpUnchecked: catchUpUncheckedNow(),
       authorOnly: s.authorOnly === true,
       mine: {
         total: mineAll.length,
@@ -4237,6 +4918,53 @@
     return out.join('');
   }
 
+  var BADGE_METRIC_LABELS = Object.freeze({
+    visits: 'focused thread visits', forums: 'forums explored', best: 'days in a row',
+    checkinDays: 'days', bigBacklog: 'threads in the backlog',
+  });
+
+  function renderBadgeCatalogue(model) {
+    var b = model.badges || { enabled: false };
+    var out = ['<div class="tfcc-section"><h4>Badges</h4>'];
+    out.push('<div class="tfcc-kv"><label for="tfcc-badges">Show badges and record progress</label>'
+      + '<input id="tfcc-badges" type="checkbox" data-act="badges-toggle"' + (b.enabled ? ' checked' : '') + '></div>');
+    out.push('<p class="tfcc-note">Earned from what you do here: focused visits to threads, finishing Torn days '
+      + 'with Catch up empty, and organising. A visit counts once a Torn day, after 15 seconds with the page in '
+      + 'front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent anywhere, and no request is made. '
+      + 'Turning this off stops recording, and a streak does not survive days with it off.</p>');
+    if (!b.enabled) { out.push('</div>'); return out.join(''); }
+    out.push('<div class="tfcc-badge-row"><button type="button" data-act="badges-catalogue" aria-expanded="'
+      + (b.catalogueOpen ? 'true' : 'false') + '">' + (b.catalogueOpen ? 'Hide the list' : 'Show all '
+      + b.total + ' badges') + '</button><span class="tfcc-note">' + b.earnedCount + ' of ' + b.total
+      + ' earned</span></div>');
+    if (!b.catalogueOpen) { out.push('</div>'); return out.join(''); }
+    out.push('<p class="tfcc-note">Focused thread visits: ' + state.badges.visits + '. Forums explored: '
+      + state.badges.forums.length + '. Streak: current ' + b.streak.current + ', best ' + b.streak.best + '.</p>');
+    var byId = {};
+    for (var p = 0; p < b.progress.length; p += 1) byId[b.progress[p].id] = b.progress[p];
+    for (var g = 0; g < BADGE_GROUPS.length; g += 1) {
+      out.push('<h4>' + escapeHtml(BADGE_GROUPS[g].label) + '</h4>');
+      for (var i = 0; i < BADGES.length; i += 1) {
+        var d = BADGES[i];
+        if (d.group !== BADGE_GROUPS[g].id) continue;
+        var pr = byId[d.id];
+        out.push('<div class="tfcc-badge-row">' + badgeIcon(pr.earned ? d.tier : 'locked', d.glyph, 20, true)
+          + '<strong>' + escapeHtml(d.name) + '</strong><span class="tfcc-note">'
+          + escapeHtml(BADGE_TIER_LABELS[d.tier]) + '</span>');
+        if (pr.earned) out.push('<span class="tfcc-note">Earned ' + escapeHtml(formatAbsoluteTime(pr.earned)) + '</span>');
+        else if (pr.target > 1) {
+          out.push(renderBadgeBar(pr.value, pr.target));
+          if (Object.prototype.hasOwnProperty.call(BADGE_METRIC_LABELS, d.metric)) {
+            out.push('<span class="tfcc-note">' + escapeHtml(BADGE_METRIC_LABELS[d.metric]) + '</span>');
+          }
+        } else out.push('<span class="tfcc-note">Not yet</span>');
+        out.push('</div><p class="tfcc-note">' + escapeHtml(d.rule) + '</p>');
+      }
+    }
+    out.push('</div>');
+    return out.join('');
+  }
+
   function renderSettingsView(model) {
     var out = [];
     out.push('<div class="tfcc-section"><h4>Torn API key</h4>');
@@ -4386,7 +5114,7 @@
       + btn('import', 'Import from clipboard text') + '</div>');
     out.push('<textarea class="tfcc-draft" data-act="import-text" placeholder="Paste an export string here, then press Import"></textarea>');
     out.push('<p class="tfcc-note">An export carries folders, tags, pins, priorities, notes, read markers '
-      + 'and drafts. It never carries your API key or the post cache.</p>');
+      + 'drafts and badges. It never carries your API key or the post cache.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Storage</h4>');
@@ -4402,6 +5130,8 @@
     out.push('<p class="tfcc-note">A debug report carries the script version, the transport in use, '
       + 'counts and the last error. It never carries your key, your drafts, your notes or any post text.</p>');
     out.push('</div>');
+
+    out.push(renderBadgeCatalogue(model));
 
     out.push('<p class="tfcc-note">Torn Forum Command Center ' + escapeHtml(model.version)
       + '. Reads only. It never posts, replies, subscribes or changes anything on your account.</p>');
@@ -4459,20 +5189,96 @@
       + escapeHtml(said + title) + '">' + lead + renderKarma(karma) + '</button></div>';
   }
 
+  function renderHeadId(model) {
+    return '<div class="tfcc-head-id"><span class="tfcc-title">Forum Command Center</span>'
+      + renderBadgeChip(model) + '</div>';
+  }
+
+  function streakWords(s) {
+    return s.current + ' ' + plural(s.current, 'day', 'days');
+  }
+
+  // One chip: a cup in the best earned tier's colour, the count, then the
+  // streak. Its children ignore pointer events, because click delegation
+  // reads data-act from the event target and an SVG child has none.
+  function renderBadgeChip(model) {
+    var b = model.badges;
+    if (!b || !b.enabled) return '';
+    var label = 'Badges: ' + b.earnedCount + ' of ' + b.total + '.';
+    var parts = [b.bestTier ? badgeIcon(b.bestTier, 'cup', 16) : badgeIcon('locked', 'cup-outline', 16),
+      '<span>' + b.earnedCount + '</span>'];
+    if (b.streak.state !== 'none') {
+      label += ' Streak ' + streakWords(b.streak)
+        + (b.streak.state === 'counted' ? ', today counted.' : ', today not yet.');
+      parts.push(badgeIcon('plain', b.streak.state === 'counted' ? 'streak-on' : 'streak-off', 16));
+      parts.push('<span>' + b.streak.current + '</span>');
+    }
+    label += ' Show badges.';
+    return '<button type="button" class="tfcc-chip" data-act="badges-shelf" aria-expanded="'
+      + (b.shelfOpen ? 'true' : 'false') + '" aria-label="' + escapeHtml(label) + '">'
+      + parts.join('') + '</button>';
+  }
+
+  function renderBadgeBar(value, target) {
+    var pct = target > 0 ? Math.round((Math.min(value, target) / target) * 100) : 0;
+    return '<span class="tfcc-bar-track" role="progressbar" aria-valuenow="' + value + '" aria-valuemin="0"'
+      + ' aria-valuemax="' + target + '"><span class="tfcc-bar-fill" style="width: ' + pct + '%"></span></span>'
+      + '<span class="tfcc-note">' + value + ' / ' + target + '</span>';
+  }
+
+  function renderBadgeShelf(model) {
+    var b = model.badges;
+    if (!b || !b.enabled || !b.shelfOpen) return '';
+    var out = ['<div class="tfcc-shelf">'];
+    var s = b.streak;
+    if (s.state === 'none') out.push('<div>No streak yet. Finish a Torn day with Catch up empty to start one.</div>');
+    else if (s.state === 'broken') out.push('<div>Streak 0 Torn days. Best ' + s.best + '.</div>');
+    else {
+      out.push('<div>Streak ' + s.current + ' Torn ' + plural(s.current, 'day', 'days')
+        + (s.state === 'counted' ? ', today counted.' : ', today not yet.') + ' Best ' + s.best + '.</div>');
+    }
+    if (b.next) {
+      out.push('<div class="tfcc-badge-row">Next: ' + escapeHtml(b.next.badge.name) + ' '
+        + renderBadgeBar(b.next.value, b.next.target) + '</div>');
+    }
+    if (b.earnedList.length) {
+      out.push('<div class="tfcc-badge-row">');
+      for (var i = 0; i < b.earnedList.length && i < 6; i += 1) {
+        var e = b.earnedList[i];
+        out.push('<span>' + badgeIcon(e.tier, e.glyph, 20, true) + ' ' + escapeHtml(e.name) + '</span>');
+      }
+      if (b.earnedList.length > 6) out.push('<span class="tfcc-note">+' + (b.earnedList.length - 6) + ' more</span>');
+      out.push('</div>');
+    }
+    out.push('<div class="tfcc-badge-row"><span class="tfcc-note">' + b.earnedCount + ' of ' + b.total
+      + ' earned</span>' + btn('badges-all', 'All badges') + '</div>');
+    out.push('</div>');
+    return out.join('');
+  }
+
+  function renderBadgeToast(model) {
+    var b = model.badges;
+    if (!b || !b.enabled || !b.toast) return '';
+    return '<div class="tfcc-toast' + (b.toast.announce ? ' tfcc-toast-new' : '') + '"'
+      + (b.toast.announce ? ' role="status"' : '') + '>' + escapeHtml(b.toast.text)
+      + ' ' + btn('badges-toast-dismiss', 'Dismiss') + '</div>';
+  }
+
   function panelHtml(model) {
     if (model.loading) {
-      return '<div class="tfcc-head"><span class="tfcc-title">Forum Command Center</span></div>'
+      return '<div class="tfcc-head">' + renderHeadId(model) + '</div>'
         + '<div class="tfcc-empty">Loading your subscribed threads...</div>';
     }
     if (model.fatal) {
-      return '<div class="tfcc-head"><span class="tfcc-title">Forum Command Center</span></div>'
+      return '<div class="tfcc-head">' + renderHeadId(model) + '</div>'
         + '<div class="tfcc-error">' + escapeHtml(model.fatal.detail) + '</div>'
         + '<div class="tfcc-actions">' + btn('refresh', 'Try again') + '</div>';
     }
 
     var out = [];
     out.push('<div class="tfcc-head">');
-    out.push('<span class="tfcc-title">Forum Command Center</span>');
+    out.push(renderHeadId(model));
+    out.push('<div class="tfcc-head-ctl">');
     if (model.totals.unread > 0) {
       out.push('<span class="tfcc-badge">' + formatCount(model.totals.unread)
         + (model.authorOnly ? ' new by author' : ' new') + '</span>');
@@ -4481,11 +5287,14 @@
       out.push('<span class="tfcc-note">' + model.totals.unchecked + ' not checked</span>');
     }
     out.push('<span class="tfcc-note">' + model.totals.subscribed + ' subscribed</span>');
+    out.push('<span class="tfcc-head-btns">');
     out.push(btn('refresh', model.refreshing ? 'Refreshing...' : 'Refresh'));
     out.push('<button type="button" data-act="takeover" aria-pressed="'
       + (model.takeover ? 'true' : 'false') + '">' + (model.takeover ? 'Shrink' : 'Expand') + '</button>');
     out.push(btn('collapse', model.collapsed ? 'Show' : 'Hide'));
-    out.push('</div>');
+    out.push('</span></div></div>');
+    out.push(renderBadgeShelf(model));
+    out.push(renderBadgeToast(model));
 
     if (model.collapsed) return out.join('');
     out.push(renderReactions(model));
@@ -4691,6 +5500,14 @@
       lastError: state.lastError ? { reason: state.lastError.reason, detail: state.lastError.detail } : null,
       mounted: state.mounted,
       replyBoxFound: state.replyBoxFound,
+      badges: {
+        on: state.settings.badges === true,
+        earned: Object.keys(state.badges.earned).length,
+        current: state.badges.streak.current,
+        best: state.badges.streak.best,
+        checkinDays: state.badges.checkinDays,
+        visits: state.badges.visits,
+      },
     };
   }
 
@@ -4718,6 +5535,9 @@
       'cached posts: ' + c.counts.cachedPosts,
       'last fetch age ms: ' + (c.lastFetchedAt ? 'set' : 'never'),
       'last error: ' + (c.lastError ? (c.lastError.reason + ' - ' + c.lastError.detail) : 'none'),
+      'badges: ' + (c.badges ? ((c.badges.on ? 'on' : 'off') + ', ' + c.badges.earned + ' earned, streak '
+        + c.badges.current + '/' + c.badges.best + ', check-in days ' + c.badges.checkinDays
+        + ', focused visits ' + c.badges.visits) : 'none'),
       'my posts threads: ' + c.counts.mineThreads,
       'my posts started: ' + c.counts.mineStarted,
       'my posts posted in: ' + c.counts.minePosted,
@@ -4884,6 +5704,7 @@
     state.replyBoxFound = !!findReplyBox(doc);
     attachAutosave(doc, win);
     renderPanel(doc, win, buildPanelModel(now), handlers, force);
+    if (state.badgeToast && !state.pendingRedraw) state.badgeToast.announced = true;
     state.mounted = true;
   }
 
@@ -4905,6 +5726,8 @@
         if (!isPlainActivation(click)) return;
         var next = autoHideSettings(state.settings);
         if (next === state.settings) return;
+        // The shelf renders in the collapsed header too; hiding the panel closes it.
+        state.badgeShelfOpen = false;
         state.settings = next;
         persist('settings');
         // Deferred: redrawing now would replace the anchor while its click is
@@ -4947,7 +5770,7 @@
         if (act === 'read' && id) {
           var row = state.rows.filter(function (r) { return r.id === id; })[0];
           state.organizer = markRead(state.organizer, id, row ? row.postsTotal : 0, now);
-          persist('organizer'); recompute(now); redraw(); return;
+          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
         }
         if ((act === 'prio-up' || act === 'prio-down') && id) {
           var cur = state.organizer.threads[id] ? state.organizer.threads[id].priority : 0;
@@ -4957,7 +5780,7 @@
         if (act === 'archive' && id) {
           var e = state.organizer.threads[id] || normaliseThreadEntry(null);
           state.organizer.threads[id] = Object.assign({}, e, { archived: !e.archived });
-          persist('organizer'); recompute(now); redraw(); return;
+          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
         }
         if (act === 'markall') {
           for (var i = 0; i < state.rows.length; i += 1) {
@@ -4968,10 +5791,11 @@
             if (state.settings.authorOnly === true && state.rows[i].authorState === 'unchecked') continue;
             state.organizer = markRead(state.organizer, state.rows[i].id, state.rows[i].postsTotal, now);
           }
-          persist('organizer'); recompute(now); redraw(); return;
+          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
         }
         if (act === 'catchup-done') {
-          state.organizer.lastCatchUpAt = now; persist('organizer'); redraw(); return;
+          state.organizer.lastCatchUpAt = now; persist('organizer');
+          recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
         }
         if (act === 'deep') {
           // The rows the user is looking at, not every row we hold: the search
@@ -5033,23 +5857,29 @@
               name: name, order: state.organizer.folders.length, forumIds: [],
             });
             persist('organizer'); recompute(now);
+            recordBadgeEvent({ type: 'tick' }, now);
           }
           redraw(); return;
         }
         if (act === 'folder-delete' && id) {
-          state.organizer = deleteFolder(state.organizer, id); persist('organizer'); recompute(now); redraw(); return;
+          state.organizer = deleteFolder(state.organizer, id); persist('organizer'); recompute(now);
+          recordBadgeEvent({ type: 'tick' }, now); redraw(); return;
         }
         if (act === 'export') {
-          copyText(doc, win, encodeState(state.organizer, state.drafts, win.btoa ? win.btoa.bind(win) : btoa));
+          copyText(doc, win, encodeState(state.organizer, state.drafts, win.btoa ? win.btoa.bind(win) : btoa, state.badges));
           notice('Export copied to the clipboard.', 'info'); redraw(); return;
         }
         if (act === 'import') {
-          var out = importState(state.organizer, state.drafts, valueOf('import-text'), win.atob ? win.atob.bind(win) : atob);
+          var out = importState(state.organizer, state.drafts, valueOf('import-text'),
+            win.atob ? win.atob.bind(win) : atob, state.badges);
           if (!out.ok) { notice(out.detail, 'error'); redraw(); return; }
           state.organizer = out.organizer; state.drafts = out.drafts;
+          if (out.badges) { state.badges = out.badges; persist('badges'); }
           persist('organizer'); persist('drafts'); recompute(now);
+          recordBadgeEvent({ type: 'tick' }, now);
           notice('Imported ' + out.summary.addedFolders + ' folders, ' + out.summary.changedThreads
-            + ' threads and ' + out.summary.addedDrafts + ' drafts.', 'info');
+            + ' threads and ' + out.summary.addedDrafts + ' drafts'
+            + (out.summary.addedBadges ? ', and ' + out.summary.addedBadges + ' badges' : '') + '.', 'info');
           redraw(); return;
         }
         if (act === 'clear-cache') { state.postCache = freshPostCache(); persist('postCache'); notice('Post cache cleared.', 'info'); redraw(); return; }
@@ -5063,10 +5893,23 @@
           state.settings = freshSettings(); state.organizer = freshOrganizer(now); state.showAll = {};
           state.drafts = freshDrafts(); state.feed = freshFeed(); state.postCache = freshPostCache();
           state.mine = freshMine(); state.mineError = null;
+          // A real reset: no backfill, nothing re-awarded until a new event earns it.
+          state.badges = freshBadges(); state.badgeShelfOpen = false; state.badgeCatalogueOpen = false;
+          state.badgeToast = null; state.dwell = freshDwell();
           persist('settings'); persist('organizer'); persist('drafts'); persist('feed'); persist('postCache');
           persist('mine');
+          persist('badges');
           recompute(now); notice('Everything except your API key has been reset.', 'info'); redraw(); return;
         }
+        if (act === 'badges-shelf') { state.badgeShelfOpen = !state.badgeShelfOpen; redraw(); return; }
+        if (act === 'badges-all') {
+          // Expand too: the shelf shows when collapsed, and Settings does not.
+          state.badgeShelfOpen = false; state.badgeCatalogueOpen = true;
+          state.settings.collapsed = false;
+          state.settings.view = 'settings'; persist('settings'); redraw(); return;
+        }
+        if (act === 'badges-catalogue') { state.badgeCatalogueOpen = !state.badgeCatalogueOpen; redraw(); return; }
+        if (act === 'badges-toast-dismiss') { state.badgeToast = null; redraw(); return; }
         if (act === 'debug') { copyText(doc, win, buildDebugReport()); notice('Debug report copied.', 'info'); redraw(); return; }
       },
 
@@ -5079,7 +5922,10 @@
         if (act === 'filter') { state.searchQuery = value; redraw(); return; }
         if (act === 'folder-filter') { state.settings.folderFilter = value || null; persist('settings'); redraw(); return; }
         if (act === 'tag-filter') { state.settings.tagFilter = value || null; persist('settings'); redraw(); return; }
-        if (act === 'folder' && id) { state.organizer = setFolder(state.organizer, id, value || null); persist('organizer'); recompute(now); redraw(); return; }
+        if (act === 'folder' && id) {
+          state.organizer = setFolder(state.organizer, id, value || null); persist('organizer'); recompute(now);
+          recordBadgeEvent({ type: 'tick' }, now); redraw(); return;
+        }
         if (act === 'note-input' && id) {
           var noteNext = cloneOrganizer(state.organizer);
           entryOf(noteNext, id).note = safeString(value, 2000);
@@ -5126,6 +5972,12 @@
           state.settings.autoHideOnOpen = !!el.checked;
           persist('settings'); redraw(); return;
         }
+        if (act === 'badges-toggle') {
+          state.settings.badges = !!el.checked;
+          persist('settings');
+          if (!state.settings.badges) { state.badgeShelfOpen = false; state.badgeToast = null; }
+          redraw(); return;
+        }
         if (act === 'folder-forum' && id) {
           var fid = toInt(value, 0);
           var folder = state.organizer.folders.filter(function (f) { return f.id === id; })[0];
@@ -5135,6 +5987,7 @@
             if (at === -1) ids.push(fid); else ids.splice(at, 1);
             state.organizer = upsertFolder(state.organizer, Object.assign({}, folder, { forumIds: ids }));
             persist('organizer'); recompute(now);
+            recordBadgeEvent({ type: 'tick' }, now);
           }
           redraw(); return;
         }
@@ -5156,6 +6009,7 @@
       // onto another page, or write data gathered for a page they have gone.
       invalidateInFlight();
       detachAutosave();
+      stopDwell();
       state.route = null;
       return;
     }
@@ -5163,6 +6017,8 @@
     var capture = captureVisit(win.location, doc.title, now);
     if (capture.changed) { persist('organizer'); recompute(now); }
     state.route = capture.route;
+    startDwell(doc, win);
+    sampleDwell(doc, win, now);
     draw(doc, win, makeHandlers(doc, win));
   }
 

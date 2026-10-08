@@ -30,6 +30,10 @@ function renderedActions() {
   api.state.searchQuery = 'thread';
   api.state.route = api.parseForumRoute(env.win.location);
   api.recompute(NOW);
+  // Badge controls render only when their state is open; open all of them.
+  api.state.badgeShelfOpen = true;
+  api.state.badgeCatalogueOpen = true;
+  api.state.badgeToast = { text: 'Badge earned: Reader (Bronze).', until: NOW + 6000, announced: false };
 
   // Four rows under a cap of 3, so the Show all control renders too.
   api.state.settings.rowsShown = 3;

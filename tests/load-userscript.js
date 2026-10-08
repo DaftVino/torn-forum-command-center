@@ -51,6 +51,13 @@ const EXPORT_NAMES = [
   'freshDrafts', 'normaliseDrafts', 'freshFeed', 'normaliseFeed',
   'freshPostCache', 'normalisePostCache',
   'loadKey', 'saveKey', 'loadApiKey', 'saveApiKey', 'isKeyShaped', 'isRecoveredValue', 'isRecoveredOrganizer',
+  // badges (issue #9)
+  'tctDay', 'creditDay', 'streakView', 'freshDwell', 'dwellStep', 'DWELL_MS',
+  'freshBadges', 'normaliseBadges', 'BADGES', 'badgeFacts', 'badgeMetrics', 'evaluateBadges',
+  'nextBadge', 'badgeToastText', 'applyBadgeEvent', 'checkinEligible', 'mergeBadgeRecords',
+  'exportBadges', 'badgeIcon',
+  'recordBadgeEvent', 'catchUpRowsNow', 'sampleDwell', 'startDwell', 'stopDwell', 'badgeModel',
+  'renderHeadId', 'renderBadgeChip', 'renderBadgeShelf', 'renderBadgeToast', 'renderBadgeCatalogue',
   // api adapter
   'API_BASE', 'REQUEST_TIMEOUT_MS', 'TORN_ERRORS', 'KEY_REJECTED_CODES', 'rejectKey', 'clearKeyRejection', 'mapTornError', 'redactUrl', 'scrubDetail',
   'buildApiUrl', 'httpGet', 'tornApiGet', 'makeRateLimiter',
@@ -157,7 +164,9 @@ function makeSandbox(options = {}) {
     static now() { return currentNow; }
   }
 
-  const gmStore = new Map(options.gmStore || []);
+  // sharedGmStore: two sandboxes over ONE store, the way two tabs share script
+  // storage. A copy would hide every cross-tab bug.
+  const gmStore = options.sharedGmStore || new Map(options.gmStore || []);
   const gmWriteErrors = options.gmWriteErrors || null;
 
   const documentListeners = {};
@@ -355,7 +364,13 @@ function makeSandbox(options = {}) {
     timerNow = Math.max(timerNow, nextDue);
     runDue();
   };
+  // stepClock: Date.now() moves WITH each timer that fires, rather than jumping
+  // once at the end. Opt-in, because existing suites were written against the
+  // jump. The dwell sampler measures elapsed time inside its timer, so it needs
+  // the stepped clock to see time pass at all.
   const advanceTimersBy = (ms) => {
+    const startTimer = timerNow;
+    const startNow = currentNow;
     const target = timerNow + Math.max(0, Number(ms) || 0);
     let guard = 0;
     while (timers.size > 0 && guard < 10000) {
@@ -363,10 +378,11 @@ function makeSandbox(options = {}) {
       const nextDue = Math.min(...Array.from(timers.values(), (t) => t.due));
       if (nextDue > target) break;
       timerNow = nextDue;
+      if (options.stepClock) currentNow = startNow + (timerNow - startTimer);
       runDue();
     }
     timerNow = target;
-    currentNow += Math.max(0, Number(ms) || 0);
+    currentNow = startNow + (target - startTimer);
   };
 
   const sandbox = {

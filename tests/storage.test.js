@@ -51,6 +51,7 @@ test('what a normaliser writes, it can read back unchanged', () => {
     ['settings', api.STORAGE_KEYS.settings, api.normaliseSettings,
       Object.assign(api.freshSettings(), { rowsShown: 20 })],
     ['postCache', api.STORAGE_KEYS.postCache, api.normalisePostCache, api.freshPostCache()],
+    ['badges', api.STORAGE_KEYS.badges, api.normaliseBadges, api.freshBadges()],
   ];
 
   for (const [name, key, normaliser, value] of cases) {

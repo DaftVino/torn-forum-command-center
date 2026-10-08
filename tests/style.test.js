@@ -116,6 +116,9 @@ test('every rule is scoped to something this script owns', () => {
       const s = sel.trim();
       if (!s) continue;
       if (s.indexOf('#tfcc-panel') === 0 || s.indexOf('#tfcc-fallback-mount') === 0) continue;
+      // A keyframes rule restyles nothing by itself; only its name is global,
+      // so it must carry the script's prefix (issue #9's toast fade).
+      if (/^@keyframes tfcc-[a-z-]+$/.test(s)) continue;
       stray.push(s);
     }
   }
@@ -402,4 +405,70 @@ test('the karma icon is sized to the text and takes the theme colour', () => {
   assert.match(karma, /color: var\(--tm-text\)/, 'currentColor resolves to a themed colour, not black');
   assert.match(blockFor('#tfcc-panel .tfcc-karma svg'), /flex: none/);
   assert.ok(api.KARMA_ICON_SVG.includes('style="height:1em;width:auto"'));
+});
+
+const TIER_TOKENS = ['--tfcc-tier-bronze', '--tfcc-tier-silver', '--tfcc-tier-gold', '--tfcc-tier-legend', '--tfcc-locked'];
+
+function tokenValue(block, name) {
+  const m = new RegExp(name + ':\\s*(#[0-9a-f]{6})', 'i').exec(block);
+  assert.ok(m, name + ' is defined in this block');
+  return m[1];
+}
+function ratio(a, b) {
+  const lum = (h) => {
+    const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const x = lum(a); const y = lum(b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
+test('badge tier colours exist in both themes and clear 3:1 on every panel surface', () => {
+  // --tm-bg is the panel, --tm-bg-2 the shelf and toast, --tm-bg-3 the chip and
+  // controls. Icons need 3:1 (WCAG 1.4.11). The spec's table lists the 4.5:1 text
+  // values against --tm-bg and --tm-bg-3; the weakest pair on --tm-bg-2 is
+  // --tfcc-locked in light, about 4.2:1.
+  for (const sel of ['#tfcc-panel', '#tfcc-panel.tfcc-theme-light']) {
+    const block = blockFor(sel);
+    for (const surface of ['--tm-bg', '--tm-bg-2', '--tm-bg-3']) {
+      const bg = tokenValue(block, surface);
+      for (const t of TIER_TOKENS) {
+        assert.ok(ratio(tokenValue(block, t), bg) >= 3, sel + ' ' + t + ' on ' + surface);
+      }
+    }
+  }
+});
+
+test('the light theme overrides every badge colour token the dark theme sets', () => {
+  // The existing "overrides every colour" check matches --tm- only, so a
+  // forgotten --tfcc-tier-* in the light block would ship dark-theme colours
+  // on a light panel without any test noticing.
+  const names = (block) => new Set(block.match(/--tfcc-(?:tier-[a-z]+|locked)(?=\s*:)/g) || []);
+  const dark = names(blockFor('#tfcc-panel'));
+  const light = names(blockFor('#tfcc-panel.tfcc-theme-light'));
+  assert.strictEqual(dark.size, 5, 'four tiers and locked are defined in the dark block');
+  assert.deepStrictEqual([...dark].filter((n) => !light.has(n)), []);
+});
+
+test('icon fill is set in CSS, so a host svg rule cannot repaint it', () => {
+  assert.match(css, /#tfcc-panel \.tfcc-ico path \{ fill: currentColor; fill-rule: evenodd; stroke: none; \}/);
+});
+
+test('a tap anywhere on the chip reaches the button', () => {
+  assert.match(css, /#tfcc-panel \.tfcc-chip \* \{ pointer-events: none; \}/);
+});
+
+test('the toast moves only when the user allows motion', () => {
+  const i = css.indexOf('tfcc-fade-in 160ms');
+  assert.ok(i !== -1);
+  assert.ok(css.lastIndexOf('@media (prefers-reduced-motion: no-preference)', i) !== -1);
+  assert.strictEqual(css.split('tfcc-fade-in 160ms').length, 2, 'the animation is applied in one place only');
+});
+
+test('the header keeps Refresh, Expand and Hide together on the right', () => {
+  assert.match(blockFor('#tfcc-panel .tfcc-head-ctl'), /margin-left: auto/);
+  assert.match(blockFor('#tfcc-panel .tfcc-head-btns'), /flex-wrap: nowrap/);
+  assert.doesNotMatch(blockFor('#tfcc-panel .tfcc-title'), /margin-right: auto/);
+  assert.match(blockFor('#tfcc-panel button.tfcc-chip'), /flex: 0 0 auto/);
 });

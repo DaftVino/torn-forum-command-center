@@ -58,6 +58,9 @@ test('a DOM that never arrives leaves no unbounded timer and never throws', () =
 
   env.advanceTimersBy(1000 * 60 * 5);
   assert.strictEqual(ran, 0);
+  // The badges dwell tick (issue #9) is expected to run while on forums.php;
+  // it is not a readiness timer, so it is stopped before counting what is left.
+  env.exports.stopDwell();
   assert.strictEqual(env.pendingTimerCount(), 0, 'the poll must give up rather than spin forever');
 });
 

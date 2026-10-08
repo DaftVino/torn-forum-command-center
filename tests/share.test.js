@@ -188,11 +188,18 @@ test('a newer local draft is not overwritten by an older imported one', () => {
   assert.strictEqual(out.summary.addedDrafts, 0);
 });
 
-test('the export is built from folders and drafts only, so the My posts cache cannot reach it', () => {
-  // encodeState(organizer, drafts, btoa) reads nothing else. A fourth input is
-  // how a cache would leak into an export, so the signature is pinned. The raw
-  // export, because the harness wrapper takes (...args) and reports length 0.
-  assert.strictEqual(env.rawExports.encodeState.length, 3);
+test('the export is built from folders, drafts and badges only, so the My posts cache cannot reach it', () => {
+  // encodeState(organizer, drafts, btoa, badges) reads nothing else. Another
+  // input is how a cache would leak into an export, so the signature is pinned.
+  // The fourth input (issue #9) passes through exportBadges, a whitelist of
+  // badge counters. The raw export, because the harness wrapper takes
+  // (...args) and reports length 0.
+  assert.strictEqual(env.rawExports.encodeState.length, 4);
+  const { organizer, drafts } = populated();
+  const badges = Object.assign(api.freshBadges(), { mine: { posts: [1] }, visits: 3 });
+  const payload = api.decodeState(api.encodeState(organizer, drafts, btoaFn, badges), atobFn).payload;
+  assert.deepStrictEqual(Object.keys(payload).sort(), ['badges', 'drafts', 'folders', 'threads', 'v']);
+  assert.strictEqual(payload.badges.mine, undefined, 'only whitelisted badge fields are exported');
 });
 
 test('an export carries no settings, so no rows shown either', () => {
