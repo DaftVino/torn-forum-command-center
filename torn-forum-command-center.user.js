@@ -734,6 +734,22 @@
     t.isLocked = raw.isLocked === true;
     t.tornNewKnown = raw.tornNewKnown === true;
     t.tornNew = t.tornNewKnown ? Math.max(0, toInt(raw.tornNew, 0)) : 0;
+    // Optional reaction fields (#10): canonical order, whole pairs only.
+    var reactAt = Math.max(0, toInt(raw.reactAt, 0));
+    var topicAt = Math.max(0, toInt(raw.topicAt, 0));
+    var rx = {};
+    if (reactAt > 0 && isReactionNumber(raw.rating, true)) {
+      rx.reactAt = reactAt;
+      rx.rating = Math.floor(raw.rating);
+    }
+    if (topicAt > 0) {
+      rx.topicAt = topicAt;
+      if (isReactionNumber(raw.up, false) && isReactionNumber(raw.down, false)) {
+        rx.up = Math.floor(raw.up);
+        rx.down = Math.floor(raw.down);
+      }
+    }
+    setReactionFields(t, rx);
     return t;
   }
 
@@ -788,10 +804,48 @@
       lastPostAt: secondsToMs(raw.last_post_time),
       lastPosterId: Math.max(0, toInt(last.id, 0)),
       isLocked: raw.is_locked === true,
+      // ForumThreadBase.rating (OpenAPI 6.13.8, undocumented). Whether it is
+      // net or likes-only is not settled (live finding 13), so it is shown
+      // only as "net" and never split into thumbs.
+      rating: isReactionNumber(raw.rating, true) ? Math.floor(raw.rating) : null,
       // Torn's own unread count for a thread the key owner started (finding 1).
       tornNew: hasNew ? Math.max(0, Math.floor(raw.new_posts)) : 0,
       tornNewKnown: hasNew,
     };
+  }
+
+  // -- thread reactions: record fields (#10) --------------------------------
+  // Five optional fields on a tfcc:mine record, always in this order. They are
+  // nested inside threads[], so a default here would make loadKey call every
+  // upgrading user's cache damaged; absent means unknown instead. Every write
+  // goes through setReactionFields, so any write order serialises the way
+  // normaliseMineThread writes it.
+  var REACTION_FIELDS = ['reactAt', 'rating', 'topicAt', 'up', 'down'];
+
+  function isReactionNumber(v, allowNegative) {
+    return typeof v === 'number' && isFinite(v) && (allowNegative === true || v >= 0);
+  }
+
+  function setReactionFields(rec, changes) {
+    var vals = {};
+    var i;
+    for (i = 0; i < REACTION_FIELDS.length; i += 1) {
+      var k = REACTION_FIELDS[i];
+      vals[k] = Object.prototype.hasOwnProperty.call(changes, k) ? changes[k] : rec[k];
+      delete rec[k];
+    }
+    for (i = 0; i < REACTION_FIELDS.length; i += 1) {
+      var key = REACTION_FIELDS[i];
+      if (typeof vals[key] === 'number') rec[key] = vals[key];
+    }
+    return rec;
+  }
+
+  // A row with no rating leaves the old one alone, so it ages into stale
+  // rather than vanishing or turning into a zero.
+  function applyReactions(rec, row, now) {
+    if (!rec || !row || typeof row.rating !== 'number') return rec;
+    return setReactionFields(rec, { reactAt: Math.max(0, toInt(now, 0)), rating: row.rating });
   }
 
   // The post body arrives in `content` and is deliberately never read.
@@ -898,6 +952,7 @@
       r.tornNewKnown = s.tornNewKnown === true;
       r.tornNew = r.tornNewKnown ? s.tornNew : 0;
       if (s.totalKnown) observeMineTotal(r, s.postsTotal, t0);
+      applyReactions(r, s, t0);
       if (!out.selfId && s.authorId) out.selfId = s.authorId;
     }
     for (i = 0; i < (posts || []).length; i += 1) {
