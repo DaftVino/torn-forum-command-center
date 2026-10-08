@@ -85,6 +85,22 @@ time **END**.
 - [ ] Collapse. Only the header remains, and Show brings it back.
 - [ ] Rotate the device while in takeover mode.
 
+### Hide on opening a thread
+
+- [ ] Settings, tick "Hide the panel when I open a thread". Tap a thread in
+      Threads: the thread opens and the panel shows only its header with Show.
+- [ ] Reload the thread page: the panel is still collapsed.
+- [ ] Show brings the panel back, and it stays open while you page through the
+      thread and follow Torn's own links.
+- [ ] In Expand (takeover), tap a thread in Catch up: takeover ends, the thread
+      is readable, and the panel is collapsed. Show returns the inline panel.
+- [ ] Repeat from Search (a thread row and a post hit) and from Drafts.
+- [ ] Search on Torn does not collapse the panel.
+- [ ] Long-press a thread link and open it in a new tab: the panel in this tab
+      stays open.
+- [ ] Tap the thread you are already on: the panel collapses.
+- [ ] Untick the setting: tapping a thread leaves the panel open.
+
 ### The workspace
 
 - [ ] Every sort mode reorders the list, and pinned threads stay at the top in
@@ -184,6 +200,11 @@ Tampermonkey, on the same build.
       under a stylesheet that fights ours the way Torn's does; the plain
       previews were too clean to catch either colour bug.
 - [ ] Keyboard only: tab through the panel. Focus is always visible.
+- [ ] With "Hide the panel when I open a thread" on: a plain click on a thread
+      collapses the panel and opens the thread; Ctrl-click and middle-click open
+      it in a new tab and leave this panel open; Tab to a thread link and press
+      Enter collapses it. Reload: still collapsed. Untick: nothing collapses.
+- [ ] Same, from takeover: takeover ends and the thread is readable.
 - [ ] Import an export made on the other browser. The summary counts are right
       and existing local work is merged, not replaced.
 - [ ] Import a deliberately damaged string. It is refused by name and changes

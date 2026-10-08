@@ -39,17 +39,18 @@ const EXPORT_NAMES = [
   'state', 'init', 'syncToRoute', 'refreshAll', 'enrichThreads', 'runDeepSearch',
   'loadAll', 'persist', 'recompute', 'makeHandlers', 'readRaw', 'writeRaw',
   'ambientTransports', 'transportName', 'injectStyleOnce', 'copyText', 'threadUrl',
+  'THREAD_LINK_ATTR', 'THREAD_LINK_MAX_DEPTH', 'threadLinkAttr', 'threadLinkOf',
   'REPLY_SELECTORS', 'draw', 'applyHideTornBox', 'TORN_BOX_SELECTORS', 'isOwnMutation', 'panelHasEditableFocus',
   'attachAutosave', 'detachAutosave', 'invalidateInFlight', 'AUTOSAVE_DEBOUNCE_MS',
   // pure view renderers
   'panelHtml', 'renderNav', 'renderRow', 'renderThreadsView', 'renderCatchUpView',
   'renderSearchView', 'renderDraftsView', 'renderSettingsView',
   // storage normalisers
-  'SCHEMA_VERSION', 'freshSettings', 'normaliseSettings',
+  'SCHEMA_VERSION', 'freshSettings', 'normaliseSettings', 'isPlainActivation', 'autoHideSettings',
   'freshOrganizer', 'normaliseOrganizer', 'normaliseThreadEntry',
   'freshDrafts', 'normaliseDrafts', 'freshFeed', 'normaliseFeed',
   'freshPostCache', 'normalisePostCache',
-  'loadKey', 'saveKey', 'loadApiKey', 'saveApiKey', 'isKeyShaped',
+  'loadKey', 'saveKey', 'loadApiKey', 'saveApiKey', 'isKeyShaped', 'isRecoveredValue',
   // api adapter
   'API_BASE', 'REQUEST_TIMEOUT_MS', 'TORN_ERRORS', 'KEY_REJECTED_CODES', 'rejectKey', 'clearKeyRejection', 'mapTornError', 'redactUrl', 'scrubDetail',
   'buildApiUrl', 'httpGet', 'tornApiGet', 'makeRateLimiter',

@@ -316,6 +316,8 @@
       enrichBudget: DEFAULT_ENRICH_BUDGET,
       autosaveDrafts: true,
       hideTornBox: false,
+      // Issue #8. Off by default: an existing user sees no change.
+      autoHideOnOpen: false,
       // The Torn error code that condemned the stored key, or 0. Persisted on
       // purpose: a userscript reloads on every navigation, so a rejection held
       // only in memory would spend one request per page view on a dead key,
@@ -340,6 +342,7 @@
     out.unreadOnly = raw.unreadOnly === true;
     out.autosaveDrafts = raw.autosaveDrafts !== false;
     out.hideTornBox = raw.hideTornBox === true;
+    out.autoHideOnOpen = raw.autoHideOnOpen === true;
     out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1
       ? 0 : toInt(raw.keyRejected, 0);
     out.folderFilter = typeof raw.folderFilter === 'string' ? safeString(raw.folderFilter, 64) : null;
@@ -349,6 +352,37 @@
     out.enrichBudget = clamp(toInt(raw.enrichBudget, DEFAULT_ENRICH_BUDGET), 0, MAX_ENRICH_BUDGET);
     out.deepSearchPages = clamp(toInt(raw.deepSearchPages, DEEP_SEARCH_MAX_PAGES), 1, DEEP_SEARCH_MAX_PAGES);
     return out;
+  }
+
+  // An upgrade adds a top-level field the stored value never had. Filling those
+  // from the normalised value before comparing keeps "damaged" meaning damaged:
+  // a field that was present and changed, or one the normaliser dropped. Nested
+  // shapes keep the strict comparison on purpose (spec: "The upgrade trap").
+  function isRecoveredValue(raw, value) {
+    if (raw === null) return false;
+    var seen = isPlainObject(raw) && isPlainObject(value) ? Object.assign({}, value, raw) : raw;
+    return JSON.stringify(seen) !== JSON.stringify(value);
+  }
+
+  // -- auto-hide on opening a thread (issue #8) ---------------------------
+  // Only a plain activation counts. A modified or middle click opens the
+  // thread somewhere else, and the user still wants the panel in this tab.
+  // A prevented click does not navigate, so it must not collapse either.
+  function isPlainActivation(click) {
+    if (!isPlainObject(click)) return false;
+    if (toInt(click.button, 0) !== 0) return false;
+    if (click.ctrlKey === true || click.metaKey === true) return false;
+    if (click.shiftKey === true || click.altKey === true) return false;
+    if (click.defaultPrevented === true) return false;
+    return true;
+  }
+
+  // Returns the same object when the setting is off, so the caller can tell by
+  // identity that there is nothing to write. A collapsed panel in takeover
+  // still covers the whole viewport, so opening a thread leaves takeover too.
+  function autoHideSettings(settings) {
+    if (!isPlainObject(settings) || settings.autoHideOnOpen !== true) return settings;
+    return Object.assign({}, settings, { collapsed: true, takeover: false });
   }
 
   function freshOrganizer(now) {
@@ -1605,7 +1639,7 @@
       return { value: normaliser(null, now), recovered: true, hadRaw: true };
     }
     var value = normaliser(raw, now);
-    var recovered = raw !== null && JSON.stringify(raw) !== JSON.stringify(value);
+    var recovered = isRecoveredValue(raw, value);
     return { value: value, recovered: recovered, hadRaw: raw !== null };
   }
 
@@ -2616,6 +2650,7 @@
         enrichBudget: s.enrichBudget,
         autosaveDrafts: s.autosaveDrafts,
         hideTornBox: s.hideTornBox,
+        autoHideOnOpen: s.autoHideOnOpen,
         deepSearchPages: s.deepSearchPages,
       },
       now: now,
@@ -2625,6 +2660,31 @@
   function threadUrl(row) {
     return 'https://www.torn.com/forums.php#/p=threads&f=' + (row.forumId || 0)
       + '&t=' + row.numericId + '&b=0&a=0';
+  }
+
+  // Purpose: marks an anchor the panel itself rendered as a link to a thread,
+  // so the panel's own click listener can recognise it (issue #8). It is our
+  // attribute on our markup, not a selector against Torn's, so Torn changing
+  // its page cannot break it. Read only by threadLinkOf.
+  var THREAD_LINK_ATTR = 'data-tfcc-thread';
+  // Anchors hold text only today; the margin covers a later <mark> or <span>.
+  var THREAD_LINK_MAX_DEPTH = 4;
+
+  function threadLinkAttr(id) {
+    return ' ' + THREAD_LINK_ATTR + '="' + escapeHtml(String(id)) + '"';
+  }
+
+  // Finds the thread anchor a click landed on, or inside. Reads only the panel's
+  // own nodes: the walk stops at the panel and after THREAD_LINK_MAX_DEPTH steps,
+  // so nothing of Torn's is ever read (ADR 0001). Every step is null-guarded.
+  function threadLinkOf(node, panel) {
+    var n = node;
+    for (var i = 0; n && i < THREAD_LINK_MAX_DEPTH; i += 1) {
+      if (n === panel) return null;
+      if (typeof n.getAttribute === 'function' && n.getAttribute(THREAD_LINK_ATTR) !== null) return n;
+      n = n.parentNode;
+    }
+    return null;
   }
 
   function btn(action, label, extra) {
@@ -2651,7 +2711,8 @@
     var out = ['<div class="tfcc-row" data-id="' + escapeHtml(row.id) + '">'];
     out.push('<div class="tfcc-row-main">');
     if (row.pinned) out.push('<span class="tfcc-pinned" title="Pinned">*</span>');
-    out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '">'
+    out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '"'
+      + threadLinkAttr(row.id) + '>'
       + escapeHtml(row.title) + '</a></span>');
     if (row.unread > 0) {
       out.push('<span class="tfcc-unread">' + formatCount(row.unread) + ' new</span>');
@@ -2821,7 +2882,7 @@
       for (var p = 0; p < model.searchResults.posts.length; p += 1) {
         var hit = model.searchResults.posts[p];
         out.push('<div class="tfcc-hit"><div><a href="https://www.torn.com/forums.php#/p=threads&t='
-          + hit.threadId + '&b=0&a=0">' + escapeHtml(hit.threadTitle) + '</a> '
+          + hit.threadId + '&b=0&a=0"' + threadLinkAttr(hit.threadId) + '>' + escapeHtml(hit.threadTitle) + '</a> '
           + '<span class="tfcc-note">' + escapeHtml(hit.authorName) + ', '
           + escapeHtml(formatRelativeTime(hit.at, model.now)) + '</span></div>');
         out.push('<div class="tfcc-hit-text">' + escapeHtml(hit.text.slice(0, 400)) + '</div></div>');
@@ -2871,7 +2932,7 @@
     for (var i = 0; i < model.drafts.length; i += 1) {
       var dr = model.drafts[i];
       out.push('<div class="tfcc-hit"><div><a href="https://www.torn.com/forums.php#/p=threads&t='
-        + escapeHtml(dr.threadId) + '&b=0&a=0">'
+        + escapeHtml(dr.threadId) + '&b=0&a=0"' + threadLinkAttr(dr.threadId) + '>'
         + escapeHtml(dr.title || ('Thread ' + dr.threadId)) + '</a> '
         + '<span class="tfcc-note">' + escapeHtml(formatRelativeTime(dr.updatedAt, model.now))
         + '</span></div>');
@@ -2952,6 +3013,12 @@
     out.push('<div class="tfcc-kv"><label for="tfcc-autosave">Autosave the reply box as a draft</label>'
       + '<input id="tfcc-autosave" type="checkbox" data-act="autosave"'
       + (model.settings.autosaveDrafts ? ' checked' : '') + '></div>');
+    out.push('<div class="tfcc-kv"><label for="tfcc-autohide">Hide the panel when I open a thread</label>'
+      + '<input id="tfcc-autohide" type="checkbox" data-act="auto-hide"'
+      + (model.settings.autoHideOnOpen ? ' checked' : '') + '></div>');
+    out.push('<p class="tfcc-note">Only thread links in this panel do this, and only a plain click. '
+      + 'Opening a link in a new tab, or following links on the Torn page itself, leaves the panel '
+      + 'as it is. Press Show to bring it back.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Folders</h4>');
@@ -3148,6 +3215,18 @@
       delegated = panel;
       panel.addEventListener('click', function (ev) {
         var t = ev && ev.target;
+        // A thread link the panel rendered. The browser follows it; this only
+        // gives the auto-hide setting a chance to persist first (issue #8).
+        var link = threadLinkOf(t, panel);
+        if (link) {
+          if (typeof handlers.onThreadLink === 'function') {
+            handlers.onThreadLink(link, {
+              button: ev.button, ctrlKey: !!ev.ctrlKey, metaKey: !!ev.metaKey,
+              shiftKey: !!ev.shiftKey, altKey: !!ev.altKey, defaultPrevented: !!ev.defaultPrevented,
+            });
+          }
+          return;
+        }
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
         if (!act || typeof handlers.onAction !== 'function') return;
         handlers.onAction(act, t);
@@ -3403,6 +3482,19 @@
     }
 
     var handlers = {
+      // Not an act === case: a thread link is navigation the browser performs,
+      // not a control, so tests/handlers.test.js does not pair it.
+      onThreadLink: function (link, click) {
+        if (!isPlainActivation(click)) return;
+        var next = autoHideSettings(state.settings);
+        if (next === state.settings) return;
+        state.settings = next;
+        persist('settings');
+        // Deferred: redrawing now would replace the anchor while its click is
+        // still being dispatched. It also covers a click on the thread already
+        // open, where no hashchange will ever come.
+        setTimeout(function () { if (isForumsPage(win.location)) redraw(); }, 0);
+      },
       onAction: function (act, el) {
         var now = Date.now();
         var id = idOf(el);
@@ -3578,6 +3670,10 @@
           persist('settings');
           if (!state.settings.autosaveDrafts) detachAutosave();
           redraw(); return;
+        }
+        if (act === 'auto-hide') {
+          state.settings.autoHideOnOpen = !!el.checked;
+          persist('settings'); redraw(); return;
         }
         if (act === 'folder-forum' && id) {
           var fid = toInt(value, 0);

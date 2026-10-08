@@ -132,8 +132,8 @@ const MUTATIONS = [
     name: 'a thread title is written to the panel without escaping',
     suite: 'tests/panel.test.js',
     apply: (s) => s.replace(
-      "out.push('<span class=\"tfcc-row-title\"><a href=\"' + escapeHtml(threadUrl(row)) + '\">'\n      + escapeHtml(row.title) + '</a></span>');",
-      "out.push('<span class=\"tfcc-row-title\"><a href=\"' + escapeHtml(threadUrl(row)) + '\">'\n      + row.title + '</a></span>');",
+      "      + threadLinkAttr(row.id) + '>'\n      + escapeHtml(row.title) + '</a></span>');",
+      "      + threadLinkAttr(row.id) + '>'\n      + row.title + '</a></span>');",
     ),
   },
   {
@@ -442,6 +442,67 @@ const MUTATIONS = [
     apply: (s) => s.replace(
       '\'" target="_blank" rel="noopener noreferrer">Create a custom key on Torn</a></div>\');',
       '\'" target="_blank">Create a custom key on Torn</a></div>\');',
+    ),
+  },
+  {
+    name: 'auto-hide ignores its setting, so every thread link collapses the panel',
+    suite: 'tests/auto-hide.test.js',
+    apply: (s) => s.replace(
+      "if (!isPlainObject(settings) || settings.autoHideOnOpen !== true) return settings;",
+      'if (!isPlainObject(settings)) return settings;',
+    ),
+  },
+  {
+    name: 'a Ctrl-click into a new tab collapses the panel in this one',
+    suite: 'tests/auto-hide.test.js',
+    apply: (s) => s.replace(
+      'if (click.ctrlKey === true || click.metaKey === true) return false;',
+      'if (click.metaKey === true) return false;',
+    ),
+  },
+  {
+    name: 'opening a thread leaves takeover covering it',
+    suite: 'tests/auto-hide.test.js',
+    apply: (s) => s.replace(
+      'return Object.assign({}, settings, { collapsed: true, takeover: false });',
+      'return Object.assign({}, settings, { collapsed: true });',
+    ),
+  },
+  {
+    name: 'the collapse is persisted only after navigation has begun',
+    suite: 'tests/auto-hide.test.js',
+    apply: (s) => s.replace(
+      "        persist('settings');\n        // Deferred: redrawing now",
+      "        setTimeout(function () { persist('settings'); }, 0);\n        // Deferred: redrawing now",
+    ),
+  },
+  {
+    name: 'the auto-hide setting accepts any truthy value',
+    suite: 'tests/auto-hide.test.js',
+    apply: (s) => s.replace(
+      'out.autoHideOnOpen = raw.autoHideOnOpen === true;',
+      'out.autoHideOnOpen = !!raw.autoHideOnOpen;',
+    ),
+  },
+  {
+    name: 'a row link loses its thread marker',
+    suite: 'tests/auto-hide.test.js',
+    apply: (s) => s.replace("      + threadLinkAttr(row.id) + '>'", "      + '>'"),
+  },
+  {
+    name: 'the thread link walk climbs out of the panel',
+    suite: 'tests/auto-hide.test.js',
+    apply: (s) => s.replace(
+      'if (n === panel) return null;',
+      'if (n === panel) { n = n.parentNode; continue; }',
+    ),
+  },
+  {
+    name: 'an upgrade that adds a setting is reported as damage again',
+    suite: 'tests/auto-hide.test.js',
+    apply: (s) => s.replace(
+      'var seen = isPlainObject(raw) && isPlainObject(value) ? Object.assign({}, value, raw) : raw;',
+      'var seen = raw;',
     ),
   },
 ];
