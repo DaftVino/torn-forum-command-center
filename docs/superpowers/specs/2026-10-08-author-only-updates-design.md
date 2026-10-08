@@ -83,7 +83,8 @@ Finding numbers refer to `docs/reference/torn-api-live-findings-2026-10-08.md`.
 | Without `from`: oldest first, 20 per page, `offset` pages, topic at offset 0 | Finding 5; `forum-posts-large-offset0.json` | Verified. Deep search relies on this; this design does not |
 | `sort` and `limit` are ignored | Findings 6, 7; `forum-posts-large-sort-desc-ignored.json`, `forum-posts-large-limit50-ignored.json` | Verified |
 | With `from=t`: posts with `created_time >= t`, **newest first**, at most 20, `next` is `null` | Finding 8; `forum-posts-large-from.json` (20 posts, strictly descending) | Verified |
-| `offset` is ignored when `from` is set | Finding 8; `forum-posts-large-from-offset20-ignored.json` is identical to `forum-posts-large-from.json` | Verified. One page is all `from` can return |
+| `offset` is ignored when `from` is set | Finding 8; `forum-posts-large-from-offset20-ignored.json` is identical to `forum-posts-large-from.json` | Verified. `offset` cannot page a `from` query |
+| `from` plus `to` pages backwards. `to` is inclusive, so consecutive pages share exactly one boundary post. A full page's `prev` link is `from=<from>&to=<its oldest created_time>`; `next` is `null` | Finding 15 (PR #15); `forum-posts-large-from-prev.json` (the `prev` page of `forum-posts-large-from.json`: 20 posts, newest first, 1784466765 down to 1784166231, one id shared with page 0) | Verified |
 | `from` is inclusive | Finding 9; `forum-thread-posts-from-small.json` (`from` equal to the post's `created_time` returned it) | Verified |
 | A thread's `posts` counts replies (total minus 1); subscribed `posts.total` counts every post | Findings 3, 4; `forum-thread.json` (`posts: 1`) against `forum-thread-posts-asc.json` (2 posts) | Verified |
 | `last_poster { id, username, karma }` on thread objects | Finding 10; `forum-thread.json` | Verified |
@@ -94,7 +95,7 @@ Finding numbers refer to `docs/reference/torn-api-live-findings-2026-10-08.md`.
 
 ## Decision
 
-### Data source: one `forum/{id}/posts` page per checked thread
+### Data source: `forum/{id}/posts` pages, walked backwards from the newest
 
 When the setting is on, the per-thread activity lookup calls
 `forum/{id}/posts?from=<marker seconds + 1>` **in place of**
@@ -102,11 +103,22 @@ When the setting is on, the per-thread activity lookup calls
 `authorId` and whose `created_time` is later than the thread's read marker.
 
 Torn answers that request with the **newest** posts after the marker, newest
-first, at most 20, with no way to reach further back: `offset`, `sort` and
-`limit` are all ignored once `from` is set (findings 6-8). So the page is "the
-newest 20 since the marker", not "the first 20 since the marker". With more
-than 20 new posts, the posts nearest the marker cannot be read through `from`
-at all. The truncation rule below is built on that.
+first, at most 20. `offset`, `sort` and `limit` are all ignored once `from` is
+set (findings 6-8), so the first page is "the newest 20 since the marker", not
+"the first 20". To reach older new posts, the lookup adds `to=<oldest
+created_time on the page just read>` and asks again (finding 15). `to` is
+inclusive, so each further page repeats the previous page's oldest post, and
+the engine de-duplicates by post id. The walk ends when a page holds fewer than
+20 posts or its `prev` link is `null`; then every post after the marker has
+been read and the count is exact. It is cut short by the per-thread page cap
+or by the shared lookup budget (both below); then the result is a lower bound,
+and the truncation rule decides the badge.
+
+The script builds each page's URL itself, through `tornApiGet` and
+`buildApiUrl`, from `from` and `to`. It never fetches the `prev` URL Torn
+returns: that string carries `limit`, `sort` and possibly `key=` and other
+parameters, and every URL this script sends is one it built. The response's
+`prev` is read only for whether it is `null`.
 
 Rejected:
 
@@ -134,17 +146,42 @@ Rejected:
 
 ### Request cost
 
-The cost does not change. The lookup budget (`enrichBudget`, default 10) now
-counts posts lookups. A default refresh is still at most **3 + 10 = 13
-requests**, and the limiter still holds 40 per rolling minute. Each lookup is
-one request, as before. `forum/{id}/posts` is public, so the key's access
-requirement does not change.
+The ceiling does not change. The lookup budget (`enrichBudget`, default 10,
+max 25) now counts **posts requests**, first pages and further pages alike, not
+threads. So a default refresh is still at most 2 fixed + 1 daily categories +
+10 lookups = **13 requests**, and with the budget at its maximum 3 + 25 = 28,
+under the limiter's 40 per rolling minute as before. `forum/{id}/posts` is
+public, so the key's access requirement does not change.
+
+**Page cap: at most 3 pages per thread per refresh**, that is the first page
+plus 2 further pages (`AUTHOR_MAX_PAGES = 3`). Because each further page
+repeats one boundary post, 3 pages reach 20 + 19 + 19 = **58 distinct new
+posts**. **Breadth before
+depth:** a further page is fetched only while the budget still holds one
+request for every target thread not yet started in this batch. So further
+pages never cost another thread its first look; they only use budget that
+would otherwise go unspent. With 10 or more targets (the busy case), a default
+refresh makes exactly one request per thread, as before.
+
+Why 3 pages. The cap's main job is to stop one huge backlog from eating the
+budget: without it, a thread with 784 new posts would ask for 40 pages. In the
+captured subscription list (`user-forumsubscribedthreads.json`), 16 of 52
+threads have `posts.new` over 20. One page leaves all 16 out of reach. Two
+pages (39 distinct posts) bring 9 of them in. Three pages (58) bring in 10, the
+whole group from 22 to 40, and leave room for a thread to grow between
+refreshes; only the 6 at 62 to 784 stay out of reach, and for those more pages
+buy little, because that is a backlog the user is not reading post by post and
+one visit resets the marker. (`posts.new` counts from Torn's read point, not
+from this script's marker, so these figures are a guide, not a promise.)
+Because of breadth before depth, the third page never displaces another
+thread's first page, so its only cost is a request from budget that would
+otherwise go unspent, plus one more sequential round trip in that refresh.
 
 Trade-off: in author-only mode, threads checked this way do not refresh
 `isLocked`/`isSticky`. They keep their last known values. Last activity is
 still fed, and exactly: `from` has no upper bound and the page is newest first,
-so the newest `created_time` on any non-empty page is the thread's last post
-time, whether or not the page is full. It is written to `lastPostTimeCached`,
+so the newest `created_time` on a non-empty first page is the thread's last
+post time, however many pages follow. It is written to `lastPostTimeCached`,
 and `enrichedAt` is set. An empty page writes neither.
 
 ### The read marker
@@ -176,10 +213,10 @@ it is 1.
 
 | state | when | badge (row) |
 |---|---|---|
-| `none` | dismissed; or Torn reports `posts.new == 0`; or a valid check found 0 author posts on a complete page | none |
-| `author` | a valid check found `count >= 1` author posts on a complete page | `N new by author` |
-| `author-atleast` | a valid check found `count >= 1` on a truncated page (older new posts were out of reach); or an earlier check found `count >= 1` with the same marker and the thread has grown since | `N+ new by author` |
-| `unchecked` | everything else, with a `reason`: `never` (no check yet: budget, throttle or failure), `stale` (marker moved, or thread grew after a zero-count check), `over-20` (truncated page, none of the 20 by the author), `no-author` (`authorId` unknown), `no-marker`. Lookups target only `never` and `stale`. The other reasons would give the same answer until the thread or the marker changes | `author: not checked (over 20 new)` for `over-20`, `author: not checked` otherwise. Each has a title tooltip giving the reason and saying that Torn reports new posts from someone |
+| `none` | dismissed; or Torn reports `posts.new == 0`; or a valid check found 0 author posts in a complete walk | none |
+| `author` | a valid check found `count >= 1` author posts in a complete walk | `N new by author` |
+| `author-atleast` | a valid check found `count >= 1` in a walk cut short (older new posts were not read); or an earlier check found `count >= 1` with the same marker and the thread has grown since | `N+ new by author` |
+| `unchecked` | everything else, with a `reason`: `never` (no check yet: budget, throttle or failure), `stale` (marker moved, or thread grew after a zero-count check), `too-many` (walk cut short, no author post among the posts read), `no-author` (`authorId` unknown), `no-marker`. Lookups target only `never` and `stale`. The other reasons would give the same answer until the thread or the marker changes | `author: not checked (too many new)` for `too-many`, `author: not checked` otherwise. Each has a title tooltip giving the reason and saying that Torn reports new posts from someone |
 
 A check is **valid** when `check.total === postsTotal` (no posts since) and
 `check.since === sinceAt` (marker unchanged). An unchanged thread therefore
@@ -189,38 +226,61 @@ The badge never shows `tornUnread` under an author label. The `unchecked`
 tooltip may say "Torn reports new posts from someone". It does not give the
 number.
 
-### Reading the page: the truncation rule
+### Reading the pages: the walk and the truncation rule
 
-`summariseAuthorPosts(posts, authorId, sinceMs, perPage)` works out the result
-from what came back. It reads every post and never relies on position, so the
-order cannot change the answer:
+Two pure functions do the reading. The runtime only fetches.
 
+`authorPageStep(pagePosts, seenIds, perPage, prevLink)` decides, after each
+page, whether the walk has ended and, if not, the `to` for the next page:
+
+- **Complete** (`{ done: true, complete: true }`) when the page holds fewer
+  than `perPage` (20) posts, or its `prev` link is `null`. Every post after the
+  marker has then been read. (`prev` is only tested for `null`; when
+  `_metadata` is missing the length alone decides.)
+- **Stuck** (`{ done: true, complete: false }`) when a full page adds no post
+  id the walk had not already seen. That happens only if more than 20 posts
+  share one second, so `to` cannot move past them. The walk stops rather than
+  loop, and the result is a lower bound.
+- Otherwise **continue** (`{ done: false, to }`), with `to` the oldest
+  `created_time` on this page. `to` is inclusive, so the next page starts with
+  that same post again.
+
+`summariseAuthorPosts(posts, authorId, sinceMs, complete)` reads the
+concatenated pages. It reads every post and never relies on position, so order
+cannot change the answer:
+
+- **Each post id counts once.** The boundary post that `to` repeats is
+  skipped the second time. Without this, an author post on a page boundary
+  would be counted twice and "1 new by author" would read "2".
 - Only posts with `created_time * 1000 > sinceMs` count (the marker rule). A
   post at or before the marker is skipped. It is not treated as an error: with
   `from` verified, the inclusive bound is the only way one can arrive, and if
-  Torn ever stopped honouring `from`, the page would be the thread's oldest
-  posts, which the same test skips (and a full page of them reads as truncated,
-  never as `none`).
-- `complete = posts.length < perPage`. Fewer than 20 back means every post
-  after the marker is on the page, so the count is exact.
-- **20 back is truncated.** They are the newest 20 after the marker, and more
-  may lie between the marker and the oldest of them. The page would be
-  complete only if its oldest post were the first one after the marker, and
-  nothing proves that: there is no `next` link, `offset` is ignored, and
-  `posts.new` is not a reliable count (it can exceed `posts.total`). So a full
-  page is always truncated. Then:
-  - one or more author posts among the 20: `author-atleast`, badge
-    **`N+ new by author`**. N is a lower bound and the `+` says so. The newest
-    author post is exact, because any author post out of reach is older than
-    all 20, so `authorLatestAt` and the Catch-up order are right;
-  - none of the 20 by the author: `unchecked`, reason `over-20`, badge
-    **`author: not checked (over 20 new)`**. Never `none`: the author may have
-    posted in the part that cannot be reached.
-- An `over-20` row is not re-checked while nothing changes: the same request
-  would return the same 20. It becomes `stale`, and a lookup target again, when
-  the thread grows (a new post may be the author's, and the newest 20 would
-  include it) or when the marker moves (a visit or Mark read, which is the only
-  way to bring the unreachable posts back into range). The tooltip says so.
+  Torn ever stopped honouring `from`, the pages would be the thread's oldest
+  posts, which the same test skips.
+- `complete` comes from the walk, not from page length.
+
+The walk is cut short when the thread reaches `AUTHOR_MAX_PAGES` (3), when
+the budget must be kept for threads not yet started (breadth before depth), or
+when a further page fails or is throttled. A cut-short walk is a lower bound,
+because more new posts may lie between the marker and the oldest post read,
+and nothing proves otherwise (`posts.new` is not a reliable count; it can
+exceed `posts.total`). Then:
+
+- one or more author posts among the posts read: `author-atleast`, badge
+  **`N+ new by author`**. N is a lower bound and the `+` says so. The newest
+  author post is exact, because any author post not read is older than every
+  post read, so `authorLatestAt` and the Catch-up order are right;
+- no author post among them: `unchecked`, reason `too-many`, badge
+  **`author: not checked (too many new)`**. Never `none`: the author may have
+  posted in the part not read.
+
+A walk that ends inside the cap is exact: `N new by author`, or `none`.
+
+A `too-many` row is not re-checked while nothing changes: the same walk would
+read the same posts. It becomes `stale`, and a lookup target again, when the
+thread grows (a new post may be the author's) or when the marker moves (a
+visit or Mark read, which brings the unread part within reach). The tooltip
+says so.
 
 ### Where the state is used, with the setting on
 
@@ -292,11 +352,13 @@ rows for the cap. The nav count does not include it.
   only runs for a thread that has unread posts and no recent check. The script
   keeps itself under 40 requests a minute regardless." A second note is always
   shown, so the limits are visible before the setting is turned on: "Author-only
-  mode reads the thread's newest 20 posts since you last looked, per lookup,
-  instead of its last-post time, so the cost is the same. Torn returns no more
-  than 20, so with more new posts than that a count shows as a minimum (N+), or
-  as 'not checked (over 20 new)' when none of the 20 is by the author. Threads
-  not checked yet show 'not checked'. Posts from before you started using this
+  mode reads a thread's posts since you last looked, 20 at a time, newest
+  first, instead of its last-post time. Each page is one lookup from the same
+  allowance, so the total cost is the same; a thread gets at most 3 pages, and
+  only once every other thread has had its first. With more new posts than
+  that, a count shows as a minimum (N+), or as 'not checked (too many new)'
+  when none of the posts read is by the author. Threads not checked yet show
+  'not checked'. Posts from before you started using this
   script are not flagged, and edits are not detected."
 
 ### Persisted state and migration
@@ -312,8 +374,8 @@ defaults, and `SCHEMA_VERSION` stays 1:
 | `authorCheckSince` | ms | `sinceAt` used by that check |
 | `authorNewCount` | int | author posts found after `since` |
 | `authorLatestAt` | ms | newest author post found |
-| `authorCheckComplete` | bool | page was not full (fewer than 20 back) |
-| `authorCheckReason` | string, allow-listed | `''` or `over-20` (anything else normalises to `''`) |
+| `authorCheckComplete` | bool | the walk ended inside the cap (a short page or a `null` `prev`) |
+| `authorCheckReason` | string, allow-listed | `''` or `too-many` (anything else normalises to `''`) |
 
 ### Counting posts: the +1
 
@@ -367,6 +429,9 @@ exported. A test pins that.
   "not checked yet", which is true.
 - `throttled`: stop the batch (same as `enrichThreads`). The remaining rows stay
   `unchecked` (`never`/`stale`).
+- A **further** page (with `to`) fails or is throttled: the pages already read
+  are kept and recorded as a walk cut short (`author-atleast` or `too-many`),
+  never as complete. A throttle still stops the batch.
 - `authorId === 0`: `unchecked` (`no-author`). No request is spent.
 - Every error detail goes through `scrubDetail`. The key never appears in a
   detail, a log or the debug report.
@@ -400,11 +465,20 @@ Answered by the 2026-10-08 capture:
    Yes and yes (findings 8, 9). The request sends marker + 1.
 2. **Answered.** Post order: newest first with `from`, oldest first without
    (findings 5, 8). `offset` is ignored when `from` is set
-   (`forum-posts-large-from-offset20-ignored.json`). Hence the truncation rule.
+   (`forum-posts-large-from-offset20-ignored.json`). Paging is by `to`
+   instead (question 7).
 3. **Answered.** No edit timestamp; only `is_edited` and `edited_by`
    (finding 11).
 4. **Answered.** `forum/{id}/thread` carries `last_poster { id, username,
    karma }` (finding 10). Not used; see Decision.
+7. **Answered** (probe on 2026-10-08, finding 15 in PR #15). Can `to` reach the
+   posts nearest the marker? Yes. Following page 0's `prev`
+   (`from=1777939495&to=1784466765`) on thread 16561608 returned 20 posts,
+   newest first, 1784466765 down to 1784166231, all at or after `from`, with
+   exactly one id shared with page 0 (`to` is inclusive), its own `prev`
+   (`to=1784166231`) and a `null` `next`
+   (`forum-posts-large-from-prev.json`). This design walks back with it, up to
+   3 pages per thread.
 
 Still open:
 
@@ -413,12 +487,9 @@ Still open:
    the meanings are known. Not probed.
 6. Are deleted posts counted in `posts.total`? (This affects whether
    `check.total` stays a stable validity key.) Not probed.
-7. Can `to` reach the posts nearest the marker? The `from` response's `prev`
-   link is `from=<thread start>&to=<oldest returned>`
-   (`forum-posts-large-from.json`), which hints that `from` plus `to` pages
-   backwards. Not probed. If it works, a second request could turn some
-   `over-20` rows into exact answers, at twice the cost for those rows. Out of
-   scope here; a follow-up issue if `over-20` turns out to be common.
+8. Does a deep `to` walk ever stall on many posts in one second? The design
+   stops a walk that makes no progress (`authorPageStep`, "stuck"), so this
+   cannot loop; how often it happens is unknown.
 
 ## Out of scope
 
