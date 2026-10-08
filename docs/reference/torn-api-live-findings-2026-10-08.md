@@ -37,6 +37,29 @@ note when that happens.
 | 14 | **`forum/categories` lists 43 forums.** | `forum-categories.json` | #9 |
 | 15 | **`to` pages backwards from a `from` result.** The page-0 response's `_metadata.links.prev` is `from=<t>&to=<oldest created_time on the page>&sort=desc&limit=20`. Following it returned the next 20 older posts, newest first, all with `created_time >= t`, sharing exactly one post id with page 0, because `to` is **inclusive**. It carries its own `prev` for the next step back, and `next` is null. A full count since a marker is therefore reachable at one request per 20 posts, with the boundary post de-duplicated by id. This amends finding 8: a single `from` call is capped at 20, but the chain is not. Probed with 1 more request, 21 in total. | `forum-posts-large-from-prev.json` | #4 |
 
+## Access levels (finding 16)
+
+Probed with three owner keys, Public Only, Minimal Access and Limited Access,
+whose levels were confirmed by `key/info`. That was 30 more requests, spread
+across the three keys.
+
+| Endpoint | Used by | Public | Minimal | Limited |
+|---|---|---|---|---|
+| `user/forumsubscribedthreads` | Threads refresh | error 16 | ok | ok |
+| `user/forumfeed` | Threads refresh | error 16 | ok | ok |
+| `forum/categories` | Threads refresh | ok | ok | ok |
+| `forum/{id}/thread` | enrichment | ok | ok | ok |
+| `forum/{id}/posts`, with or without `from` | deep search, #4, #10 | ok | ok | ok |
+| `user/forumthreads` | #2, #10 | ok, but `new_posts` absent | ok, `new_posts` present | ok, `new_posts` present |
+| `user/forumposts` | #2, #10 | ok | ok | ok |
+| `user/profile` (`karma`) | #10 | ok | ok | ok |
+
+**Minimal Access is the minimum key level for the script and for all six
+plans.** Public Only fails the core refresh, and Limited Access adds nothing
+the script uses. The current error-16 text and the Settings key help name
+Limited or a Custom key and never name Minimal. A Custom key restricted to
+`forumsubscribedthreads` and `forumfeed` was not tested.
+
 ## Still open
 
 - Whether the thumbs shown on Torn's thread page equal the topic post's
