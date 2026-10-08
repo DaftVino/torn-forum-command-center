@@ -491,3 +491,27 @@ test('with author-only off, the unchecked group never blocks', () => {
     'counted once, as Catch up, not twice');
 });
 
+
+// ---- reconciled with #10 (reactions): the subhead follows the badge shelf ------
+
+test('the subhead follows the badge shelf', () => {
+  const env = loadUserscript({ location: forums({ hash: THREAD }), now: NOW, gmStore: [['tfcc:key', KEY]] });
+  const api = env.exports;
+  api.state.badges = api.normaliseBadges({ v: 1, earned: { reader: NOW - 1000 } });
+  api.state.badgeShelfOpen = true;
+  api.state.badgeToast = { text: 'Badge earned: Reader (Bronze).', until: NOW + 6000, announced: false };
+  const rec = api.freshMineThread(1, NOW);
+  rec.started = true;
+  api.setReactionFields(rec, { topicAt: NOW, up: 3, down: 1 });
+  api.state.mine = Object.assign(api.freshMine(), { fetchedAt: NOW, threads: [rec] });
+  api.recompute(NOW);
+  const out = html(env);
+  const head = out.indexOf('<div class="tfcc-head">');
+  const shelf = out.indexOf('<div class="tfcc-shelf">');
+  const toast = out.indexOf('<div class="tfcc-toast');
+  const sub = out.indexOf('<div class="tfcc-subhead">');
+  assert.ok(head !== -1 && shelf > head && toast > shelf, 'head, then shelf, then toast');
+  assert.ok(sub > toast, 'the reactions subhead comes after the shelf and the toast');
+  assert.doesNotMatch(out.slice(head, shelf), /tfcc-reactions/, 'nothing of #10 sits in the header row');
+});
+

@@ -911,6 +911,9 @@ const MUTATIONS = [
     apply: (s) => s.replace('&& toInt(ctx.blockers, 0) === 0;', ';') },
   { name: 'badges: an author-only unchecked row does not block a check-in', suite: 'tests/badges-runtime.test.js',
     apply: (s) => s.replace('var cu = catchUpRowsNow().concat(catchUpUncheckedNow());', 'var cu = catchUpRowsNow();') },
+  { name: 'badges: the reactions subhead jumps ahead of the badge shelf', suite: 'tests/badges-runtime.test.js',
+    apply: (s) => s.replace('    out.push(renderBadgeShelf(model));',
+      '    out.push(renderReactions(model));\n    out.push(renderBadgeShelf(model));') },
 ];
 
 let failures = 0;
