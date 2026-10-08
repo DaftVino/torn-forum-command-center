@@ -456,11 +456,8 @@ streak-25). Gold 3 (bookworm, cartographer, streak-100). Legendary 1
   already carry the "next goal" pull.
 - **Forums 3 / 7 / 12.** These are counted in distinct forum ids, not
   visits. The thresholds are spaced so each needs a deliberate visit to new
-  territory. 12 assumes the public board has well over 12 forums. **That
-  count is not evidenced anywhere in this repo** (the `forum/categories`
-  fixtures in `tests/` hold one or two entries), so Cartographer's target is a
-  release gate, not a settled number: see open question 1 and the QA
-  checklist.
+  territory. `forum/categories` listed 43 forums live on 2026-10-08
+  (open question 1, PR #15), so 12 is about a quarter of the board.
 - **Streaks 3 / 10 / 25 / 100 / 500**, as the owner set. All of them use
   `best`, so an earned streak badge is never in doubt after a break.
 
