@@ -3156,14 +3156,21 @@
   }
 
   function renderNav(model) {
-    var labels = { threads: 'Threads', catchup: 'Catch up', search: 'Search', drafts: 'Drafts', settings: 'Settings' };
+    var labels = {
+      threads: 'Threads', catchup: 'Catch up', search: 'Search', drafts: 'Drafts', settings: 'Settings',
+      mine: 'My posts',
+    };
     var out = ['<div class="tfcc-nav">'];
     for (var i = 0; i < VIEWS.length; i += 1) {
       var v = VIEWS[i];
       var count = '';
       if (v === 'catchup' && model.catchUp.length) count = ' (' + model.catchUp.length + ')';
       if (v === 'drafts' && model.totals.drafts) count = ' (' + model.totals.drafts + ')';
-      out.push('<button type="button" data-act="view" data-view="' + v + '" aria-pressed="'
+      if (v === 'mine' && model.mine && model.mine.unread) count = ' (' + model.mine.unread + ')';
+      // My posts is last in VIEWS and right-aligned by its class (see the
+      // .tfcc-nav-mine rules), so it needs no special case in this loop.
+      out.push('<button type="button" data-act="view" data-view="' + v + '"'
+        + (v === 'mine' ? ' class="tfcc-nav-mine"' : '') + ' aria-pressed="'
         + (model.view === v ? 'true' : 'false') + '">' + escapeHtml(labels[v] + count) + '</button>');
     }
     out.push('</div>');
@@ -3178,13 +3185,23 @@
       + threadLinkAttr(row.id) + '>'
       + escapeHtml(row.title) + '</a></span>');
     if (row.unread > 0) {
-      out.push('<span class="tfcc-unread">' + formatCount(row.unread) + ' new</span>');
+      if (row.unreadSource === 'local') {
+        // A count this script made, never passed off as Torn's.
+        out.push('<span class="tfcc-unread" title="Counted on this device since you last marked it read or posted. '
+          + 'Torn does not report unread counts for threads you do not follow.">'
+          + formatCount(row.unread) + ' new</span><span class="tfcc-note">local count</span>');
+      } else {
+        out.push('<span class="tfcc-unread">' + formatCount(row.unread) + ' new</span>');
+      }
     }
+    // A total nobody looked up must never look like a checked zero.
+    if (row.unreadSource === 'unchecked') out.push('<span class="tfcc-note">not checked yet</span>');
     if (!row.subscribed) out.push('<span class="tfcc-note">not subscribed</span>');
     if (row.isLocked) out.push('<span class="tfcc-note">locked</span>');
     out.push('</div>');
 
     out.push('<div class="tfcc-meta">');
+    if (row.mineRole) out.push('<span class="tfcc-tag">' + (row.mineRole === 'started' ? 'started' : 'posted in') + '</span>');
     out.push('<span title="Where the time came from: ' + escapeHtml(row.activitySource) + '">'
       + escapeHtml(formatRelativeTime(row.lastActivity, model.now)) + '</span>');
     out.push('<span>' + escapeHtml(row.forumName) + '</span>');
@@ -3226,7 +3243,8 @@
     return out.join('');
   }
 
-  function renderThreadsView(model) {
+  // The filter bar Threads and My posts share.
+  function renderListBar(model) {
     var out = ['<div class="tfcc-bar">'];
     out.push('<input class="tfcc-grow" type="search" data-act="filter" value="'
       + escapeHtml(model.searchQuery) + '" placeholder="filter: words, by:player, tag:x, is:unread">');
@@ -3256,16 +3274,65 @@
     out.push('<button type="button" data-act="unread-only" aria-pressed="'
       + (model.unreadOnly ? 'true' : 'false') + '">Unread only</button>');
     out.push('</div>');
+    return out.join('');
+  }
+
+  function renderThreadsView(model) {
+    var out = [renderListBar(model)];
 
     if (!model.rows.length) {
       out.push('<div class="tfcc-empty">Nothing matches. '
-        + (model.totals.subscribed ? 'Try clearing the filters.' : 'Refresh to load your subscribed threads.')
+        + (model.view === 'mine' || model.totals.subscribed ? 'Try clearing the filters.' : 'Refresh to load your subscribed threads.')
         + '</div>');
     } else {
       out.push('<div class="tfcc-rows">');
       for (var r = 0; r < model.rows.length; r += 1) out.push(renderRow(model.rows[r], model));
       out.push('</div>');
     }
+    return out.join('');
+  }
+
+  function renderMineView(model) {
+    var m = model.mine;
+    var out = [];
+    var line = 'Threads you started or posted in.';
+    if (m.fetchedAt) line += ' Updated ' + formatRelativeTime(m.fetchedAt, model.now) + '.';
+    if (m.unchecked) line += ' ' + m.unchecked + ' not checked yet.';
+    out.push('<p class="tfcc-note">' + escapeHtml(line) + '</p>');
+
+    if (m.error) {
+      out.push('<div class="tfcc-error">' + escapeHtml(m.error.detail) + '</div>');
+      out.push('<div class="tfcc-actions">' + btn('refresh', 'Try again') + '</div>');
+      if (m.total && m.fetchedAt) {
+        out.push('<p class="tfcc-note">' + escapeHtml('Showing the saved list from '
+          + formatAbsoluteTime(m.fetchedAt) + '.') + '</p>');
+      }
+    }
+
+    if (!m.total) {
+      if (m.refreshing) {
+        out.push('<div class="tfcc-empty">Loading the threads you started and posted in...</div>');
+      } else if (m.error) {
+        // The error above says what happened; a failed fetch is not an empty answer.
+      } else if (m.fetchedAt) {
+        out.push('<div class="tfcc-empty">Torn reports no threads you started or posted in.</div>');
+      } else {
+        out.push('<div class="tfcc-empty">Press Refresh to load the threads you started and posted in.</div>');
+      }
+      return out.join('');
+    }
+
+    // Unread only is the one filter that can empty a non-empty list without
+    // the user typing anything, so it gets its own words, plus the count of
+    // rows it hid because nobody has checked them yet.
+    var onlyUnread = model.unreadOnly && !model.searchQuery && !model.folderFilter && !model.tagFilter;
+    if (!model.rows.length && onlyUnread) {
+      out.push(renderListBar(model));
+      out.push('<div class="tfcc-empty">No new replies in your threads.'
+        + (m.unchecked ? ' ' + m.unchecked + ' not checked yet.' : '') + '</div>');
+      return out.join('');
+    }
+    out.push(renderThreadsView(model));
     return out.join('');
   }
 
@@ -3579,6 +3646,7 @@
     else if (model.view === 'search') out.push(renderSearchView(model));
     else if (model.view === 'drafts') out.push(renderDraftsView(model));
     else if (model.view === 'settings') out.push(renderSettingsView(model));
+    else if (model.view === 'mine') out.push(renderMineView(model));
     else out.push(renderThreadsView(model));
 
     if (model.lastFetchedAt) {

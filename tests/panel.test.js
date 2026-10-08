@@ -296,3 +296,76 @@ test('the My posts model lists its own population, and Unread only narrows it', 
   env.exports.state.settings.unreadOnly = true;
   assert.deepStrictEqual(env.exports.buildPanelModel(NOW).rows.map((r) => r.id), ['50']);
 });
+
+test('My posts is the last nav button, classed, labelled and pressed like the rest', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1 }]);
+  seedMine(env);
+  assert.strictEqual(env.exports.VIEWS[env.exports.VIEWS.length - 1], 'mine');
+  for (const view of ['threads', 'mine']) {
+    env.exports.state.settings.view = view;
+    const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+    const nav = /<div class="tfcc-nav">([\s\S]*?)<\/div>/.exec(html)[1];
+    const buttons = nav.match(/<button[^>]*>[^<]*<\/button>/g);
+    const last = buttons[buttons.length - 1];
+    assert.match(last, /data-view="mine"/);
+    assert.match(last, /class="tfcc-nav-mine"/);
+    assert.match(last, />My posts \(1\)</, 'the count is My posts rows with new replies');
+    assert.match(last, new RegExp('aria-pressed="' + (view === 'mine') + '"'));
+  }
+});
+
+test('the My posts view marks roles, local counts and unchecked rows honestly', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1 }]);
+  seedMine(env);
+  env.exports.state.settings.view = 'mine';
+  const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  assert.match(html, /Threads you started or posted in/);
+  assert.match(html, /1 not checked yet/);
+  assert.match(html, /started/);
+  assert.match(html, /posted in/);
+  assert.match(html, /2 new<\/span>[\s\S]*?local count/);
+  assert.match(html, /title="Counted on this device/);
+  assert.match(html, /data-act="unread-only"/);
+  assert.match(html, /data-act="sort"/);
+  for (const act of ['pin', 'read', 'prio-up', 'prio-down', 'folder', 'tag-input', 'note-input', 'draft', 'archive']) {
+    assert.match(html, new RegExp('data-act="' + act + '" data-id="50"'), act + ' missing on a My posts row');
+  }
+});
+
+test('My posts empty, loading, error and filtered states each say what happened', () => {
+  const env = loadUserscript({ location: forums() });
+  const api = env.exports;
+  seed(env, [{ id: 1 }]);
+  api.state.settings.view = 'mine';
+  api.state.mine = api.freshMine();
+  api.recompute(NOW);
+  api.state.refreshingMine = true;
+  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /Loading the threads you started and posted in/);
+  api.state.refreshingMine = false;
+  api.state.mine.fetchedAt = NOW;
+  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /Torn reports no threads you started or posted in/);
+  api.state.mineError = { reason: 'torn', detail: 'Torn had a backend error.' };
+  const err = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(err, /Torn had a backend error/);
+  assert.match(err, /data-act="refresh"/);
+  assert.doesNotMatch(err, /Torn reports no threads/, 'a failed fetch is not an empty answer');
+  api.state.mineError = null;
+  seedMine(env);
+  api.state.settings.unreadOnly = true;
+  api.state.searchQuery = 'zzz-no-match';
+  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /Nothing matches/);
+  api.state.searchQuery = '';
+  api.state.mine.threads.forEach((t) => { t.baselineTotal = t.postsTotal; });
+  api.recompute(NOW);
+  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /No new replies in your threads/);
+});
+
+test('Threads rows never carry My posts marks', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1, unread: 2 }]);
+  env.exports.state.settings.view = 'threads';
+  const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  assert.doesNotMatch(html, /local count|not checked yet|posted in/);
+});
