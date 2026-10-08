@@ -49,3 +49,9 @@ from Torn's rules page and is quoted in full at the top of
 If either source is revised, re-save it here with a new date in the filename and
 re-check `docs/rules-compliance.md` against it clause by clause. Keep the old
 copy: it is the evidence for what the script was built against.
+
+## Live findings
+
+`torn-api-live-findings-2026-10-08.md` records how the live API v2 behaved on
+2026-10-08, where it differs from the OpenAPI document, and which plans each
+finding affects. The redacted responses behind it are in `tests/fixtures/`.
