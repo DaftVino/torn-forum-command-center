@@ -98,6 +98,10 @@
   var MINE_MAX_THREADS = 200;
   var POST_CACHE_MAX_BYTES = 1500000;
   var EXPORT_PREFIX = 'TFCC1:';
+  // Author-only mode (issue #4): the most posts pages one thread's walk reads
+  // in one refresh, and the reasons a cut-short walk may store.
+  var AUTHOR_MAX_PAGES = 3;
+  var AUTHOR_CHECK_REASONS = Object.freeze(['', 'too-many']);
 
   var ACTIVITY_SOURCES = Object.freeze(['enriched', 'feed', 'mine', 'enriched-stale', 'own-post', 'visit', 'none']);
 
@@ -445,6 +449,14 @@
       isSticky: false,
       firstSeenAt: 0,
       archived: false,
+      // Author-only check result (issue #4). A cache: never exported.
+      authorCheckedAt: 0,
+      authorCheckTotal: 0,
+      authorCheckSince: 0,
+      authorNewCount: 0,
+      authorLatestAt: 0,
+      authorCheckComplete: false,
+      authorCheckReason: '',
     };
     if (!isPlainObject(raw)) return e;
     if (typeof raw.folderId === 'string' && raw.folderId) e.folderId = safeString(raw.folderId, 64);
@@ -467,6 +479,13 @@
     e.isLocked = raw.isLocked === true;
     e.isSticky = raw.isSticky === true;
     e.firstSeenAt = Math.max(0, toInt(raw.firstSeenAt, 0));
+    e.authorCheckedAt = Math.max(0, toInt(raw.authorCheckedAt, 0));
+    e.authorCheckTotal = Math.max(0, toInt(raw.authorCheckTotal, 0));
+    e.authorCheckSince = Math.max(0, toInt(raw.authorCheckSince, 0));
+    e.authorNewCount = Math.max(0, toInt(raw.authorNewCount, 0));
+    e.authorLatestAt = Math.max(0, toInt(raw.authorLatestAt, 0));
+    e.authorCheckComplete = raw.authorCheckComplete === true;
+    e.authorCheckReason = AUTHOR_CHECK_REASONS.indexOf(raw.authorCheckReason) !== -1 ? raw.authorCheckReason : '';
     return e;
   }
 
@@ -528,6 +547,24 @@
       threads: threads,
       lastCatchUpAt: Math.max(0, toInt(raw.lastCatchUpAt, 0)),
     };
+  }
+
+  // An upgrade adds per-thread fields (issue #4). They are nested inside the
+  // threads map, which isRecoveredValue deliberately does not forgive, so fill
+  // each raw thread entry's absent keys from its normalised entry first. A key
+  // that is present and changed, a key the normaliser drops, and an entry it
+  // drops all still differ, so they are still damage.
+  function isRecoveredOrganizer(raw, value) {
+    if (isPlainObject(raw) && isPlainObject(raw.threads) && isPlainObject(value) && isPlainObject(value.threads)) {
+      var threads = {};
+      Object.keys(raw.threads).forEach(function (id) {
+        var r = raw.threads[id];
+        var v = value.threads[id];
+        threads[id] = isPlainObject(r) && isPlainObject(v) ? Object.assign({}, v, r) : r;
+      });
+      raw = Object.assign({}, raw, { threads: threads });
+    }
+    return isRecoveredValue(raw, value);
   }
 
   function freshDrafts() { return { v: SCHEMA_VERSION, byThread: {} }; }
@@ -2039,13 +2076,13 @@
     }
   }
 
-  function loadKey(name, normaliser, now) {
+  function loadKey(name, normaliser, now, recoveredCheck) {
     var raw = readRaw(name);
     if (raw === PARSE_FAILED) {
       return { value: normaliser(null, now), recovered: true, hadRaw: true };
     }
     var value = normaliser(raw, now);
-    var recovered = isRecoveredValue(raw, value);
+    var recovered = (recoveredCheck || isRecoveredValue)(raw, value);
     return { value: value, recovered: recovered, hadRaw: raw !== null };
   }
 
@@ -2337,7 +2374,7 @@
 
   function loadAll(now) {
     var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now);
-    var o = loadKey(STORAGE_KEYS.organizer, normaliseOrganizer, now);
+    var o = loadKey(STORAGE_KEYS.organizer, normaliseOrganizer, now, isRecoveredOrganizer);
     var d = loadKey(STORAGE_KEYS.drafts, normaliseDrafts, now);
     var f = loadKey(STORAGE_KEYS.feed, normaliseFeed, now);
     var p = loadKey(STORAGE_KEYS.postCache, normalisePostCache, now);
