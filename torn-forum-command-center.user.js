@@ -3798,6 +3798,70 @@
     return { changed: true, route: route, threadId: id };
   }
 
+  // ---- focused thread visits (issue #9) --------------------------------------
+
+  // Reads the page's own visibility and focus, never Torn's markup (ADR 0001).
+  // Takeover covers the thread, so time in takeover is not time on the thread.
+  function dwellActive(doc) {
+    try {
+      if (!state.route || !state.route.isThread) return false;
+      if (doc.hidden === true) return false;
+      if (typeof doc.hasFocus === 'function' && doc.hasFocus() !== true) return false;
+      return !state.settings.takeover;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function sampleDwell(doc, win, now) {
+    var id = state.route && state.route.isThread ? String(state.route.threadId) : '';
+    var step = dwellStep(state.dwell, id, dwellActive(doc), now);
+    state.dwell = step.dwell;
+    if (!step.credit) return false;
+    var entry = Object.prototype.hasOwnProperty.call(state.organizer.threads, step.credit)
+      ? state.organizer.threads[step.credit] : null;
+    var forumId = (state.route && state.route.forumId) || (entry ? entry.forumId : 0) || 0;
+    recordBadgeEvent({ type: 'visit', threadId: step.credit, forumId: forumId }, now);
+    return true;
+  }
+
+  var dwellTimer = null;
+  var DWELL_FLAG = '__tfccDwellObserved';
+
+  // A self-rescheduling timeout rather than setInterval, so a missed tick can
+  // never queue a burst, and the step cap in dwellStep absorbs a late one.
+  function startDwell(doc, win) {
+    if (dwellTimer !== null) return;
+    function tick() {
+      dwellTimer = null;
+      try {
+        if (!isForumsPage(win.location)) return;
+        var now = Date.now();
+        var changed = sampleDwell(doc, win, now);
+        if (state.badgeToast && now >= state.badgeToast.until) { state.badgeToast = null; changed = true; }
+        if (changed) drawIfStillHere(doc, win, makeHandlers(doc, win));
+      } catch (e) { /* the sampler must never throw onto Torn's page */ }
+      dwellTimer = setTimeout(tick, DWELL_TICK_MS);
+    }
+    dwellTimer = setTimeout(tick, DWELL_TICK_MS);
+    try {
+      if (win && !win[DWELL_FLAG]) {
+        win[DWELL_FLAG] = true;
+        var onChange = function () {
+          try { if (isForumsPage(win.location)) sampleDwell(doc, win, Date.now()); } catch (e) { /* never */ }
+        };
+        win.addEventListener('focus', onChange);
+        win.addEventListener('blur', onChange);
+        if (doc && typeof doc.addEventListener === 'function') doc.addEventListener('visibilitychange', onChange);
+      }
+    } catch (e2) { /* listeners are an accuracy aid; the tick still samples */ }
+  }
+
+  function stopDwell() {
+    if (dwellTimer !== null) { clearTimeout(dwellTimer); dwellTimer = null; }
+    state.dwell = freshDwell();
+  }
+
   // ---- reply box and drafts ----------------------------------------------
 
   var REPLY_SELECTORS = Object.freeze([
@@ -5675,6 +5739,7 @@
       // onto another page, or write data gathered for a page they have gone.
       invalidateInFlight();
       detachAutosave();
+      stopDwell();
       state.route = null;
       return;
     }
@@ -5682,6 +5747,8 @@
     var capture = captureVisit(win.location, doc.title, now);
     if (capture.changed) { persist('organizer'); recompute(now); }
     state.route = capture.route;
+    startDwell(doc, win);
+    sampleDwell(doc, win, now);
     draw(doc, win, makeHandlers(doc, win));
   }
 

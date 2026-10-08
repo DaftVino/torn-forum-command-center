@@ -126,3 +126,100 @@ test('badge events never make a request', () => {
   }
   assert.strictEqual(seen.length, before);
 });
+
+// ---- the dwell sampler, with the harness clock --------------------------------
+
+function threadEnv(extra) {
+  return loadUserscript(Object.assign({ location: forums({ hash: THREAD }), now: NOW, stepClock: true }, extra || {}));
+}
+function visits(env) { const b = stored(env); return b ? b.visits : 0; }
+function secondsPass(env, n) { for (let i = 0; i < n; i += 1) env.advanceTimersBy(1000); }
+
+test('fifteen visible, focused seconds on a thread make one focused visit', () => {
+  const env = threadEnv();
+  secondsPass(env, 14);
+  assert.strictEqual(visits(env), 0);
+  secondsPass(env, 1);
+  assert.strictEqual(visits(env), 1);
+  assert.deepStrictEqual(stored(env).forums, [61]);
+  secondsPass(env, 60);
+  assert.strictEqual(visits(env), 1, 'once per thread per day');
+});
+
+test('a hidden page accrues nothing, and accrues again once visible', () => {
+  const env = threadEnv();
+  env.doc.hidden = true;
+  env.doc.fire('visibilitychange');
+  secondsPass(env, 30);
+  assert.strictEqual(visits(env), 0);
+  env.doc.hidden = false;
+  env.doc.fire('visibilitychange');
+  secondsPass(env, 15);
+  assert.strictEqual(visits(env), 1);
+});
+
+test('blur pauses and focus resumes, keeping the time so far', () => {
+  const env = threadEnv();
+  let focused = true;
+  env.doc.hasFocus = () => focused;
+  secondsPass(env, 10);
+  focused = false;
+  env.win.fire('blur');
+  secondsPass(env, 30);
+  focused = true;
+  env.win.fire('focus');
+  secondsPass(env, 4);
+  assert.strictEqual(visits(env), 0, '10 + 4 is not 15');
+  secondsPass(env, 1);
+  assert.strictEqual(visits(env), 1);
+});
+
+test('a route change resets the time', () => {
+  const env = threadEnv();
+  secondsPass(env, 10);
+  env.win.location.hash = '#/p=threads&f=4&t=8&b=0&a=0';
+  env.exports.syncToRoute(env.doc, env.win);
+  secondsPass(env, 14);
+  assert.strictEqual(visits(env), 0);
+  secondsPass(env, 1);
+  assert.strictEqual(visits(env), 1);
+  assert.deepStrictEqual(stored(env).today.visitIds, ['8']);
+});
+
+test('repeated syncToRoute on one thread adds only real time', () => {
+  const env = threadEnv();
+  for (let i = 0; i < 40; i += 1) env.exports.syncToRoute(env.doc, env.win); // React churn
+  secondsPass(env, 14);
+  for (let i = 0; i < 40; i += 1) env.exports.syncToRoute(env.doc, env.win);
+  assert.strictEqual(visits(env), 0);
+});
+
+test('takeover covers the thread, so it accrues nothing', () => {
+  const env = threadEnv();
+  env.exports.state.settings.takeover = true;
+  secondsPass(env, 30);
+  assert.strictEqual(visits(env), 0);
+});
+
+test('collapsing the panel does not stop the dwell clock', () => {
+  // #8 collapses the panel when a thread opens. The visit must still count.
+  const env = threadEnv();
+  env.exports.state.settings.collapsed = true;
+  secondsPass(env, 15);
+  assert.strictEqual(visits(env), 1);
+});
+
+test('a forum list page is not a thread', () => {
+  const env = threadEnv({ location: forums({ hash: '#/p=forums&f=61' }) });
+  secondsPass(env, 60);
+  assert.strictEqual(visits(env), 0);
+});
+
+test('leaving forums.php stops the sampler', () => {
+  const env = threadEnv();
+  secondsPass(env, 5);
+  env.win.location.pathname = '/index.php';
+  env.exports.syncToRoute(env.doc, env.win);
+  secondsPass(env, 60);
+  assert.strictEqual(visits(env), 0);
+});
