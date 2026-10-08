@@ -68,6 +68,17 @@
   var MAX_ENRICH_BUDGET = 25;
   var MINE_TTL_MS = 15 * 60 * 1000;
   var MINE_PAGE_LIMIT = 100;
+  // Thread reactions (#10). Thumbs change slowly, so each started thread's
+  // opening post is read at most once per TOPIC_TTL_MS, and at most
+  // min(REACTION_LOOKUPS_PER_RUN, enrichBudget) per My posts run.
+  var TOPIC_TTL_MS = 12 * 60 * 60 * 1000;
+  var REACTION_LOOKUPS_PER_RUN = 5;
+  // Without `from`, forum/{id}/posts is oldest first, 20 per page, with the
+  // topic post at offset 0. Torn IGNORES `sort` and `limit`, so neither is sent:
+  // a `sort=ASC` here would suggest a guarantee that does not exist. Evidence:
+  // docs/reference/torn-api-live-findings-2026-10-08.md. The is_topic check in
+  // topicPostFromApi stays the real guarantee.
+  var TOPIC_POST_PARAMS = Object.freeze({ offset: 0 });
   var DEEP_SEARCH_MAX_PAGES = 5;
   var DEEP_SEARCH_MAX_THREADS = 10;
   var POSTS_PER_PAGE = 20;
@@ -846,6 +857,60 @@
   function applyReactions(rec, row, now) {
     if (!rec || !row || typeof row.rating !== 'number') return rec;
     return setReactionFields(rec, { reactAt: Math.max(0, toInt(now, 0)), rating: row.rating });
+  }
+
+  // forum/{id}/posts page one. Only a post Torn flags is_topic counts, and only
+  // with two real counts; `content` is never read. undefined = shape not
+  // recognised (stamp nothing, retry next run); null = no usable topic post
+  // (stamp the check, fall back to net, retry after the TTL).
+  function topicPostFromApi(data, threadId) {
+    var list = pickList(data, ['posts']);
+    if (!list) return undefined;
+    var id = toInt(threadId, 0);
+    for (var i = 0; i < list.length; i += 1) {
+      var p = list[i];
+      if (!isPlainObject(p) || p.is_topic !== true) continue;
+      if (p.thread_id !== undefined && toInt(p.thread_id, 0) !== id) continue;
+      if (!isReactionNumber(p.likes, false) || !isReactionNumber(p.dislikes, false)) return null;
+      return { up: Math.floor(p.likes), down: Math.floor(p.dislikes) };
+    }
+    return null;
+  }
+
+  // normaliseMine doubles as the deep clone, so the input is never mutated.
+  function applyTopicPost(snap, threadId, topic, now) {
+    var out = normaliseMine(snap);
+    var id = toInt(threadId, 0);
+    for (var i = 0; i < out.threads.length; i += 1) {
+      if (out.threads[i].id !== id) continue;
+      setReactionFields(out.threads[i], {
+        topicAt: Math.max(0, toInt(now, 0)),
+        up: topic ? topic.up : null,
+        down: topic ? topic.down : null,
+      });
+    }
+    return out;
+  }
+
+  // Started threads whose opening post is unchecked or older than ttl.
+  // Never-checked first (newest activity first), then the oldest check.
+  function reactionLookupTargets(snap, now, ttl, n) {
+    var cap = Math.max(0, toInt(n, 0));
+    if (!cap || !isPlainObject(snap) || !Array.isArray(snap.threads)) return [];
+    var t0 = toInt(now, 0);
+    var due = snap.threads.filter(function (r) {
+      if (!r || r.started !== true) return false;
+      var at = toInt(r.topicAt, 0);
+      return at <= 0 || t0 - at >= ttl;
+    });
+    due.sort(function (a, b) {
+      var ac = toInt(a.topicAt, 0) > 0 ? 1 : 0;
+      var bc = toInt(b.topicAt, 0) > 0 ? 1 : 0;
+      if (ac !== bc) return ac - bc;
+      if (ac === 0) return (b.lastPostAt - a.lastPostAt) || (b.id - a.id);
+      return (toInt(a.topicAt, 0) - toInt(b.topicAt, 0)) || (b.id - a.id);
+    });
+    return due.slice(0, cap).map(function (r) { return r.id; });
   }
 
   // The post body arrives in `content` and is deliberately never read.
