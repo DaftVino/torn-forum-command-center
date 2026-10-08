@@ -1,8 +1,10 @@
 # My posts view - design
 
 **Status:** proposed, 2026-10-08. Awaiting `/plan-eng-review`.
-**Issue:** #2 (FORGE-448). Interacts with #3 (row cap) and #4 (author-only "new").
-**Target release:** v0.2.0.
+**Issue:** #2. Interacts with #3 (row cap) and #4 (author-only "new").
+**Target release:** the next minor after the `@version` on `origin/main` at
+release time (0.2.0 if `main` is still 0.1.0). The feature PR does not bump it;
+see plan Task 12.
 **Plan:** `docs/superpowers/plans/2026-10-08-my-posts-view.md`.
 
 ## Goal
@@ -350,10 +352,17 @@ TTL, and is its own bounded action - never added to the Threads refresh.**
   its "Updated" time, and the user presses Refresh. A page load therefore still
   costs at most 13.
 - **Worst minute.** Threads then My posts back to back, defaults: 13 + 12 = 25
-  of 40. At the maximum budget the actions are 28 and 27, and the two exceed
-  40: the limiter returns `throttled`, and the My posts lookup loop stops
-  early exactly as `enrichThreads` does. Rows not looked up show
-  `not checked yet`. The limiter, not the arithmetic, is the guarantee.
+  of 40, so neither is ever throttled. At the maximum budget (25) a Threads
+  refresh is 1 + 1 + 1 + 25 = 28 and a My posts fetch is 2 + 25 = 27. Opened
+  right after a maximal Threads refresh, My posts' two list requests are
+  requests 29 and 30 and pass; its lookups get the remaining 10 of the 40, and
+  the 11th is refused with `throttled`. The loop stops there exactly as
+  `enrichThreads` does, so the rolling minute never holds more than 40
+  requests, and the other 15 rows show `not checked yet`. Only if something
+  else (a deep search) has already used 39 or more can a list request itself
+  be throttled, which is the "Throttled" row of the failure table. The limiter,
+  not the arithmetic, is the guarantee, and `tests/mine-refresh.test.js`
+  proves it with a counting transport.
 - **Single flight.** `state.refreshingMine` drops a second My posts fetch while
   one runs. Threads and My posts may run concurrently; the shared limiter
   spaces them.
@@ -370,24 +379,51 @@ constants):
 > requests of its own, at most once every 15 minutes unless you press Refresh.
 > Each activity lookup adds one more to either, and only runs for a thread with
 > no recent time. With the default of 10, a Threads refresh is at most 13
-> requests and My posts at most 12.
+> requests and My posts at most 12; at the largest setting of 25, 28 and 27.
 > The script keeps itself under 40 requests a minute regardless.
 
 ## Interaction with #3 (Rows shown)
 
-The row cap has not landed. This design makes it one change, not three:
+#3 (`docs/superpowers/specs/2026-10-08-rows-shown-cap-design.md` on its branch)
+defines the cap: a pure engine `capRows(rows, limit, expanded)`, the setting
+`settings.rowsShown` (0 = All), frozen `CAPPED_VIEWS` / `UNCAPPED_VIEWS`
+constants with a test that every entry of `VIEWS` is in exactly one, capped
+lists in `model.capped`, a module-level `VIEW_LABELS`, and an in-memory
+`state.showAll` keyed by view. This design uses #3's names and adds nothing
+parallel to them. The view id is `mine` in both.
 
-- The per-view filter in `buildPanelModel` is factored into one pure engine
-  function, `viewRows(rows, view, filters, query)`, which applies population
-  (`inThreads` or `mineRole`), the archive rule, Unread only, folder, tag and
-  the filter box. `sortThreads` is applied after it. #3 then caps the result of
-  `sortThreads(viewRows(...))` in one place, for `threads`, `catchup` and `mine`.
+- `viewRows(rows, view, filters, query)` is **only** the filter pipeline:
+  population (`inThreads` or `mineRole`), archive rule, Unread only, folder,
+  tag and the filter box. It does not cap. The pipeline per view is
+  `viewRows` -> `sortThreads` -> `capRows`.
+- `model.mine` keeps the **whole** sorted list. #3's capped copy for this view
+  is `model.capped.mine`, so the nav count and `model.mine.total` stay full.
 - The My posts nav count `(N)` counts **all** unread My posts rows, never only
   the capped ones, mirroring #3's rule for Catch up.
 - "Showing 10 of 42" in My posts counts the post-filter population, the same
   as Threads.
 
-Whichever of #2 and #3 lands second rebases onto `viewRows`.
+**If #3 has merged first**, #2 adds `'mine'` to `VIEWS`, which makes #3's
+classification test fail until:
+
+1. `'mine'` is added to `CAPPED_VIEWS`, and `mine: 'My posts'` to
+   `VIEW_LABELS` (the label map `renderNav` reads; do not re-add a local one);
+2. `buildPanelModel` sets
+   `model.capped.mine = capRows(sortedMine, s.rowsShown, state.showAll.mine === true)`,
+   where `sortedMine = sortThreads(viewRows(rows, 'mine', s, query), s.sort)`;
+3. `renderMineView` renders `model.capped.mine.rows` and ends with
+   `renderCapLine(model.capped.mine, 'mine')`;
+4. `tests/rows-cap.test.js` gains the My posts cap test #3's reconciliation
+   requires: six rows in reverse title order, a cap of 3, the top three
+   asserted, "Showing 3 of 6", and a `rows-toggle` button with
+   `data-view="mine"`.
+
+**If #2 merges first**, `VIEWS` has `mine` and `renderNav`'s local label map
+has a `mine` entry. #3 hoists that map into `VIEW_LABELS` and does steps 1 to 4
+itself. Until then My posts is uncapped, because nothing caps it yet.
+
+Either way the second PR does the reconciliation, and #3's classification test
+fails until it has.
 
 ## Interaction with #4 (Only flag author updates)
 
@@ -399,12 +435,16 @@ Whichever of #2 and #3 lands second rebases onto `viewRows`.
 - On a row that is in both Threads and My posts, the two views may show
   different badges while #4 is on. That is correct and the badge text differs
   ("2 new by author" vs "2 new"), so neither passes as the other.
-- **Shared plumbing.** This design adds `lastPosterId` to the record parsed
-  from `forum/{id}/thread`, in a pure `parseThreadDetail(raw)` helper. #4's
-  candidate data source 1 (`last_poster`) needs exactly that field; #4 should
-  reuse the helper rather than parse the response a second time. The
-  `unreadSource` field and the `unchecked` state are the shape #4's "data not
-  available yet" rule needs too.
+- **Shared plumbing, not a dependency.** This design adds `lastPosterId` to
+  the record parsed from `forum/{id}/thread`, in a pure `parseThreadDetail(raw)`
+  helper. #4 chose one page of `forum/{id}/posts` (with `from`) as its data
+  source and treats `last_poster` as unverified, so #4 does **not** depend on
+  this helper. It is available to #4 if `last_poster` is ever confirmed live
+  (plan Task 0 checks it for #2). My posts uses `last_poster` only for the
+  "your own last post clears the count" shortcut; if the field is absent,
+  `myLastPostAt >= lastPostAt` still covers it. The `unreadSource` field and
+  the `unchecked` state are the shape #4's "data not available yet" rule needs
+  too.
 
 ## Failure and empty states
 
@@ -553,15 +593,21 @@ New section "My posts", walked on both Torn PDA and desktop:
 4. A Torn thread link with `f=0` still opens the thread when the forum id is
    unknown; once a lookup supplies `forum_id`, the link is exact.
 5. The user's latest 100 posts are a sufficient window for "my conversations".
-6. `forum/{id}/thread` returns `posts` (total) and `last_poster.id`, as the
-   v0.1.0 spec lists them as confirmed against swagger; v0.1.0 only reads
-   `last_post_time`, `is_locked` and `is_sticky`.
+6. `forum/{id}/thread` returns `posts` (total) and `last_poster.id`. The v0.1.0
+   spec lists them, but v0.1.0 code only reads `last_post_time`, `is_locked`
+   and `is_sticky`, so **neither field has been seen live**. Task 0 captures
+   one `forum/{id}/thread` response to settle it. Fallbacks: no `posts` means
+   the total stays unknown and the row is `not checked yet`, never a zero; no
+   `last_poster` means the "own last post" shortcut falls back to
+   `myLastPostAt >= lastPostAt`, and the worst outcome is a count that clears
+   one refresh late.
 7. Thread totals count every post including the opening one, the same unit
    `posts.total` uses, so baselines compare like with like.
 
 ## Open questions (need the live API or real hardware)
 
-1. **Shapes.** Do the two responses match the assumed fields? Capture one real
+1. **Shapes.** Do the two responses, and `forum/{id}/thread`'s `posts` and
+   `last_poster`, match the assumed fields? Capture one real
    response of each, strip `content` and names, and commit it as a fixture
    (plan Task 0).
 2. **Pagination parameters.** Are `limit`, `from`, `to`, `sort` accepted, and

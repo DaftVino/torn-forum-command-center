@@ -4,7 +4,7 @@
 
 **Goal:** Add a sixth panel view, My posts, listing the threads the key owner started or posted in, with Threads' row actions, filters and sort, and an honest local unread count for threads Torn gives no count for.
 
-**Architecture:** Two new Public API v2 selections (`user/forumthreads`, `user/forumposts`) feed a new cache key `tfcc:mine` through pure engine normalisers and a pure snapshot merge. `mergeThreads` gains a fourth row source and two derived fields (`mineRole`, `inThreads`); a new pure `viewRows` picks each view's population. A separate runtime action `refreshMine` (at most 12 requests by default) runs only for the My posts view, behind a 15 minute TTL.
+**Architecture:** Two new Public API v2 selections (`user/forumthreads`, `user/forumposts`) feed a new cache key `tfcc:mine` through pure engine normalisers and a pure snapshot merge. `mergeThreads` gains a fourth row source and two derived fields (`mineRole`, `inThreads`); a new pure `viewRows` picks each view's population (filter pipeline only; #3's `capRows` caps after the sort). A separate runtime action `refreshMine` (at most 12 requests by default) runs only for the My posts view, behind a 15 minute TTL.
 
 **Tech Stack:** One ES5-style IIFE userscript (`torn-forum-command-center.user.js`), Node `node:test` suites run through the `vm` harness in `tests/load-userscript.js`. No dependencies.
 
@@ -23,7 +23,10 @@
 - **Tests use `.test.js` under `tests/`;** `npm test` runs `node --test tests/*.test.js`.
 - **Mutation check:** `node tests/mutation-check.mjs > mutation.log 2>&1`, then read `mutation.log`. Never pipe it into `head` or anything that closes the pipe.
 - **Commits:** Conventional Commits, no attribution trailer of any kind.
-- **Version rule 8:** `@version`, `SCRIPT_VERSION`, `package.json` `version`, and the newest `CHANGELOG.md` heading move together in one commit; the tag `v0.2.0` goes on that commit at `/ship`.
+- **Release convention (rule 8, same in the #2, #3 and #4 plans):** the feature PR does **not** bump the version. It adds its CHANGELOG entry under the existing `## [Unreleased]` heading and does not touch `@version`, `SCRIPT_VERSION` or `package.json`. One separate release commit, cut by the owner after the QA gate and Task 0, sets those three to the next minor after `origin/main`'s `@version` (0.2.0 if main is 0.1.0), renames `[Unreleased]` to `[X.Y.0] - date`, and is tagged `vX.Y.0`. `tests/metadata.test.js` only checks that the three strings agree.
+- **Cap (issue #3):** `viewRows` is the filter pipeline only. It never caps. The cap is #3's `capRows`, applied after `sortThreads`; see "If #3 has merged first / if #2 merges first" at the end of this plan.
+- **View id:** `mine`, in `VIEWS`, `data-view`, `CAPPED_VIEWS`, `VIEW_LABELS`, `state.showAll` and `model.capped`.
+- **My posts ignores #4's author-only setting.** On a thread you started, "only when the author posts" is meaningless, and the view exists to surface other people's replies.
 
 ## Review Focus
 
@@ -39,7 +42,7 @@
 |---|---|
 | `torn-forum-command-center.user.js` | Engine: mine normalisers, snapshot merge, unread, `viewRows`, `is:` terms, merge integration. Runtime: storage key, `refreshMine`, `enrichMine`, handlers, nav, view, styles, Settings text, debug counts. |
 | `tests/load-userscript.js` | New `EXPORT_NAMES`; `forumThreadsPayload`, `forumPostsPayload` |
-| `tests/fixtures/user-forumthreads.json`, `tests/fixtures/user-forumposts.json` | Created in Task 0 (redacted live responses) |
+| `tests/fixtures/user-forumthreads.json`, `tests/fixtures/user-forumposts.json`, `tests/fixtures/forum-thread.json` | Created in Task 0 (redacted live responses) |
 | `tests/mine.test.js` | New, engine |
 | `tests/mine-refresh.test.js` | New, runtime fetch |
 | `tests/merge.test.js`, `tests/search.test.js`, `tests/panel.test.js`, `tests/handlers.test.js`, `tests/style.test.js`, `tests/storage.test.js`, `tests/staleness.test.js`, `tests/read-only.test.js`, `tests/debug-report.test.js`, `tests/share.test.js`, `tests/api.test.js` | Extended |
@@ -57,11 +60,12 @@ Stop and amend the spec before proceeding if any of these becomes necessary: a r
 
 ### Task 0: Capture the real response shapes (owner, live API)
 
-This is the spec's open questions 1 and 2. It needs a real key and a browser, so it is done by the owner, not an agent. Tasks 1-12 proceed against the assumed shapes; **release is blocked** until this task is done and the fixtures replace the assumed builders.
+This is the spec's open questions 1 and 2. It needs a real key and a browser, so it is done by the owner, not an agent. Tasks 1-12 proceed against the assumed shapes; **the release commit is blocked** until this task is done and the fixtures replace the assumed builders.
 
 **Files:**
 - Create: `tests/fixtures/user-forumthreads.json`
 - Create: `tests/fixtures/user-forumposts.json`
+- Create: `tests/fixtures/forum-thread.json`
 
 - [ ] **Step 1: Fetch each selection once in a browser**
 
@@ -71,13 +75,14 @@ Open, signed in, with the user's own key (in the address bar only, never committ
 https://api.torn.com/v2/user/forumthreads?limit=100&key=<KEY>
 https://api.torn.com/v2/user/forumposts?limit=100&key=<KEY>
 https://api.torn.com/v2/user/forumposts?key=<KEY>
+https://api.torn.com/v2/forum/<THREAD_ID>/thread?key=<KEY>
 ```
 
-The third call answers open question 2 (default page size, and whether `limit` changed anything).
+The third call answers open question 2 (default page size, and whether `limit` changed anything). The fourth, for any thread you posted in, settles whether `posts` (total) and `last_poster` exist; the spec lists both as unverified. Save it as `tests/fixtures/forum-thread.json`.
 
 - [ ] **Step 2: Redact and save**
 
-Keep two rows of each list and `_metadata`. Replace every `content` value with `"REDACTED"`, every `username` with `"user1"`/`"user2"`, every `title` with `"Thread title"`. Keep all field **names**, numbers and booleans exactly. Save as the two fixture files.
+Keep two rows of each list and `_metadata` (the thread response is kept whole). Replace every `content` value with `"REDACTED"`, every `username` with `"user1"`/`"user2"`, every `title` with `"Thread title"`. Keep all field **names**, numbers and booleans exactly. Save as the two fixture files.
 
 - [ ] **Step 3: Record the answers in the spec**
 
@@ -1247,6 +1252,40 @@ test('a budget of zero makes exactly two requests and leaves posted-in threads u
   assert.strictEqual(r20.unreadSource, 'unchecked');
 });
 
+test('opened right after a maximal Threads refresh, the rolling minute never holds more than 40 requests', async () => {
+  // Worst case at the largest setting: a Threads refresh is 1 + 1 + 1 + 25 = 28,
+  // a My posts fetch is 2 + 25 = 27, and 28 + 27 = 55 > 40. The limiter, not the
+  // arithmetic, must hold the line. Counted by the transport, not by the code
+  // under test. The clock is the harness's fixed NOW, so everything is one
+  // rolling minute.
+  const subs = [];
+  const table = mineTable();
+  for (let i = 0; i < 30; i += 1) subs.push({ id: 500 + i, unread: 2 });
+  table['user/forumsubscribedthreads'] = subscribedThreadsPayload(subs);
+  const posts = [];
+  for (let i = 0; i < 40; i += 1) {
+    posts.push({ id: 900 + i, threadId: 700 + i });
+    table['forum/' + (700 + i) + '/thread'] = { thread: { id: 700 + i, forum_id: 61, posts: 5, last_post_time: 1600000300, last_poster: { id: 99 } } };
+  }
+  for (let i = 0; i < 30; i += 1) table['forum/' + (500 + i) + '/thread'] = { thread: { id: 500 + i, forum_id: 61, posts: 9, last_post_time: 1600000300 } };
+  table['user/forumposts'] = forumPostsPayload(posts);
+  const env = boot(table);
+  env.exports.state.settings.enrichBudget = env.exports.MAX_ENRICH_BUDGET;
+  await settle(env);                              // init's Threads refresh
+  env.router.seen.length = 0;
+  env.exports.state.feed.categoriesAt = 0;        // force the category request: the real worst case
+  env.exports.refreshAll(NOW, {});
+  await settle(env);
+  const threadsCount = env.router.seen.length;
+  env.exports.refreshMine(NOW);
+  await settle(env);
+  assert.ok(threadsCount <= 28, 'a Threads refresh at the maximum is 28, got ' + threadsCount);
+  assert.ok(env.router.seen.length <= env.exports.REQUESTS_PER_WINDOW,
+    'more than 40 requests in one minute: ' + env.router.seen.length);
+  assert.strictEqual(mineCalls(env).slice(threadsCount).slice(0, 2).join(), 'user/forumthreads,user/forumposts');
+  assert.ok(env.exports.state.rows.some((r) => r.unreadSource === 'unchecked'), 'cut-off rows must say not checked yet');
+});
+
 test('a thread looked up within the TTL is not looked up again', async () => {
   const env = await bootAndClear(mineTable());
   env.exports.refreshMine(NOW);
@@ -1373,7 +1412,9 @@ In `tests/read-only.test.js`, extend `a refresh cannot exceed the request budget
 ```js
   const mineWorst = 2 + api.MAX_ENRICH_BUDGET;
   assert.ok(mineWorst <= api.REQUESTS_PER_WINDOW, 'the worst-case My posts fetch must fit inside one minute');
-  assert.strictEqual(2 + 10, 12, 'the default My posts fetch the Settings text promises');
+  assert.strictEqual(2 + api.DEFAULT_ENRICH_BUDGET, 12, 'the default My posts fetch the Settings text promises');
+  assert.strictEqual(3 + api.MAX_ENRICH_BUDGET, 28);
+  assert.strictEqual(2 + api.MAX_ENRICH_BUDGET, 27);
 ```
 
 In `tests/api.test.js` (its `settle`, `jsonTransport` and `KEY` are file-level):
@@ -1755,7 +1796,7 @@ Expected: FAIL on the four new tests.
 
 - [ ] **Step 3: Implement**
 
-`renderNav`: add `mine: 'My posts'` to `labels`; add `if (v === 'mine' && model.mine && model.mine.unread) count = ' (' + model.mine.unread + ')';`; emit the class only for `mine`:
+`renderNav`: add `mine: 'My posts'` to `labels` (if #3 has merged, to `VIEW_LABELS` instead; see the last section); add `if (v === 'mine' && model.mine && model.mine.unread) count = ' (' + model.mine.unread + ')';`; emit the class only for `mine`:
 
 ```js
       out.push('<button type="button" data-act="view" data-view="' + v + '"'
@@ -1994,7 +2035,7 @@ test('Settings states both request budgets, from the constants', () => {
   const api = env.exports;
   assert.match(html, /Opening My posts, or refreshing while it is open, makes two requests of its own/);
   assert.match(html, new RegExp('at most once every ' + (api.MINE_TTL_MS / 60000) + ' minutes'));
-  assert.match(html, /a Threads refresh is at most 13\s+requests and My posts at most 12/);
+  assert.match(html, /a Threads refresh is at most 13\s+requests and My posts at most 12; at the largest setting of 25, 28 and 27\./);
   assert.match(html, /under 40 requests a minute/);
 });
 ```
@@ -2054,7 +2095,9 @@ Replace the note after the `enrich-budget` input:
       + 'at most once every ' + Math.round(MINE_TTL_MS / 60000) + ' minutes unless you press Refresh. '
       + 'Each activity lookup adds one more to either, and only runs for a thread with no recent time. '
       + 'With the default of ' + DEFAULT_ENRICH_BUDGET + ', a Threads refresh is at most '
-      + (3 + DEFAULT_ENRICH_BUDGET) + ' requests and My posts at most ' + (2 + DEFAULT_ENRICH_BUDGET) + '. '
+      + (3 + DEFAULT_ENRICH_BUDGET) + ' requests and My posts at most ' + (2 + DEFAULT_ENRICH_BUDGET)
+      + '; at the largest setting of ' + MAX_ENRICH_BUDGET + ', ' + (3 + MAX_ENRICH_BUDGET) + ' and '
+      + (2 + MAX_ENRICH_BUDGET) + '. '
       + 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.</p>');
 ```
 
@@ -2182,10 +2225,10 @@ git commit -m "test: mutation entries for every My posts promise (#2)"
 
 ---
 
-### Task 12: Docs, code map, and release
+### Task 12: Docs, code map, and the release recipe
 
 **Files:**
-- Modify: `docs/architecture.md`, `docs/qa-checklist.md`, `docs/rules-compliance.md`, `README.md`, `CHANGELOG.md`, `package.json`, `torn-forum-command-center.user.js` (metadata `@version`, `SCRIPT_VERSION`), `docs/code-map.md`
+- Modify: `docs/architecture.md`, `docs/qa-checklist.md`, `docs/rules-compliance.md`, `README.md`, `CHANGELOG.md`, `docs/code-map.md`. The release commit (Step 4) alone also touches `package.json` and the userscript's `@version` and `SCRIPT_VERSION`.
 
 - [ ] **Step 1: Architecture**
 
@@ -2195,15 +2238,11 @@ In `docs/architecture.md`: "The five endpoints" becomes seven, adding `user/foru
 
 Copy the spec's "QA checklist additions" section into `docs/qa-checklist.md` as `### My posts` under the Torn PDA matrix and as a line in Desktop regression ("My posts: walk the Torn PDA section on desktop"). Update "Before you start" test count to the new `npm test` total. In `docs/rules-compliance.md`, add one paragraph: opening My posts is a user input producing at most 12 GETs to the official API, at most once per 15 minutes, and auto refresh never requests it.
 
-- [ ] **Step 3: README and CHANGELOG**
+- [ ] **Step 3: README and CHANGELOG (feature PR; no version bump)**
 
-README features list gains My posts. `CHANGELOG.md`: replace "Nothing yet." under `[Unreleased]` with nothing, and add above `[0.1.0]`:
+README features list gains My posts. In `CHANGELOG.md`, replace "Nothing yet." under the existing `## [Unreleased]` heading with:
 
 ```markdown
-## [0.2.0] - YYYY-MM-DD
-
-Blocked on the My posts section of `docs/qa-checklist.md` and on plan Task 0.
-
 ### Added
 
 - A My posts view listing the threads you started or posted in, from the
@@ -2217,28 +2256,30 @@ Blocked on the My posts section of `docs/qa-checklist.md` and on plan Task 0.
 
 - An unsubscribed thread of your own whose only local state is a visit or a
   read marker now lives in My posts rather than Threads.
-- The Settings request note states the My posts budget: at most 12 requests,
-  at most once every 15 minutes unless you press Refresh.
+- The Settings request note states the My posts budget: at most 12 requests
+  by default (27 at the largest lookup setting), at most once every 15 minutes
+  unless you press Refresh.
 ```
 
-- [ ] **Step 4: Version bump - one commit (CLAUDE.md rule 8)**
+Do **not** touch `@version`, `SCRIPT_VERSION` or `package.json`, and do not rename the `[Unreleased]` heading in this PR. Other open PRs (#3, #4) add their own entries under the same heading; resolve any CHANGELOG conflict by keeping both.
 
-Set `// @version      0.2.0` in the metadata block, `var SCRIPT_VERSION = '0.2.0';`, `"version": "0.2.0"` in `package.json`, and the CHANGELOG date. Run:
-
-```
-npm test
-npm run test:syntax
-node tests/mutation-check.mjs > mutation.log 2>&1
-```
-
-Expected: all green (`metadata.test.js` checks the three versions agree); read `mutation.log`, all `OK`.
+Run `npm test`, `npm run test:syntax`, and `node tests/mutation-check.mjs > mutation.log 2>&1` (read `mutation.log`; all `OK`).
 
 ```bash
-git add torn-forum-command-center.user.js package.json CHANGELOG.md README.md docs/architecture.md docs/qa-checklist.md docs/rules-compliance.md
-git commit -m "chore: release 0.2.0 with the My posts view (#2)"
+git add torn-forum-command-center.user.js CHANGELOG.md README.md docs/architecture.md docs/qa-checklist.md docs/rules-compliance.md
+git commit -m "docs: changelog, architecture and QA entries for My posts (#2)"
 ```
 
-The `v0.2.0` tag goes on this commit during `/ship`, after `docs/qa-checklist.md` and Task 0 are done. Do not tag before.
+- [ ] **Step 4: Release commit (separate; cut by the owner, not part of the feature PR)**
+
+Blocked on the My posts section of `docs/qa-checklist.md` and on plan Task 0. When both are done, on `main`, set `@version`, `var SCRIPT_VERSION` and `package.json` `version` to X.Y.0, the next minor after the `@version` on `origin/main` (0.2.0 if main is still 0.1.0; later if #3 or #4 released first). Rename `## [Unreleased]` to `## [X.Y.0] - <date>`, add a fresh empty `## [Unreleased]` above it, and update the compare links. Run `npm test` (`tests/metadata.test.js` checks the three strings agree), then:
+
+```bash
+git commit -m "chore: release X.Y.0"
+git tag vX.Y.0
+```
+
+The tag goes on that commit on `main`, after the QA gate and Task 0. Do not tag a PR commit; a squash merge discards its SHA.
 
 - [ ] **Step 5: Refresh the code map**
 
@@ -2252,3 +2293,21 @@ git commit -m "docs: refresh the code map for My posts (#2)"
 - [ ] **Step 6: Pipeline**
 
 `/review`, then `/ship` (verify gate: `npm test`). PR description must state: no change to `@match`, `@grant` or `@connect`; two new Public GET selections; the contrast audit result (or that it could not be run); Task 0 status.
+
+---
+
+## If #3 has merged first / if #2 merges first
+
+Issue #3 (`docs/superpowers/plans/2026-10-08-rows-shown-cap.md` on its branch) adds the pure `capRows(rows, limit, expanded)`, `settings.rowsShown`, `CAPPED_VIEWS` / `UNCAPPED_VIEWS`, `VIEW_LABELS`, `model.capped` and `state.showAll`. `viewRows` here stays the filter pipeline only and never caps. The view id is `mine` in both plans. Whichever merges second does this, and #3's test "every view is classified as capped or uncapped" fails until it is done. Mirrors the spec's "Interaction with #3" section.
+
+**If #3 has merged first**, in the #2 PR, after Task 8:
+
+1. Add `'mine'` to `CAPPED_VIEWS` and `mine: 'My posts'` to `VIEW_LABELS`. In `renderNav`, Task 8's "add `mine` to `labels`" becomes "add it to `VIEW_LABELS`"; do not re-create a local map.
+2. In `buildPanelModel`, build `sortedMine = sortThreads(viewRows(rows, 'mine', s, query), s.sort)` and set `model.capped.mine = capRows(sortedMine, s.rowsShown, state.showAll.mine === true)`. `model.mine` keeps the whole list, `total` and `unread`; the nav count stays uncapped.
+3. `renderMineView` renders `model.capped.mine.rows` and ends with `renderCapLine(model.capped.mine, 'mine')`.
+4. Add to `tests/rows-cap.test.js` the My posts cap test: six rows in reverse title order, a cap of 3, the top three asserted, "Showing 3 of 6", and a `rows-toggle` button with `data-view="mine"`.
+5. Run `npm test` and the mutation check (redirected to a file). The Settings "Rows shown" note then reads "Threads, Catch up and My posts" with no text change, because it is built from `CAPPED_VIEWS`.
+
+**If #2 merges first**, `renderNav`'s local `labels` map contains `mine`, `viewRows` exists, and My posts is uncapped. The #3 PR hoists the map into `VIEW_LABELS` in the commit that creates it, then does steps 1 to 4 above itself before review. Nothing in this PR needs to change for that.
+
+**My posts and #4.** #4's author-only "new" setting applies to Threads and Catch up only. My posts ignores it and keeps counting everyone's replies. #4 reads one page of `forum/{id}/posts` and does not depend on `parseThreadDetail` or `last_poster`, which this plan treats as unverified until Task 0.
