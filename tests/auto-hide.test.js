@@ -86,3 +86,43 @@ test('isRecoveredValue forgives only absent top-level fields', () => {
   assert.strictEqual(api.isRecoveredValue({ n: { a: 1 } }, { n: { a: 1, b: 0 } }), true,
     'nested shapes keep the strict comparison');
 });
+
+// ---- engine ----------------------------------------------------------------
+
+const PLAIN = Object.freeze({
+  button: 0, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, defaultPrevented: false,
+});
+
+test('only a plain activation counts', () => {
+  const { exports: api } = loadUserscript();
+  assert.strictEqual(api.isPlainActivation(Object.assign({}, PLAIN)), true);
+  assert.strictEqual(api.isPlainActivation({}), true, 'Enter on a link carries button 0, or none at all');
+  for (const k of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey', 'defaultPrevented']) {
+    assert.strictEqual(api.isPlainActivation(Object.assign({}, PLAIN, { [k]: true })), false, k);
+  }
+  assert.strictEqual(api.isPlainActivation(Object.assign({}, PLAIN, { button: 1 })), false, 'middle button');
+  assert.strictEqual(api.isPlainActivation(Object.assign({}, PLAIN, { button: 2 })), false, 'right button');
+  for (const bad of [null, undefined, 'click', 0, []]) {
+    assert.strictEqual(api.isPlainActivation(bad), false, 'not a click: ' + String(bad));
+  }
+});
+
+test('auto-hide collapses and leaves takeover only when the setting is on', () => {
+  // rawExports: the wrapped exports copy return values, and this test is about identity.
+  const raw = loadUserscript().rawExports;
+
+  const off = Object.assign(raw.freshSettings(), { takeover: true });
+  assert.strictEqual(raw.autoHideSettings(off), off, 'off returns the same object, so nothing is written');
+
+  const on = Object.assign(raw.freshSettings(), { autoHideOnOpen: true, takeover: true });
+  const out = raw.autoHideSettings(on);
+  assert.notStrictEqual(out, on);
+  assert.strictEqual(out.collapsed, true);
+  assert.strictEqual(out.takeover, false, 'a collapsed panel in takeover still covers the thread');
+  assert.strictEqual(out.autoHideOnOpen, true, 'the setting itself stays on');
+  assert.strictEqual(on.collapsed, false, 'the argument is not mutated');
+  assert.strictEqual(on.takeover, true, 'the argument is not mutated');
+
+  assert.strictEqual(raw.autoHideSettings(null), null);
+  assert.strictEqual(raw.autoHideSettings(undefined), undefined);
+});

@@ -364,6 +364,27 @@
     return JSON.stringify(seen) !== JSON.stringify(value);
   }
 
+  // -- auto-hide on opening a thread (issue #8) ---------------------------
+  // Only a plain activation counts. A modified or middle click opens the
+  // thread somewhere else, and the user still wants the panel in this tab.
+  // A prevented click does not navigate, so it must not collapse either.
+  function isPlainActivation(click) {
+    if (!isPlainObject(click)) return false;
+    if (toInt(click.button, 0) !== 0) return false;
+    if (click.ctrlKey === true || click.metaKey === true) return false;
+    if (click.shiftKey === true || click.altKey === true) return false;
+    if (click.defaultPrevented === true) return false;
+    return true;
+  }
+
+  // Returns the same object when the setting is off, so the caller can tell by
+  // identity that there is nothing to write. A collapsed panel in takeover
+  // still covers the whole viewport, so opening a thread leaves takeover too.
+  function autoHideSettings(settings) {
+    if (!isPlainObject(settings) || settings.autoHideOnOpen !== true) return settings;
+    return Object.assign({}, settings, { collapsed: true, takeover: false });
+  }
+
   function freshOrganizer(now) {
     return {
       v: SCHEMA_VERSION,

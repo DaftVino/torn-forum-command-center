@@ -45,7 +45,7 @@ const EXPORT_NAMES = [
   'panelHtml', 'renderNav', 'renderRow', 'renderThreadsView', 'renderCatchUpView',
   'renderSearchView', 'renderDraftsView', 'renderSettingsView',
   // storage normalisers
-  'SCHEMA_VERSION', 'freshSettings', 'normaliseSettings',
+  'SCHEMA_VERSION', 'freshSettings', 'normaliseSettings', 'isPlainActivation', 'autoHideSettings',
   'freshOrganizer', 'normaliseOrganizer', 'normaliseThreadEntry',
   'freshDrafts', 'normaliseDrafts', 'freshFeed', 'normaliseFeed',
   'freshPostCache', 'normalisePostCache',
