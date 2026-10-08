@@ -2459,6 +2459,48 @@
       + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ' TCT';
   }
 
+  // -- badges (issue #9) ------------------------------------------------------
+  // Spec: docs/superpowers/specs/2026-10-08-badges-design.md. Every rule here is
+  // pure and takes the time as an argument. A day is a Torn day (UTC).
+
+  var DAY_MS = 86400000;
+
+  function tctDay(now) {
+    return Math.floor(toInt(now, 0) / DAY_MS);
+  }
+
+  // Strict: a missed day resets the run. The clock going backwards (a fix to a
+  // wrong device clock; UTC has no other way back) rebases to today without
+  // crediting or costing anything, so a stored future day cannot block later
+  // days.
+  function creditDay(streak, today) {
+    var s = { current: streak.current, best: streak.best, lastDay: streak.lastDay };
+    var d = toInt(today, 0);
+    if (s.lastDay < 0) {
+      s.current = 1;
+      s.lastDay = d;
+      s.best = Math.max(s.best, 1);
+      return { streak: s, credited: true };
+    }
+    var delta = d - s.lastDay;
+    if (delta === 0) return { streak: s, credited: false };
+    if (delta < 0) { s.lastDay = d; return { streak: s, credited: false }; }
+    s.current = delta === 1 ? s.current + 1 : 1;
+    s.lastDay = d;
+    s.best = Math.max(s.best, s.current);
+    return { streak: s, credited: true };
+  }
+
+  function streakView(streak, today) {
+    if (!streak || streak.lastDay < 0) {
+      return { state: 'none', current: 0, best: streak ? streak.best : 0 };
+    }
+    var delta = toInt(today, 0) - streak.lastDay;
+    if (delta <= 0) return { state: 'counted', current: streak.current, best: streak.best };
+    if (delta === 1) return { state: 'open', current: streak.current, best: streak.best };
+    return { state: 'broken', current: 0, best: streak.best };
+  }
+
   // ---- ENGINE END ------------------------------------------------------
 
   // -- storage runtime -----------------------------------------------------
