@@ -399,3 +399,27 @@ test('the debug report carries badge counts and no ids', () => {
   assert.match(report, /badges: on, 3 earned, streak 12\/23, check-in days 12, focused visits 30/);
   assert.doesNotMatch(report, /20734|reader|streak-10/);
 });
+
+// ---- reconciled with siblings already on main (#8, #2, #3) ----------------------
+
+test('auto-hide closes the badge shelf', () => {
+  const env = seeded();
+  const api = env.exports;
+  api.state.settings.autoHideOnOpen = true;
+  api.state.badgeShelfOpen = true;
+  // #8's signature is onThreadLink(link, click); only the click is read.
+  api.makeHandlers(env.doc, env.win).onThreadLink(null, { button: 0 });
+  assert.strictEqual(api.state.settings.collapsed, true);
+  assert.strictEqual(api.state.badgeShelfOpen, false);
+});
+
+test('a row cap never makes Catch up look empty to the check-in', () => {
+  const env = seeded();
+  const api = env.exports;
+  api.state.settings.rowsShown = 3;
+  api.state.feed.subscribed = [1, 2, 3, 4, 5].map((id) => api.normaliseSubscribedRow({ id, forum_id: 61,
+    title: 'T' + id, author: { id: 3, username: 'a', karma: 1 }, posts: { new: 1, total: 10 } }));
+  api.recompute(NOW);
+  assert.strictEqual(api.buildPanelModel(NOW).capped.catchup.rows.length, 3, 'the view shows three');
+  assert.strictEqual(api.catchUpRowsNow().length, 5, 'the check-in still counts five');
+});
