@@ -13,7 +13,7 @@ script can work with. A **Limited Access** key also works but is not needed.
 
 ## Before you start
 
-- [ ] `npm test` passes, 259 or more tests, none skipped.
+- [ ] `npm test` passes, 390 or more tests, none skipped.
 - [ ] `npm run test:syntax` passes.
 - [ ] `node tests/mutation-check.mjs` reports every promise guarded, and
       `git status` is clean afterwards (the check edits the file in place).
@@ -34,12 +34,13 @@ this passes on a signed-in account.
       re-run this section.
 - [ ] Click the button. Torn's key page opens in a new tab with the name
       "Forum Command Center" and exactly these selections pre-filled: `user`
-      forumsubscribedthreads, forumfeed; `forum` categories, thread, posts.
+      forumsubscribedthreads, forumfeed, forumthreads, forumposts; `forum`
+      categories, thread, posts.
       Nothing is created until you confirm it on Torn.
 - [ ] Confirm the key, paste it into Settings, and check it against every
       endpoint: Refresh loads threads and the feed, forum names load, an
-      activity lookup on an unread thread succeeds, and a deep search fetches
-      posts. No access error anywhere.
+      activity lookup on an unread thread succeeds, a deep search fetches
+      posts, and My posts loads. No access error anywhere.
 
 ## Torn PDA
 
@@ -175,6 +176,46 @@ time **END**.
 - [ ] Copy an export string and decode it. It must contain no API key and no
       cached posts.
 
+### My posts
+
+- [ ] My posts is the last nav button and sits at the right edge, in Dark,
+      Light and Match Torn (toggle Torn's own theme while it is open).
+- [ ] It is light grey with dark text in all three, and visibly pressed (bar
+      under the label) when open.
+- [ ] At the narrowest PDA width the nav wraps and My posts is still last and
+      reachable.
+- [ ] Opening it the first time loads your threads; the number of requests in
+      the API key log (Torn Settings, API, key log) is at most 12.
+- [ ] Closing and reopening within 15 minutes makes no request (key log).
+- [ ] A thread you started and do not follow appears with `started`.
+- [ ] A thread you replied in and do not follow appears with `posted in`.
+- [ ] Have a second account reply in a thread you **posted in** and do not
+      follow; Refresh in My posts; it shows `1 new` with `local count`.
+- [ ] Have a second account reply in a thread you **started** and do not
+      follow; Refresh in My posts; it shows `1 new` with **no** `local count`
+      note (Torn's `new_posts`). Open the thread on Torn, come back after 15
+      minutes or press Refresh; it shows no count.
+- [ ] Mark read on a thread you posted in, then subscribe to it on Torn and
+      Refresh Threads; it shows no new until someone replies (the units agree).
+- [ ] Mark read zeroes it, survives a reload, and the thread does **not**
+      appear in Threads.
+- [ ] Pin it; it now appears in Threads as not subscribed, and in My posts.
+- [ ] Unread only in My posts shows only threads with new replies.
+- [ ] `is:started`, `is:posted`, `by:`, `tag:` work in the filter box.
+- [ ] A thread link with no known forum opens the right thread (spec open
+      question 4, `f=0` links, not probed).
+- [ ] Refresh in Threads makes no My posts request (key log).
+
+Owner checks for the live API (spec "Prerequisite"; all block release):
+
+- [ ] With the **Minimal** key the script asks for, `user/forumthreads` and
+      `user/forumposts` both answer, and note whether `new_posts` is present
+      (the capture used a Limited key).
+- [ ] With an account that has more than 20 posts: does `limit=100` return
+      more than 20 rows? Record the answer under the spec's open question 2.
+- [ ] If possible: a deleted thread, and a thread in a faction or private
+      forum, in My posts (spec open questions 5 and 7; not probed).
+
 ## Desktop regression
 
 Tampermonkey, on the same build.
@@ -210,7 +251,9 @@ Tampermonkey, on the same build.
 - [ ] Import a deliberately damaged string. It is refused by name and changes
       nothing.
 - [ ] Reset folders and tags. Drafts and the API key survive.
-- [ ] Reset everything. The API key survives, as the button says.
+- [ ] Reset everything. The API key survives, as the button says, and My posts
+      is empty until it is opened again.
+- [ ] My posts: walk the Torn PDA "My posts" section on desktop.
 
 ## Rules compliance
 
@@ -230,6 +273,8 @@ See `docs/rules-compliance.md` for the rule text and the line-by-line check.
 - [ ] Confirm the Settings view shows the data table next to the key input.
 - [ ] Confirm no request is made to any `torn.com` page the user is not viewing.
 - [ ] Confirm a refresh with the default settings issues at most 13 requests.
+- [ ] Confirm opening My posts with the default settings issues at most 12
+      requests, and reopening it within 15 minutes issues none.
 - [ ] Confirm nothing is ever sent that would post, reply, subscribe or
       otherwise change the account.
 

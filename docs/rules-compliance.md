@@ -56,7 +56,7 @@ the API terms, and the API terms contain a requirement this script did not meet.
 
 | Clause | This script | Enforced by |
 |---|---|---|
-| May rely on data from the API | Five endpoints, all GET | `read-only.test.js` |
+| May rely on data from the API | Seven endpoints, all GET | `read-only.test.js` |
 | Or from a page manually loaded and actively viewed | Reads `location` and `document.title` of the page the user is on, nothing else | `capture.test.js` |
 | No additional non-API requests to Torn | **None.** `api.torn.com` is the only host anything is fetched from | `@connect` is one host; no scripted navigation exists |
 | No scraping pages not currently viewed | Never loads or reads any page the user has not opened | No fetch to any `www.torn.com` URL exists |
@@ -89,6 +89,14 @@ Torn. The script makes no request for it, adds no scripted navigation, and
 never places a key in the link. `@match`, `@grant` and `@connect` are
 unchanged. `custom-key.test.js` holds the selection list to the script's call
 sites and asserts the link carries no key.
+
+### My posts
+
+Opening the My posts view, or pressing Refresh while it is open, is a user input
+that produces at most 12 GETs to the official API with the default settings
+(two lists plus the activity lookup budget), at most once per 15 minutes unless
+the user presses Refresh. Page load and auto refresh never request it. Its data
+comes from the API only; no Torn page is read for it.
 
 ### The unfocused-pages clause
 
