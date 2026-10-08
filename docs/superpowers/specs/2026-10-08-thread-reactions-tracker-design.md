@@ -85,7 +85,7 @@ There is **no `limit`**: a page is 20 posts. Response
 | `rating` = likes - dislikes of the topic post | **Unverified**, plausible. Task 0, step 4. The label is "net" either way, and the code never derives up or down from it. |
 | `rating` and `views` present in the live `user/forumthreads` answer | **Verified in schema, values unverified.** Task 0, steps 1 to 2. |
 | `ForumThreadAuthor.karma` (required int32) on every thread and post row; `user/profile` returns `profile.karma` (int32, Public key) | **Verified** (schema v6.13.8, both in the excerpt). Values unverified: Task 0, steps 1 and 6. |
-| `karma` means net likes on the owner's forum posts | **Unverified.** The schema has no description. The tooltip states it as Torn's report; Task 0, step 6 compares it with the owner's profile. |
+| What `karma` measures | **Defined by the Torn wiki** (Karma page, supplied by the owner 2026-10-08): the likes and dislikes a player's forum posts have received, floored at 0. Posts under 30 characters, locked or graveyard threads, and faction, company and elimination forums do not count, nor do ratings from new or long-inactive players or from mass-rating. 1000 karma unlocks the VIP Corner forum. The OpenAPI schema itself has no description. Task 0 step 6 still checks the value against the owner's profile. |
 
 Every unverified field is read defensively: a value that is not a finite
 number is unknown, a page without an `is_topic` post is "not found", and both
@@ -141,15 +141,16 @@ construction, so the figure is free:
    every My posts run; a fallback reading is reused for 12 hours, so the
    profile is read at most twice a day.
 
-### What it means: unverified
+### What it means
 
-The API documents nothing about `karma`: the schema gives a type and no
-description. The tooltip says "Net likes on your forum posts, as reported by
-Torn." That is the owner's reading of Torn's forum karma, **not** something the
-document states. Owner Task 0 step 6 compares the tracker's figure with the
-karma on the owner's own Torn profile. If they differ, the tooltip sentence is
-reworded to "Your forum karma, as reported by Torn." and nothing else changes,
-because the code only displays the integer and derives nothing from it.
+The OpenAPI schema gives `karma` a type and no description. The meaning comes
+from the Torn wiki's Karma page, supplied by the owner on 2026-10-08 (see
+"Karma definition" at the end of this spec): the likes and dislikes on the
+player's forum posts, never below 0, with some posts excluded. The tooltip
+says "Likes and dislikes on your forum posts, never below 0; some posts do not
+count." Owner Task 0 step 6 still compares the tracker's figure with the karma
+on the owner's Torn profile, which checks the value, not the meaning. The code
+only displays the integer and derives nothing from it.
 
 ### Unknown is `-`, never 0
 
@@ -175,7 +176,7 @@ string constant, `KARMA_ICON_SVG`, changed in these ways only:
   than wide, so the width follows from the `viewBox`).
 
 The containing element carries the meaning: `aria-label="Karma"` and
-`title="Karma: <n>. Net likes on your forum posts, as reported by Torn."`. The
+`title="Karma: <n>. Likes and dislikes on your forum posts, never below 0; some posts do not count."`. The
 word "karma" is never visible text. The constant is the only unescaped markup
 this figure injects; the number is escaped.
 
@@ -339,7 +340,7 @@ thread falls back to `rating`.
 top-level keys, in this order:
 
 ```
-karma:   int   // the key owner's forum karma; may be negative or 0
+karma:   int   // the key owner's forum karma; 0 or more per the Torn wiki (0 is real, not unknown)
 karmaAt: ms    // when it was last seen; present only with karma
 ```
 
@@ -514,8 +515,8 @@ never see the figure it paid a request for.
   [knot] -`, or, with no started threads, `[knot] 1,208`. The word "karma" is
   not visible; it is the `aria-label="Karma"` on the containing
   `<span class="tfcc-karma">`. The span's `title` is
-  `Karma: 1,208. Net likes on your forum posts, as reported by Torn.` (for
-  unknown, `Karma: unknown. Net likes on ...`). The button's own `aria-label`
+  `Karma: 1,208. Likes and dislikes on your forum posts, never below 0; some posts do not count.` (for
+  unknown, `Karma: unknown. Likes and dislikes on ...`). The button's own `aria-label`
   also gains `Karma: 1,208.` or `Karma: unknown.` before the tooltip text.
 - The **up and down figures are only ever sums of real topic-post counts.**
   Net is always labelled `net` and never split, added to, or subtracted from
@@ -811,3 +812,27 @@ fallback is the only figure shown.
    re-checked before the TTL? Deferred; it would raise the request rate.
 5. Is `author.karma` the live figure or the value at post time? Assumption 8;
    Task 0 step 6 compares a thread row, a post row and the profile.
+
+## Karma definition (Torn wiki)
+
+Supplied by the owner on 2026-10-08, from the Torn wiki's Karma page. A player's
+karma measures the likes and dislikes their forum posts have received, and it
+never falls below 0. Karma does not move when:
+
+- the post is under thirty characters;
+- the thread is locked or in the graveyard;
+- the thread is in a faction, company or elimination contest forum;
+- the rater is a new player, or has not posted in a long time;
+- the rater has been mass-rating one user's posts.
+
+Ratings become permanent shortly after they are cast. Reaching 1000 karma
+unlocks the VIP Corner forum.
+
+Two consequences for this design:
+
+- **A karma of 0 is real.** It renders as `0`, and only an unknown value
+  renders as `-`. The tests already pin both.
+- **The tracker's thumbs and karma are different measures.** Thumbs count the
+  opening posts of the threads you started, including posts that the
+  exclusions above leave out of karma. The two will not add up, and the UI
+  never claims they do.

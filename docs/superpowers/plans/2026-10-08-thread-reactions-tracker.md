@@ -22,7 +22,7 @@
 - **Unknown is `-`, never `0`.** Numbers are read with `isReactionNumber` (`typeof`, `isFinite`); `toInt(null, 0)` is 0, which is the trap.
 - **No subscriber figure.** Torn's API has none; every tooltip ends `Torn\'s API has no subscriber count, so none is shown.`
 - **Upgrade safety:** the five record fields (`reactAt`, `rating`, `topicAt`, `up`, `down`) are optional, written only through `setReactionFields`, in that order. The only top-level additions are `karma` and `karmaAt` on `tfcc:mine`, optional, never back-filled, written only through `setKarma`. No new key, no new setting.
-- **Karma:** unknown is `-`, never `0` (a real 0 shows `0`). The word "karma" is never visible text; the icon (`KARMA_ICON_SVG`, ASCII, `fill="currentColor"`, never `#000000`, `aria-hidden="true"`, `focusable="false"`) sits in a `.tfcc-karma` span with `aria-label="Karma"` and a `title`. The meaning ("Net likes on your forum posts, as reported by Torn.") is unverified; Task 0 step 6 checks it. Only `profile.karma` is read from `user/profile`.
+- **Karma:** unknown is `-`, never `0` (a real 0 shows `0`). The word "karma" is never visible text; the icon (`KARMA_ICON_SVG`, ASCII, `fill="currentColor"`, never `#000000`, `aria-hidden="true"`, `focusable="false"`) sits in a `.tfcc-karma` span with `aria-label="Karma"` and a `title`. The meaning is defined by the Torn wiki (spec, "Karma definition"); Task 0 step 6 checks the value against the profile. Only `profile.karma` is read from `user/profile`.
 - **Post `content`** is never read, stored, rendered or reported.
 - **No change to `.tfcc-head`'s contents or `.tfcc-title`.** Hidden when collapsed, without a key, in loading/fatal shells, and when no threads were started and karma is unknown (with karma known and no threads, the line shows the karma alone).
 - **Read-only**, `@match`/`@grant`/`@connect` unchanged, no DOM data path (ADR 0001), errors through `scrubDetail`.
@@ -1691,7 +1691,7 @@ test('karma follows the thumbs as the icon and a number, with an aria-label and 
   withMine(env, [startedRec(env.exports, 1, TH(34, 5))]);
   withKarma(env, 1208);
   const html = htmlOf(env);
-  assert.match(html, /<span class="tfcc-rx">5<\/span> down <span class="tfcc-karma" role="group" aria-label="Karma" title="Karma: 1,208\. Net likes on your forum posts, as reported by Torn\.">/);
+  assert.match(html, /<span class="tfcc-rx">5<\/span> down <span class="tfcc-karma" role="group" aria-label="Karma" title="Karma: 1,208\. Likes and dislikes on your forum posts, never below 0; some posts do not count\.">/);
   assert.ok(html.includes(env.exports.KARMA_ICON_SVG), 'the icon constant is what is injected');
   assert.match(html, /<span class="tfcc-rx">1,208<\/span><\/span>/);
   assert.ok(html.indexOf('tfcc-karma') > html.indexOf('down'), 'karma follows thumbs up and down');
@@ -1703,7 +1703,7 @@ test('unknown karma shows "-", never 0, and a real 0 shows 0', () => {
   const env = bootPanel();
   withMine(env, [startedRec(env.exports, 1, TH(34, 5))]);
   let html = htmlOf(env);
-  assert.match(html, /title="Karma: unknown\. Net likes on your forum posts, as reported by Torn\."/);
+  assert.match(html, /title="Karma: unknown\. Likes and dislikes on your forum posts, never below 0; some posts do not count\."/);
   assert.match(html, /<span class="tfcc-rx">-<\/span><\/span>/);
   assert.doesNotMatch(visibleText(html), /karma/i);
   withKarma(env, 0);
@@ -1759,9 +1759,9 @@ Replace Task 6's `renderReactions` with:
 ```js
   // The karma figure: the owner's endless-knot icon (currentColor, so it
   // follows the theme) and a number. No visible word; the span carries the
-  // meaning for assistive tech and the tooltip. The meaning is Torn's report and
-  // unverified (spec, "What it means"); Task 0 step 6 checks it.
-  var KARMA_MEANING = '. Net likes on your forum posts, as reported by Torn.';
+  // meaning for assistive tech and the tooltip. The wording follows the Torn
+  // wiki's Karma page (spec, "Karma definition").
+  var KARMA_MEANING = '. Likes and dislikes on your forum posts, never below 0; some posts do not count.';
   function renderKarma(karma) {
     var n = formatKarma(karma);
     var title = 'Karma: ' + (n === '-' ? 'unknown' : n) + KARMA_MEANING;
