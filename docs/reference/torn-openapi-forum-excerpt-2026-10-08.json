@@ -157,6 +157,69 @@
         ],
         "x-stability": "Stable"
       }
+    },
+    "/forum/{threadId}/posts": {
+      "get": {
+        "tags": [
+          "Forum"
+        ],
+        "summary": "Get specific forum thread posts",
+        "description": "Requires public access key. <br>Returns 20 posts per page for a specific thread. <br> By default, it uses 'offset', but it's possible to filter posts with 'from' & 'to' parameters.",
+        "operationId": "getForumThreadPosts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ApiStripTagsTrue"
+          },
+          {
+            "$ref": "#/components/parameters/ApiOffsetNoDefault"
+          },
+          {
+            "$ref": "#/components/parameters/ApiSort"
+          },
+          {
+            "$ref": "#/components/parameters/ApiFrom"
+          },
+          {
+            "$ref": "#/components/parameters/ApiTo"
+          },
+          {
+            "name": "threadId",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ForumThreadId"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ApiTimestamp"
+          },
+          {
+            "$ref": "#/components/parameters/ApiComment"
+          },
+          {
+            "$ref": "#/components/parameters/ApiKeyPublic"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForumPostsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "x-stability": "Stable"
+      }
     }
   },
   "schemas": {
@@ -356,6 +419,24 @@
       },
       "type": "object"
     },
+    "ForumPostsResponse": {
+      "required": [
+        "posts",
+        "_metadata"
+      ],
+      "properties": {
+        "posts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ForumPost"
+          }
+        },
+        "_metadata": {
+          "$ref": "#/components/schemas/RequestMetadataWithLinks"
+        }
+      },
+      "type": "object"
+    },
     "ForumPost": {
       "required": [
         "id",
@@ -498,6 +579,48 @@
         }
       },
       "type": "object"
+    },
+    "RequestMetadataWithLinks": {
+      "required": [
+        "links"
+      ],
+      "properties": {
+        "links": {
+          "$ref": "#/components/schemas/RequestLinks"
+        }
+      },
+      "type": "object"
+    },
+    "RequestLinks": {
+      "required": [
+        "next",
+        "prev"
+      ],
+      "properties": {
+        "next": {
+          "description": "Auto-generated link to get the next set of records.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prev": {
+          "description": "Auto-generated link to get the prev set of records.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
     }
   },
   "parameters": {
@@ -544,6 +667,30 @@
       "schema": {
         "type": "integer",
         "format": "int32"
+      }
+    },
+    "ApiOffsetNoDefault": {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+        "type": "integer",
+        "format": "int32",
+        "minimum": 0
+      }
+    },
+    "ApiStripTagsTrue": {
+      "name": "striptags",
+      "in": "query",
+      "description": "Determines if fields include HTML or not ('Hospitalized by <a href=...>user</a>' vs 'Hospitalized by user').",
+      "required": false,
+      "schema": {
+        "type": "string",
+        "default": "true",
+        "enum": [
+          "true",
+          "false"
+        ]
       }
     }
   }

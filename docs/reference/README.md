@@ -26,8 +26,9 @@ An unedited excerpt of Torn's published OpenAPI document
 on 2026-10-08. Unlike the page above, this one answered an automated request.
 It keeps only the forum paths, schemas and parameters that issue #10 (thread
 reactions tracker) and issue #2 (My posts) rely on: `user/forumthreads`,
-`user/forumposts`, `forum/{threadId}/thread`, `ForumThreadBase`,
-`ForumThreadUserExtended`, `ForumPost` and `ForumFeedTypeEnum`, among others.
+`user/forumposts`, `forum/{threadId}/thread`, `forum/{threadId}/posts`,
+`ForumThreadBase`, `ForumThreadUserExtended`, `ForumPost`, `ForumPostsResponse`
+and `ForumFeedTypeEnum`, plus the `offset` and `sort` parameters, among others.
 It is a schema, not a captured response: it says which fields Torn promises,
 not what a live answer holds. Regenerate it from the full document if the
 schema moves; do not edit it by hand.
