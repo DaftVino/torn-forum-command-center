@@ -423,3 +423,25 @@ test('records that gained reactions in either order reload undamaged', () => {
     assert.deepStrictEqual(back.value, mine, label);
   }
 });
+
+// Forum karma (#10) is an optional top-level pair on tfcc:mine. Absent stays
+// absent, so a blob written before the feature round-trips byte for byte.
+test('a tfcc:mine blob with no karma loads silently and stays without karma', () => {
+  const { exports: api } = loadUserscript();
+  const mine = Object.assign(api.freshMine(), { fetchedAt: 1000 });
+  api.saveKey(api.STORAGE_KEYS.mine, mine);
+  const back = api.loadKey(api.STORAGE_KEYS.mine, api.normaliseMine, 9000);
+  assert.strictEqual(back.recovered, false);
+  assert.ok(!('karma' in back.value) && !('karmaAt' in back.value), 'never back-filled');
+});
+
+test('a stored karma pair reloads unchanged; a half pair is dropped', () => {
+  const { exports: api } = loadUserscript();
+  const withPair = api.setKarma(api.freshMine(), 34, 1700000000000);
+  api.saveKey(api.STORAGE_KEYS.mine, withPair);
+  const back = api.loadKey(api.STORAGE_KEYS.mine, api.normaliseMine, 9000);
+  assert.strictEqual(back.recovered, false);
+  assert.deepStrictEqual(back.value, withPair);
+  const half = Object.assign(api.freshMine(), { karma: 5 });
+  assert.ok(!('karma' in api.normaliseMine(JSON.parse(JSON.stringify(half)))), 'karma without karmaAt');
+});

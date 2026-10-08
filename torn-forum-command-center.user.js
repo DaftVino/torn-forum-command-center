@@ -82,6 +82,24 @@
   // docs/reference/torn-api-live-findings-2026-10-08.md. The is_topic check in
   // topicPostFromApi stays the real guarantee.
   var TOPIC_POST_PARAMS = Object.freeze({ offset: 0 });
+  // Forum karma (#10): the user/profile fallback is read at most this often.
+  var KARMA_TTL_MS = 12 * 60 * 60 * 1000;
+  // Endless-knot karma icon, supplied by the owner (docs/reference/karma-endless-knot.svg).
+  // Changes from that file: fill is currentColor so it follows the theme; prolog,
+  // title, desc, role, aria-labelledby and xmlns dropped; aria-hidden and focusable
+  // added; sized to the text. ASCII only: Torn PDA rewrites anything else.
+  var KARMA_ICON_SVG = '<svg viewBox="149 50 702 900" aria-hidden="true" focusable="false" style="height:1em;width:auto">'
+    + '<path fill="currentColor" fill-rule="evenodd" d="'
+    + 'M 697 264 L 834 403 L 749 486 L 712 447 L 758 401 L 697 341 L 550 487 L 513 448 Z '
+    + 'M 450 511 L 488 551 L 303 736 L 165 600 L 254 512 L 291 550 L 242 600 L 303 659 Z '
+    + 'M 301 264 L 389 351 L 350 389 L 301 341 L 242 402 L 390 549 L 353 587 L 165 402 Z '
+    + 'M 450 610 L 637 796 L 501 934 L 363 798 L 450 709 L 488 749 L 440 798 L 499 857 L 560 798 L 413 650 Z '
+    + 'M 449 314 L 488 353 L 350 489 L 313 450 Z '
+    + 'M 499 66 L 637 202 L 550 291 L 511 252 L 560 202 L 501 143 L 440 202 L 588 351 L 551 390 L 363 204 Z '
+    + 'M 649 413 L 835 598 L 699 736 L 610 648 L 650 611 L 699 659 L 758 598 L 611 452 Z '
+    + 'M 648 511 L 686 551 L 548 686 L 511 648 Z '
+    + 'M 451 413 L 587 548 L 551 587 L 413 452 Z'
+    + '"/></svg>';
   var DEEP_SEARCH_MAX_PAGES = 5;
   var DEEP_SEARCH_MAX_THREADS = 10;
   var POSTS_PER_PAGE = 20;
@@ -779,6 +797,13 @@
         if (t) out.threads.push(t);
       }
     }
+    // Optional forum karma (#10): a whole pair or nothing, and never added
+    // when the stored blob lacked it, so an old cache round-trips unchanged.
+    var karmaAt = Math.max(0, toInt(raw.karmaAt, 0));
+    if (karmaAt > 0 && isReactionNumber(raw.karma, true)) {
+      out.karma = Math.floor(raw.karma);
+      out.karmaAt = karmaAt;
+    }
     return out;
   }
 
@@ -988,6 +1013,64 @@
     return text + NO_SUBSCRIBERS;
   }
 
+  // -- forum karma (#10) -----------------------------------------------------
+  // ForumThreadAuthor.karma (required int32, undocumented) is the key owner's
+  // figure on every row of user/forumthreads and user/forumposts; user/profile
+  // returns profile.karma. A figure is taken only if it is a finite number:
+  // toInt(null, 0) would turn "unknown" into 0, which is the trap.
+  function karmaFromAuthors(rows, timeField, selfId) {
+    if (!Array.isArray(rows)) return null;
+    var best = null;
+    var bestAt = -1;
+    for (var i = 0; i < rows.length; i += 1) {
+      var r = rows[i];
+      var a = isPlainObject(r) && isPlainObject(r.author) ? r.author : null;
+      if (!a || !isReactionNumber(a.karma, true)) continue;
+      if (selfId && a.id !== selfId) continue;
+      var at = typeof r[timeField] === 'number' ? r[timeField] : 0;
+      if (at > bestAt) { best = Math.floor(a.karma); bestAt = at; }
+    }
+    return best;
+  }
+
+  function karmaFromProfile(data) {
+    var p = isPlainObject(data) && isPlainObject(data.profile) ? data.profile : null;
+    return p && isReactionNumber(p.karma, true) ? Math.floor(p.karma) : null;
+  }
+
+  // The only writer. Both fields together or neither; removing and re-adding
+  // puts them last, which is where normaliseMine writes them.
+  function setKarma(snap, karma, now) {
+    var out = normaliseMine(snap);
+    delete out.karma;
+    delete out.karmaAt;
+    if (isReactionNumber(karma, true) && toInt(now, 0) > 0) {
+      out.karma = Math.floor(karma);
+      out.karmaAt = toInt(now, 0);
+    }
+    return out;
+  }
+
+  // Both counts must be the number 0: null/undefined mean the list failed or
+  // was not parsed, and an unknown is not an empty list.
+  function karmaFallbackDue(snap, now, ttl, threadRowCount, postRowCount) {
+    if (threadRowCount !== 0 || postRowCount !== 0) return false;
+    var at = toInt(snap && snap.karmaAt, 0);
+    return at <= 0 || toInt(now, 0) - at >= ttl;
+  }
+
+  // Comma thousands, built by hand: toLocaleString reads the ambient locale.
+  function formatKarma(n) {
+    if (!isReactionNumber(n, true)) return '-';
+    var digits = String(Math.abs(Math.floor(n)));
+    var out = '';
+    for (var i = 0; i < digits.length; i += 1) {
+      if (i > 0 && (digits.length - i) % 3 === 0) out += ',';
+      out += digits.charAt(i);
+    }
+    return (n < 0 ? '-' : '') + out;
+  }
+
   // The post body arrives in `content` and is deliberately never read.
   function minePostFromApi(raw) {
     if (!isPlainObject(raw)) return null;
@@ -1104,6 +1187,13 @@
       if (!out.selfId && p.authorId) out.selfId = p.authorId;
     }
     for (i = 0; i < order.length; i += 1) advanceMineBaseline(byId[order[i]], out.selfId);
+    // Forum karma (#10) is carried over as stored: a merge is not a sighting.
+    // Without this, every run would drop a cached profile reading and re-arm
+    // the user/profile fallback.
+    if (typeof base.karma === 'number') {
+      out.karma = base.karma;
+      out.karmaAt = base.karmaAt;
+    }
     return finishMine(out, byId, order);
   }
 
@@ -1849,10 +1939,10 @@
   // Exactly the selections this script requests, and no others: the least
   // privilege a Custom key can carry. tests/custom-key.test.js scans every
   // API call site and fails if a requested selection is missing here, or if
-  // this lists one that is never requested. When #2 (user forumthreads,
-  // forumposts) and #10 (user profile) merge, they add theirs here.
+  // this lists one that is never requested. #2 added user forumthreads and
+  // forumposts; #10 added user profile (the karma fallback).
   var CUSTOM_KEY_SELECTIONS = Object.freeze({
-    user: Object.freeze(['forumsubscribedthreads', 'forumfeed', 'forumthreads', 'forumposts']),
+    user: Object.freeze(['forumsubscribedthreads', 'forumfeed', 'forumthreads', 'forumposts', 'profile']),
     forum: Object.freeze(['categories', 'thread', 'posts']),
   });
 
@@ -3007,6 +3097,18 @@
     return step(0);
   }
 
+  // The karma fallback (#10): one user/profile request, only from refreshMine,
+  // only when the caller found both lists empty (karmaFallbackDue). Reads
+  // profile.karma and nothing else. A throttle or failure leaves karma unknown.
+  function readKarmaProfile(now, opts, generation) {
+    return tornApiGet('user/profile', {}, opts).then(function (res) {
+      if (generation !== state.generation || !res.ok) return { ok: false };
+      var k = karmaFromProfile(res.data);
+      if (k !== null) state.mine = setKarma(state.mine, k, now);
+      return { ok: true };
+    });
+  }
+
   // A separate, bounded action for the My posts view only: two lists, at
   // most enrichBudget lookups, then at most min(5, enrichBudget) opening-post
   // reads (#10); never the category list. Threads' refresh and auto refresh
@@ -3037,6 +3139,7 @@
           if (stale()) return { ok: false, reason: 'stale' };
           var complete = false;
           var posts = [];
+          var postRows = null;   // the raw posts list, null when it failed or did not parse
           var outcome = { ok: true };
           if (!pres.ok) {
             outcome = fail(pres, 'Could not load your posts.');
@@ -3048,18 +3151,31 @@
               outcome = fail({ reason: 'parse', detail: MINE_SHAPE_POSTS });
             } else {
               posts = plist.map(minePostFromApi).filter(Boolean);
+              postRows = plist;
               complete = true;
               state.mineError = null;
             }
           }
           state.mine = mergeMineSnapshot(state.mine, started, posts, now, complete);
+          // Forum karma for free: the author of rows already fetched (#10).
+          var seenKarma = karmaFromAuthors(list, 'first_post_time', state.mine.selfId);
+          if (seenKarma === null) seenKarma = karmaFromAuthors(postRows, 'created_time', state.mine.selfId);
+          if (seenKarma !== null) state.mine = setKarma(state.mine, seenKarma, now);
           var ids = mineLookupTargets(state.mine, state.feed.subscribed, budget, now, MINE_TTL_MS);
-          return enrichMine(ids, now, options, generation).then(function (er) {
-            if (stale() || (er && er.stoppedEarly)) return outcome;
-            var rn = Math.min(REACTION_LOOKUPS_PER_RUN, budget);
-            var rids = reactionLookupTargets(state.mine, now, TOPIC_TTL_MS, rn);
-            return enrichReactions(rids, now, options, generation).then(function () { return outcome; });
-          });
+          // The karma fallback: only when both lists came back and both are
+          // empty, so ids is empty too and the run is exactly 3 requests.
+          var karmaDue = karmaFallbackDue(state.mine, now, KARMA_TTL_MS,
+            list.length, Array.isArray(postRows) ? postRows.length : null);
+          return (karmaDue ? readKarmaProfile(now, options, generation) : Promise.resolve({ ok: true }))
+            .then(function () {
+              if (stale()) return outcome;
+              return enrichMine(ids, now, options, generation).then(function (er) {
+                if (stale() || (er && er.stoppedEarly)) return outcome;
+                var rn = Math.min(REACTION_LOOKUPS_PER_RUN, budget);
+                var rids = reactionLookupTargets(state.mine, now, TOPIC_TTL_MS, rn);
+                return enrichReactions(rids, now, options, generation).then(function () { return outcome; });
+              });
+            });
         });
       })
       .then(function (res) {
