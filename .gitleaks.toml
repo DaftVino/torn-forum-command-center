@@ -1,0 +1,10 @@
+# Extends gitleaks' default rules; it does not replace them.
+[extend]
+useDefault = true
+
+# The test suites seed script storage with a fake Torn API key so the key
+# handling paths run. It is a 16-character placeholder, not a credential.
+# Allowlisted by exact value, so any other key-shaped string still fails.
+[[allowlists]]
+description = "Fake Torn API key used as a test fixture"
+regexes = ['''^abcdefghij123456$''']
