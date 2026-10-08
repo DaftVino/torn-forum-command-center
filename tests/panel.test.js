@@ -638,6 +638,22 @@ test('with no threads started, known karma is shown alone; unknown stays hidden'
   assert.doesNotMatch(visibleText(html), /karma/i);
 });
 
+test('My posts shows each started thread its thumbs, or a labelled net', () => {
+  const env = loadUserscript({ location: forums(), gmStore: KEY_STORE });
+  seed(env, []);
+  const api = env.exports;
+  withMine(env, [
+    startedRec(api, 41, TH(12, 3), 'Alpha'),
+    startedRec(api, 42, NET(9), 'Beta'),
+    startedRec(api, 43, null, 'Gamma'),
+  ]);
+  api.state.settings.view = 'mine';
+  const html = htmlOf(env);
+  assert.match(html, /<span class="tfcc-note">12 up, 3 down<\/span>/);
+  assert.match(html, /<span class="tfcc-note" title="[^"]*">net \+9<\/span>/);
+  assert.strictEqual((html.match(/class="tfcc-note"[^>]*>(\d+ up|net )/g) || []).length, 2, 'Gamma gets no meta');
+});
+
 test('the karma line is also present before My posts has loaded, as "-"', () => {
   const env = bootPanel();
   withMine(env, [], 0);

@@ -1688,6 +1688,10 @@
         draftUpdatedAt: draft ? draft.updatedAt : 0,
         needsEnrich: act.source !== 'enriched',
         mineRole: rec ? (rec.started ? 'started' : 'posted') : null,
+        // Thread reactions (#10): null when unknown, never 0.
+        up: rec && typeof rec.up === 'number' ? rec.up : null,
+        down: rec && typeof rec.down === 'number' ? rec.down : null,
+        rating: rec && typeof rec.rating === 'number' ? rec.rating : null,
         inThreads: !!api || !rec || isOrganised(entry, !!draft),
         unreadSource: unreadSource,
       });
@@ -3918,6 +3922,14 @@
 
     out.push('<div class="tfcc-meta">');
     if (row.mineRole) out.push('<span class="tfcc-tag">' + (row.mineRole === 'started' ? 'started' : 'posted in') + '</span>');
+    if (row.mineRole === 'started') {
+      if (row.up !== null && row.down !== null) {
+        out.push('<span class="tfcc-note">' + formatCount(row.up) + ' up, ' + formatCount(row.down) + ' down</span>');
+      } else if (row.rating !== null) {
+        out.push('<span class="tfcc-note" title="Torn\'s net rating. Thumbs up and down appear once the '
+          + 'opening post is checked.">net ' + formatSigned(row.rating) + '</span>');
+      }
+    }
     out.push('<span title="Where the time came from: ' + escapeHtml(row.activitySource) + '">'
       + escapeHtml(formatRelativeTime(row.lastActivity, model.now)) + '</span>');
     out.push('<span>' + escapeHtml(row.forumName) + '</span>');
