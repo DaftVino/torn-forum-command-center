@@ -4,6 +4,18 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+
+- A "Create a custom key on Torn" button in the Settings key section (#17). It
+  opens Torn's own key page in a new tab, pre-filled with the name "Forum
+  Command Center" and exactly the selections the script requests: `user`
+  forumsubscribedthreads and forumfeed, `forum` categories, thread and posts.
+  The user confirms the key on Torn and pastes it back. It is a plain link: the
+  script makes no request for it and no key is ever placed in it. A test scans
+  every API call site, so a new endpoint fails the suite until its selection is
+  added. The link format is unverified, and release is gated on the QA
+  checklist comparing it with a link generated on torn.com/api.html.
+
 ### Fixed
 
 - The Settings key help, the error-16 message and the missing-key message now

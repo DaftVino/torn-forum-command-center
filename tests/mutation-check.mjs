@@ -420,6 +420,30 @@ const MUTATIONS = [
       "      if (host.indexOf('torn.com') === -1) return false;",
     ),
   },
+  {
+    name: 'a requested selection is dropped from the custom key',
+    suite: 'tests/custom-key.test.js',
+    apply: (s) => s.replace(
+      "    forum: Object.freeze(['categories', 'thread', 'posts']),",
+      "    forum: Object.freeze(['categories', 'thread']),",
+    ),
+  },
+  {
+    name: 'the custom key link carries a key',
+    suite: 'tests/custom-key.test.js',
+    apply: (s) => s.replace(
+      "    var url = CUSTOM_KEY_LINK_BASE + '&title=' + encodeURIComponent(CUSTOM_KEY_TITLE);",
+      "    var url = CUSTOM_KEY_LINK_BASE + '&key=' + 'x' + '&title=' + encodeURIComponent(CUSTOM_KEY_TITLE);",
+    ),
+  },
+  {
+    name: 'the custom key link opens Torn with a handle back to this tab',
+    suite: 'tests/custom-key.test.js',
+    apply: (s) => s.replace(
+      '\'" target="_blank" rel="noopener noreferrer">Create a custom key on Torn</a></div>\');',
+      '\'" target="_blank">Create a custom key on Torn</a></div>\');',
+    ),
+  },
 ];
 
 let failures = 0;

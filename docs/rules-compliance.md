@@ -79,6 +79,17 @@ writes only to local script storage and nothing about it is ever transmitted.
 The API key is stored locally, masked in the panel, excluded from every export,
 and scrubbed out of error messages and debug reports.
 
+### The custom key link
+
+The Settings key section has a "Create a custom key on Torn" link. It is a
+plain anchor with `target="_blank"` and `rel="noopener noreferrer"`: the user
+clicks it, Torn's own key page opens pre-filled with exactly the selections
+this script requests, and nothing is created until the user confirms it on
+Torn. The script makes no request for it, adds no scripted navigation, and
+never places a key in the link. `@match`, `@grant` and `@connect` are
+unchanged. `custom-key.test.js` holds the selection list to the script's call
+sites and asserts the link carries no key.
+
 ### The unfocused-pages clause
 
 The clause reads "extract data from unfocused pages to send elsewhere, generate
