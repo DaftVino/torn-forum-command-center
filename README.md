@@ -45,6 +45,8 @@ notices.
 - Give a thread a priority from -2 to +2 when "last activity" is not the order
   you actually care about.
 - Expand the panel to fill the screen, or collapse it to a single line.
+- A Rows shown setting (3 to 30, or All) that caps Threads, Catch up and My
+  posts, with Show all for the rest. Search and Drafts are never capped.
 
 ### Folders, tags and watchlists
 

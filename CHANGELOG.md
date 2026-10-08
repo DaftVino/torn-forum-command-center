@@ -28,6 +28,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   unread count for threads you only posted in, counted from the first time
   the script sees them, cleared by Mark read or by your own post, and
   labelled as a local count. A thread not yet looked up says so. (#2)
+- A Rows shown setting in Settings: 3, 5, 10, 20, 30 or All. The default is
+  All, so nothing changes until you pick one. It caps Threads, Catch up and
+  My posts after every filter and the sort. A capped list says "Showing 10 of
+  42" and offers Show all, which lasts until the page reloads. Search and
+  Drafts always show everything, and the nav counts still count every
+  thread. (#3)
 
 ### Changed
 

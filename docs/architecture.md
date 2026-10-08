@@ -137,6 +137,17 @@ Each row reports which candidate won (`enriched`, `feed`, `mine`,
 `enriched-stale`, `own-post`, `visit`, `none`), so a surprising sort order is diagnosable from the row. An
 unresolved time is `null` and sorts last; it is never treated as zero.
 
+### Rows shown
+
+A Settings choice of 3, 5, 10, 20, 30 or All (the default) caps the Threads,
+Catch up and My posts lists. `capRows` is a pure engine function and is the
+last step, after every filter and the sort, so pinned threads take cap slots
+like any row. `buildPanelModel` keeps `model.rows`, `model.catchUp` and
+`model.mine` whole, because Search, deep search and the nav counts read them,
+and puts the capped lists in `model.capped`. Every view is in exactly one of
+`CAPPED_VIEWS` and `UNCAPPED_VIEWS`, and a test holds it there. Show all lives
+in `state.showAll` until the page reloads and is never stored.
+
 ### Storage
 
 Seven independent keys, each with a schema version. `tfcc:mine`, the My posts
@@ -279,7 +290,7 @@ Node only, no browser. `tests/load-userscript.js` reads the production file,
 injects an export statement in memory only, and runs it in a `vm` context with
 mocked globals. The file on disk is never modified by a test.
 
-`tests/mutation-check.mjs` is run by hand. It breaks each of 23 user-visible
+`tests/mutation-check.mjs` is run by hand. It breaks each of 83 user-visible
 promises in turn and asserts the matching suite notices. It found six tests
 that passed for the wrong reason and is the reason several of them now assert
 absolute values rather than the constant they were testing.

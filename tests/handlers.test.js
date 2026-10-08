@@ -16,7 +16,7 @@ function renderedActions() {
   const env = loadUserscript({ location: forums({ hash: '#/p=threads&f=61&t=1' }), now: NOW });
   const api = env.exports;
 
-  api.state.feed.subscribed = [1, 2].map((id) => api.normaliseSubscribedRow({
+  api.state.feed.subscribed = [1, 2, 3, 4].map((id) => api.normaliseSubscribedRow({
     id, forum_id: 61, title: 'Thread ' + id,
     author: { id: 3, username: 'someone', karma: 1 },
     posts: { new: id, total: 10 },
@@ -30,6 +30,9 @@ function renderedActions() {
   api.state.searchQuery = 'thread';
   api.state.route = api.parseForumRoute(env.win.location);
   api.recompute(NOW);
+
+  // Four rows under a cap of 3, so the Show all control renders too.
+  api.state.settings.rowsShown = 3;
 
   const actions = new Set();
   for (const view of api.VIEWS) {
@@ -266,4 +269,60 @@ test('Mark all read writes no marker for a My posts-only thread', () => {
   handlers.onAction('markall', { getAttribute: () => null });
   assert.ok(api.state.organizer.threads['1'], 'the Threads row is marked');
   assert.strictEqual(api.state.organizer.threads['50'], undefined, 'the My posts row is untouched');
+});
+
+test('the rows shown select changes, persists and clears any Show all', () => {
+  const env = loadUserscript({ location: forums(), now: NOW });
+  const api = env.exports;
+  const handlers = api.makeHandlers(env.doc, env.win);
+  const el = (act, value) => ({ getAttribute: (k) => (k === 'data-act' ? act : null), value });
+
+  handlers.onChange('rows-shown', el('rows-shown', '10'));
+  assert.strictEqual(api.state.settings.rowsShown, 10);
+  assert.strictEqual(JSON.parse(env.gmStore.get('tfcc:settings')).rowsShown, 10, 'survives a reload');
+
+  api.state.showAll.threads = true;
+  handlers.onChange('rows-shown', el('rows-shown', '5'));
+  assert.strictEqual(api.state.settings.rowsShown, 5);
+  assert.strictEqual(api.state.showAll.threads, undefined, 'a new cap takes effect at once');
+
+  handlers.onChange('rows-shown', el('rows-shown', 'banana'));
+  assert.strictEqual(api.state.settings.rowsShown, 0, 'off the menu is All');
+});
+
+test('Show all toggles one capped view and is never persisted', () => {
+  const env = loadUserscript({ location: forums(), now: NOW });
+  const api = env.exports;
+  const handlers = api.makeHandlers(env.doc, env.win);
+  const el = (attrs) => ({ getAttribute: (k) => (attrs[k] === undefined ? null : attrs[k]) });
+
+  handlers.onAction('rows-toggle', el({ 'data-act': 'rows-toggle', 'data-view': 'threads' }));
+  assert.strictEqual(api.state.showAll.threads, true);
+  assert.strictEqual(api.state.showAll.catchup, undefined);
+
+  handlers.onAction('rows-toggle', el({ 'data-act': 'rows-toggle', 'data-view': 'threads' }));
+  assert.strictEqual(api.state.showAll.threads, false, 'Show N only puts the cap back');
+
+  handlers.onAction('rows-toggle', el({ 'data-act': 'rows-toggle', 'data-view': 'mine' }));
+  assert.strictEqual(api.state.showAll.mine, true, 'My posts is capped, so it expands');
+
+  assert.doesNotThrow(() => {
+    handlers.onAction('rows-toggle', el({ 'data-act': 'rows-toggle', 'data-view': 'search' }));
+    handlers.onAction('rows-toggle', el({ 'data-act': 'rows-toggle' }));
+  });
+  assert.strictEqual(api.state.showAll.search, undefined, 'Search is never capped, so never expanded');
+
+  handlers.onChange('rows-shown', { getAttribute: () => 'rows-shown', value: '3' });
+  handlers.onAction('rows-toggle', el({ 'data-act': 'rows-toggle', 'data-view': 'catchup' }));
+  const stored = env.gmStore.get('tfcc:settings') || '{}';
+  assert.strictEqual(stored.indexOf('showAll'), -1, 'Show all lasts until the page reloads, no longer');
+});
+
+test('Reset everything also clears Show all', () => {
+  const env = loadUserscript({ location: forums(), now: NOW });
+  const api = env.exports;
+  const handlers = api.makeHandlers(env.doc, env.win);
+  api.state.showAll.threads = true;
+  handlers.onAction('reset-all', { getAttribute: (k) => (k === 'data-act' ? 'reset-all' : null) });
+  assert.deepStrictEqual(Object.keys(api.state.showAll), []);
 });

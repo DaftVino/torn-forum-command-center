@@ -196,5 +196,13 @@ const narrow = api.panelHtml(api.buildPanelModel(NOW));
 fs.writeFileSync(path.join(outDir, 'threads-narrow.html'), page('threads / narrow 375px', 'dark', narrow, 375));
 written.push('threads-narrow.html');
 
+// The cap line at PDA width, where it has to wrap without stranding the button.
+api.state.settings.rowsShown = 3;
+const cappedNarrow = api.panelHtml(api.buildPanelModel(NOW));
+fs.writeFileSync(path.join(outDir, 'threads-capped-narrow.html'),
+  page('threads / rows shown 3 / narrow 375px', 'dark', cappedNarrow, 375));
+written.push('threads-capped-narrow.html');
+api.state.settings.rowsShown = 0;
+
 console.log('wrote ' + written.length + ' files to ' + outDir);
 for (const w of written) console.log('  ' + w);
