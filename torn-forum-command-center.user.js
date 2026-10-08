@@ -337,6 +337,8 @@
       // which is the exact pattern the IP ban exists for.
       keyRejected: 0,
       deepSearchPages: DEEP_SEARCH_MAX_PAGES,
+      // 0 is All. See ROWS_SHOWN_OPTIONS.
+      rowsShown: 0,
     };
   }
 
@@ -364,6 +366,10 @@
     out.autoRefreshMs = [0, 120000, 300000, 900000].indexOf(auto) !== -1 ? auto : 0;
     out.enrichBudget = clamp(toInt(raw.enrichBudget, DEFAULT_ENRICH_BUDGET), 0, MAX_ENRICH_BUDGET);
     out.deepSearchPages = clamp(toInt(raw.deepSearchPages, DEEP_SEARCH_MAX_PAGES), 1, DEEP_SEARCH_MAX_PAGES);
+    // Strict on type: toInt would floor 10.5 to 10 and accept "10", and the
+    // menu wrote neither. Anything off the menu is All, never an error.
+    out.rowsShown = typeof raw.rowsShown === 'number' && ROWS_SHOWN_OPTIONS.indexOf(raw.rowsShown) !== -1
+      ? raw.rowsShown : 0;
     return out;
   }
 

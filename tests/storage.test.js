@@ -48,7 +48,8 @@ test('what a normaliser writes, it can read back unchanged', () => {
     ['feed', api.STORAGE_KEYS.feed, api.normaliseFeed, feed],
     ['organizer', api.STORAGE_KEYS.organizer, api.normaliseOrganizer, org],
     ['drafts', api.STORAGE_KEYS.drafts, api.normaliseDrafts, drafts],
-    ['settings', api.STORAGE_KEYS.settings, api.normaliseSettings, api.freshSettings()],
+    ['settings', api.STORAGE_KEYS.settings, api.normaliseSettings,
+      Object.assign(api.freshSettings(), { rowsShown: 20 })],
     ['postCache', api.STORAGE_KEYS.postCache, api.normalisePostCache, api.freshPostCache()],
   ];
 
@@ -223,4 +224,56 @@ test('a corrupt My posts cache resets only itself', () => {
   const mine = api.loadKey(api.STORAGE_KEYS.mine, api.normaliseMine, 0);
   assert.strictEqual(mine.recovered, true);
   assert.deepStrictEqual(api.loadKey(api.STORAGE_KEYS.organizer, api.normaliseOrganizer, 0).value, org);
+});
+
+test('rows shown defaults to All, so an existing user sees no change', () => {
+  const { exports: api } = loadUserscript();
+  assert.strictEqual(api.freshSettings().rowsShown, 0);
+  assert.strictEqual(api.normaliseSettings({ v: 1 }).rowsShown, 0, 'an absent field is All');
+});
+
+test('rows shown keeps every value on the menu', () => {
+  const { exports: api } = loadUserscript();
+  for (const n of [3, 5, 10, 20, 30, 0]) {
+    assert.strictEqual(api.normaliseSettings({ v: 1, rowsShown: n }).rowsShown, n);
+  }
+});
+
+test('a corrupt or off-menu rows shown falls back to All', () => {
+  // "10" as a string and 10.5 are the two a lenient toInt would have let
+  // through as 10: neither was written by the menu.
+  const { exports: api } = loadUserscript();
+  for (const bad of ['10', 10.5, 7, -3, 1000, null, true, {}, [], NaN, Infinity]) {
+    assert.strictEqual(api.normaliseSettings({ v: 1, rowsShown: bad }).rowsShown, 0, String(bad));
+  }
+});
+
+test('rows shown survives a reload', () => {
+  const { exports: api } = loadUserscript({
+    gmStore: [['tfcc:settings', JSON.stringify({ v: 1, rowsShown: 10 })]],
+  });
+  api.loadAll(1700000000000);
+  assert.strictEqual(api.state.settings.rowsShown, 10);
+});
+
+test('a settings blob saved before rows shown existed is not reported as damaged', () => {
+  // 0.1.0 wrote every field it knew and nothing else, so rowsShown is absent
+  // from it. That is an upgrade, and telling the user their settings were
+  // reset would be false. isRecoveredValue (from #8) is what forgives it.
+  const NOW = 1700000000000;
+  const { exports: api } = loadUserscript();
+  const old = api.freshSettings();
+  delete old.rowsShown;
+  old.theme = 'light';
+
+  const env = loadUserscript({ gmStore: [['tfcc:settings', JSON.stringify(old)]] });
+  const res = env.exports.loadKey('tfcc:settings', env.exports.normaliseSettings, NOW);
+  assert.strictEqual(res.recovered, false);
+  assert.strictEqual(res.value.rowsShown, 0, 'the default is filled in');
+  assert.strictEqual(res.value.theme, 'light', 'every stored value is kept');
+
+  env.exports.loadAll(NOW);
+  const notices = env.exports.state.notices.map((n) => n.text).join(' ');
+  assert.doesNotMatch(notices, /Settings were damaged/);
+  assert.strictEqual(env.exports.state.settings.theme, 'light');
 });
