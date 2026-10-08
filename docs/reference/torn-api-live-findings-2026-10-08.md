@@ -2,7 +2,7 @@
 
 Captured on 2026-10-08 with the owner present, using a Limited Access key
 read from a local file and sent only in the `Authorization: ApiKey` header.
-That took 20 requests. Every response used here is saved, redacted, in
+That took 21 requests. Every response used here is saved, redacted, in
 `tests/fixtures/`:
 
 - player ids are remapped to 1000 and up;
@@ -28,13 +28,14 @@ note when that happens.
 | 5 | Without `from`, `forum/{id}/posts` returns **oldest first, 20 per page**, with the topic post (`is_topic: true`) at offset 0. | `forum-posts-large-offset0.json`, `forum-thread-posts-asc.json` | #10 |
 | 6 | **`sort` is ignored.** `sort=DESC` returned the same oldest-first page as no sort. | `forum-posts-large-sort-desc-ignored.json` | #10, #4 |
 | 7 | **`limit` is ignored.** `limit=50` returned 20. The API's own `next` links do contain `limit=20&stripTags=true`. | `forum-posts-large-limit50-ignored.json` | #4, #10 |
-| 8 | **With `from=<t>`, the endpoint returns the newest posts with `created_time >= t`, newest first, at most 20, and no `next` link.** `offset` is ignored when `from` is set: `from=t&offset=20` returned the same 20 posts. So a thread with more than 20 posts after `t` can only show its newest 20. | `forum-posts-large-from.json`, `forum-posts-large-from-offset20-ignored.json` | #4 |
+| 8 | **With `from=<t>`, the endpoint returns the newest posts with `created_time >= t`, newest first, at most 20, and no `next` link.** (Paging backwards works through `prev`; see finding 15.) `offset` is ignored when `from` is set: `from=t&offset=20` returned the same 20 posts. So a thread with more than 20 posts after `t` can only show its newest 20. | `forum-posts-large-from.json`, `forum-posts-large-from-offset20-ignored.json` | #4 |
 | 9 | **`from` is inclusive.** In thread 16589908, `from` set exactly to the newest post's `created_time` returned that post. | `forum-thread-posts-from-small.json` | #4 |
 | 10 | `last_poster` exists on thread objects, as `{ id, username, karma }`. | `forum-thread.json`, `user-forumthreads.json` | #2, #4 |
 | 11 | Posts carry `is_edited` and `edited_by`, but **no edit timestamp**. | `user-forumposts.json` | #4 |
 | 12 | **Karma agrees across sources.** `author.karma` on the owner's thread row, `author.karma` on the owner's post rows, and `profile.karma` all equal the same value. | `user-forumthreads.json`, `user-forumposts.json`, `user-profile-karma.json` | #10 |
 | 13 | On the owner's thread 16589908, the topic post has `likes: 7, dislikes: 0` and the thread has `rating: 7`. That is consistent with `rating = likes - dislikes` on the topic post, but one sample with 0 dislikes cannot tell net from likes-only. | `forum-thread-posts-asc.json`, `forum-thread.json` | #10 |
 | 14 | **`forum/categories` lists 43 forums.** | `forum-categories.json` | #9 |
+| 15 | **`to` pages backwards from a `from` result.** The page-0 response's `_metadata.links.prev` is `from=<t>&to=<oldest created_time on the page>&sort=desc&limit=20`. Following it returned the next 20 older posts, newest first, all with `created_time >= t`, sharing exactly one post id with page 0, because `to` is **inclusive**. It carries its own `prev` for the next step back, and `next` is null. A full count since a marker is therefore reachable at one request per 20 posts, with the boundary post de-duplicated by id. This amends finding 8: a single `from` call is capped at 20, but the chain is not. Probed with 1 more request, 21 in total. | `forum-posts-large-from-prev.json` | #4 |
 
 ## Still open
 

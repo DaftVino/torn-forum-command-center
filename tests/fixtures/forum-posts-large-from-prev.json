@@ -1,0 +1,410 @@
+{
+ "posts": [
+  {
+   "id": 27638444,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1021,
+    "username": "player021",
+    "karma": 15
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784466765,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 1,
+   "dislikes": 0
+  },
+  {
+   "id": 27638377,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1078,
+    "username": "player078",
+    "karma": 866
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784465207,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 1,
+   "dislikes": 0
+  },
+  {
+   "id": 27638327,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1041,
+    "username": "player041",
+    "karma": 89
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784464057,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 1,
+   "dislikes": 0
+  },
+  {
+   "id": 27638268,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1079,
+    "username": "player079",
+    "karma": 5526
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784462653,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 1,
+   "dislikes": 0
+  },
+  {
+   "id": 27638265,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1080,
+    "username": "player080",
+    "karma": 4015
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784462623,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 1,
+   "dislikes": 0
+  },
+  {
+   "id": 27635439,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1031,
+    "username": "player031",
+    "karma": 6
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": true,
+   "is_pinned": false,
+   "created_time": 1784394665,
+   "edited_by": 1031,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 2,
+   "dislikes": 0
+  },
+  {
+   "id": 27635347,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1081,
+    "username": "player081",
+    "karma": 1593
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784393038,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 4,
+   "dislikes": 0
+  },
+  {
+   "id": 27634955,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1082,
+    "username": "player082",
+    "karma": 5
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784385390,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 4,
+   "dislikes": 0
+  },
+  {
+   "id": 27634526,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1083,
+    "username": "player083",
+    "karma": 112
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784375851,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 2,
+   "dislikes": 0
+  },
+  {
+   "id": 27631294,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1084,
+    "username": "player084",
+    "karma": 2525
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784303508,
+   "edited_by": null,
+   "has_quote": true,
+   "quoted_post_id": 27631264,
+   "content": "[redacted]",
+   "likes": 1,
+   "dislikes": 0
+  },
+  {
+   "id": 27631264,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1002,
+    "username": "player002",
+    "karma": 5757
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784303063,
+   "edited_by": null,
+   "has_quote": true,
+   "quoted_post_id": 27630563,
+   "content": "[redacted]",
+   "likes": 6,
+   "dislikes": 0
+  },
+  {
+   "id": 27630705,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1085,
+    "username": "player085",
+    "karma": 18
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784293358,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 1,
+   "dislikes": 0
+  },
+  {
+   "id": 27630563,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1086,
+    "username": "player086",
+    "karma": 0
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784290602,
+   "edited_by": null,
+   "has_quote": true,
+   "quoted_post_id": 27619720,
+   "content": "[redacted]",
+   "likes": 0,
+   "dislikes": 0
+  },
+  {
+   "id": 27628278,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1028,
+    "username": "player028",
+    "karma": 1867
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784239079,
+   "edited_by": null,
+   "has_quote": true,
+   "quoted_post_id": 27617883,
+   "content": "[redacted]",
+   "likes": 2,
+   "dislikes": 0
+  },
+  {
+   "id": 27627414,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1087,
+    "username": "player087",
+    "karma": 951
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784224024,
+   "edited_by": null,
+   "has_quote": true,
+   "quoted_post_id": 27627360,
+   "content": "[redacted]",
+   "likes": 1,
+   "dislikes": 0
+  },
+  {
+   "id": 27627360,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1088,
+    "username": "player088",
+    "karma": 16
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784222904,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 1,
+   "dislikes": 0
+  },
+  {
+   "id": 27627351,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1089,
+    "username": "player089",
+    "karma": 1805
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784222764,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 0,
+   "dislikes": 0
+  },
+  {
+   "id": 27627123,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1090,
+    "username": "player090",
+    "karma": 180
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784218786,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 2,
+   "dislikes": 0
+  },
+  {
+   "id": 27625490,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1091,
+    "username": "player091",
+    "karma": 15
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784186592,
+   "edited_by": null,
+   "has_quote": false,
+   "quoted_post_id": null,
+   "content": "[redacted]",
+   "likes": 5,
+   "dislikes": 0
+  },
+  {
+   "id": 27624718,
+   "thread_id": 16561608,
+   "author": {
+    "id": 1002,
+    "username": "player002",
+    "karma": 5757
+   },
+   "is_legacy": false,
+   "is_topic": false,
+   "is_edited": false,
+   "is_pinned": false,
+   "created_time": 1784166231,
+   "edited_by": null,
+   "has_quote": true,
+   "quoted_post_id": 27622826,
+   "content": "[redacted]",
+   "likes": 2,
+   "dislikes": 0
+  }
+ ],
+ "_metadata": {
+  "links": {
+   "prev": "https://api.torn.com/v2/forum/16561608/posts?&limit=20&sort=desc&from=1777939495&to=1784166231",
+   "next": null
+  }
+ }
+}
