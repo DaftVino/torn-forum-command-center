@@ -391,3 +391,60 @@ test('a genuinely corrupt thread entry is still reported as damage', () => {
     assert.match(notices, /Folders and tags were damaged/, name);
   }
 });
+
+// The reaction fields (#10) are nested inside tfcc:mine.threads[], where #8's
+// isRecoveredValue (top-level keys only) does not reach. They are optional so
+// that an older blob round-trips byte for byte.
+function reactionRoundTrip(api, rec) {
+  const mine = Object.assign(api.freshMine(), { fetchedAt: 1000, threads: [rec] });
+  api.saveKey(api.STORAGE_KEYS.mine, mine);
+  return { mine, back: api.loadKey(api.STORAGE_KEYS.mine, api.normaliseMine, 9000) };
+}
+
+test('a tfcc:mine written before the reactions tracker loads silently', () => {
+  const { exports: api } = loadUserscript();
+  const old = api.freshMineThread(9, 1000);
+  old.started = true;
+  const { back } = reactionRoundTrip(api, old);
+  assert.strictEqual(back.recovered, false);
+  assert.deepStrictEqual(Object.keys(back.value.threads[0]), Object.keys(old));
+});
+
+test('records that gained reactions in either order reload undamaged', () => {
+  const { exports: api } = loadUserscript();
+  const a = api.freshMineThread(9, 1000);
+  api.applyReactions(a, { rating: 2 }, 1000);
+  api.setReactionFields(a, { topicAt: 2000, up: 3, down: 1 });
+  const b = api.freshMineThread(9, 1000);
+  api.setReactionFields(b, { topicAt: 2000, up: 3, down: 1 });
+  api.applyReactions(b, { rating: 2 }, 1000);
+  const c = api.freshMineThread(9, 1000);
+  api.setReactionFields(c, { topicAt: 2000, up: null, down: null });
+  for (const [label, rec] of [['rating then thumbs', a], ['thumbs then rating', b], ['checked, not found', c]]) {
+    const { mine, back } = reactionRoundTrip(api, rec);
+    assert.strictEqual(back.recovered, false, label + ' called its own output damaged');
+    assert.deepStrictEqual(back.value, mine, label);
+  }
+});
+
+// Forum karma (#10) is an optional top-level pair on tfcc:mine. Absent stays
+// absent, so a blob written before the feature round-trips byte for byte.
+test('a tfcc:mine blob with no karma loads silently and stays without karma', () => {
+  const { exports: api } = loadUserscript();
+  const mine = Object.assign(api.freshMine(), { fetchedAt: 1000 });
+  api.saveKey(api.STORAGE_KEYS.mine, mine);
+  const back = api.loadKey(api.STORAGE_KEYS.mine, api.normaliseMine, 9000);
+  assert.strictEqual(back.recovered, false);
+  assert.ok(!('karma' in back.value) && !('karmaAt' in back.value), 'never back-filled');
+});
+
+test('a stored karma pair reloads unchanged; a half pair is dropped', () => {
+  const { exports: api } = loadUserscript();
+  const withPair = api.setKarma(api.freshMine(), 34, 1700000000000);
+  api.saveKey(api.STORAGE_KEYS.mine, withPair);
+  const back = api.loadKey(api.STORAGE_KEYS.mine, api.normaliseMine, 9000);
+  assert.strictEqual(back.recovered, false);
+  assert.deepStrictEqual(back.value, withPair);
+  const half = Object.assign(api.freshMine(), { karma: 5 });
+  assert.ok(!('karma' in api.normaliseMine(JSON.parse(JSON.stringify(half)))), 'karma without karmaAt');
+});

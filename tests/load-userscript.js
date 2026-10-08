@@ -82,6 +82,13 @@ const EXPORT_NAMES = [
   'mineLookupTargets', 'mineIsDue', 'viewRows',
   // runtime: my posts
   'MINE_TTL_MS', 'MINE_PAGE_LIMIT', 'refreshMine',
+  // thread reactions (#10)
+  'isReactionNumber', 'setReactionFields', 'applyReactions', 'topicPostFromApi', 'applyTopicPost',
+  'reactionLookupTargets', 'reactionTotals', 'formatSigned', 'reactionsTitle', 'renderReactions',
+  'enrichReactions', 'REACTIONS_STALE_MS', 'TOPIC_TTL_MS', 'REACTION_LOOKUPS_PER_RUN', 'TOPIC_POST_PARAMS',
+  // forum karma (#10)
+  'karmaFromAuthors', 'karmaFromProfile', 'setKarma', 'karmaFallbackDue', 'formatKarma', 'readKarmaProfile',
+  'KARMA_TTL_MS', 'KARMA_ICON_SVG',
   // engine: share
   'EXPORT_PREFIX', 'encodeState', 'decodeState', 'importState',
   // runtime: lifecycle
@@ -562,6 +569,15 @@ const FIXTURE_SELF_ID = FX_THREAD_ROW.author.id;   // the key owner in every fix
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 function pick(v, fallback) { return v === undefined ? fallback : v; }
 
+// ForumThreadAuthor requires id, username and karma. `karma` overrides the
+// fixture's figure; `noKarma` drops the key, to model schema drift (#10).
+function applyKarma(row, o) {
+  if (o.karma === undefined && !o.noKarma) return;
+  row.author = Object.assign({}, row.author);
+  if (o.noKarma) delete row.author.karma;
+  else row.author.karma = o.karma;
+}
+
 function forumThreadsPayload(threads) {
   return {
     forumThreads: threads.map((t) => {
@@ -575,6 +591,10 @@ function forumThreadsPayload(threads) {
         new_posts: pick(t.newPosts, FX_THREAD_ROW.new_posts),
       });
       if (t.author) row.author = t.author;
+      // ForumThreadBase requires rating (docs/reference/torn-openapi-forum-excerpt-2026-10-08.json).
+      if (t.rating !== undefined) row.rating = t.rating;
+      if (t.noRating) delete row.rating;
+      applyKarma(row, t);
       if (t.lastPoster !== undefined) row.last_poster = t.lastPoster;
       if (t.noNewPosts) delete row.new_posts;
       return row;
@@ -594,6 +614,7 @@ function forumPostsPayload(posts) {
         content: pick(p.content, 'SECRET POST BODY ' + p.id),
       });
       if (p.author) row.author = p.author;
+      applyKarma(row, p);
       return row;
     }),
     _metadata: { links: { prev: null, next: null } },
@@ -614,9 +635,34 @@ function forumThreadPayload(t) {
   return { thread };
 }
 
+// A real, redacted Torn answer saved by #14 (tests/fixtures/). Every call parses
+// afresh, so a test may mutate its copy without touching the next test's.
+function loadFixture(name) {
+  return JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', name + '.json'), 'utf8'));
+}
+
+// One real posts page standing in for many threads: every post's thread_id is
+// set to `threadId`, and `body`, when given, replaces every post's content so a
+// test can prove a post body never reaches storage or a report. Nothing else is
+// changed, so the likes, dislikes and is_topic flags stay Torn's own.
+function fixturePosts(name, threadId, body) {
+  const page = loadFixture(name);
+  page.posts.forEach((p) => {
+    p.thread_id = threadId;
+    if (body !== undefined) p.content = body;
+  });
+  return page;
+}
+
+// user/profile, UserProfileResponse. Only karma is read by the script.
+function profilePayload(karma) {
+  return { profile: karma === undefined ? {} : { karma } };
+}
+
 module.exports = {
   loadUserscript, readSource, buildInstrumentedSource, makeSandbox,
   EXPORT_NAMES, SOURCE_PATH, DEFAULT_LOCATION, FORUMS_LOCATION,
   subscribedThreadsPayload, forumFeedPayload,
   forumThreadsPayload, forumPostsPayload, forumThreadPayload, FIXTURE_SELF_ID,
+  loadFixture, fixturePosts, profilePayload,
 };

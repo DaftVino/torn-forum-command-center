@@ -42,7 +42,7 @@ collapse before the browser follows the link. The lookup (`threadLinkOf`)
 stops at the panel and never reads Torn's nodes. The script still initiates no
 navigation: the user's click does.
 
-### The seven endpoints
+### The eight endpoints
 
 | Endpoint | Access | Used for |
 |---|---|---|
@@ -50,9 +50,10 @@ navigation: the user's click does.
 | `user/forumfeed` | own selection | Recency and catch-up |
 | `forum/categories` | Public | Real forum names, fetched at most once a day |
 | `forum/{id}/thread` | Public | `last_post_time` enrichment, budgeted |
-| `forum/{id}/posts` | Public | Deep search, and author-only lookups (budgeted, replacing `thread`) |
-| `user/forumthreads` | Public | My posts: threads the key owner started, fetched only for that view |
+| `forum/{id}/posts` | Public | Deep search; author-only lookups (budgeted, replacing `thread`); and `?offset=0` for the opening post's thumbs of threads the key owner started, inside My posts only (#10) |
+| `user/forumthreads` | Public | My posts: threads the key owner started, fetched only for that view; also each thread's `rating` and the owner's `author.karma` |
 | `user/forumposts` | Public | My posts: threads the key owner posted in, fetched only for that view |
+| `user/profile` | Public | Karma fallback only: when both My posts lists are empty, at most once per 12 hours; reads `profile.karma` and nothing else (#10) |
 
 `forumsubscribedthreads` carries the unread count but no last-post time. That
 asymmetry is why enrichment exists and why last activity resolves from several
@@ -69,9 +70,20 @@ required key level stays Minimal Access; the custom-key link lists them so a
 least-privilege key covers the whole script. My posts is its own bounded
 action, never part of the Threads refresh: opening the view (at most once per
 15 minutes) or pressing Refresh while it is open makes two list requests plus
-up to the same lookup budget, so at most 12 requests by default and 27 at the
-largest setting. It never fetches the category list, page load never fetches
-it, and auto refresh never does.
+up to the same lookup budget, then reads the opening post of at most
+`min(5, lookup budget)` threads the key owner started (each at most once per
+12 hours, never after a throttle), so at most 17 requests by default and 32 at
+the largest setting (2 with lookups set to 0). When both lists come back empty
+the run instead reads `user/profile` once for the owner's karma: 3 requests at
+any setting, at most once per 12 hours. A default Threads refresh plus a
+default My posts run is 30 of the 40 a minute allows. It never fetches the
+category list, page load never fetches it, and auto refresh never does.
+
+The thumbs (#10) are the topic post's `likes` and `dislikes` (owner check 1
+matched them with Torn's thread page). Torn's thread `rating` is shown only as
+"net" until a thread is checked, and never split into or added to the thumbs:
+whether it is net or likes only is not settled (live finding 13). Torn
+publishes no subscriber count, so none is shown.
 
 ## Structure
 
@@ -174,6 +186,20 @@ normalisation resets that key only and is reported visibly, so a corrupt post
 cache cannot cost the user their folders. An unparseable value is distinguished
 from an absent one, because collapsing the two is how someone loses everything
 in silence.
+
+`tfcc:mine` records carry five optional reaction fields (#10), always in the
+order `reactAt`, `rating`, `topicAt`, `up`, `down`, written only through
+`setReactionFields`. They are optional because they are nested inside
+`threads[]`: `loadKey` calls a key damaged when its normalised form differs
+from the stored one, and #8's `isRecoveredValue` forgives only missing
+top-level keys. So the normaliser never adds a field the stored record lacked,
+keeps whole pairs only, and a cache written before #10 round-trips byte for
+byte. `tfcc:mine` also gains an optional top-level `karma`/`karmaAt` pair,
+absent until known, written only through `setKarma`, and carried over by
+`mergeMineSnapshot` so a cached profile reading survives a run. The karma icon
+is the owner's `docs/reference/karma-endless-knot.svg`, inlined as the ASCII
+constant `KARMA_ICON_SVG` with `fill="currentColor"`. No post `content` is ever
+read or stored.
 
 `tfcc:key` holds the API key. It is never exported, never logged, never in a
 debug report. Every detail string passes through `scrubDetail`, which redacts

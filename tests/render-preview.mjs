@@ -117,7 +117,21 @@ mine.threads = [
     posted: true, title: 'Faction recruitment thread', myLastPostAt: NOW - 600 * MIN,
   }),
 ];
-api.state.mine = mine;
+// Thread reactions (#10): two started threads with thumbs and one net only, so
+// the pill (with its "net ... on 1 more" form) and the karma icon are in every
+// preview.
+[[16600002, { topicAt: NOW - 5 * MIN, up: 30, down: 4 }],
+ [16600004, { topicAt: NOW - 5 * MIN, up: 4, down: 1 }],
+ [16600005, { reactAt: NOW - 5 * MIN, rating: -3 }]].forEach(([id, fields]) => {
+  let t = mine.threads.find((x) => x.id === id);
+  if (!t) {
+    t = Object.assign(api.freshMineThread(id, NOW - 5 * MIN), { title: 'Started thread ' + id, forumId: 2 });
+    mine.threads.push(t);
+  }
+  t.started = true;
+  api.setReactionFields(t, fields);
+});
+api.state.mine = api.setKarma(mine, 1208, NOW - 5 * MIN);
 api.recompute(NOW);
 
 const css = api.panelStyleText();

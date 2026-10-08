@@ -161,6 +161,16 @@ test('a refresh cannot exceed the request budget the panel promises', () => {
   assert.strictEqual(2 + api.DEFAULT_ENRICH_BUDGET, 12, 'the default My posts fetch the Settings text promises');
   assert.strictEqual(3 + api.MAX_ENRICH_BUDGET, 28);
   assert.strictEqual(2 + api.MAX_ENRICH_BUDGET, 27);
+  // Thread reactions (#10): topic lookups are a capped slice of the same dial.
+  const thumbs = (b) => Math.min(api.REACTION_LOOKUPS_PER_RUN, b);
+  assert.strictEqual(2 + api.DEFAULT_ENRICH_BUDGET + thumbs(api.DEFAULT_ENRICH_BUDGET), 17, 'My posts at defaults');
+  assert.strictEqual(2 + api.MAX_ENRICH_BUDGET + thumbs(api.MAX_ENRICH_BUDGET), 32, 'My posts at the largest setting');
+  assert.strictEqual(2 + 0 + thumbs(0), 2, 'lookups set to 0 means two requests');
+  assert.ok(13 + 17 <= api.REQUESTS_PER_WINDOW, 'a default Threads refresh and a default My posts run fit one minute');
+  assert.ok(32 <= api.REQUESTS_PER_WINDOW, 'a maximal My posts run alone fits one minute');
+  // The karma fallback run: two lists + user/profile, replacing (never adding to) the runs above.
+  assert.ok(3 < 17 && 3 < 32, 'the fallback run is smaller than the runs it stands in for');
+  assert.ok(28 + 3 <= api.REQUESTS_PER_WINDOW, 'a maximal Threads refresh then a fallback run fits one minute');
 });
 
 test('nothing in the source reads as an action on the account', () => {

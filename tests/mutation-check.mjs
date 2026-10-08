@@ -747,6 +747,113 @@ const MUTATIONS = [
       'threads[id] = isPlainObject(v) ? v : r;',
     ),
   },
+  // -- thread reactions (#10) ----------------------------------------------
+  {
+    name: 'a missing rating reads as 0',
+    suite: 'tests/reactions.test.js',
+    apply: (s) => s.replace('rating: isReactionNumber(raw.rating, true) ? Math.floor(raw.rating) : null,',
+      'rating: toInt(raw.rating, 0),'),
+  },
+  {
+    name: 'a topic post with null likes reads as 0',
+    suite: 'tests/reactions.test.js',
+    apply: (s) => s.replace(
+      'if (!isReactionNumber(p.likes, false) || !isReactionNumber(p.dislikes, false)) return null;',
+      'if (false) return null;'),
+  },
+  {
+    name: 'any post counts as the topic post',
+    suite: 'tests/reactions.test.js',
+    apply: (s) => s.replace('if (!isPlainObject(p) || p.is_topic !== true) continue;', 'if (!isPlainObject(p)) continue;'),
+  },
+  {
+    name: 'a thread counts by both thumbs and net',
+    suite: 'tests/reactions.test.js',
+    apply: (s) => s.replace("} else if (typeof t.rating === 'number') {", "}\n      if (typeof t.rating === 'number') {"),
+  },
+  {
+    name: 'threads you only posted in are counted',
+    suite: 'tests/reactions.test.js',
+    apply: (s) => s.replace('if (!t || t.started !== true) continue;', 'if (!t) continue;'),
+  },
+  {
+    name: 'reaction figures never go stale',
+    suite: 'tests/reactions.test.js',
+    apply: (s) => s.replace('out.stale = toInt(now, 0) - out.updatedAt > staleMs;', 'out.stale = false;'),
+  },
+  {
+    name: 'the topic TTL is ignored',
+    suite: 'tests/reactions.test.js',
+    apply: (s) => s.replace('return at <= 0 || t0 - at >= ttl;', 'return true;'),
+  },
+  {
+    name: 'the normaliser always emits topicAt',
+    suite: 'tests/storage.test.js',
+    apply: (s) => s.replace('    if (topicAt > 0) {\n      rx.topicAt = topicAt;', '    if (true) {\n      rx.topicAt = topicAt;'),
+  },
+  {
+    name: 'topic lookups ignore their cap',
+    suite: 'tests/reactions-lookups.test.js',
+    apply: (s) => s.replace('var rn = Math.min(REACTION_LOOKUPS_PER_RUN, budget);', 'var rn = 1000;'),
+  },
+  {
+    name: 'topic lookups run after a throttle',
+    suite: 'tests/reactions-lookups.test.js',
+    apply: (s) => s.replace('if (stale() || (er && er.stoppedEarly)) return outcome;', 'if (stale()) return outcome;'),
+  },
+  {
+    name: 'an unknown thumbs figure renders 0',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace("parts = rx('-') + ' up, ' + rx('-') + ' down';", "parts = rx('0') + ' up, ' + rx('0') + ' down';"),
+  },
+  {
+    name: 'the reactions line renders while collapsed',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace("    if (model.collapsed) return out.join('');",
+      "    out.push(renderReactions(model));\n    if (model.collapsed) return out.join('');"),
+  },
+  {
+    name: 'the subscriber sentence is dropped',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace("var NO_SUBSCRIBERS = ' Torn\\'s API has no subscriber count, so none is shown.';",
+      "var NO_SUBSCRIBERS = '';"),
+  },
+  // -- forum karma (#10) -----------------------------------------------------
+  {
+    name: 'unknown karma renders 0',
+    suite: 'tests/karma.test.js',
+    apply: (s) => s.replace("if (!isReactionNumber(n, true)) return '-';", "if (!isReactionNumber(n, true)) return '0';"),
+  },
+  {
+    name: 'the panel turns unknown karma into 0',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace('var karma = isReactionNumber(r.karma, true) ? r.karma : null;',
+      'var karma = isReactionNumber(r.karma, true) ? r.karma : 0;'),
+  },
+  {
+    name: 'the karma fallback runs in the default refresh',
+    suite: 'tests/karma-refresh.test.js',
+    // refreshAll must never call readKarmaProfile.
+    apply: (s) => s.replace(/(function refreshAll\([^)]*\)\s*\{)/,
+      '$1 readKarmaProfile(toInt(arguments[0], 0), {}, state.generation);'),
+  },
+  {
+    name: 'the karma fallback runs although a thread or post exists',
+    suite: 'tests/karma-refresh.test.js',
+    // Killed by the "row without karma" test: only an unknown karma leaves the
+    // fallback due, so that is where the guard has to hold.
+    apply: (s) => s.replace('if (threadRowCount !== 0 || postRowCount !== 0) return false;', ''),
+  },
+  {
+    name: 'the karma icon keeps the owner file black instead of currentColor',
+    suite: 'tests/karma.test.js',
+    apply: (s) => s.replace('<path fill="currentColor" fill-rule="evenodd"', '<path fill="#000000" fill-rule="evenodd"'),
+  },
+  {
+    name: 'a My posts merge drops the cached karma, re-arming the profile read every run',
+    suite: 'tests/karma-refresh.test.js',
+    apply: (s) => s.replace("if (typeof base.karma === 'number') {", 'if (false) {'),
+  },
 ];
 
 let failures = 0;

@@ -34,7 +34,9 @@ function loaded() {
   mine.threads = [Object.assign(api.freshMineThread(77, NOW), {
     posted: true, title: 'MY SECRET THREAD TITLE', totalKnown: true, postsTotal: 3, baselineTotal: 1,
   })];
-  api.state.mine = mine;
+  mine.threads[0].started = true;
+  api.setReactionFields(mine.threads[0], { reactAt: NOW, rating: 987654, topicAt: NOW, up: 123456, down: 654321 });
+  api.state.mine = api.setKarma(mine, 8642097, NOW);
   api.state.mineError = { reason: 'torn', detail: 'Threads you posted in could not be loaded: SECRET POST BODY' };
   api.recompute(NOW);
   return env;
@@ -56,6 +58,8 @@ test('the report carries what a maintainer needs', () => {
   assert.match(report, /my posts threads: 1/);
   assert.match(report, /my posts posted in: 1/);
   assert.match(report, /my posts unchecked: 0/);
+  assert.match(report, /my posts thumbs checked: 1/);
+  assert.match(report, /my posts thumbs found: 1/);
   assert.match(report, /my posts error: torn/);
 });
 
@@ -76,6 +80,11 @@ test('the report never carries anything private', () => {
     ['16589908', 'the thread id currently open'],
     ['MY SECRET THREAD TITLE', 'a My posts thread title'],
     ['SECRET POST BODY', 'My posts error free text'],
+    ['987654', 'a rating'],
+    ['123456', 'a thumbs count'],
+    ['654321', 'a thumbs count'],
+    ['8642097', 'the karma figure'],
+    ['SECRET TOPIC BODY', 'a topic post body'],
   ];
 
   for (const [needle, label] of forbidden) {

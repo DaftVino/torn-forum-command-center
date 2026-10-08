@@ -68,6 +68,38 @@
   var MAX_ENRICH_BUDGET = 25;
   var MINE_TTL_MS = 15 * 60 * 1000;
   var MINE_PAGE_LIMIT = 100;
+  // Thread reactions (#10). Thumbs change slowly, so each started thread's
+  // opening post is read at most once per TOPIC_TTL_MS, and at most
+  // min(REACTION_LOOKUPS_PER_RUN, enrichBudget) per My posts run.
+  var TOPIC_TTL_MS = 12 * 60 * 60 * 1000;
+  var REACTION_LOOKUPS_PER_RUN = 5;
+  // The line is read on every view but data arrives only from My posts, so a
+  // shorter threshold would call it stale nearly always. A day is "old".
+  var REACTIONS_STALE_MS = 24 * 60 * 60 * 1000;
+  // Without `from`, forum/{id}/posts is oldest first, 20 per page, with the
+  // topic post at offset 0. Torn IGNORES `sort` and `limit`, so neither is sent:
+  // a `sort=ASC` here would suggest a guarantee that does not exist. Evidence:
+  // docs/reference/torn-api-live-findings-2026-10-08.md. The is_topic check in
+  // topicPostFromApi stays the real guarantee.
+  var TOPIC_POST_PARAMS = Object.freeze({ offset: 0 });
+  // Forum karma (#10): the user/profile fallback is read at most this often.
+  var KARMA_TTL_MS = 12 * 60 * 60 * 1000;
+  // Endless-knot karma icon, supplied by the owner (docs/reference/karma-endless-knot.svg).
+  // Changes from that file: fill is currentColor so it follows the theme; prolog,
+  // title, desc, role, aria-labelledby and xmlns dropped; aria-hidden and focusable
+  // added; sized to the text. ASCII only: Torn PDA rewrites anything else.
+  var KARMA_ICON_SVG = '<svg viewBox="149 50 702 900" aria-hidden="true" focusable="false" style="height:1em;width:auto">'
+    + '<path fill="currentColor" fill-rule="evenodd" d="'
+    + 'M 697 264 L 834 403 L 749 486 L 712 447 L 758 401 L 697 341 L 550 487 L 513 448 Z '
+    + 'M 450 511 L 488 551 L 303 736 L 165 600 L 254 512 L 291 550 L 242 600 L 303 659 Z '
+    + 'M 301 264 L 389 351 L 350 389 L 301 341 L 242 402 L 390 549 L 353 587 L 165 402 Z '
+    + 'M 450 610 L 637 796 L 501 934 L 363 798 L 450 709 L 488 749 L 440 798 L 499 857 L 560 798 L 413 650 Z '
+    + 'M 449 314 L 488 353 L 350 489 L 313 450 Z '
+    + 'M 499 66 L 637 202 L 550 291 L 511 252 L 560 202 L 501 143 L 440 202 L 588 351 L 551 390 L 363 204 Z '
+    + 'M 649 413 L 835 598 L 699 736 L 610 648 L 650 611 L 699 659 L 758 598 L 611 452 Z '
+    + 'M 648 511 L 686 551 L 548 686 L 511 648 Z '
+    + 'M 451 413 L 587 548 L 551 587 L 413 452 Z'
+    + '"/></svg>';
   var DEEP_SEARCH_MAX_PAGES = 5;
   var DEEP_SEARCH_MAX_THREADS = 10;
   var POSTS_PER_PAGE = 20;
@@ -734,6 +766,22 @@
     t.isLocked = raw.isLocked === true;
     t.tornNewKnown = raw.tornNewKnown === true;
     t.tornNew = t.tornNewKnown ? Math.max(0, toInt(raw.tornNew, 0)) : 0;
+    // Optional reaction fields (#10): canonical order, whole pairs only.
+    var reactAt = Math.max(0, toInt(raw.reactAt, 0));
+    var topicAt = Math.max(0, toInt(raw.topicAt, 0));
+    var rx = {};
+    if (reactAt > 0 && isReactionNumber(raw.rating, true)) {
+      rx.reactAt = reactAt;
+      rx.rating = Math.floor(raw.rating);
+    }
+    if (topicAt > 0) {
+      rx.topicAt = topicAt;
+      if (isReactionNumber(raw.up, false) && isReactionNumber(raw.down, false)) {
+        rx.up = Math.floor(raw.up);
+        rx.down = Math.floor(raw.down);
+      }
+    }
+    setReactionFields(t, rx);
     return t;
   }
 
@@ -748,6 +796,13 @@
         var t = normaliseMineThread(raw.threads[i]);
         if (t) out.threads.push(t);
       }
+    }
+    // Optional forum karma (#10): a whole pair or nothing, and never added
+    // when the stored blob lacked it, so an old cache round-trips unchanged.
+    var karmaAt = Math.max(0, toInt(raw.karmaAt, 0));
+    if (karmaAt > 0 && isReactionNumber(raw.karma, true)) {
+      out.karma = Math.floor(raw.karma);
+      out.karmaAt = karmaAt;
     }
     return out;
   }
@@ -788,10 +843,232 @@
       lastPostAt: secondsToMs(raw.last_post_time),
       lastPosterId: Math.max(0, toInt(last.id, 0)),
       isLocked: raw.is_locked === true,
+      // ForumThreadBase.rating (OpenAPI 6.13.8, undocumented). Whether it is
+      // net or likes-only is not settled (live finding 13), so it is shown
+      // only as "net" and never split into thumbs.
+      rating: isReactionNumber(raw.rating, true) ? Math.floor(raw.rating) : null,
       // Torn's own unread count for a thread the key owner started (finding 1).
       tornNew: hasNew ? Math.max(0, Math.floor(raw.new_posts)) : 0,
       tornNewKnown: hasNew,
     };
+  }
+
+  // -- thread reactions: record fields (#10) --------------------------------
+  // Five optional fields on a tfcc:mine record, always in this order. They are
+  // nested inside threads[], so a default here would make loadKey call every
+  // upgrading user's cache damaged; absent means unknown instead. Every write
+  // goes through setReactionFields, so any write order serialises the way
+  // normaliseMineThread writes it.
+  var REACTION_FIELDS = ['reactAt', 'rating', 'topicAt', 'up', 'down'];
+
+  function isReactionNumber(v, allowNegative) {
+    return typeof v === 'number' && isFinite(v) && (allowNegative === true || v >= 0);
+  }
+
+  function setReactionFields(rec, changes) {
+    var vals = {};
+    var i;
+    for (i = 0; i < REACTION_FIELDS.length; i += 1) {
+      var k = REACTION_FIELDS[i];
+      vals[k] = Object.prototype.hasOwnProperty.call(changes, k) ? changes[k] : rec[k];
+      delete rec[k];
+    }
+    for (i = 0; i < REACTION_FIELDS.length; i += 1) {
+      var key = REACTION_FIELDS[i];
+      if (typeof vals[key] === 'number') rec[key] = vals[key];
+    }
+    return rec;
+  }
+
+  // A row with no rating leaves the old one alone, so it ages into stale
+  // rather than vanishing or turning into a zero.
+  function applyReactions(rec, row, now) {
+    if (!rec || !row || typeof row.rating !== 'number') return rec;
+    return setReactionFields(rec, { reactAt: Math.max(0, toInt(now, 0)), rating: row.rating });
+  }
+
+  // forum/{id}/posts page one. Only a post Torn flags is_topic counts, and only
+  // with two real counts; `content` is never read. undefined = shape not
+  // recognised (stamp nothing, retry next run); null = no usable topic post
+  // (stamp the check, fall back to net, retry after the TTL).
+  function topicPostFromApi(data, threadId) {
+    var list = pickList(data, ['posts']);
+    if (!list) return undefined;
+    var id = toInt(threadId, 0);
+    for (var i = 0; i < list.length; i += 1) {
+      var p = list[i];
+      if (!isPlainObject(p) || p.is_topic !== true) continue;
+      if (p.thread_id !== undefined && toInt(p.thread_id, 0) !== id) continue;
+      if (!isReactionNumber(p.likes, false) || !isReactionNumber(p.dislikes, false)) return null;
+      return { up: Math.floor(p.likes), down: Math.floor(p.dislikes) };
+    }
+    return null;
+  }
+
+  // normaliseMine doubles as the deep clone, so the input is never mutated.
+  function applyTopicPost(snap, threadId, topic, now) {
+    var out = normaliseMine(snap);
+    var id = toInt(threadId, 0);
+    for (var i = 0; i < out.threads.length; i += 1) {
+      if (out.threads[i].id !== id) continue;
+      setReactionFields(out.threads[i], {
+        topicAt: Math.max(0, toInt(now, 0)),
+        up: topic ? topic.up : null,
+        down: topic ? topic.down : null,
+      });
+    }
+    return out;
+  }
+
+  // Started threads whose opening post is unchecked or older than ttl.
+  // Never-checked first (newest activity first), then the oldest check.
+  function reactionLookupTargets(snap, now, ttl, n) {
+    var cap = Math.max(0, toInt(n, 0));
+    if (!cap || !isPlainObject(snap) || !Array.isArray(snap.threads)) return [];
+    var t0 = toInt(now, 0);
+    var due = snap.threads.filter(function (r) {
+      if (!r || r.started !== true) return false;
+      var at = toInt(r.topicAt, 0);
+      return at <= 0 || t0 - at >= ttl;
+    });
+    due.sort(function (a, b) {
+      var ac = toInt(a.topicAt, 0) > 0 ? 1 : 0;
+      var bc = toInt(b.topicAt, 0) > 0 ? 1 : 0;
+      if (ac !== bc) return ac - bc;
+      if (ac === 0) return (b.lastPostAt - a.lastPostAt) || (b.id - a.id);
+      return (toInt(a.topicAt, 0) - toInt(b.topicAt, 0)) || (b.id - a.id);
+    });
+    return due.slice(0, cap).map(function (r) { return r.id; });
+  }
+
+  // -- thread reactions: totals (#10) ---------------------------------------
+  // Up and down are only ever sums of real topic-post counts. rating is shown
+  // only as "net" and never split. The API has no subscriber count at all
+  // (docs/reference/torn-openapi-forum-excerpt-2026-10-08.json).
+
+  var NO_SUBSCRIBERS = ' Torn\'s API has no subscriber count, so none is shown.';
+
+  function formatSigned(n) {
+    var v = toInt(n, 0);
+    if (v > 0) return '+' + formatCount(v);
+    if (v < 0) return '-' + formatCount(-v);
+    return '0';
+  }
+
+  function reactionTotals(mine, now, staleMs) {
+    var out = {
+      state: 'unloaded', started: 0, up: null, down: null, thumbThreads: 0,
+      net: null, netThreads: 0, updatedAt: 0, stale: false,
+      // Forum karma: whatever the state, never defaulted to 0.
+      karma: isPlainObject(mine) && isReactionNumber(mine.karma, true) ? Math.floor(mine.karma) : null,
+    };
+    var threads = isPlainObject(mine) && Array.isArray(mine.threads) ? mine.threads : [];
+    for (var i = 0; i < threads.length; i += 1) {
+      var t = threads[i];
+      if (!t || t.started !== true) continue;
+      out.started += 1;
+      if (typeof t.up === 'number' && typeof t.down === 'number') {
+        out.up = (out.up || 0) + t.up;
+        out.down = (out.down || 0) + t.down;
+        out.thumbThreads += 1;
+        out.updatedAt = Math.max(out.updatedAt, toInt(t.topicAt, 0));
+      } else if (typeof t.rating === 'number') {
+        out.net = (out.net || 0) + t.rating;
+        out.netThreads += 1;
+        out.updatedAt = Math.max(out.updatedAt, toInt(t.reactAt, 0));
+      }
+    }
+    if (out.started === 0) {
+      out.state = isPlainObject(mine) && toInt(mine.fetchedAt, 0) > 0 ? 'empty' : 'unloaded';
+      return out;
+    }
+    if (out.thumbThreads === 0 && out.netThreads === 0) { out.state = 'missing'; return out; }
+    out.state = 'known';
+    out.stale = toInt(now, 0) - out.updatedAt > staleMs;
+    return out;
+  }
+
+  function reactionsTitle(r, now, pageLimit, opener) {
+    var act = opener || 'Open My posts';
+    if (!r || r.state === 'unloaded') return 'Not loaded yet. ' + act + ' to load the threads you started.' + NO_SUBSCRIBERS;
+    if (r.state === 'empty') return 'Torn reports no threads you started.' + NO_SUBSCRIBERS;
+    if (r.state === 'missing') return 'Torn has not reported thumbs or a rating for your threads yet.' + NO_SUBSCRIBERS;
+    var ofText = ' of ' + r.started + ' ' + plural(r.started, 'thread') + ' you started';
+    var text;
+    if (r.thumbThreads > 0) {
+      text = 'Thumbs up and down from the opening post of ' + r.thumbThreads + ofText + '.';
+      if (r.netThreads > 0) {
+        text += ' ' + r.netThreads + ' more ' + plural(r.netThreads, 'shows', 'show') + ' Torn\'s net rating until checked.';
+      }
+    } else {
+      text = 'Torn\'s net rating for ' + r.netThreads + ofText + '; thumbs up and down appear once '
+        + plural(r.netThreads, 'its', 'their') + ' opening ' + plural(r.netThreads, 'post is', 'posts are') + ' checked.';
+    }
+    text += ' Updated ' + formatRelativeTime(r.updatedAt, now) + '.';
+    if (r.started >= pageLimit) {
+      text += ' Torn sends your newest ' + pageLimit + ' threads per request; older ones keep the figures '
+        + 'from when they were last seen.';
+    }
+    if (r.stale) text += ' ' + act + ' to update.';
+    return text + NO_SUBSCRIBERS;
+  }
+
+  // -- forum karma (#10) -----------------------------------------------------
+  // ForumThreadAuthor.karma (required int32, undocumented) is the key owner's
+  // figure on every row of user/forumthreads and user/forumposts; user/profile
+  // returns profile.karma. A figure is taken only if it is a finite number:
+  // toInt(null, 0) would turn "unknown" into 0, which is the trap.
+  function karmaFromAuthors(rows, timeField, selfId) {
+    if (!Array.isArray(rows)) return null;
+    var best = null;
+    var bestAt = -1;
+    for (var i = 0; i < rows.length; i += 1) {
+      var r = rows[i];
+      var a = isPlainObject(r) && isPlainObject(r.author) ? r.author : null;
+      if (!a || !isReactionNumber(a.karma, true)) continue;
+      if (selfId && a.id !== selfId) continue;
+      var at = typeof r[timeField] === 'number' ? r[timeField] : 0;
+      if (at > bestAt) { best = Math.floor(a.karma); bestAt = at; }
+    }
+    return best;
+  }
+
+  function karmaFromProfile(data) {
+    var p = isPlainObject(data) && isPlainObject(data.profile) ? data.profile : null;
+    return p && isReactionNumber(p.karma, true) ? Math.floor(p.karma) : null;
+  }
+
+  // The only writer. Both fields together or neither; removing and re-adding
+  // puts them last, which is where normaliseMine writes them.
+  function setKarma(snap, karma, now) {
+    var out = normaliseMine(snap);
+    delete out.karma;
+    delete out.karmaAt;
+    if (isReactionNumber(karma, true) && toInt(now, 0) > 0) {
+      out.karma = Math.floor(karma);
+      out.karmaAt = toInt(now, 0);
+    }
+    return out;
+  }
+
+  // Both counts must be the number 0: null/undefined mean the list failed or
+  // was not parsed, and an unknown is not an empty list.
+  function karmaFallbackDue(snap, now, ttl, threadRowCount, postRowCount) {
+    if (threadRowCount !== 0 || postRowCount !== 0) return false;
+    var at = toInt(snap && snap.karmaAt, 0);
+    return at <= 0 || toInt(now, 0) - at >= ttl;
+  }
+
+  // Comma thousands, built by hand: toLocaleString reads the ambient locale.
+  function formatKarma(n) {
+    if (!isReactionNumber(n, true)) return '-';
+    var digits = String(Math.abs(Math.floor(n)));
+    var out = '';
+    for (var i = 0; i < digits.length; i += 1) {
+      if (i > 0 && (digits.length - i) % 3 === 0) out += ',';
+      out += digits.charAt(i);
+    }
+    return (n < 0 ? '-' : '') + out;
   }
 
   // The post body arrives in `content` and is deliberately never read.
@@ -898,6 +1175,7 @@
       r.tornNewKnown = s.tornNewKnown === true;
       r.tornNew = r.tornNewKnown ? s.tornNew : 0;
       if (s.totalKnown) observeMineTotal(r, s.postsTotal, t0);
+      applyReactions(r, s, t0);
       if (!out.selfId && s.authorId) out.selfId = s.authorId;
     }
     for (i = 0; i < (posts || []).length; i += 1) {
@@ -909,6 +1187,13 @@
       if (!out.selfId && p.authorId) out.selfId = p.authorId;
     }
     for (i = 0; i < order.length; i += 1) advanceMineBaseline(byId[order[i]], out.selfId);
+    // Forum karma (#10) is carried over as stored: a merge is not a sighting.
+    // Without this, every run would drop a cached profile reading and re-arm
+    // the user/profile fallback.
+    if (typeof base.karma === 'number') {
+      out.karma = base.karma;
+      out.karmaAt = base.karmaAt;
+    }
     return finishMine(out, byId, order);
   }
 
@@ -1403,6 +1688,10 @@
         draftUpdatedAt: draft ? draft.updatedAt : 0,
         needsEnrich: act.source !== 'enriched',
         mineRole: rec ? (rec.started ? 'started' : 'posted') : null,
+        // Thread reactions (#10): null when unknown, never 0.
+        up: rec && typeof rec.up === 'number' ? rec.up : null,
+        down: rec && typeof rec.down === 'number' ? rec.down : null,
+        rating: rec && typeof rec.rating === 'number' ? rec.rating : null,
         inThreads: !!api || !rec || isOrganised(entry, !!draft),
         unreadSource: unreadSource,
       });
@@ -1654,10 +1943,10 @@
   // Exactly the selections this script requests, and no others: the least
   // privilege a Custom key can carry. tests/custom-key.test.js scans every
   // API call site and fails if a requested selection is missing here, or if
-  // this lists one that is never requested. When #2 (user forumthreads,
-  // forumposts) and #10 (user profile) merge, they add theirs here.
+  // this lists one that is never requested. #2 added user forumthreads and
+  // forumposts; #10 added user profile (the karma fallback).
   var CUSTOM_KEY_SELECTIONS = Object.freeze({
-    user: Object.freeze(['forumsubscribedthreads', 'forumfeed', 'forumthreads', 'forumposts']),
+    user: Object.freeze(['forumsubscribedthreads', 'forumfeed', 'forumthreads', 'forumposts', 'profile']),
     forum: Object.freeze(['categories', 'thread', 'posts']),
   });
 
@@ -2790,9 +3079,44 @@
     return step(0);
   }
 
-  // A separate, bounded action for the My posts view only: two lists and at
-  // most enrichBudget lookups, never the category list. Threads' refresh and
-  // auto refresh never call this.
+  // Topic-post lookups for thumbs (#10): started threads only, only inside
+  // refreshMine, after #2's lookups. Stops at the first throttle, like
+  // enrichThreads. An unrecognised answer stamps nothing. Only the counts are
+  // kept: topicPostFromApi never reads a post's content.
+  function enrichReactions(ids, now, opts, generation) {
+    function step(i) {
+      if (i >= ids.length) return Promise.resolve({ ok: true });
+      var params = { offset: TOPIC_POST_PARAMS.offset };
+      return tornApiGet('forum/' + ids[i] + '/posts', params, opts).then(function (res) {
+        if (generation !== state.generation) return { ok: false, reason: 'stale' };
+        if (res.ok) {
+          var topic = topicPostFromApi(res.data, ids[i]);
+          if (topic !== undefined) state.mine = applyTopicPost(state.mine, ids[i], topic, now);
+        } else if (res.reason === 'throttled') {
+          return { ok: true, stoppedEarly: true };
+        }
+        return step(i + 1);
+      });
+    }
+    return step(0);
+  }
+
+  // The karma fallback (#10): one user/profile request, only from refreshMine,
+  // only when the caller found both lists empty (karmaFallbackDue). Reads
+  // profile.karma and nothing else. A throttle or failure leaves karma unknown.
+  function readKarmaProfile(now, opts, generation) {
+    return tornApiGet('user/profile', {}, opts).then(function (res) {
+      if (generation !== state.generation || !res.ok) return { ok: false };
+      var k = karmaFromProfile(res.data);
+      if (k !== null) state.mine = setKarma(state.mine, k, now);
+      return { ok: true };
+    });
+  }
+
+  // A separate, bounded action for the My posts view only: two lists, at
+  // most enrichBudget lookups, then at most min(5, enrichBudget) opening-post
+  // reads (#10); never the category list. Threads' refresh and auto refresh
+  // never call this.
   function refreshMine(now, opts) {
     var options = opts || {};
     if (state.refreshingMine) return Promise.resolve({ ok: false, reason: 'inflight' });
@@ -2819,6 +3143,7 @@
           if (stale()) return { ok: false, reason: 'stale' };
           var complete = false;
           var posts = [];
+          var postRows = null;   // the raw posts list, null when it failed or did not parse
           var outcome = { ok: true };
           if (!pres.ok) {
             outcome = fail(pres, 'Could not load your posts.');
@@ -2830,13 +3155,31 @@
               outcome = fail({ reason: 'parse', detail: MINE_SHAPE_POSTS });
             } else {
               posts = plist.map(minePostFromApi).filter(Boolean);
+              postRows = plist;
               complete = true;
               state.mineError = null;
             }
           }
           state.mine = mergeMineSnapshot(state.mine, started, posts, now, complete);
+          // Forum karma for free: the author of rows already fetched (#10).
+          var seenKarma = karmaFromAuthors(list, 'first_post_time', state.mine.selfId);
+          if (seenKarma === null) seenKarma = karmaFromAuthors(postRows, 'created_time', state.mine.selfId);
+          if (seenKarma !== null) state.mine = setKarma(state.mine, seenKarma, now);
           var ids = mineLookupTargets(state.mine, state.feed.subscribed, budget, now, MINE_TTL_MS);
-          return enrichMine(ids, now, options, generation).then(function () { return outcome; });
+          // The karma fallback: only when both lists came back and both are
+          // empty, so ids is empty too and the run is exactly 3 requests.
+          var karmaDue = karmaFallbackDue(state.mine, now, KARMA_TTL_MS,
+            list.length, Array.isArray(postRows) ? postRows.length : null);
+          return (karmaDue ? readKarmaProfile(now, options, generation) : Promise.resolve({ ok: true }))
+            .then(function () {
+              if (stale()) return outcome;
+              return enrichMine(ids, now, options, generation).then(function (er) {
+                if (stale() || (er && er.stoppedEarly)) return outcome;
+                var rn = Math.min(REACTION_LOOKUPS_PER_RUN, budget);
+                var rids = reactionLookupTargets(state.mine, now, TOPIC_TTL_MS, rn);
+                return enrichReactions(rids, now, options, generation).then(function () { return outcome; });
+              });
+            });
         });
       })
       .then(function (res) {
@@ -3202,6 +3545,18 @@
       '#' + PANEL_ID + ' option { background: var(--tm-bg-3); color: var(--tm-text); }',
       '#' + PANEL_ID + ' button { cursor: pointer; }',
       '#' + PANEL_ID + ' button:hover { background: var(--tm-hover); }',
+      // Thread reactions (#10). (1,1,1) beats the generic button rule (1,0,1);
+      // :hover at (1,2,1) beats the generic button:hover (1,1,1).
+      '#' + PANEL_ID + ' .tfcc-subhead { display: flex; flex-wrap: wrap; gap: var(--tfcc-gap-sm);',
+      '  margin-bottom: var(--tfcc-gap); }',
+      '#' + PANEL_ID + ' button.tfcc-reactions { font-size: var(--tfcc-text-sm); padding: 0 8px;',
+      '  border-radius: 10px; background: var(--tm-bg-3); color: var(--tm-meta);',
+      '  border: 1px solid var(--tm-border); white-space: normal; text-align: left; max-width: 100%; }',
+      '#' + PANEL_ID + ' button.tfcc-reactions:hover { background: var(--tm-hover); }',
+      '#' + PANEL_ID + ' .tfcc-rx { color: var(--tm-text); font-weight: bold; font-variant-numeric: tabular-nums; }',
+      '#' + PANEL_ID + ' .tfcc-karma { display: inline-flex; align-items: center; gap: 0.25em;',
+      '  white-space: nowrap; color: var(--tm-text); }',
+      '#' + PANEL_ID + ' .tfcc-karma svg { flex: none; }',
       '#' + PANEL_ID + ' .tfcc-linkbtn { display: inline-block; text-decoration: none;',
       '  color: var(--tm-text); background: var(--tm-bg-3); border: 1px solid var(--tm-border-2);',
       '  border-radius: 4px; padding: 3px 8px; }',
@@ -3456,6 +3811,7 @@
       },
       lastCatchUpAt: state.organizer.lastCatchUpAt,
       drafts: draftList(state.drafts),
+      reactions: reactionTotals(state.mine, now, REACTIONS_STALE_MS),
       searchQuery: state.searchQuery,
       searchResults: state.searchResults,
       deepBusy: state.deepBusy,
@@ -3566,6 +3922,14 @@
 
     out.push('<div class="tfcc-meta">');
     if (row.mineRole) out.push('<span class="tfcc-tag">' + (row.mineRole === 'started' ? 'started' : 'posted in') + '</span>');
+    if (row.mineRole === 'started') {
+      if (row.up !== null && row.down !== null) {
+        out.push('<span class="tfcc-note">' + formatCount(row.up) + ' up, ' + formatCount(row.down) + ' down</span>');
+      } else if (row.rating !== null) {
+        out.push('<span class="tfcc-note" title="Torn\'s net rating. Thumbs up and down appear once the '
+          + 'opening post is checked.">net ' + formatSigned(row.rating) + '</span>');
+      }
+    }
     out.push('<span title="Where the time came from: ' + escapeHtml(row.activitySource) + '">'
       + escapeHtml(formatRelativeTime(row.lastActivity, model.now)) + '</span>');
     out.push('<span>' + escapeHtml(row.forumName) + '</span>');
@@ -3923,14 +4287,22 @@
       + '" value="' + model.settings.enrichBudget + '" data-act="enrich-budget"></div>');
     // The numbers are computed from the constants, so this promise cannot
     // drift from what the code does (CLAUDE.md constraint 7).
+    var thumbsAt = function (b) { return Math.min(REACTION_LOOKUPS_PER_RUN, b); };
     out.push('<p class="tfcc-note">A refresh of Threads makes two requests, plus one for the forum list at '
       + 'most once a day. Opening My posts, or refreshing while it is open, makes two requests of its own, '
       + 'at most once every ' + Math.round(MINE_TTL_MS / 60000) + ' minutes unless you press Refresh. '
       + 'Each activity lookup adds one more to either, and only runs for a thread with no recent time. '
+      + 'My posts also reads the opening post of up to ' + REACTION_LOOKUPS_PER_RUN + ' threads you started, '
+      + 'for their thumbs up and down, each at most once every ' + Math.round(TOPIC_TTL_MS / 3600000) + ' hours; '
+      + 'with lookups set to 0 it reads none. '
+      + 'If you have started no threads and written no posts, My posts instead reads your profile once '
+      + 'for your forum karma, at most once every ' + Math.round(KARMA_TTL_MS / 3600000) + ' hours, '
+      + 'which is 3 requests in all. '   // two lists + user/profile, at any lookup setting
       + 'With the default of ' + DEFAULT_ENRICH_BUDGET + ', a Threads refresh is at most '
-      + (3 + DEFAULT_ENRICH_BUDGET) + ' requests and My posts at most ' + (2 + DEFAULT_ENRICH_BUDGET)
+      + (3 + DEFAULT_ENRICH_BUDGET) + ' requests and My posts at most '
+      + (2 + DEFAULT_ENRICH_BUDGET + thumbsAt(DEFAULT_ENRICH_BUDGET))
       + '; at the largest setting of ' + MAX_ENRICH_BUDGET + ', ' + (3 + MAX_ENRICH_BUDGET) + ' and '
-      + (2 + MAX_ENRICH_BUDGET) + '. '
+      + (2 + MAX_ENRICH_BUDGET + thumbsAt(MAX_ENRICH_BUDGET)) + '. '
       + 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.</p>');
     out.push('<div class="tfcc-kv"><label for="tfcc-author">Only flag new posts by the thread author</label>'
       + '<input id="tfcc-author" type="checkbox" data-act="author-only"'
@@ -4036,6 +4408,57 @@
     return out.join('');
   }
 
+  // The karma figure (#10): the owner's endless-knot icon (currentColor, so it
+  // follows the theme) and a number. No visible word; the span carries the
+  // meaning for assistive tech and the tooltip. The wording follows the Torn
+  // wiki's Karma page (spec, "Karma definition").
+  var KARMA_MEANING = '. Likes and dislikes on your forum posts, never below 0; some posts do not count.';
+  function renderKarma(karma) {
+    var n = formatKarma(karma);
+    var title = 'Karma: ' + (n === '-' ? 'unknown' : n) + KARMA_MEANING;
+    return '<span class="tfcc-karma" role="group" aria-label="Karma" title="' + escapeHtml(title) + '">'
+      + KARMA_ICON_SVG + '<span class="tfcc-rx">' + escapeHtml(n) + '</span></span>';
+  }
+
+  // The thread reactions line (#10). Its own block under .tfcc-head, never in
+  // it: the header row belongs to the title, #9's badges and Refresh, Expand
+  // and Hide. Rendered after the collapsed early return, so hidden when
+  // collapsed. Up and down are real topic-post sums; net is labelled. Karma
+  // follows them; with no started threads and a known karma, it stands alone.
+  function renderReactions(model) {
+    var r = model.reactions;
+    if (!model.hasKey || !r) return '';
+    var karma = isReactionNumber(r.karma, true) ? r.karma : null;
+    if (r.state === 'empty' && karma === null) return '';
+    var known = r.state === 'known';
+    var stale = known && r.stale;
+    var rx = function (v) { return '<span class="tfcc-rx">' + escapeHtml(v) + '</span>'; };
+    var parts = '';
+    var spoken = '';
+    if (r.state !== 'empty') {
+      if (known && r.thumbThreads > 0) {
+        var more = r.netThreads > 0 ? ', net ' + formatSigned(r.net) + ' on ' + r.netThreads + ' more' : '';
+        parts = rx(formatCount(r.up)) + ' up, ' + rx(formatCount(r.down)) + ' down'
+          + (r.netThreads > 0 ? ', net ' + rx(formatSigned(r.net)) + ' on ' + r.netThreads + ' more' : '');
+        spoken = formatCount(r.up) + ' up, ' + formatCount(r.down) + ' down' + more;
+      } else if (known) {
+        parts = 'net ' + rx(formatSigned(r.net));
+        spoken = 'net ' + formatSigned(r.net);
+      } else {
+        parts = rx('-') + ' up, ' + rx('-') + ' down';
+        spoken = 'thumbs unknown';
+      }
+    }
+    var age = stale ? ' (' + formatRelativeTime(r.updatedAt, model.now) + ')' : '';
+    var title = reactionsTitle(r, model.now, MINE_PAGE_LIMIT);
+    var said = (r.state === 'empty' ? '' : 'Your threads: ' + spoken + age + '. ')
+      + 'Karma: ' + (karma === null ? 'unknown' : formatKarma(karma)) + '. ';
+    var lead = r.state === 'empty' ? '' : 'Your threads: ' + parts + escapeHtml(age) + ' ';
+    return '<div class="tfcc-subhead"><button type="button" class="tfcc-reactions' + (stale ? ' tfcc-stale' : '')
+      + '" data-act="view" data-view="mine" title="' + escapeHtml(title) + '" aria-label="'
+      + escapeHtml(said + title) + '">' + lead + renderKarma(karma) + '</button></div>';
+  }
+
   function panelHtml(model) {
     if (model.loading) {
       return '<div class="tfcc-head"><span class="tfcc-title">Forum Command Center</span></div>'
@@ -4065,6 +4488,7 @@
     out.push('</div>');
 
     if (model.collapsed) return out.join('');
+    out.push(renderReactions(model));
 
     for (var n = 0; n < model.notices.length; n += 1) {
       out.push('<div class="tfcc-' + (model.notices[n].kind === 'error' ? 'error' : 'warn') + '">'
@@ -4255,6 +4679,9 @@
         // simply not reached yet. Counts only, never an author.
         authorUnchecked: state.rows.filter(function (r) { return r.authorState === 'unchecked'; }).length,
         authorTooMany: state.rows.filter(function (r) { return r.authorReason === 'too-many'; }).length,
+        // Thread reactions (#10): counts of records only, never a figure.
+        mineThumbsChecked: state.mine.threads.filter(function (t) { return t.started && t.topicAt > 0; }).length,
+        mineThumbsFound: state.mine.threads.filter(function (t) { return t.started && typeof t.up === 'number'; }).length,
       },
       authorOnly: state.settings.authorOnly === true,
       lastFetchedAt: state.feed.fetchedAt,
@@ -4295,6 +4722,8 @@
       'my posts started: ' + c.counts.mineStarted,
       'my posts posted in: ' + c.counts.minePosted,
       'my posts unchecked: ' + c.counts.mineUnchecked,
+      'my posts thumbs checked: ' + c.counts.mineThumbsChecked,
+      'my posts thumbs found: ' + c.counts.mineThumbsFound,
       'my posts fetched: ' + (c.mineFetchedAt ? 'set' : 'never'),
       'my posts error: ' + (c.mineError ? safeString(c.mineError, 20) : 'none'),
       'author only: ' + (c.authorOnly ? 'on' : 'off'),
