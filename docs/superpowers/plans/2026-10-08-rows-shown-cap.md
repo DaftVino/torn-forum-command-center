@@ -21,7 +21,7 @@
 - Settings are **not** part of export. `encodeState` is not touched.
 - No request, endpoint or budget change. The Settings "Refreshing" text does not change (constraint 7).
 - `@match`, `@grant` and `@connect` do not change.
-- Constraint 8: `@version`, `SCRIPT_VERSION`, `package.json` `version` and the newest `CHANGELOG.md` heading move together in one commit (Task 7).
+- Constraint 8: `@version`, `SCRIPT_VERSION`, `package.json` `version`, the newest `CHANGELOG.md` heading and the tag move together in one release commit. That commit is cut separately at release; this PR only adds an `[Unreleased]` entry (Task 7).
 - Commit messages are Conventional Commits with **no** attribution or `Co-Authored-By` footer.
 - `node tests/mutation-check.mjs` edits the production file in place. **Never pipe it into `head`** or anything that closes the pipe early. Redirect to a file and read the file.
 
@@ -904,7 +904,7 @@ In `renderNav(model)`, delete the line
 
 and change `escapeHtml(labels[v] + count)` to `escapeHtml(VIEW_LABELS[v] + count)`.
 
-If #2 has already merged, `renderNav`'s map has a `myposts` entry. Move it into `VIEW_LABELS`, and follow "How #2 reconciles" in the spec before you continue.
+If #2 has already merged, `renderNav`'s map has a `mine` entry. Move it into `VIEW_LABELS`, and follow "How #2 reconciles" in the spec before you continue.
 
 - [ ] **Step 4: Add the Settings control**
 
@@ -1076,10 +1076,10 @@ git commit -m "test: mutation entries and a narrow preview for the rows shown ca
 
 ---
 
-### Task 7: Docs, code map and the version bump
+### Task 7: Docs, code map and the changelog entry
 
 **Files:**
-- Modify: `docs/architecture.md`, `docs/qa-checklist.md`, `README.md`, `CHANGELOG.md`, `package.json`, `torn-forum-command-center.user.js` (`// @version` and `var SCRIPT_VERSION`), `docs/code-map.md`
+- Modify: `docs/architecture.md`, `docs/qa-checklist.md`, `README.md`, `CHANGELOG.md`, `docs/code-map.md`
 
 - [ ] **Step 1: Architecture**
 
@@ -1129,24 +1129,11 @@ git add docs/architecture.md docs/qa-checklist.md README.md docs/code-map.md
 git commit -m "docs: rows shown cap in architecture, QA checklist, README and code map (#3)"
 ```
 
-- [ ] **Step 6: Version bump (constraint 8, one commit)**
+- [ ] **Step 6: CHANGELOG entry under `[Unreleased]` (no version bump in this PR)**
 
-Run `git fetch && git log origin/main -1 --format=%H` and `grep -n "@version" torn-forum-command-center.user.js` against `origin/main` (`git show origin/main:torn-forum-command-center.user.js | grep -m1 "@version"`). The new version is the next minor after `main`'s: `0.2.0` if `main` is `0.1.0`, or `0.3.0` if #2 has already taken `0.2.0`. Call it `X.Y.0` below.
-
-Change all four together:
-
-- `// @version      X.Y.0` in the userscript metadata block
-- `var SCRIPT_VERSION = 'X.Y.0';`
-- `"version": "X.Y.0"` in `package.json`
-- `CHANGELOG.md`: replace `## [Unreleased]\n\nNothing yet.` with:
+All three feature PRs (#2, #3, #4) share one release convention so they can merge in any order without fighting over version numbers: a feature PR adds its CHANGELOG entry under the existing `## [Unreleased]` heading and does **not** touch `// @version`, `SCRIPT_VERSION` or `package.json`. Replace `Nothing yet.` under `## [Unreleased]` (or append to the `### Added` list already there if another feature PR merged first) with:
 
 ```markdown
-## [Unreleased]
-
-Nothing yet.
-
-## [X.Y.0] - <merge date, YYYY-MM-DD>
-
 ### Added
 
 - A Rows shown setting in Settings: 3, 5, 10, 20, 30 or All. The default is
@@ -1156,19 +1143,17 @@ Nothing yet.
   show everything, and the Catch up count in the nav still counts every thread.
 ```
 
-If #2 merged first and its section already sits under `[Unreleased]`, put this entry in the same new heading rather than creating a second one.
-
-- [ ] **Step 7: Verify and commit the bump**
+- [ ] **Step 7: Verify and commit**
 
 Run: `npm test && npm run test:syntax && git diff --check`
-Expected: PASS. `tests/metadata.test.js` asserts that `@version`, `SCRIPT_VERSION` and `package.json` agree.
+Expected: PASS.
 
 ```bash
-git add torn-forum-command-center.user.js package.json CHANGELOG.md
-git commit -m "chore: release X.Y.0 with the rows shown cap (#3)"
+git add CHANGELOG.md
+git commit -m "docs: changelog entry for the rows shown cap (#3)"
 ```
 
-The `vX.Y.0` tag is cut on the merged commit on `main` at release, by `/ship` or the owner, and not on this branch. A squash merge would discard the SHA a branch tag points at. Release stays blocked on `docs/qa-checklist.md` walked on a real account.
+**Release (not part of this PR).** Constraint 8 is satisfied by one separate release commit on `main`, cut by the owner after `docs/qa-checklist.md` is walked on a real account: it sets `// @version`, `var SCRIPT_VERSION` and `package.json` `version` to the next minor after `main`'s (`0.2.0` if `main` is `0.1.0`), renames `## [Unreleased]` to `## [X.Y.0] - YYYY-MM-DD` above a fresh empty `[Unreleased]`, and is tagged `vX.Y.0`. `tests/metadata.test.js` asserts the three version strings agree.
 
 ---
 
@@ -1184,4 +1169,4 @@ Stop and amend this plan (and the spec) if any of these becomes necessary:
 
 ## Completion gate
 
-Done when `npm test`, `npm run test:syntax` and `git diff --check` pass, and every mutation in `node tests/mutation-check.mjs` (output redirected to a file) reports `OK`. The capped narrow preview must look right, and the version and CHANGELOG must agree. Issue #3's "wired" rung is proved by these tests: the setting round-trips (Task 2, Task 5), survives a reload (Task 2), caps Threads and Catch up after filtering (Tasks 3 and 4), and leaves Search and Drafts uncapped (Task 3). My posts is covered by the classification test (Task 1) until #2 lands, and after that by the My posts cap test the spec's reconciliation section requires. The QA checklist block is walked by the owner before release.
+Done when `npm test`, `npm run test:syntax` and `git diff --check` pass, and every mutation in `node tests/mutation-check.mjs` (output redirected to a file) reports `OK`. The capped narrow preview must look right, and the CHANGELOG `[Unreleased]` entry must be present. Issue #3's "wired" rung is proved by these tests: the setting round-trips (Task 2, Task 5), survives a reload (Task 2), caps Threads and Catch up after filtering (Tasks 3 and 4), and leaves Search and Drafts uncapped (Task 3). My posts is covered by the classification test (Task 1) until #2 lands, and after that by the My posts cap test the spec's reconciliation section requires. The QA checklist block is walked by the owner before release.

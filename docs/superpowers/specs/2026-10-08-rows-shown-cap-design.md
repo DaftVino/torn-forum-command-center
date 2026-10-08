@@ -3,8 +3,9 @@
 **Status:** proposed, 2026-10-08.
 **Issue:** #3, "feat: setting to cap rows shown in Threads, Catch up and My posts".
 **Related:** #2 (My posts view), which this cap must also govern.
-**Target release:** the next minor version after whatever `main` carries at
-merge time (0.2.0 if `main` is still 0.1.0).
+**Target release:** the next minor release cut from `main` after this merges.
+The PR adds an `[Unreleased]` CHANGELOG entry only; the version bump is a
+separate release commit (see Version below).
 
 ## Problem
 
@@ -83,18 +84,18 @@ renderCapLine(cap, view) -> string        // '' when !cap.expandable
 This PR and #2 can merge in either order. Whichever lands second does the
 reconciliation, and a test makes the second one fail until it does.
 
-**If this PR merges first.** #2 adds `'myposts'` to `VIEWS`. The test
+**If this PR merges first.** #2 adds `'mine'` to `VIEWS`. The test
 "every view is classified as capped or uncapped" then fails. To pass it, #2:
 
-1. adds `'myposts'` to `CAPPED_VIEWS` and `myposts: 'My posts'` to
+1. adds `'mine'` to `CAPPED_VIEWS` and `mine: 'My posts'` to
    `VIEW_LABELS`;
 2. builds its sorted list in `buildPanelModel`, then sets
-   `model.capped.myposts = capRows(sortedMyPosts, s.rowsShown, state.showAll.myposts === true)`;
-3. renders `model.capped.myposts.rows`, then `renderCapLine(model.capped.myposts, 'myposts')`;
+   `model.capped.mine = capRows(sortedMyPosts, s.rowsShown, state.showAll.mine === true)`;
+3. renders `model.capped.mine.rows`, then `renderCapLine(model.capped.mine, 'mine')`;
 4. adds one test to `tests/rows-cap.test.js` that copies "Threads caps after
    the sort" for My posts: six rows in reverse title order, a cap of 3, and
    the top three asserted, plus "Showing 3 of 6" and the `rows-toggle` button
-   with `data-view="myposts"`. It also adds My posts to the "Search lists every
+   with `data-view="mine"`. It also adds My posts to the "Search lists every
    match" style guard if My posts shares `model.rows`.
 
 The Settings note then reads "Applies to Threads, Catch up and My posts" with no
@@ -102,7 +103,7 @@ text change, because it is built from `CAPPED_VIEWS`. The `rows-toggle` handler
 already accepts any view in `CAPPED_VIEWS`, so it needs no change.
 
 **If #2 merges first.** This PR rebases onto it and does steps 1 to 4 itself
-before review. `renderNav`'s label map will already contain `myposts`. This PR
+before review. `renderNav`'s label map will already contain `mine`. This PR
 moves that map to `VIEW_LABELS` in the same commit that hoists it. The plan's
 Task 2 and Task 4 say where.
 
@@ -147,12 +148,12 @@ a real account on both Torn PDA and desktop.
 - **Settings stay out of export.** If a later change starts exporting settings,
   `rowsShown` goes with them. The share test that pins its absence will fail
   and has to be updated deliberately.
-- **Version.** Minor bump, because this is a user-visible feature. If #2 lands
-  first and takes 0.2.0, this takes 0.3.0. Constraint 8 still applies:
-  `@version`, `SCRIPT_VERSION`, `package.json`, the newest `CHANGELOG.md`
-  heading and the tag move together. The tag is cut on the merged commit on
-  `main` at release, because a tag on a PR commit would point at a SHA that a
-  squash merge discards.
+- **Version.** This PR does not bump the version. #2, #3 and #4 share one
+  convention: each adds its entry under `## [Unreleased]`, and a single release
+  commit on `main` later moves `@version`, `SCRIPT_VERSION`, `package.json`,
+  the newest `CHANGELOG.md` heading and the tag together (constraint 8). The
+  three PRs can then merge in any order with no version conflicts, and the
+  tag lands on a commit that a squash merge cannot discard.
 - **No ADR.** This follows existing conventions: a settings field, an engine
   helper, a view-model field. It changes no architecture and deviates from no
   standard, so no ADR and no outbox note are needed.
