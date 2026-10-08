@@ -3276,6 +3276,69 @@
     });
   }
 
+  // ---- badges runtime (issue #9) ---------------------------------------------
+
+  var BADGE_TOAST_MS = 6000;
+
+  // The one Catch up list. buildPanelModel renders it and the badge check-in
+  // counts it, so the two cannot disagree. Like the panel, it sees only the
+  // Threads population: a My posts-only thread lives in its own view.
+  function catchUpRowsNow() {
+    var threadRows = state.rows.filter(function (r) { return r.inThreads; });
+    var mode = state.settings.authorOnly ? 'author' : 'any';
+    return sortThreads(catchUpList(threadRows, state.organizer.lastCatchUpAt, mode), 'activity');
+  }
+
+  // Author-only mode (issue #4): the "Not yet checked" group beside Catch up.
+  // Empty when the mode is off, exactly as the panel shows it.
+  function catchUpUncheckedNow() {
+    if (!state.settings.authorOnly) return [];
+    var threadRows = state.rows.filter(function (r) { return r.inThreads; });
+    return sortThreads(catchUpUnchecked(threadRows), 'activity');
+  }
+
+  function badgeContext(now) {
+    // Unknown is not clear (panel ruling 9): a not-yet-checked row blocks the
+    // check-in now, and a later ordinary refresh the same Torn day can credit it.
+    var cu = catchUpRowsNow().concat(catchUpUncheckedNow());
+    return {
+      now: now,
+      facts: badgeFacts({
+        organizer: state.organizer,
+        feed: state.feed,
+        hasKey: isKeyShaped(loadApiKey()),
+        keyRejected: state.settings.keyRejected,
+      }),
+      blockers: cu.length,
+      catchUpIds: cu.map(function (r) { return r.id; }),
+      subscribed: state.feed.subscribed.length,
+      fetchedAt: state.feed.fetchedAt,
+    };
+  }
+
+  function queueBadgeToast(ids, now) {
+    var ctx = badgeContext(now);
+    state.badgeToast = { text: badgeToastText(ids, state.badges, ctx.facts), until: now + BADGE_TOAST_MS, announced: false };
+  }
+
+  // Every badge write goes through here. It applies one event to a FRESH read
+  // of storage, so two tabs usually see each other's work. Best effort only:
+  // cross-tab propagation is asynchronous, and no badge depends on an exact
+  // count near a cap.
+  function recordBadgeEvent(event, now) {
+    if (!state.settings.badges) return null;
+    try {
+      var stored = loadKey(STORAGE_KEYS.badges, normaliseBadges, now).value;
+      var res = applyBadgeEvent(stored, event, badgeContext(now));
+      state.badges = res.record;
+      if (res.changed) persist('badges');
+      if (res.newly.length) queueBadgeToast(res.newly, now);
+      return res;
+    } catch (e) {
+      return null;
+    }
+  }
+
   // ---- data acquisition --------------------------------------------------
 
   function refreshAll(now, opts) {
@@ -3360,6 +3423,10 @@
           recompute(now);
           persist('feed');
           persist('organizer');
+          // A refresh that succeeded today: feed.fetchedAt is set only on success.
+          if (state.lastError === null && state.feed.fetchedAt === now) {
+            recordBadgeEvent({ type: 'refreshed' }, now);
+          }
         }
         return res || { ok: true };
       })
@@ -4199,7 +4266,7 @@
     var sorted = sortThreads(visible, s.sort);
     var threadsSorted = s.view === 'mine' ? sortThreads(viewRows(rows, 'threads', s, query), s.sort) : sorted;
     var mineSorted = s.view === 'mine' ? sorted : sortThreads(viewRows(mineRows, 'mine', s, query), s.sort);
-    var catchUp = sortThreads(catchUpList(threadRows, state.organizer.lastCatchUpAt, s.authorOnly ? 'author' : 'any'), 'activity');
+    var catchUp = catchUpRowsNow();
     var showAll = state.showAll || {};
 
     return {
@@ -4240,7 +4307,7 @@
         catchup: capRows(catchUp, s.rowsShown, showAll.catchup === true),
         mine: capRows(mineSorted, s.rowsShown, showAll.mine === true),
       },
-      catchUpUnchecked: s.authorOnly ? sortThreads(catchUpUnchecked(threadRows), 'activity') : [],
+      catchUpUnchecked: catchUpUncheckedNow(),
       authorOnly: s.authorOnly === true,
       mine: {
         total: mineAll.length,
@@ -4827,7 +4894,7 @@
       + btn('import', 'Import from clipboard text') + '</div>');
     out.push('<textarea class="tfcc-draft" data-act="import-text" placeholder="Paste an export string here, then press Import"></textarea>');
     out.push('<p class="tfcc-note">An export carries folders, tags, pins, priorities, notes, read markers '
-      + 'and drafts. It never carries your API key or the post cache.</p>');
+      + 'drafts and badges. It never carries your API key or the post cache.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Storage</h4>');
@@ -5388,7 +5455,7 @@
         if (act === 'read' && id) {
           var row = state.rows.filter(function (r) { return r.id === id; })[0];
           state.organizer = markRead(state.organizer, id, row ? row.postsTotal : 0, now);
-          persist('organizer'); recompute(now); redraw(); return;
+          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
         }
         if ((act === 'prio-up' || act === 'prio-down') && id) {
           var cur = state.organizer.threads[id] ? state.organizer.threads[id].priority : 0;
@@ -5398,7 +5465,7 @@
         if (act === 'archive' && id) {
           var e = state.organizer.threads[id] || normaliseThreadEntry(null);
           state.organizer.threads[id] = Object.assign({}, e, { archived: !e.archived });
-          persist('organizer'); recompute(now); redraw(); return;
+          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
         }
         if (act === 'markall') {
           for (var i = 0; i < state.rows.length; i += 1) {
@@ -5409,10 +5476,11 @@
             if (state.settings.authorOnly === true && state.rows[i].authorState === 'unchecked') continue;
             state.organizer = markRead(state.organizer, state.rows[i].id, state.rows[i].postsTotal, now);
           }
-          persist('organizer'); recompute(now); redraw(); return;
+          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
         }
         if (act === 'catchup-done') {
-          state.organizer.lastCatchUpAt = now; persist('organizer'); redraw(); return;
+          state.organizer.lastCatchUpAt = now; persist('organizer');
+          recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
         }
         if (act === 'deep') {
           // The rows the user is looking at, not every row we hold: the search
@@ -5474,23 +5542,29 @@
               name: name, order: state.organizer.folders.length, forumIds: [],
             });
             persist('organizer'); recompute(now);
+            recordBadgeEvent({ type: 'tick' }, now);
           }
           redraw(); return;
         }
         if (act === 'folder-delete' && id) {
-          state.organizer = deleteFolder(state.organizer, id); persist('organizer'); recompute(now); redraw(); return;
+          state.organizer = deleteFolder(state.organizer, id); persist('organizer'); recompute(now);
+          recordBadgeEvent({ type: 'tick' }, now); redraw(); return;
         }
         if (act === 'export') {
-          copyText(doc, win, encodeState(state.organizer, state.drafts, win.btoa ? win.btoa.bind(win) : btoa));
+          copyText(doc, win, encodeState(state.organizer, state.drafts, win.btoa ? win.btoa.bind(win) : btoa, state.badges));
           notice('Export copied to the clipboard.', 'info'); redraw(); return;
         }
         if (act === 'import') {
-          var out = importState(state.organizer, state.drafts, valueOf('import-text'), win.atob ? win.atob.bind(win) : atob);
+          var out = importState(state.organizer, state.drafts, valueOf('import-text'),
+            win.atob ? win.atob.bind(win) : atob, state.badges);
           if (!out.ok) { notice(out.detail, 'error'); redraw(); return; }
           state.organizer = out.organizer; state.drafts = out.drafts;
+          if (out.badges) { state.badges = out.badges; persist('badges'); }
           persist('organizer'); persist('drafts'); recompute(now);
+          recordBadgeEvent({ type: 'tick' }, now);
           notice('Imported ' + out.summary.addedFolders + ' folders, ' + out.summary.changedThreads
-            + ' threads and ' + out.summary.addedDrafts + ' drafts.', 'info');
+            + ' threads and ' + out.summary.addedDrafts + ' drafts'
+            + (out.summary.addedBadges ? ', and ' + out.summary.addedBadges + ' badges' : '') + '.', 'info');
           redraw(); return;
         }
         if (act === 'clear-cache') { state.postCache = freshPostCache(); persist('postCache'); notice('Post cache cleared.', 'info'); redraw(); return; }
@@ -5520,7 +5594,10 @@
         if (act === 'filter') { state.searchQuery = value; redraw(); return; }
         if (act === 'folder-filter') { state.settings.folderFilter = value || null; persist('settings'); redraw(); return; }
         if (act === 'tag-filter') { state.settings.tagFilter = value || null; persist('settings'); redraw(); return; }
-        if (act === 'folder' && id) { state.organizer = setFolder(state.organizer, id, value || null); persist('organizer'); recompute(now); redraw(); return; }
+        if (act === 'folder' && id) {
+          state.organizer = setFolder(state.organizer, id, value || null); persist('organizer'); recompute(now);
+          recordBadgeEvent({ type: 'tick' }, now); redraw(); return;
+        }
         if (act === 'note-input' && id) {
           var noteNext = cloneOrganizer(state.organizer);
           entryOf(noteNext, id).note = safeString(value, 2000);
@@ -5576,6 +5653,7 @@
             if (at === -1) ids.push(fid); else ids.splice(at, 1);
             state.organizer = upsertFolder(state.organizer, Object.assign({}, folder, { forumIds: ids }));
             persist('organizer'); recompute(now);
+            recordBadgeEvent({ type: 'tick' }, now);
           }
           redraw(); return;
         }
