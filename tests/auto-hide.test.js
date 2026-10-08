@@ -126,3 +126,45 @@ test('auto-hide collapses and leaves takeover only when the setting is on', () =
   assert.strictEqual(raw.autoHideSettings(null), null);
   assert.strictEqual(raw.autoHideSettings(undefined), undefined);
 });
+
+// ---- markup ----------------------------------------------------------------
+
+test('every thread link in every view carries the marker, and Search on Torn does not', () => {
+  // Loops VIEWS, so a view added later (My posts, #2) is held to this too.
+  const env = loadUserscript({ location: forums(), now: NOW });
+  const api = env.exports;
+  api.state.feed.subscribed = [5, 6].map((id) => api.normaliseSubscribedRow({
+    id, forum_id: 61, title: 'Thread ' + id,
+    author: { id: 3, username: 'someone', karma: 1 },
+    posts: { new: 2, total: 10 },
+  }));
+  api.state.feed.categories = [{ id: 61, title: 'Tutorials', acronym: 'TG' }];
+  api.state.drafts = api.saveDraft(api.freshDrafts(), 5, 'a draft', NOW, 'Thread 5');
+  api.state.searchQuery = 'thread';
+  api.state.searchResults = {
+    mode: 'deep', query: 'thread',
+    posts: [{ threadId: '6', threadTitle: 'Thread 6', postId: 9, authorName: 'x', at: NOW, text: 'body' }],
+  };
+  api.recompute(NOW);
+
+  const perView = {};
+  for (const view of api.VIEWS) {
+    api.state.settings.view = view;
+    const html = api.panelHtml(api.buildPanelModel(NOW));
+    perView[view] = 0;
+    for (const tag of html.match(/<a [^>]*>/g) || []) {
+      if (/forums\.php#\/p=threads/.test(tag)) {
+        perView[view] += 1;
+        assert.match(tag, /data-tfcc-thread="\d+"/, view + ': unmarked thread link ' + tag);
+      } else {
+        assert.doesNotMatch(tag, /data-tfcc-thread/, view + ': a link that is not a thread is marked ' + tag);
+      }
+    }
+  }
+  // The fixture must actually reach every renderer, or the loop proves nothing.
+  for (const view of ['threads', 'catchup', 'search', 'drafts']) {
+    assert.ok(perView[view] > 0, view + ' rendered no thread link');
+  }
+  api.state.settings.view = 'search';
+  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /class="tfcc-linkbtn"/, 'Search on Torn was rendered and checked');
+});

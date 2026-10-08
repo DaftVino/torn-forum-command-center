@@ -2662,6 +2662,18 @@
       + '&t=' + row.numericId + '&b=0&a=0';
   }
 
+  // Purpose: marks an anchor the panel itself rendered as a link to a thread,
+  // so the panel's own click listener can recognise it (issue #8). It is our
+  // attribute on our markup, not a selector against Torn's, so Torn changing
+  // its page cannot break it. Read only by threadLinkOf.
+  var THREAD_LINK_ATTR = 'data-tfcc-thread';
+  // Anchors hold text only today; the margin covers a later <mark> or <span>.
+  var THREAD_LINK_MAX_DEPTH = 4;
+
+  function threadLinkAttr(id) {
+    return ' ' + THREAD_LINK_ATTR + '="' + escapeHtml(String(id)) + '"';
+  }
+
   function btn(action, label, extra) {
     return '<button type="button" data-act="' + escapeHtml(action) + '"'
       + (extra || '') + '>' + escapeHtml(label) + '</button>';
@@ -2686,7 +2698,8 @@
     var out = ['<div class="tfcc-row" data-id="' + escapeHtml(row.id) + '">'];
     out.push('<div class="tfcc-row-main">');
     if (row.pinned) out.push('<span class="tfcc-pinned" title="Pinned">*</span>');
-    out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '">'
+    out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '"'
+      + threadLinkAttr(row.id) + '>'
       + escapeHtml(row.title) + '</a></span>');
     if (row.unread > 0) {
       out.push('<span class="tfcc-unread">' + formatCount(row.unread) + ' new</span>');
@@ -2856,7 +2869,7 @@
       for (var p = 0; p < model.searchResults.posts.length; p += 1) {
         var hit = model.searchResults.posts[p];
         out.push('<div class="tfcc-hit"><div><a href="https://www.torn.com/forums.php#/p=threads&t='
-          + hit.threadId + '&b=0&a=0">' + escapeHtml(hit.threadTitle) + '</a> '
+          + hit.threadId + '&b=0&a=0"' + threadLinkAttr(hit.threadId) + '>' + escapeHtml(hit.threadTitle) + '</a> '
           + '<span class="tfcc-note">' + escapeHtml(hit.authorName) + ', '
           + escapeHtml(formatRelativeTime(hit.at, model.now)) + '</span></div>');
         out.push('<div class="tfcc-hit-text">' + escapeHtml(hit.text.slice(0, 400)) + '</div></div>');
@@ -2906,7 +2919,7 @@
     for (var i = 0; i < model.drafts.length; i += 1) {
       var dr = model.drafts[i];
       out.push('<div class="tfcc-hit"><div><a href="https://www.torn.com/forums.php#/p=threads&t='
-        + escapeHtml(dr.threadId) + '&b=0&a=0">'
+        + escapeHtml(dr.threadId) + '&b=0&a=0"' + threadLinkAttr(dr.threadId) + '>'
         + escapeHtml(dr.title || ('Thread ' + dr.threadId)) + '</a> '
         + '<span class="tfcc-note">' + escapeHtml(formatRelativeTime(dr.updatedAt, model.now))
         + '</span></div>');

@@ -132,8 +132,8 @@ const MUTATIONS = [
     name: 'a thread title is written to the panel without escaping',
     suite: 'tests/panel.test.js',
     apply: (s) => s.replace(
-      "out.push('<span class=\"tfcc-row-title\"><a href=\"' + escapeHtml(threadUrl(row)) + '\">'\n      + escapeHtml(row.title) + '</a></span>');",
-      "out.push('<span class=\"tfcc-row-title\"><a href=\"' + escapeHtml(threadUrl(row)) + '\">'\n      + row.title + '</a></span>');",
+      "      + threadLinkAttr(row.id) + '>'\n      + escapeHtml(row.title) + '</a></span>');",
+      "      + threadLinkAttr(row.id) + '>'\n      + row.title + '</a></span>');",
     ),
   },
   {
