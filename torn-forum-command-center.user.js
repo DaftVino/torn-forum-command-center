@@ -1159,6 +1159,49 @@
     return out;
   }
 
+  var AUTHOR_REASON_TEXT = Object.freeze({
+    never: 'Not checked for author posts yet. Torn reports new posts from someone. Refresh, or raise Activity lookups in Settings.',
+    stale: 'New posts since the last check. Not rechecked yet. Refresh to check again.',
+    'too-many': 'More posts are new than one refresh reads for a thread, so they could not all be read. None of those read is by the author; the older ones were not checked. Open the thread or mark it read to start counting again.',
+    'no-author': 'The thread author is not known, so their posts cannot be picked out.',
+    'no-marker': 'Open this thread or mark it read once, so there is a point to count from.',
+  });
+
+  // The point after which an author post counts as new: the last time the
+  // user saw the thread (a captured visit or Mark read), else when the script
+  // first saw it. Posts from before the install are deliberately not flagged.
+  function authorSinceFor(entry) {
+    if (!entry) return 0;
+    return entry.lastVisitedAt > 0 ? entry.lastVisitedAt : Math.max(0, toInt(entry.firstSeenAt, 0));
+  }
+
+  // The author-only view of one row: 'none' (known: nothing new by the
+  // author), 'author' (an exact count), 'author-atleast' (a lower bound) or
+  // 'unchecked' (unknown, with a reason). An unknown is never folded into none.
+  function authorStateFor(apiRow, entry, u) {
+    var e = entry || normaliseThreadEntry(null);
+    function unchecked(reason) { return { state: 'unchecked', count: 0, latestAt: 0, reason: reason }; }
+    if (!u || u.dismissed || u.tornUnread === 0) return { state: 'none', count: 0, latestAt: 0, reason: '' };
+    var authorId = (apiRow && apiRow.authorId) || e.authorId || 0;
+    if (!authorId) return unchecked('no-author');
+    var since = authorSinceFor(e);
+    if (!since) return unchecked('no-marker');
+    if (!e.authorCheckedAt) return unchecked('never');
+    if (e.authorCheckSince !== since) return unchecked('stale');
+    if (e.authorCheckTotal === u.postsTotal) {
+      if (e.authorNewCount > 0) {
+        return { state: e.authorCheckComplete ? 'author' : 'author-atleast', count: e.authorNewCount, latestAt: e.authorLatestAt, reason: '' };
+      }
+      // A walk cut short with no author post is never a known zero: the author
+      // may have posted among the new posts the walk did not reach.
+      return e.authorCheckComplete ? { state: 'none', count: 0, latestAt: 0, reason: '' } : unchecked('too-many');
+    }
+    if (e.authorNewCount > 0) {
+      return { state: 'author-atleast', count: e.authorNewCount, latestAt: e.authorLatestAt, reason: 'grown' };
+    }
+    return unchecked('stale');
+  }
+
   // A subscribed thread keeps Torn's own count, exactly as in Threads. Only a
   // thread Torn gives no count for is counted here, and an unknown total is
   // reported as unchecked so it can never pass for a thread checked and quiet.

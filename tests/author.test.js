@@ -150,3 +150,80 @@ test('posts before the marker are skipped, so an ignored from can never claim th
   const marker = (oldest[oldest.length - 1].created_time + 1) * 1000;
   assert.strictEqual(api.summariseAuthorPosts(oldest, LARGE_AUTHOR, marker, false).count, 0);
 });
+
+// -- per-row author state ---------------------------------------------------
+
+const sub = (extra) => Object.assign({ id: 1, forumId: 61, title: 'T', authorId: 5, authorName: 'a', postsNew: 3, postsTotal: 12 }, extra);
+const entry = (extra) => api.normaliseThreadEntry(Object.assign({ lastVisitedAt: SINCE }, extra));
+const state = (s, e) => api.authorStateFor(s, e, api.unreadFor(s, e));
+
+test('the marker is the last visit or mark read, else first seen', () => {
+  assert.strictEqual(api.authorSinceFor(entry({})), SINCE);
+  assert.strictEqual(api.authorSinceFor(api.normaliseThreadEntry({ firstSeenAt: 7 })), 7);
+  assert.strictEqual(api.authorSinceFor(api.normaliseThreadEntry(null)), 0);
+});
+
+test('nothing unread or dismissed is a known none, with no lookup needed', () => {
+  assert.strictEqual(state(sub({ postsNew: 0 }), entry({})).state, 'none');
+  assert.strictEqual(state(sub(), entry({ lastSeenTotal: 12 })).state, 'none');
+});
+
+test('never checked is unchecked, never silently none', () => {
+  const r = state(sub(), entry({}));
+  assert.deepStrictEqual([r.state, r.reason, r.count], ['unchecked', 'never', 0]);
+});
+
+test('a valid check with author posts is an exact count', () => {
+  const e = entry({ authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 2, authorLatestAt: SINCE + 5, authorCheckComplete: true });
+  const r = state(sub(), e);
+  assert.deepStrictEqual([r.state, r.count, r.latestAt], ['author', 2, SINCE + 5]);
+});
+
+test('a valid check with only non-author posts is none', () => {
+  const e = entry({ authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 0, authorCheckComplete: true });
+  assert.strictEqual(state(sub(), e).state, 'none');
+});
+
+test('a walk cut short with no author post is unchecked too-many, not none', () => {
+  const e = entry({ authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 0, authorCheckComplete: false, authorCheckReason: 'too-many' });
+  assert.deepStrictEqual([state(sub(), e).state, state(sub(), e).reason], ['unchecked', 'too-many']);
+});
+
+test('too-many is re-checked only when the thread grows or the marker moves', () => {
+  // While nothing changes the same request returns the same 20, so a lookup
+  // would be wasted.
+  const base = { authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 0, authorCheckComplete: false, authorCheckReason: 'too-many' };
+  assert.strictEqual(state(sub(), entry(base)).reason, 'too-many');
+  assert.strictEqual(state(sub({ postsTotal: 13 }), entry(base)).reason, 'stale', 'a new post may be the author\'s');
+  const moved = entry(Object.assign({}, base, { lastVisitedAt: SINCE + 60000 }));
+  assert.strictEqual(state(sub(), moved).reason, 'stale', 'a visit or mark read brings the older posts back in range');
+});
+
+test('a walk cut short with author posts is a lower bound', () => {
+  const e = entry({ authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 1, authorLatestAt: SINCE + 5, authorCheckComplete: false });
+  assert.strictEqual(state(sub(), e).state, 'author-atleast');
+});
+
+test('growth after a positive check keeps a lower bound; after a zero check it goes stale', () => {
+  const pos = entry({ authorCheckedAt: 1, authorCheckTotal: 10, authorCheckSince: SINCE, authorNewCount: 1, authorLatestAt: SINCE + 5, authorCheckComplete: true });
+  assert.strictEqual(state(sub(), pos).state, 'author-atleast');
+  const zero = entry({ authorCheckedAt: 1, authorCheckTotal: 10, authorCheckSince: SINCE, authorNewCount: 0, authorCheckComplete: true });
+  assert.deepStrictEqual([state(sub(), zero).state, state(sub(), zero).reason], ['unchecked', 'stale']);
+});
+
+test('moving the marker (mark read, visit) invalidates an old positive check', () => {
+  const e = entry({ lastVisitedAt: SINCE + 60000, authorCheckedAt: 1, authorCheckTotal: 12, authorCheckSince: SINCE, authorNewCount: 2, authorCheckComplete: true });
+  assert.deepStrictEqual([state(sub(), e).state, state(sub(), e).reason], ['unchecked', 'stale']);
+});
+
+test('an unknown author or no marker is unchecked with its own reason', () => {
+  assert.strictEqual(state(sub({ authorId: 0 }), entry({})).reason, 'no-author');
+  assert.strictEqual(state(sub(), api.normaliseThreadEntry(null)).reason, 'no-marker');
+});
+
+test('every reason has ASCII tooltip text that never quotes a count', () => {
+  for (const k of ['never', 'stale', 'too-many', 'no-author', 'no-marker']) {
+    assert.match(api.AUTHOR_REASON_TEXT[k], /^[\x20-\x7e]+$/);
+    assert.doesNotMatch(api.AUTHOR_REASON_TEXT[k], /\d+ new/);
+  }
+});

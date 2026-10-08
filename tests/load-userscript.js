@@ -60,7 +60,7 @@ const EXPORT_NAMES = [
   'ACTIVITY_SOURCES', 'resolveLastActivity', 'unreadFor', 'mergeThreads',
   'SORT_MODES', 'SORT_LABELS', 'sortThreads', 'catchUpList',
   'ROWS_SHOWN_OPTIONS', 'CAPPED_VIEWS', 'UNCAPPED_VIEWS', 'VIEW_LABELS', 'capRows', 'renderCapLine',
-  'authorPageStep', 'summariseAuthorPosts', 'AUTHOR_MAX_PAGES',
+  'authorPageStep', 'summariseAuthorPosts', 'AUTHOR_MAX_PAGES', 'authorSinceFor', 'authorStateFor', 'AUTHOR_REASON_TEXT',
   // engine: search
   'parseQuery', 'matchThread', 'matchPost', 'searchMetadata', 'searchPosts',
   'buildNativeSearchUrl', 'stripHtml',
