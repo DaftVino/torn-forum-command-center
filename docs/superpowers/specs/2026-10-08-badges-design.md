@@ -433,7 +433,7 @@ in its context.
 | 5 | `bookworm` | Bookworm | Attention | Gold | `visits` | 500 | Make 500 focused thread visits. | Months, not days: one thread counts once a day, and each needs 15 s of focus. |
 | 6 | `explorer` | Explorer | Attention | Bronze | `forums` | 3 | Make focused visits in 3 different forums. | Most players live in one or two forums. A third is a deliberate step. |
 | 7 | `well-travelled` | Well travelled | Attention | Silver | `forums` | 7 | ... in 7 different forums. | Real breadth. |
-| 8 | `cartographer` | Cartographer | Attention | Gold | `forums` | 12 | ... in 12 different forums. | Most of the public board. Open question 1 asks to confirm the forum count. |
+| 8 | `cartographer` | Cartographer | Attention | Gold | `forums` | 12 | ... in 12 different forums. | About a quarter of the 43 forums (live count, 2026-10-08). |
 | 9 | `tidy-desk` | Tidy desk | Care | Silver | `tidy` (0/1) | 1 | Follow at least 10 threads and leave none Unfiled. | Organisation that pays off daily. The floor of 10 stops it being trivial. Folder rules count, because setting up rules is the skill. |
 | 10 | `backlog-buster` | Backlog buster | Care | Silver | `bigBacklog` | 20 | Start a day with 20 or more in Catch up, make focused visits to 10 of those threads, and finish with Catch up empty. | Digging out after time away is the hardest real use. Tied to the backlog's own ids (5.5). |
 | 11 | `streak-3` | Three days | Streak | Bronze | `best` | 3 | Finish 3 Torn days in a row with Catch up empty. | The early win, within the first week. |
@@ -861,13 +861,12 @@ second PR fail until it is done.
 
 ## 13. Open questions
 
-1. **How many forums does `forum/categories` list for a normal account?**
-   **Release gate.** The Debug report already prints `categories: N` (the
-   cached `forum/categories` count). If N is under 15, Cartographer at 12 is
-   near-total and its target drops to 10 before release (the `BADGES` table,
-   its test row, this table and the CHANGELOG text). A forum outside that list
-   (a faction forum) can still count, so N is a lower bound on what is
-   reachable. The plan puts this in `docs/qa-checklist.md` as a blocking line.
+1. **How many forums does `forum/categories` list?** **Answered:**
+   43, live on 2026-10-08 (`docs/reference/torn-api-live-findings-2026-10-08.md`
+   finding 14, fixture `tests/fixtures/forum-categories.json`, PR #15).
+   Cartographer at 12 is about a quarter of the board, so the threshold
+   stands and is no longer a release gate. A faction forum outside that list
+   can also count, so 43 is a lower bound on what is reachable.
 2. **Torn PDA cross-tab storage.** Does PDA's `GM_getValue` see another PDA
    tab's write? If not, two PDA tabs can each count the same visit once. This
    is accepted under best-effort accounting.
