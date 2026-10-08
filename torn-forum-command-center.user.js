@@ -2888,6 +2888,48 @@
     return out;
   }
 
+  // Icons are SVG paths written in ASCII: no emoji, no icon font, no <text>.
+  // Frames carry the tier by shape as well as colour.
+  var BADGE_FRAMES = Object.freeze({
+    bronze: 'M1 8a7 7 0 1 0 14 0a7 7 0 1 0 -14 0zM2.5 8a5.5 5.5 0 1 1 11 0a5.5 5.5 0 1 1 -11 0z',
+    silver: 'M8 0.8L14.2 4.4V11.6L8 15.2L1.8 11.6V4.4ZM8 2.5L12.7 5.2V10.8L8 13.5L3.3 10.8V5.2Z',
+    gold: 'M5.1 1H10.9L15 5.1V10.9L10.9 15H5.1L1 10.9V5.1ZM5.7 2.5H10.3L13.5 5.7V10.3L10.3 13.5H5.7L2.5 10.3V5.7Z',
+    legend: 'M1 8a7 7 0 1 0 14 0a7 7 0 1 0 -14 0zM2 8a6 6 0 1 1 12 0a6 6 0 1 1 -12 0z'
+      + 'M3 8a5 5 0 1 0 10 0a5 5 0 1 0 -10 0zM4 8a4 4 0 1 1 8 0a4 4 0 1 1 -8 0z',
+  });
+  var BADGE_GLYPHS = Object.freeze({
+    plug: 'M6 4h1v2h2V4h1v2h1v2a3 3 0 0 1 -2.5 3V12h-1v-1A3 3 0 0 1 5 8V6h1z',
+    folder: 'M4.5 5.5h2.5l1 1h3.5v4.5h-7z',
+    check: 'M5 8.2l1 -1 1.5 1.5 3.5 -3.5 1 1 -4.5 4.5z',
+    book: 'M4.5 5.5h3v5h-3zM8.5 5.5h3v5h-3z',
+    compass: 'M8 4.5l1.2 3.5 -1.2 3.5 -1.2 -3.5z',
+    trays: 'M4.5 5h7v1.5h-7zM4.5 7.5h7V9h-7zM4.5 10h7v1.5h-7z',
+    broom: 'M9.5 4l1 0.6 -2 3.4 1.5 0.9 -2.5 3.6 -3 -1.8 2.5 -3.4 1.4 0.8z',
+    flame: 'M8 4c1.5 1.5 3 3 3 4.8A3 3 0 0 1 5 8.8C5 7.5 6 7 6.5 6c0.3 1 1 1.3 1.5 1.5C8.2 6.5 8 5.2 8 4z',
+    // Chip glyphs fill the whole 16 x 16 box.
+    cup: 'M3 2h10v1h2v3a3 3 0 0 1 -3 3h-0.2A4 4 0 0 1 9 11.4V13h2v2H5v-2h2v-1.6A4 4 0 0 1 4.2 9H4'
+      + 'a3 3 0 0 1 -3 -3V3h2zM2.5 4.5v1.5a1.5 1.5 0 0 0 0.6 1.2V4.5zM13 4.5v2.7a1.5 1.5 0 0 0 0.5 -1.2V4.5z',
+    'cup-outline': 'M3 2h10v1h2v3a3 3 0 0 1 -3 3h-0.2A4 4 0 0 1 9 11.4V13h2v2H5v-2h2v-1.6A4 4 0 0 1 4.2 9H4'
+      + 'a3 3 0 0 1 -3 -3V3h2zM4.5 3.5h7v4a3.5 3.5 0 0 1 -7 0z',
+    'streak-on': 'M8 1c2.5 2.5 5 5 5 8a5 5 0 0 1 -10 0c0 -2 1.5 -3 2.3 -4.5c0.5 1.5 1.5 2 2.2 2.3C7.8 5 8 3 8 1z',
+    'streak-off': 'M8 1c2.5 2.5 5 5 5 8a5 5 0 0 1 -10 0c0 -2 1.5 -3 2.3 -4.5c0.5 1.5 1.5 2 2.2 2.3C7.8 5 8 3 8 1z'
+      + 'M8 4.5c1.5 1.6 3.5 3.3 3.5 4.5a3.5 3.5 0 0 1 -7 0c0 -1 0.6 -1.8 1.1 -2.6c0.6 1 1.6 1.4 2.4 1.6z',
+  });
+
+  // cls is 'bronze' | 'silver' | 'gold' | 'legend' | 'locked' | 'plain'.
+  // glyph names a BADGE_GLYPHS entry. framed draws the tier frame around it.
+  function badgeIcon(cls, glyph, size, framed) {
+    var px = toInt(size, 16);
+    var colour = cls === 'locked' ? 'tfcc-locked' : (cls === 'plain' ? '' : 'tfcc-tier-' + cls);
+    var frameKey = cls === 'locked' ? 'bronze' : cls;
+    var paths = [];
+    if (framed && Object.prototype.hasOwnProperty.call(BADGE_FRAMES, frameKey)) paths.push(BADGE_FRAMES[frameKey]);
+    if (Object.prototype.hasOwnProperty.call(BADGE_GLYPHS, glyph)) paths.push(BADGE_GLYPHS[glyph]);
+    return '<svg class="tfcc-ico' + (colour ? ' ' + colour : '') + '" viewBox="0 0 16 16" width="' + px
+      + '" height="' + px + '" aria-hidden="true" focusable="false">'
+      + paths.map(function (d) { return '<path d="' + d + '"/>'; }).join('') + '</svg>';
+  }
+
   // ---- ENGINE END ------------------------------------------------------
 
   // -- storage runtime -----------------------------------------------------
@@ -4069,6 +4111,8 @@
       '  --tfcc-text-sm: 12px; --tfcc-text: 14px; --tfcc-text-lg: 1.2em;',
       '  --tfcc-gap-xs: 4px; --tfcc-gap-sm: 6px; --tfcc-gap: 8px; --tfcc-gap-lg: 14px;',
       '  --tfcc-focus-ring: 2px solid var(--tm-good-text);',
+      '  --tfcc-tier-bronze: #d6955b; --tfcc-tier-silver: #c3ccd6; --tfcc-tier-gold: #e8c06a;',
+      '  --tfcc-tier-legend: #c9a2ff; --tfcc-locked: #8a8a8a;',
       '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
       '  --tfcc-mine-text: #141414; --tfcc-mine-border: #d9d9d9;',
       '}',
@@ -4078,6 +4122,8 @@
       '  --tm-text: #141414; --tm-muted: #4a4a4a; --tm-meta: #3a3a3a;',
       '  --tm-good-bg: #cfe8d4; --tm-good-text: #1c5c2c; --tm-bad-text: #a11414;',
       '  --tm-warn-text: #7a5600; --tm-accent-text: #14507d;',
+      '  --tfcc-tier-bronze: #8c4e17; --tfcc-tier-silver: #4f5966; --tfcc-tier-gold: #7a5600;',
+      '  --tfcc-tier-legend: #6a2fb5; --tfcc-locked: #6e6e6e;',
       // Same fill and text as dark; only the border differs, because a light
       // grey fill on the light panel is not itself a visible boundary.
       '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
@@ -4107,7 +4153,38 @@
       '  overflow-y: auto; overflow-x: hidden; padding: 12px; }',
       '#' + PANEL_ID + ' .tfcc-head { display: flex; align-items: center; gap: var(--tfcc-gap);',
       '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap); }',
-      '#' + PANEL_ID + ' .tfcc-title { font-weight: bold; margin-right: auto; }',
+      '#' + PANEL_ID + ' .tfcc-title { font-weight: bold; }',
+      // Title group left, control group right. The buttons are one nowrap unit,
+      // so at 320-360 px the control group wraps onto its own line WHOLE and
+      // Refresh, Expand and Hide stay together, in order.
+      '#' + PANEL_ID + ' .tfcc-head-id { display: flex; align-items: center; gap: var(--tfcc-gap-sm);',
+      '  flex-wrap: wrap; min-width: 0; }',
+      '#' + PANEL_ID + ' .tfcc-head-ctl { display: flex; align-items: center; gap: var(--tfcc-gap);',
+      '  flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }',
+      '#' + PANEL_ID + ' .tfcc-head-btns { display: inline-flex; gap: var(--tfcc-gap-xs); flex-wrap: nowrap; }',
+      '#' + PANEL_ID + ' button.tfcc-chip { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto;',
+      '  white-space: nowrap; min-height: 28px; padding: 2px 8px; border-radius: 14px;',
+      '  font-size: var(--tfcc-text-sm); font-weight: bold; }',
+      '#' + PANEL_ID + ' .tfcc-chip * { pointer-events: none; }',
+      '#' + PANEL_ID + ' .tfcc-ico { display: inline-block; vertical-align: middle; flex: 0 0 auto; }',
+      '#' + PANEL_ID + ' .tfcc-ico path { fill: currentColor; fill-rule: evenodd; stroke: none; }',
+      '#' + PANEL_ID + ' .tfcc-tier-bronze { color: var(--tfcc-tier-bronze); }',
+      '#' + PANEL_ID + ' .tfcc-tier-silver { color: var(--tfcc-tier-silver); }',
+      '#' + PANEL_ID + ' .tfcc-tier-gold { color: var(--tfcc-tier-gold); }',
+      '#' + PANEL_ID + ' .tfcc-tier-legend { color: var(--tfcc-tier-legend); }',
+      '#' + PANEL_ID + ' .tfcc-locked { color: var(--tfcc-locked); }',
+      '#' + PANEL_ID + ' .tfcc-shelf, #' + PANEL_ID + ' .tfcc-toast { border: 1px solid var(--tm-border);',
+      '  border-radius: 4px; padding: var(--tfcc-gap-sm) var(--tfcc-gap); margin-bottom: var(--tfcc-gap);',
+      '  background: var(--tm-bg-2); }',
+      '#' + PANEL_ID + ' .tfcc-badge-row { display: flex; gap: var(--tfcc-gap-sm); align-items: center;',
+      '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap-xs); }',
+      '#' + PANEL_ID + ' .tfcc-bar-track { display: inline-block; background: var(--tm-bg-3);',
+      '  border: 1px solid var(--tm-border); border-radius: 3px; height: 8px; width: 120px; max-width: 40%; }',
+      '#' + PANEL_ID + ' .tfcc-bar-fill { display: block; background: var(--tm-good-text); height: 100%; }',
+      '@media (prefers-reduced-motion: no-preference) {',
+      '  #' + PANEL_ID + ' .tfcc-toast-new { animation: tfcc-fade-in 160ms ease-out; }',
+      '}',
+      '@keyframes tfcc-fade-in { from { opacity: 0; } to { opacity: 1; } }',
       '#' + PANEL_ID + ' .tfcc-badge { background: var(--tm-good-bg); color: var(--tm-text);',
       '  border-radius: 10px; padding: 0 8px; font-size: var(--tfcc-text-sm); font-weight: bold; }',
       '#' + PANEL_ID + ' button, #' + PANEL_ID + ' select, #' + PANEL_ID + ' input,',
@@ -4274,6 +4351,35 @@
 
   // ---- panel model and rendering -----------------------------------------
 
+  function badgeModel(now) {
+    if (!state.settings.badges) return { enabled: false };
+    var facts = badgeFacts({
+      organizer: state.organizer, feed: state.feed,
+      hasKey: isKeyShaped(loadApiKey()), keyRejected: state.settings.keyRejected,
+    });
+    var ev = evaluateBadges(state.badges, facts);
+    var earned = BADGES.filter(function (b) {
+      return Object.prototype.hasOwnProperty.call(state.badges.earned, b.id);
+    }).sort(function (a, b) {
+      var t = BADGE_TIER_RANK[b.tier] - BADGE_TIER_RANK[a.tier];
+      return t !== 0 ? t : state.badges.earned[b.id] - state.badges.earned[a.id];
+    });
+    var next = nextBadge(ev.progress);
+    return {
+      enabled: true,
+      earnedCount: earned.length,
+      total: BADGES.length,
+      bestTier: earned.length ? earned[0].tier : '',
+      streak: streakView(state.badges.streak, tctDay(now)),
+      earnedList: earned,
+      next: next ? { badge: badgeById(next.id), value: next.value, target: next.target } : null,
+      progress: ev.progress,
+      shelfOpen: state.badgeShelfOpen,
+      catalogueOpen: state.badgeCatalogueOpen,
+      toast: state.badgeToast ? { text: state.badgeToast.text, announce: !state.badgeToast.announced } : null,
+    };
+  }
+
   function loadingModel(now) {
     return {
       loading: true,
@@ -4285,6 +4391,7 @@
       notices: [],
       rows: [],
       now: now,
+      badges: badgeModel(now),
     };
   }
 
@@ -4300,6 +4407,7 @@
       notices: [],
       rows: [],
       now: now,
+      badges: badgeModel(now),
     };
   }
 
@@ -4364,6 +4472,7 @@
       },
       // Whole on purpose: the Catch up nav count reads its length.
       catchUp: catchUp,
+      badges: badgeModel(now),
       // What the capped views render. model.rows, model.catchUp and model.mine
       // stay whole, so Search and the nav counts are uncapped by construction.
       capped: {
@@ -4809,6 +4918,53 @@
     return out.join('');
   }
 
+  var BADGE_METRIC_LABELS = Object.freeze({
+    visits: 'focused thread visits', forums: 'forums explored', best: 'days in a row',
+    checkinDays: 'days', bigBacklog: 'threads in the backlog',
+  });
+
+  function renderBadgeCatalogue(model) {
+    var b = model.badges || { enabled: false };
+    var out = ['<div class="tfcc-section"><h4>Badges</h4>'];
+    out.push('<div class="tfcc-kv"><label for="tfcc-badges">Show badges and record progress</label>'
+      + '<input id="tfcc-badges" type="checkbox" data-act="badges-toggle"' + (b.enabled ? ' checked' : '') + '></div>');
+    out.push('<p class="tfcc-note">Earned from what you do here: focused visits to threads, finishing Torn days '
+      + 'with Catch up empty, and organising. A visit counts once a Torn day, after 15 seconds with the page in '
+      + 'front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent anywhere, and no request is made. '
+      + 'Turning this off stops recording, and a streak does not survive days with it off.</p>');
+    if (!b.enabled) { out.push('</div>'); return out.join(''); }
+    out.push('<div class="tfcc-badge-row"><button type="button" data-act="badges-catalogue" aria-expanded="'
+      + (b.catalogueOpen ? 'true' : 'false') + '">' + (b.catalogueOpen ? 'Hide the list' : 'Show all '
+      + b.total + ' badges') + '</button><span class="tfcc-note">' + b.earnedCount + ' of ' + b.total
+      + ' earned</span></div>');
+    if (!b.catalogueOpen) { out.push('</div>'); return out.join(''); }
+    out.push('<p class="tfcc-note">Focused thread visits: ' + state.badges.visits + '. Forums explored: '
+      + state.badges.forums.length + '. Streak: current ' + b.streak.current + ', best ' + b.streak.best + '.</p>');
+    var byId = {};
+    for (var p = 0; p < b.progress.length; p += 1) byId[b.progress[p].id] = b.progress[p];
+    for (var g = 0; g < BADGE_GROUPS.length; g += 1) {
+      out.push('<h4>' + escapeHtml(BADGE_GROUPS[g].label) + '</h4>');
+      for (var i = 0; i < BADGES.length; i += 1) {
+        var d = BADGES[i];
+        if (d.group !== BADGE_GROUPS[g].id) continue;
+        var pr = byId[d.id];
+        out.push('<div class="tfcc-badge-row">' + badgeIcon(pr.earned ? d.tier : 'locked', d.glyph, 20, true)
+          + '<strong>' + escapeHtml(d.name) + '</strong><span class="tfcc-note">'
+          + escapeHtml(BADGE_TIER_LABELS[d.tier]) + '</span>');
+        if (pr.earned) out.push('<span class="tfcc-note">Earned ' + escapeHtml(formatAbsoluteTime(pr.earned)) + '</span>');
+        else if (pr.target > 1) {
+          out.push(renderBadgeBar(pr.value, pr.target));
+          if (Object.prototype.hasOwnProperty.call(BADGE_METRIC_LABELS, d.metric)) {
+            out.push('<span class="tfcc-note">' + escapeHtml(BADGE_METRIC_LABELS[d.metric]) + '</span>');
+          }
+        } else out.push('<span class="tfcc-note">Not yet</span>');
+        out.push('</div><p class="tfcc-note">' + escapeHtml(d.rule) + '</p>');
+      }
+    }
+    out.push('</div>');
+    return out.join('');
+  }
+
   function renderSettingsView(model) {
     var out = [];
     out.push('<div class="tfcc-section"><h4>Torn API key</h4>');
@@ -4975,6 +5131,8 @@
       + 'counts and the last error. It never carries your key, your drafts, your notes or any post text.</p>');
     out.push('</div>');
 
+    out.push(renderBadgeCatalogue(model));
+
     out.push('<p class="tfcc-note">Torn Forum Command Center ' + escapeHtml(model.version)
       + '. Reads only. It never posts, replies, subscribes or changes anything on your account.</p>');
     return out.join('');
@@ -5031,20 +5189,96 @@
       + escapeHtml(said + title) + '">' + lead + renderKarma(karma) + '</button></div>';
   }
 
+  function renderHeadId(model) {
+    return '<div class="tfcc-head-id"><span class="tfcc-title">Forum Command Center</span>'
+      + renderBadgeChip(model) + '</div>';
+  }
+
+  function streakWords(s) {
+    return s.current + ' ' + plural(s.current, 'day', 'days');
+  }
+
+  // One chip: a cup in the best earned tier's colour, the count, then the
+  // streak. Its children ignore pointer events, because click delegation
+  // reads data-act from the event target and an SVG child has none.
+  function renderBadgeChip(model) {
+    var b = model.badges;
+    if (!b || !b.enabled) return '';
+    var label = 'Badges: ' + b.earnedCount + ' of ' + b.total + '.';
+    var parts = [b.bestTier ? badgeIcon(b.bestTier, 'cup', 16) : badgeIcon('locked', 'cup-outline', 16),
+      '<span>' + b.earnedCount + '</span>'];
+    if (b.streak.state !== 'none') {
+      label += ' Streak ' + streakWords(b.streak)
+        + (b.streak.state === 'counted' ? ', today counted.' : ', today not yet.');
+      parts.push(badgeIcon('plain', b.streak.state === 'counted' ? 'streak-on' : 'streak-off', 16));
+      parts.push('<span>' + b.streak.current + '</span>');
+    }
+    label += ' Show badges.';
+    return '<button type="button" class="tfcc-chip" data-act="badges-shelf" aria-expanded="'
+      + (b.shelfOpen ? 'true' : 'false') + '" aria-label="' + escapeHtml(label) + '">'
+      + parts.join('') + '</button>';
+  }
+
+  function renderBadgeBar(value, target) {
+    var pct = target > 0 ? Math.round((Math.min(value, target) / target) * 100) : 0;
+    return '<span class="tfcc-bar-track" role="progressbar" aria-valuenow="' + value + '" aria-valuemin="0"'
+      + ' aria-valuemax="' + target + '"><span class="tfcc-bar-fill" style="width: ' + pct + '%"></span></span>'
+      + '<span class="tfcc-note">' + value + ' / ' + target + '</span>';
+  }
+
+  function renderBadgeShelf(model) {
+    var b = model.badges;
+    if (!b || !b.enabled || !b.shelfOpen) return '';
+    var out = ['<div class="tfcc-shelf">'];
+    var s = b.streak;
+    if (s.state === 'none') out.push('<div>No streak yet. Finish a Torn day with Catch up empty to start one.</div>');
+    else if (s.state === 'broken') out.push('<div>Streak 0 Torn days. Best ' + s.best + '.</div>');
+    else {
+      out.push('<div>Streak ' + s.current + ' Torn ' + plural(s.current, 'day', 'days')
+        + (s.state === 'counted' ? ', today counted.' : ', today not yet.') + ' Best ' + s.best + '.</div>');
+    }
+    if (b.next) {
+      out.push('<div class="tfcc-badge-row">Next: ' + escapeHtml(b.next.badge.name) + ' '
+        + renderBadgeBar(b.next.value, b.next.target) + '</div>');
+    }
+    if (b.earnedList.length) {
+      out.push('<div class="tfcc-badge-row">');
+      for (var i = 0; i < b.earnedList.length && i < 6; i += 1) {
+        var e = b.earnedList[i];
+        out.push('<span>' + badgeIcon(e.tier, e.glyph, 20, true) + ' ' + escapeHtml(e.name) + '</span>');
+      }
+      if (b.earnedList.length > 6) out.push('<span class="tfcc-note">+' + (b.earnedList.length - 6) + ' more</span>');
+      out.push('</div>');
+    }
+    out.push('<div class="tfcc-badge-row"><span class="tfcc-note">' + b.earnedCount + ' of ' + b.total
+      + ' earned</span>' + btn('badges-all', 'All badges') + '</div>');
+    out.push('</div>');
+    return out.join('');
+  }
+
+  function renderBadgeToast(model) {
+    var b = model.badges;
+    if (!b || !b.enabled || !b.toast) return '';
+    return '<div class="tfcc-toast' + (b.toast.announce ? ' tfcc-toast-new' : '') + '"'
+      + (b.toast.announce ? ' role="status"' : '') + '>' + escapeHtml(b.toast.text)
+      + ' ' + btn('badges-toast-dismiss', 'Dismiss') + '</div>';
+  }
+
   function panelHtml(model) {
     if (model.loading) {
-      return '<div class="tfcc-head"><span class="tfcc-title">Forum Command Center</span></div>'
+      return '<div class="tfcc-head">' + renderHeadId(model) + '</div>'
         + '<div class="tfcc-empty">Loading your subscribed threads...</div>';
     }
     if (model.fatal) {
-      return '<div class="tfcc-head"><span class="tfcc-title">Forum Command Center</span></div>'
+      return '<div class="tfcc-head">' + renderHeadId(model) + '</div>'
         + '<div class="tfcc-error">' + escapeHtml(model.fatal.detail) + '</div>'
         + '<div class="tfcc-actions">' + btn('refresh', 'Try again') + '</div>';
     }
 
     var out = [];
     out.push('<div class="tfcc-head">');
-    out.push('<span class="tfcc-title">Forum Command Center</span>');
+    out.push(renderHeadId(model));
+    out.push('<div class="tfcc-head-ctl">');
     if (model.totals.unread > 0) {
       out.push('<span class="tfcc-badge">' + formatCount(model.totals.unread)
         + (model.authorOnly ? ' new by author' : ' new') + '</span>');
@@ -5053,11 +5287,14 @@
       out.push('<span class="tfcc-note">' + model.totals.unchecked + ' not checked</span>');
     }
     out.push('<span class="tfcc-note">' + model.totals.subscribed + ' subscribed</span>');
+    out.push('<span class="tfcc-head-btns">');
     out.push(btn('refresh', model.refreshing ? 'Refreshing...' : 'Refresh'));
     out.push('<button type="button" data-act="takeover" aria-pressed="'
       + (model.takeover ? 'true' : 'false') + '">' + (model.takeover ? 'Shrink' : 'Expand') + '</button>');
     out.push(btn('collapse', model.collapsed ? 'Show' : 'Hide'));
-    out.push('</div>');
+    out.push('</span></div></div>');
+    out.push(renderBadgeShelf(model));
+    out.push(renderBadgeToast(model));
 
     if (model.collapsed) return out.join('');
     out.push(renderReactions(model));
@@ -5456,6 +5693,7 @@
     state.replyBoxFound = !!findReplyBox(doc);
     attachAutosave(doc, win);
     renderPanel(doc, win, buildPanelModel(now), handlers, force);
+    if (state.badgeToast && !state.pendingRedraw) state.badgeToast.announced = true;
     state.mounted = true;
   }
 
@@ -5646,6 +5884,15 @@
           persist('mine');
           recompute(now); notice('Everything except your API key has been reset.', 'info'); redraw(); return;
         }
+        if (act === 'badges-shelf') { state.badgeShelfOpen = !state.badgeShelfOpen; redraw(); return; }
+        if (act === 'badges-all') {
+          // Expand too: the shelf shows when collapsed, and Settings does not.
+          state.badgeShelfOpen = false; state.badgeCatalogueOpen = true;
+          state.settings.collapsed = false;
+          state.settings.view = 'settings'; persist('settings'); redraw(); return;
+        }
+        if (act === 'badges-catalogue') { state.badgeCatalogueOpen = !state.badgeCatalogueOpen; redraw(); return; }
+        if (act === 'badges-toast-dismiss') { state.badgeToast = null; redraw(); return; }
         if (act === 'debug') { copyText(doc, win, buildDebugReport()); notice('Debug report copied.', 'info'); redraw(); return; }
       },
 
@@ -5707,6 +5954,12 @@
         if (act === 'auto-hide') {
           state.settings.autoHideOnOpen = !!el.checked;
           persist('settings'); redraw(); return;
+        }
+        if (act === 'badges-toggle') {
+          state.settings.badges = !!el.checked;
+          persist('settings');
+          if (!state.settings.badges) { state.badgeShelfOpen = false; state.badgeToast = null; }
+          redraw(); return;
         }
         if (act === 'folder-forum' && id) {
           var fid = toInt(value, 0);

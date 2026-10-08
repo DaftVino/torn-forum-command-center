@@ -223,3 +223,121 @@ test('leaving forums.php stops the sampler', () => {
   secondsPass(env, 60);
   assert.strictEqual(visits(env), 0);
 });
+
+// ---- view -------------------------------------------------------------------
+
+function seeded() {
+  const env = loadUserscript({ location: forums({ hash: THREAD }), now: NOW });
+  const api = env.exports;
+  api.state.badges = api.normaliseBadges({
+    v: 1, visits: 30, checkinDays: 12, bigBacklog: 0, firstCheckinAt: NOW - 864000000,
+    streak: { current: 12, best: 23, lastDay: 20734 }, forums: [61],
+    today: { day: 20734, firstLook: 0, backlogIds: [], visitIds: [] },
+    earned: { reader: NOW - 1000, 'streak-10': NOW - 2000, 'caught-up': NOW - 3000 },
+  });
+  return env;
+}
+function html(env) { return env.exports.panelHtml(env.exports.buildPanelModel(NOW)); }
+
+test('the chip sits in the title group, before the controls', () => {
+  const out = html(seeded());
+  const id = out.indexOf('class="tfcc-head-id"');
+  const chip = out.indexOf('data-act="badges-shelf"');
+  const ctl = out.indexOf('class="tfcc-head-ctl"');
+  assert.ok(id !== -1 && chip > id && ctl > chip);
+  assert.match(out, /<span class="tfcc-head-btns">.*data-act="refresh".*data-act="takeover".*data-act="collapse".*<\/span>/);
+  assert.match(out, /aria-label="Badges: 3 of 15\. Streak 12 days, today counted\. Show badges\."/);
+  assert.match(out, /tfcc-tier-silver/, 'the cup is drawn in the best earned tier');
+});
+
+test('the chip renders when collapsed, while loading and on a fatal error', () => {
+  const env = seeded();
+  const api = env.exports;
+  api.state.settings.collapsed = true;
+  assert.match(html(env), /data-act="badges-shelf"/);
+  assert.match(api.panelHtml(api.loadingModel(NOW)), /data-act="badges-shelf"/);
+  assert.match(api.panelHtml(api.errorModel('x', 'broken', NOW)), /data-act="badges-shelf"/);
+});
+
+test('the shelf and the toast render when collapsed too', () => {
+  const env = seeded();
+  const api = env.exports;
+  api.state.settings.collapsed = true;
+  api.state.badgeShelfOpen = true;
+  api.state.badgeToast = { text: 'Badge earned: Reader (Bronze).', until: NOW + 6000, announced: false };
+  const out = html(env);
+  assert.match(out, /class="tfcc-shelf"/);
+  assert.match(out, /Streak 12 Torn days, today counted\. Best 23\./);
+  assert.match(out, /role="status"[^>]*>Badge earned: Reader/);
+});
+
+test('the toast is announced once', () => {
+  const env = seeded();
+  const api = env.exports;
+  api.state.badgeToast = { text: 'Badge earned: Reader (Bronze).', until: NOW + 6000, announced: false };
+  api.draw(env.doc, env.win, api.makeHandlers(env.doc, env.win), true);
+  assert.strictEqual(api.state.badgeToast.announced, true);
+  assert.doesNotMatch(html(env), /role="status"/);
+});
+
+test('a broken streak shows 0, and no badges shows an outline cup', () => {
+  const env = seeded();
+  env.exports.state.badges.streak = { current: 12, best: 23, lastDay: 20730 };
+  assert.match(html(env), /Streak 0 days/);
+  const fresh = loadUserscript({ location: forums(), now: NOW });
+  assert.match(html(fresh), /aria-label="Badges: 0 of 15\. Show badges\."/);
+  assert.match(html(fresh), /tfcc-locked/);
+});
+
+test('badges off: no chip, no shelf, no toast', () => {
+  const env = seeded();
+  env.exports.state.settings.badges = false;
+  env.exports.state.badgeShelfOpen = true;
+  const out = html(env);
+  assert.doesNotMatch(out, /tfcc-chip|tfcc-shelf|tfcc-toast/);
+});
+
+test('the catalogue lists all fifteen with how to earn them, collapsed by default', () => {
+  const env = seeded();
+  const api = env.exports;
+  api.state.settings.view = 'settings';
+  assert.match(html(env), /data-act="badges-catalogue" aria-expanded="false">Show all 15 badges/);
+  api.state.badgeCatalogueOpen = true;
+  const out = html(env);
+  for (const b of api.BADGES) {
+    assert.ok(out.includes(b.name), b.name);
+    assert.ok(out.includes(api.BADGES.find((x) => x.id === b.id).rule.slice(0, 30)), b.id + ' rule');
+  }
+  assert.match(out, /Focused thread visits/);
+  assert.match(out, /Forums explored/);
+  assert.match(out, /role="progressbar" aria-valuenow="1" aria-valuemin="0" aria-valuemax="3"/);
+  assert.doesNotMatch(out, /threads read/i);
+});
+
+test('the chip toggles the shelf, and All badges opens the catalogue', () => {
+  const env = seeded();
+  const api = env.exports;
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onAction('badges-shelf', { getAttribute: () => null });
+  assert.strictEqual(api.state.badgeShelfOpen, true);
+  // The shelf also renders when collapsed, so All badges must expand the panel:
+  // Settings is invisible while the panel is collapsed.
+  api.state.settings.collapsed = true;
+  h.onAction('badges-all', { getAttribute: () => null });
+  assert.strictEqual(api.state.settings.collapsed, false);
+  assert.strictEqual(api.state.settings.view, 'settings');
+  assert.strictEqual(api.state.badgeCatalogueOpen, true);
+  assert.strictEqual(api.state.badgeShelfOpen, false);
+  h.onChange('badges-toggle', { checked: false, getAttribute: () => null });
+  assert.strictEqual(api.state.settings.badges, false);
+  assert.strictEqual(JSON.parse(env.gmStore.get('tfcc:settings')).badges, false);
+});
+
+test('every icon is ASCII SVG with no emoji and no text node', () => {
+  const env = seeded();
+  env.exports.state.settings.view = 'settings';
+  env.exports.state.badgeCatalogueOpen = true;
+  const out = html(env);
+  assert.ok(/^[\x09-\x7e]*$/.test(out));
+  assert.doesNotMatch(out, /<text[\s>]/, 'no SVG text node (a <textarea> is not one)');
+});
