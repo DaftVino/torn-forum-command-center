@@ -4,6 +4,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-09
+
 ### Changed
 
 - The theme defaults to Match Torn, so the panel follows Torn's light or
@@ -369,7 +371,8 @@ First release. Blocked on the signed-in QA gate in `docs/qa-checklist.md`.
 - Every value that reaches the panel is HTML-escaped, and forum HTML is reduced
   to text without ever constructing a DOM node.
 
-[Unreleased]: https://github.com/DaftVino/torn-forum-command-center/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/DaftVino/torn-forum-command-center/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/DaftVino/torn-forum-command-center/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/DaftVino/torn-forum-command-center/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DaftVino/torn-forum-command-center/compare/v0.1.0-rc6...v0.2.0
 [0.1.0]: https://github.com/DaftVino/torn-forum-command-center/releases/tag/v0.1.0
