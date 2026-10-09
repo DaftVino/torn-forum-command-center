@@ -4119,6 +4119,8 @@ test('every document query, from bootstrap on, is a mount, reply-box or own-cont
   redraw(env);
   click(env, '[data-act="row-more"][data-id="1"]');
   click(env, '[data-act="read"][data-id="2"]');
+  api.state.settings.view = 'threads'; // Catch up has no filter line
+  redraw(env);
   click(env, '[data-act="filters"]');
   env.resize(900);
   env.resize(300);
@@ -4242,6 +4244,8 @@ test('a deferred redraw that removes a row leaves the focus bookkeeping on the r
 Run: `node --test tests/narrow-focus.test.js`
 Expected: FAIL: `focusLog` stays empty.
 
+> Amended during implementation: (1) `tests/read-only.test.js` "the only focus call is on the reply box" now counts two `.focus(` calls and pins the second to `restoreFocus`, which only looks inside the panel; `restoreFocus` drops its argument-less `focus()` fallback. (2) The ADR runtime test switches to Threads before tapping Filters, because Catch up has no filter line.
+
 - [ ] **Step 4: Implement**
 
 Immediately before `function draw(doc, win, handlers, force) {`, add:
@@ -4285,9 +4289,9 @@ Immediately before `function draw(doc, win, handlers, force) {`, add:
       var el = null;
       try { el = panel.querySelector(plan[i]); } catch (e) { el = null; }
       if (el && typeof el.focus === 'function') {
-        try { el.focus({ preventScroll: true }); } catch (e2) {
-          try { el.focus(); } catch (e3) { continue; }
-        }
+        // preventScroll: focus returns to our own control without moving the
+        // page. A browser that ignores the option still focuses the element.
+        try { el.focus({ preventScroll: true }); } catch (e2) { continue; }
         restoreSelection(el);
         return plan[i];
       }

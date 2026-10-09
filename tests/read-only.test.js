@@ -256,8 +256,14 @@ test('the only focus call is on the reply box, after the user asked for it', () 
   // element.focus() puts the caret in a textarea inside the page the user is
   // already looking at, as a direct result of clicking Insert. That is not
   // window-level attention, and the test above bans the window-level kind.
-  const focusCalls = SOURCE.match(/\.focus\s*\(\s*\)/g) || [];
-  assert.strictEqual(focusCalls.length, 1, 'unexpected focus() calls: ' + focusCalls.length);
+  // #33 adds one more, restoreFocus: after a redraw replaced the panel's own
+  // nodes, it puts focus back on the panel control the user was on (or its
+  // successor), with preventScroll. It never focuses anything of Torn's.
+  const focusCalls = SOURCE.match(/\.focus\s*\(/g) || [];
+  assert.strictEqual(focusCalls.length, 2, 'unexpected focus() calls: ' + focusCalls.length);
+  const restore = SOURCE.slice(SOURCE.indexOf('function restoreFocus('), SOURCE.indexOf('function announce('));
+  assert.match(restore, /el\.focus\(\{ preventScroll: true \}\)/, 'the second is restoreFocus, inside the panel');
+  assert.match(restore, /panel\.querySelector\(plan\[i\]\)/, 'and it only ever looks inside the panel');
 
   const insert = SOURCE.slice(SOURCE.indexOf('function insertDraft'), SOURCE.indexOf('// ---- theme'));
   assert.match(insert, /if \(typeof box\.focus === 'function'\) box\.focus\(\);/,

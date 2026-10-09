@@ -3426,6 +3426,7 @@
     drawerEdit: null,
     focusIntent: null,
     pressActive: false,
+    deferCommit: false,
     liveMessage: null,
   };
 
@@ -4855,6 +4856,7 @@
       openInfoId: state.openInfoId,
       drawerEdit: state.drawerEdit,
       activeFilters: activeFilterCount(s),
+      live: state.liveMessage && !state.liveMessage.announced ? state.liveMessage.text : null,
       sort: s.sort,
       unreadOnly: s.unreadOnly,
       folderFilter: s.folderFilter,
@@ -6015,6 +6017,7 @@
     }
     out.push(renderBadgeShelf(model));
     out.push(renderBadgeToast(model));
+    out.push(renderLive(model));
 
     if (model.collapsed) return out.join('');
 
@@ -6267,13 +6270,24 @@
         }
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
         if (!act || typeof handlers.onAction !== 'function') return;
-        handlers.onAction(act, t);
+        // #33: the plan is captured before the action runs, from the rows the
+        // user was looking at, and consumed by the action's own redraw.
+        state.focusIntent = focusPlan(focusTargetOf(t), lastRender);
+        try { handlers.onAction(act, t); } finally { state.focusIntent = null; }
       });
       panel.addEventListener('change', function (ev) {
         var t = ev && ev.target;
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
         if (!act || typeof handlers.onChange !== 'function') return;
-        handlers.onChange(act, t);
+        // A text field commits on blur, when the browser still reports it as
+        // focused although focus is already on its way to the next control.
+        // Its commit redraws a tick later, from wherever focus landed, and
+        // never pulls focus back into the field (plan review). A select or a
+        // checkbox keeps focus, so it brings its own plan.
+        var text = isTextField(t);
+        if (!text) state.focusIntent = focusPlan(focusTargetOf(t), lastRender);
+        state.deferCommit = text;
+        try { handlers.onChange(act, t); } finally { state.focusIntent = null; state.deferCommit = false; }
       });
       panel.addEventListener('input', function (ev) {
         var t = ev && ev.target;
@@ -6545,21 +6559,121 @@
     draw(doc, win, handlers);
   }
 
+  // What the last draw rendered, for the focus plan of the next action: the
+  // rows as they were BEFORE the action, so a removed row's successor is known.
+  var lastRender = { ids: [], view: 'threads', narrow: false };
+
+  function focusTargetOf(el) {
+    var get = function (k) { return el && typeof el.getAttribute === 'function' ? el.getAttribute(k) : null; };
+    return { act: get('data-act'), id: get('data-id'), view: get('data-view'), info: get('data-info') };
+  }
+
+  function isTextField(el) {
+    var tag = el && el.tagName ? String(el.tagName).toLowerCase() : '';
+    if (tag === 'textarea') return true;
+    if (tag !== 'input') return false;
+    var type = el.getAttribute ? String(el.getAttribute('type') || 'text').toLowerCase() : 'text';
+    return type !== 'checkbox' && type !== 'radio';
+  }
+
+  // A background redraw restores focus only if it was already inside the
+  // panel (spec section 6, focus rule 4): it never pulls focus in.
+  function focusPlanFromActive(doc) {
+    try {
+      var active = doc.activeElement;
+      var panel = doc.getElementById(PANEL_ID);
+      if (!active || !panel || typeof panel.contains !== 'function' || !panel.contains(active)) return null;
+      return focusPlan(focusTargetOf(active), lastRender);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function restoreSelection(el) {
+    var d = state.drawerEdit;
+    if (!d || typeof el.setSelectionRange !== 'function' || typeof el.getAttribute !== 'function') return;
+    if (el.getAttribute('data-act') !== d.field || el.getAttribute('data-id') !== d.id) return;
+    if (d.selStart === null || d.selEnd === null) return;
+    try { el.setSelectionRange(d.selStart, d.selEnd); } catch (e) { /* not a text field */ }
+  }
+
+  // Tries each selector of the plan inside the panel, in order. Our own nodes
+  // only; the selectors use the grammar in the plan's Global Constraints.
+  function restoreFocus(panel, plan) {
+    if (!panel || !plan || typeof panel.querySelector !== 'function') return null;
+    for (var i = 0; i < plan.length; i += 1) {
+      var el = null;
+      try { el = panel.querySelector(plan[i]); } catch (e) { el = null; }
+      if (el && typeof el.focus === 'function') {
+        // preventScroll: focus returns to our own control without moving the
+        // page. A browser that ignores the option still focuses the element.
+        try { el.focus({ preventScroll: true }); } catch (e2) { continue; }
+        restoreSelection(el);
+        return plan[i];
+      }
+    }
+    return null;
+  }
+
+  function announce(text) { state.liveMessage = { text: text, announced: false }; }
+
+  // One polite live region, rendered with the panel and announced once, the
+  // way the badge toast's role="status" is (spec section 6, focus rule 5).
+  // Narrow only, like the rest of the section 6 machinery: desktop markup
+  // stays main's.
+  function renderLive(model) {
+    if (!model.narrow) return '';
+    if (!model.live) return '';
+    return '<div class="tfcc-sr" role="status" aria-live="polite">' + escapeHtml(model.live) + '</div>';
+  }
+
   function draw(doc, win, handlers, force) {
     var now = Date.now();
     state.route = parseForumRoute(win.location);
     state.replyBoxFound = !!findReplyBox(doc);
     attachAutosave(doc, win);
-    renderPanel(doc, win, buildPanelModel(now), handlers, force);
+    var before = doc.getElementById(PANEL_ID);
+    var htmlBefore = before ? before.__tfccHtml : undefined;
+    // A user action brings its own plan; otherwise follow where focus already is.
+    var plan = state.focusIntent || focusPlanFromActive(doc);
+    var model = buildPanelModel(now);
+    var panel = renderPanel(doc, win, model, handlers, force);
+    // Only a rewrite changes what is on screen. A deferred one (a caret in the
+    // panel) leaves the old rows in the DOM, so lastRender must keep
+    // describing them, or the next action's neighbours would be wrong.
+    var rewrote = !!panel && panel.__tfccHtml !== htmlBefore;
+    if (rewrote) {
+      lastRender = { ids: model.renderedIds || [], view: model.view, narrow: model.narrow === true };
+      // Only a rewrite destroys the focused node; an unchanged panel keeps it.
+      if (plan) restoreFocus(panel, plan);
+    }
+    if (state.badgeToast && !state.pendingRedraw) state.badgeToast.announced = true;
+    if (state.liveMessage && !state.pendingRedraw) state.liveMessage.announced = true;
     // The chip's width changes with its counts and Show replaces Hide, so the
     // header is re-fitted after every draw, not only on resize.
-    fitHeader(doc.getElementById(PANEL_ID), win);
-    if (state.badgeToast && !state.pendingRedraw) state.badgeToast.announced = true;
+    fitHeader(panel || doc.getElementById(PANEL_ID), win);
     state.mounted = true;
   }
 
   function makeHandlers(doc, win) {
-    function redraw() { draw(doc, win, handlers, true); }
+    var commitTimer = null;
+    function redraw() {
+      // A text field's commit (state.deferCommit, set by the change listener)
+      // redraws a tick later, once focus has settled: Tab lands on the next
+      // control and the redraw restores focus there; Enter leaves focus in the
+      // field and the redraw restores it there.
+      if (state.deferCommit) {
+        state.pendingRedraw = true;
+        if (commitTimer === null) {
+          commitTimer = setTimeout(function () {
+            commitTimer = null;
+            if (state.pendingRedraw) redraw();
+          }, 0);
+        }
+        return;
+      }
+      draw(doc, win, handlers, true);
+    }
 
     function idOf(el) { return el && el.getAttribute ? el.getAttribute('data-id') : null; }
 
@@ -6643,7 +6757,9 @@
         if (act === 'read' && id) {
           var row = state.rows.filter(function (r) { return r.id === id; })[0];
           state.organizer = markRead(state.organizer, id, row ? row.postsTotal : 0, now);
-          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
+          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now);
+          announce('Marked read.' + (state.settings.view === 'catchup' ? ' ' + catchUpRowsNow().length + ' left.' : ''));
+          redraw(); return;
         }
         if ((act === 'prio-up' || act === 'prio-down') && id) {
           var cur = state.organizer.threads[id] ? state.organizer.threads[id].priority : 0;
@@ -6653,7 +6769,9 @@
         if (act === 'archive' && id) {
           var e = state.organizer.threads[id] || normaliseThreadEntry(null);
           state.organizer.threads[id] = Object.assign({}, e, { archived: !e.archived });
-          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
+          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now);
+          announce(e.archived ? 'Unarchived.' : 'Archived.');
+          redraw(); return;
         }
         if (act === 'markall') {
           for (var i = 0; i < state.rows.length; i += 1) {
@@ -6664,7 +6782,8 @@
             if (state.settings.authorOnly === true && state.rows[i].authorState === 'unchecked') continue;
             state.organizer = markRead(state.organizer, state.rows[i].id, state.rows[i].postsTotal, now);
           }
-          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
+          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now);
+          announce('Marked all read.'); redraw(); return;
         }
         if (act === 'catchup-done') {
           state.organizer.lastCatchUpAt = now; persist('organizer');
