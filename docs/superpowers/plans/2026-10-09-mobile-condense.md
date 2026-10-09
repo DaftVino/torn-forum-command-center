@@ -2778,6 +2778,8 @@ test('fitHeader reads nothing outside the panel and never throws', () => {
 Run: `node --test tests/narrow-view.test.js tests/narrow-runtime.test.js`
 Expected: FAIL: the header is the wide one, and `--tfcc-hb` is never set.
 
+> Amended during implementation: `tests/narrow-runtime.test.js` also gains "a crossing redraws once; inside the band nothing redraws; while typing it defers", the `renderCount`/`pendingRedraw` assertions moved here from Task 6.
+
 - [ ] **Step 4: The chip's pill**
 
 In `renderBadgeChip(model)`, replace the final `return` with:

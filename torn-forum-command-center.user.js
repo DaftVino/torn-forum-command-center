@@ -4356,6 +4356,8 @@
       '  --tfcc-mine-text: #141414; --tfcc-mine-border: #d9d9d9;',
       // "started" in My posts (#30): 6.2:1 on the row, 7.8:1 on the tag fill.
       '  --tfcc-started: #ff8080;',
+      // #33: the narrow header button size; fitHeader overrides it inline.
+      '  --tfcc-hb: 44px;',
       '}',
       '#' + PANEL_ID + '.tfcc-theme-light {',
       '  --tm-bg: #f2f2f2; --tm-bg-2: #e8e8e8; --tm-bg-3: #ffffff; --tm-hover: #dcdcdc;',
@@ -4549,6 +4551,33 @@
       '#' + PANEL_ID + ' button.tfcc-info[aria-expanded="true"] { background: var(--tm-hover); }',
       '#' + PANEL_ID + ' .tfcc-infotext { border-left: 3px solid var(--tm-accent-text);',
       '  padding: 2px 0 2px 8px; margin: 0 0 var(--tfcc-gap-sm) 0; }',
+      // Narrow only: the collapsed count's name, the view heading and the live
+      // region all render in the narrow layout alone.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;',
+      '  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }',
+      // ---- #33 narrow layout. Every rule below hangs off .tfcc-narrow, so a
+      // wide panel never sees one. ----
+      '#' + PANEL_ID + '.tfcc-narrow { padding: 8px; }',
+      // The header: one line. These gaps add up to HB_GAPS (20): logo-chip 6,
+      // group 6, and 2 x 4 between the buttons.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-head { gap: 6px; flex-wrap: nowrap; margin-bottom: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-head-id { flex: 0 1 auto; flex-wrap: wrap; gap: 6px; min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-head-ctl { flex: none; flex-wrap: nowrap; gap: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-head-btns { gap: 4px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-logo { height: clamp(16px, calc(var(--tfcc-hb) * 0.545), 24px); }',
+      '#' + PANEL_ID + '.tfcc-narrow button.tfcc-hbtn { display: inline-flex; align-items: center;',
+      '  justify-content: center; width: var(--tfcc-hb); min-width: var(--tfcc-hb); min-height: var(--tfcc-hb); padding: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-hbtn .tfcc-gl { width: clamp(14px, calc(var(--tfcc-hb) * 0.45), 20px);',
+      '  height: auto; }',
+      '#' + PANEL_ID + '.tfcc-narrow button.tfcc-hshow { display: inline-flex; align-items: center; gap: 2px;',
+      '  min-width: var(--tfcc-hb); min-height: var(--tfcc-hb); font-weight: bold;',
+      '  padding: 0 clamp(4px, calc(var(--tfcc-hb) * 0.2), 10px); }',
+      '#' + PANEL_ID + '.tfcc-narrow button.tfcc-chip { min-width: 0; min-height: var(--tfcc-hb); padding: 0;',
+      '  border: 0; border-radius: 0; background: transparent; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-pill { display: inline-flex; align-items: center; gap: 3px;',
+      '  white-space: nowrap; min-height: min(28px, var(--tfcc-hb)); padding: 2px 8px; border-radius: 14px;',
+      '  border: 1px solid var(--tm-border-2); background: var(--tm-bg-3); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-chip.tfcc-compact .tfcc-pill { padding: 1px 4px; gap: 1px; }',
       '#' + PANEL_ID + ' .tfcc-error { color: var(--tm-bad-text); font-weight: bold;',
       '  margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-warn { color: var(--tm-warn-text); margin-bottom: var(--tfcc-gap-sm); }',
@@ -5605,6 +5634,46 @@
     return '<div class="tfcc-head-id">' + LOGO_SVG + renderBadgeChip(model) + '</div>';
   }
 
+  // The narrow header (spec 4.1, 13a, 13b): logo, chip and, when collapsed, a
+  // bare unread count, then Refresh, Expand/Shrink and Hide as icon buttons
+  // that fitHeader sizes. Collapsed, the third button is the visible word Show.
+  // withControls false is the loading and error header: logo and chip only.
+  function renderHeadNarrow(model, withControls) {
+    if (withControls === false) {
+      return '<div class="tfcc-head"><div class="tfcc-head-id">' + LOGO_SVG + renderBadgeChip(model) + '</div></div>';
+    }
+    var count = '';
+    if (model.collapsed && model.totals && model.totals.unread > 0) {
+      var n = formatCount(model.totals.unread);
+      var said = n + (model.authorOnly ? ' new by author' : ' new');
+      // aria-label on a plain span is not reliably read, so the name is a
+      // visually hidden span beside an aria-hidden numeral (spec 13a).
+      count = '<span class="tfcc-badge tfcc-hcount"><span aria-hidden="true">' + escapeHtml(n) + '</span>'
+        + '<span class="tfcc-sr">' + escapeHtml(said) + '</span></span>';
+    }
+    var out = ['<div class="tfcc-head">'];
+    out.push('<div class="tfcc-head-id">' + LOGO_SVG + renderBadgeChip(model) + count + '</div>');
+    out.push('<div class="tfcc-head-ctl"><span class="tfcc-head-btns">');
+    out.push('<button type="button" class="tfcc-hbtn" data-act="refresh" aria-label="'
+      + (model.refreshing ? 'Refreshing" aria-busy="true"' : 'Refresh"') + '>' + glyph('refresh') + '</button>');
+    out.push('<button type="button" class="tfcc-hbtn" data-act="takeover" aria-pressed="'
+      + (model.takeover ? 'true' : 'false') + '" aria-label="' + (model.takeover ? 'Shrink' : 'Expand') + '">'
+      + glyph(model.takeover ? 'shrink' : 'expand') + '</button>');
+    if (model.collapsed) {
+      out.push('<button type="button" class="tfcc-hshow" data-act="collapse">' + glyph('down') + '<span>Show</span></button>');
+    } else {
+      out.push('<button type="button" class="tfcc-hbtn" data-act="collapse" aria-label="Hide the panel">'
+        + glyph('up') + '</button>');
+    }
+    out.push('</span></div></div>');
+    // Spec 13d item 33: a live status, kept, on its own line so the header
+    // stays one line.
+    if (model.authorOnly && model.totals && model.totals.unchecked > 0) {
+      out.push('<p class="tfcc-note">' + model.totals.unchecked + ' not checked</p>');
+    }
+    return out.join('');
+  }
+
   function streakWords(s) {
     return s.current + ' ' + plural(s.current, 'day', 'days');
   }
@@ -5625,9 +5694,12 @@
       parts.push('<span>' + b.streak.current + '</span>');
     }
     label += ' Show badges.';
+    // #33: narrow, the button is as tall as the header buttons and the pill
+    // you see is a child span at most 28px tall (spec 4.1), so nothing overlaps.
+    var inner = model.narrow ? '<span class="tfcc-pill">' + parts.join('') + '</span>' : parts.join('');
     return '<button type="button" class="tfcc-chip" data-act="badges-shelf" aria-expanded="'
       + (b.shelfOpen ? 'true' : 'false') + '" aria-label="' + escapeHtml(label) + '">'
-      + parts.join('') + '</button>';
+      + inner + '</button>';
   }
 
   function renderBadgeBar(value, target) {
@@ -5676,34 +5748,41 @@
   }
 
   function panelHtml(model) {
+    // #33: a narrow loading or error state gets the narrow header (scaled
+    // logo, the chip's 44px box), with no controls, as on main.
+    var bareHead = model.narrow ? renderHeadNarrow(model, false) : '<div class="tfcc-head">' + renderHeadId(model) + '</div>';
     if (model.loading) {
-      return '<div class="tfcc-head">' + renderHeadId(model) + '</div>'
+      return bareHead
         + '<div class="tfcc-empty">Loading your subscribed threads...</div>';
     }
     if (model.fatal) {
-      return '<div class="tfcc-head">' + renderHeadId(model) + '</div>'
+      return bareHead
         + '<div class="tfcc-error">' + escapeHtml(model.fatal.detail) + '</div>'
         + '<div class="tfcc-actions">' + btn('refresh', 'Try again') + '</div>';
     }
 
     var out = [];
-    out.push('<div class="tfcc-head">');
-    out.push(renderHeadId(model));
-    out.push('<div class="tfcc-head-ctl">');
-    if (model.totals.unread > 0) {
-      out.push('<span class="tfcc-badge">' + formatCount(model.totals.unread)
-        + (model.authorOnly ? ' new by author' : ' new') + '</span>');
+    if (model.narrow) {
+      out.push(renderHeadNarrow(model));
+    } else {
+      out.push('<div class="tfcc-head">');
+      out.push(renderHeadId(model));
+      out.push('<div class="tfcc-head-ctl">');
+      if (model.totals.unread > 0) {
+        out.push('<span class="tfcc-badge">' + formatCount(model.totals.unread)
+          + (model.authorOnly ? ' new by author' : ' new') + '</span>');
+      }
+      if (model.authorOnly && model.totals.unchecked > 0) {
+        out.push('<span class="tfcc-note">' + model.totals.unchecked + ' not checked</span>');
+      }
+      out.push('<span class="tfcc-note">' + model.totals.subscribed + ' subscribed</span>');
+      out.push('<span class="tfcc-head-btns">');
+      out.push(btn('refresh', model.refreshing ? 'Refreshing...' : 'Refresh'));
+      out.push('<button type="button" data-act="takeover" aria-pressed="'
+        + (model.takeover ? 'true' : 'false') + '">' + (model.takeover ? 'Shrink' : 'Expand') + '</button>');
+      out.push(btn('collapse', model.collapsed ? 'Show' : 'Hide'));
+      out.push('</span></div></div>');
     }
-    if (model.authorOnly && model.totals.unchecked > 0) {
-      out.push('<span class="tfcc-note">' + model.totals.unchecked + ' not checked</span>');
-    }
-    out.push('<span class="tfcc-note">' + model.totals.subscribed + ' subscribed</span>');
-    out.push('<span class="tfcc-head-btns">');
-    out.push(btn('refresh', model.refreshing ? 'Refreshing...' : 'Refresh'));
-    out.push('<button type="button" data-act="takeover" aria-pressed="'
-      + (model.takeover ? 'true' : 'false') + '">' + (model.takeover ? 'Shrink' : 'Expand') + '</button>');
-    out.push(btn('collapse', model.collapsed ? 'Show' : 'Hide'));
-    out.push('</span></div></div>');
     out.push(renderBadgeShelf(model));
     out.push(renderBadgeToast(model));
 
@@ -5810,10 +5889,11 @@
   // class flips at once because renderPanel always writes it.
   function onPanelWidth(doc, win, panel, handlers, width) {
     var next = narrowFor(width, state.narrow);
-    if (next === state.narrow) return;
+    if (next === state.narrow) { fitHeader(panel, win); return; }
     setNarrow(next);
     if (panel && panel.classList) panel.classList.toggle(NARROW_CLASS, state.narrow);
     draw(doc, win, handlers);
+    fitHeader(panel, win);
   }
 
   var resizeWatch = null;
@@ -5843,6 +5923,48 @@
       return true;
     } catch (e3) {
       return false;
+    }
+  }
+
+  function setHeaderSize(panel, size) {
+    if (!panel.style || typeof panel.style.setProperty !== 'function') return;
+    if (size === null) panel.style.removeProperty('--tfcc-hb');
+    else panel.style.setProperty('--tfcc-hb', size + 'px');
+  }
+
+  // Sizes the narrow header buttons so the header stays on one line (spec
+  // 13b). Reads only nodes inside this script's panel: its content width, the
+  // chip and the Show button. Returns the size it set, or null.
+  function fitHeader(panel, win) {
+    try {
+      if (!panel) return null;
+      if (!state.narrow) { setHeaderSize(panel, null); return null; }
+      var cs = win && typeof win.getComputedStyle === 'function' ? win.getComputedStyle(panel) : null;
+      var pad = cs ? (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) : 0;
+      var content = (panel.clientWidth || 0) - pad;
+      if (!(content > 0)) return null;
+      var chip = panel.querySelector('.tfcc-chip');
+      var show = panel.querySelector('.tfcc-hshow');
+      // The loading and error headers have no buttons: nothing to fit.
+      if (!show && !panel.querySelector('.tfcc-hbtn')) { setHeaderSize(panel, HB_MAX); return HB_MAX; }
+      var icons = show ? 2 : 3;
+      var width = function (el) {
+        var r = el && typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect() : null;
+        return r && typeof r.width === 'number' ? r.width : 0;
+      };
+      if (chip && chip.classList) chip.classList.remove('tfcc-compact');
+      setHeaderSize(panel, HB_MAX);
+      var r = headerButtonSize(content, width(chip), width(show), icons);
+      if (r.size < HB_COMPACT_BELOW && chip && chip.classList) {
+        chip.classList.add('tfcc-compact');
+        r = headerButtonSize(content, width(chip), width(show), icons);
+      }
+      setHeaderSize(panel, r.size);
+      // Show's padding follows the size, so measure it once more at that size.
+      if (show) { r = headerButtonSize(content, width(chip), width(show), icons); setHeaderSize(panel, r.size); }
+      return r.size;
+    } catch (e) {
+      return null;
     }
   }
 
@@ -6192,6 +6314,9 @@
     state.replyBoxFound = !!findReplyBox(doc);
     attachAutosave(doc, win);
     renderPanel(doc, win, buildPanelModel(now), handlers, force);
+    // The chip's width changes with its counts and Show replaces Hide, so the
+    // header is re-fitted after every draw, not only on resize.
+    fitHeader(doc.getElementById(PANEL_ID), win);
     if (state.badgeToast && !state.pendingRedraw) state.badgeToast.announced = true;
     state.mounted = true;
   }

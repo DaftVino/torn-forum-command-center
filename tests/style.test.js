@@ -532,3 +532,16 @@ test('the header keeps Refresh, Expand and Hide together on the right', () => {
   assert.doesNotMatch(blockFor('#tfcc-panel .tfcc-logo'), /margin-right: auto/);
   assert.match(blockFor('#tfcc-panel button.tfcc-chip'), /flex: 0 0 auto/);
 });
+
+test('the narrow header gaps add up to HB_GAPS, which the header maths assumes (#33)', () => {
+  const gap = (sel) => Number((/gap: (\d+)px/.exec(blockFor(sel)) || [])[1]);
+  const head = gap('#tfcc-panel.tfcc-narrow .tfcc-head');
+  const id = gap('#tfcc-panel.tfcc-narrow .tfcc-head-id');
+  const btns = gap('#tfcc-panel.tfcc-narrow .tfcc-head-btns');
+  assert.strictEqual(id + head + 2 * btns, api.HB_GAPS);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-head'), /flex-wrap: nowrap/);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-head-ctl'), /flex: none/, 'the buttons never shrink or wrap');
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow button.tfcc-hbtn'), /width: var\(--tfcc-hb\)/);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-logo'), /clamp\(16px, calc\(var\(--tfcc-hb\) \* 0\.545\), 24px\)/);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-pill'), /min-height: min\(28px, var\(--tfcc-hb\)\)/);
+});
