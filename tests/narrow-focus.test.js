@@ -159,6 +159,8 @@ test('every querySelector call site in the source is one of the known ones', () 
     "panel('button[data-act=\"markall\"]')",
     "panel('button[data-act=\"catchup-done\"]')",
     "panel('button[data-info=\"catchup\"]')",
+    // #39: the open row's drawer, to tell a tap inside it from one elsewhere.
+    'panel(sel)',
   ].sort());
 });
 

@@ -1985,6 +1985,8 @@
       return out;
     }
     if (type === 'filters') { out.filtersOpen = !out.filtersOpen; return out; }
+    // #39: a tap anywhere but the open drawer and its toggle closes the drawer.
+    if (type === 'dismiss') { out.openRowId = null; return out; }
     if (type === 'info' && Object.prototype.hasOwnProperty.call(INFO_KEYS, ev.key)) {
       out.openInfoId = out.openInfoId === ev.key ? null : ev.key;
       return out;
@@ -5054,6 +5056,7 @@
     more: 'M5.5 12h1M11.5 12h1M17.5 12h1',
     check: 'M5 12.5l4.5 4.5L19 7.5',
     info: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5v.5',
+    close: 'M6 6l12 12M18 6L6 18',
   });
 
   function glyph(name) {
@@ -5319,7 +5322,9 @@
     if (inCatchUp) out.push(readButton(row));
     out.push('<button type="button" data-act="row-more" data-id="' + id + '" aria-expanded="'
       + (open ? 'true' : 'false') + '" aria-controls="tfcc-act-' + id + '" aria-label="'
-      + escapeHtml('Actions for ' + row.title) + '">' + glyph('more') + '</button>');
+      // #39: while open the toggle is a close X; the same button closes it.
+      + (open ? 'Close actions' : escapeHtml('Actions for ' + row.title)) + '">'
+      + glyph(open ? 'close' : 'more') + '</button>');
     out.push('</span></div>');
     if (row.note) out.push('<div class="tfcc-note">' + escapeHtml(row.note) + '</div>');
     out.push('<div class="tfcc-drawer" id="tfcc-act-' + id + '"'
@@ -6411,6 +6416,39 @@
     flushAfterPress(doc, win, handlers);
   }
 
+  // #39: true when a click on t keeps the open drawer open: t is that row's
+  // toggle (which closes it itself) or anything inside its drawer. Our own
+  // nodes only.
+  function insideOpenDrawer(panel, t) {
+    var id = state.openRowId;
+    if (!id || !t) return false;
+    try {
+      var get = function (k) { return typeof t.getAttribute === 'function' ? t.getAttribute(k) : null; };
+      if (get('data-act') === 'row-more' && get('data-id') === id) return true;
+      var sel = attrSel('id', 'tfcc-act-' + id);
+      var drawer = panel.querySelector(sel);
+      return !!(drawer && typeof drawer.contains === 'function' && drawer.contains(t));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  var clickAwayBound = false;
+  var clickAwayCtx = null;
+
+  function closeDrawerFromOutside(ev) {
+    try {
+      var c = clickAwayCtx;
+      if (!c || !state.openRowId) return;
+      var panel = c.doc.getElementById(PANEL_ID);
+      if (!panel || typeof panel.contains !== 'function') return;
+      // Inside the panel, the panel's own click listener decides.
+      if (panel.contains(ev && ev.target)) return;
+      applyTransient({ type: 'dismiss' });
+      setTimeout(function () { draw(c.doc, c.win, c.handlers); }, 0);
+    } catch (e) { /* a click elsewhere on the page must never throw */ }
+  }
+
   function renderPanel(doc, win, model, handlers, force) {
     injectStyleOnce(doc);
     var mount = findMountPoint(doc);
@@ -6469,6 +6507,13 @@
         // action's own redraw also renders anything held during the press.
         var pressed = state.pressActive === true;
         if (pressed) clearPress();
+        // #39: a tap anywhere but the open drawer and its toggle closes the
+        // drawer, and then still does its own job below.
+        var dismissed = false;
+        if (state.openRowId && !insideOpenDrawer(panel, t)) {
+          applyTransient({ type: 'dismiss' });
+          dismissed = true;
+        }
         // A thread link the panel rendered. The browser follows it; this only
         // gives the auto-hide setting a chance to persist first (issue #8).
         var link = threadLinkOf(t, panel);
@@ -6484,11 +6529,14 @@
           // zero-delay redraw usually renders the held change; this covers a
           // click that does not auto-hide.
           if (pressed) setTimeout(function () { flushAfterPress(doc, win, handlers); }, 0);
+          // The closed drawer is drawn after dispatch for the same reason.
+          if (dismissed) setTimeout(function () { draw(doc, win, handlers); }, 0);
           return;
         }
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
         if (!act || typeof handlers.onAction !== 'function') {
           if (pressed) flushAfterPress(doc, win, handlers);
+          if (dismissed) draw(doc, win, handlers);
           return;
         }
         // #33: the plan is captured before the action runs, from the rows the
@@ -6496,6 +6544,10 @@
         state.focusIntent = focusPlan(focusTargetOf(t), lastRender);
         try { handlers.onAction(act, t); } finally { state.focusIntent = null; }
         if (pressed) flushAfterPress(doc, win, handlers);
+        // Most actions redraw, which already rendered the drawer closed; this
+        // one is then a no-op (renderPanel skips an unchanged panel). It is not
+        // forced, so a caret in the panel still defers it.
+        if (dismissed) draw(doc, win, handlers);
       });
       panel.addEventListener('change', function (ev) {
         var t = ev && ev.target;
@@ -6526,6 +6578,16 @@
       if (!pressWinBound && win && typeof win.addEventListener === 'function') {
         pressWinBound = true;
         win.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); }, true);
+      }
+      // #39: a click outside the panel closes an open drawer. One capture-phase
+      // listener on the window, bound once. It only asks whether the target is
+      // inside this script's own #tfcc-panel: it reads no Torn markup (ADR
+      // 0001), never cancels or stops the event, and redraws only our panel,
+      // after dispatch, so Torn's own link still does its job.
+      clickAwayCtx = { doc: doc, win: win, handlers: handlers };
+      if (!clickAwayBound && win && typeof win.addEventListener === 'function') {
+        clickAwayBound = true;
+        win.addEventListener('click', function (ev) { closeDrawerFromOutside(ev); }, true);
       }
       // An update deferred while the user was typing has to arrive eventually.
       // Waiting a tick lets focus settle first, so this does not fire while the

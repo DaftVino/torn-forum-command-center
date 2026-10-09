@@ -144,6 +144,151 @@ test('closed rows hold the title, tagline and meta to one line with an ellipsis;
   }
 });
 
+// ---- 3. the close toggle and click-away ---------------------------------------
+
+function openRow(extraEnv) {
+  const { env, api } = bootNarrow({ env: extraEnv || {} });
+  seedRows(api, [{ id: 1, title: 'One', unread: 1 }, { id: 2, title: 'Two', unread: 1 }, { id: 3, title: 'Three' }]);
+  api.state.settings.view = 'threads';
+  api.state.settings.sort = 'title';
+  redraw(env);
+  click(env, '[data-act="row-more"][data-id="1"]');
+  assert.strictEqual(api.state.openRowId, '1', 'precondition: row 1 is open');
+  return { env, api, panel: panelOf(env) };
+}
+
+test('dismiss closes the drawer and nothing else', () => {
+  const { api } = bootNarrow();
+  const edit = { id: '1', field: 'note-input', value: 'x', selStart: 1, selEnd: 1 };
+  assert.deepStrictEqual(api.nextTransient({ openRowId: '1', filtersOpen: true, openInfoId: 'catchup', drawerEdit: edit },
+    { type: 'dismiss' }), { openRowId: null, filtersOpen: true, openInfoId: 'catchup', drawerEdit: edit });
+});
+
+test('the toggle shows a close X while open, named Close actions, and the more glyph while closed', () => {
+  const { panel } = openRow();
+  const html = panel.innerHTML;
+  assert.match(html, new RegExp('<button type="button" data-act="row-more" data-id="1" aria-expanded="true" aria-controls="tfcc-act-1" aria-label="Close actions"><svg class="tfcc-gl"[^>]*><path d="M6 6l12 12M18 6L6 18"/></svg></button>'));
+  assert.match(html, /data-act="row-more" data-id="2" aria-expanded="false" aria-controls="tfcc-act-2" aria-label="Actions for Two"><svg class="tfcc-gl"[^>]*><path d="M5.5 12h1M11.5 12h1M17.5 12h1"\/>/);
+});
+
+test('tapping the X closes the drawer and keeps focus on the toggle', () => {
+  const { env, api } = openRow();
+  click(env, '[data-act="row-more"][data-id="1"]');
+  assert.strictEqual(api.state.openRowId, null);
+  assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id'], lastFocus(env)['aria-label']],
+    ['row-more', '1', 'Actions for One']);
+});
+
+test('opening another row closes the first', () => {
+  const { env, api, panel } = openRow();
+  click(env, '[data-act="row-more"][data-id="2"]');
+  assert.strictEqual(api.state.openRowId, '2');
+  assert.strictEqual((panel.innerHTML.match(/aria-label="Close actions"/g) || []).length, 1);
+});
+
+test('a control inside the open drawer keeps it open', () => {
+  const { env, api, panel } = openRow();
+  panel.contains = () => true;
+  click(env, '[data-act="pin"][data-id="1"]');
+  assert.strictEqual(api.state.openRowId, '1', 'Pin acts and the drawer stays');
+  // The drawer's own blank space, and its stepper label, are inside it too.
+  click(env, '[id="tfcc-act-1"]');
+  click(env, '.tfcc-step');
+  assert.strictEqual(api.state.openRowId, '1');
+});
+
+test('a tap elsewhere in the panel closes the drawer and still does its own job', () => {
+  const { env, api } = openRow();
+  click(env, '[data-act="unread-only"]');
+  assert.strictEqual(api.state.openRowId, null, 'the drawer closed');
+  assert.strictEqual(api.state.settings.unreadOnly, true, 'and Unread toggled');
+  const again = openRow();
+  click(again.env, '[data-act="view"][data-view="search"]');
+  assert.strictEqual(again.api.state.openRowId, null);
+  assert.strictEqual(again.api.state.settings.view, 'search', 'the view switched');
+});
+
+test('a tap on the open row outside its drawer, or on blank panel space, closes it', () => {
+  const { env, api, panel } = openRow();
+  const before = panel.renderCount;
+  click(env, '.tfcc-row-l2');
+  assert.strictEqual(api.state.openRowId, null);
+  assert.strictEqual(panel.renderCount, before + 1, 'redrawn closed');
+  assert.doesNotMatch(panel.innerHTML, /aria-label="Close actions"/);
+  const again = openRow();
+  click(again.env, '.tfcc-rows');
+  assert.strictEqual(again.api.state.openRowId, null);
+});
+
+test('a thread link elsewhere closes the drawer after the click, never during it', () => {
+  const { env, api, panel } = openRow();
+  const before = panel.renderCount;
+  const link = panel.querySelector('[data-tfcc-thread="2"]');
+  panel.dispatchEvent({ type: 'click', target: link, button: 0 });
+  assert.strictEqual(panel.renderCount, before, 'the anchor is still there while the browser follows it');
+  assert.strictEqual(api.state.openRowId, null);
+  env.advanceTimersBy(0);
+  assert.strictEqual(panel.renderCount, before + 1);
+  assert.doesNotMatch(panel.innerHTML, /aria-label="Close actions"/);
+});
+
+test('a dirty drawer field, then a tap elsewhere: commit, close and act in one redraw', () => {
+  const { env, api, panel } = openRow();
+  const note = panel.querySelector('[data-act="note-input"][data-id="1"]');
+  note.value = 'typed note';
+  const before = panel.renderCount;
+  const cell = panel.querySelector('[data-act="view"][data-view="drafts"]');
+  panel.dispatchEvent({ type: 'pointerdown', target: cell });
+  panel.dispatchEvent({ type: 'change', target: note });
+  env.advanceTimersBy(0);
+  assert.strictEqual(panel.renderCount, before, 'held while the press is in progress');
+  panel.dispatchEvent({ type: 'pointerup', target: cell });
+  click(env, '[data-act="view"][data-view="drafts"]');
+  env.advanceTimersBy(0);
+  assert.strictEqual(panel.renderCount, before + 1, 'one visible redraw');
+  assert.strictEqual(api.state.openRowId, null);
+  assert.strictEqual(api.state.settings.view, 'drafts');
+  assert.strictEqual(api.state.organizer.threads['1'].note, 'typed note');
+});
+
+test('a click outside the panel closes the drawer, without touching the event', () => {
+  const { env, api, panel } = openRow();
+  const outside = env.makeElement('a');
+  panel.contains = (n) => n !== outside;
+  const before = panel.renderCount;
+  let prevented = 0;
+  env.win.fire('click', { type: 'click', target: outside, preventDefault() { prevented += 1; },
+    stopPropagation() { prevented += 1; }, stopImmediatePropagation() { prevented += 1; } });
+  assert.strictEqual(prevented, 0, 'Torn\'s own link keeps its click');
+  assert.strictEqual(api.state.openRowId, null);
+  env.advanceTimersBy(0);
+  assert.strictEqual(panel.renderCount, before + 1);
+  assert.doesNotMatch(panel.innerHTML, /aria-label="Close actions"/);
+});
+
+test('the window listener ignores clicks inside the panel and does nothing when no drawer is open', () => {
+  const { env, api, panel } = openRow();
+  panel.contains = () => true;
+  env.win.fire('click', { type: 'click', target: panel });
+  assert.strictEqual(api.state.openRowId, '1', 'the panel\'s own listener decides');
+  click(env, '[data-act="row-more"][data-id="1"]');
+  panel.contains = () => false;
+  const before = panel.renderCount;
+  env.win.fire('click', { type: 'click', target: env.makeElement('a') });
+  env.advanceTimersBy(0);
+  assert.strictEqual(panel.renderCount, before, 'no drawer, no redraw');
+});
+
+test('the click-away listener is bound once, in the capture phase, and checks only the panel', () => {
+  const { env } = openRow();
+  for (let i = 0; i < 3; i += 1) redraw(env);
+  assert.strictEqual((env.win.listeners.click || []).length, 1);
+  const src = require('./load-userscript').readSource();
+  assert.match(src, /win\.addEventListener\('click', function \(ev\) \{ closeDrawerFromOutside\(ev\); \}, true\);/);
+  const body = /function closeDrawerFromOutside\(ev\) \{[\s\S]*?\n {2}\}/.exec(src)[0];
+  assert.doesNotMatch(body, /preventDefault|stopPropagation|querySelector/);
+});
+
 // One rule body from the stylesheet, by its exact selector.
 function cssRule(api, sel) {
   const css = api.panelStyleText();
