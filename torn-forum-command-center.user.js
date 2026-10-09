@@ -4602,6 +4602,12 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxline { margin-bottom: 6px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxline button.tfcc-reactions { width: 100%; min-width: 44px;',
       '  min-height: 44px; border-radius: 4px; padding: 0 10px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-filterline { flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-filterline .tfcc-grow { flex: 1 1 8em; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-filterline button { display: inline-flex; align-items: center;',
+      '  justify-content: center; gap: 4px; min-width: 44px; min-height: 44px; padding: 0 8px; white-space: nowrap; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-filtergrid { display: grid;',
+      '  grid-template-columns: repeat(auto-fit, minmax(8em, 1fr)); gap: 6px; margin: 0 0 6px 0; }',
       '#' + PANEL_ID + ' .tfcc-error { color: var(--tm-bad-text); font-weight: bold;',
       '  margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-warn { color: var(--tm-warn-text); margin-bottom: var(--tfcc-gap-sm); }',
@@ -4828,6 +4834,7 @@
       filtersOpen: state.filtersOpen,
       openInfoId: state.openInfoId,
       drawerEdit: state.drawerEdit,
+      activeFilters: activeFilterCount(s),
       sort: s.sort,
       unreadOnly: s.unreadOnly,
       folderFilter: s.folderFilter,
@@ -5121,37 +5128,75 @@
     return out.join('');
   }
 
-  // The filter bar Threads and My posts share.
-  function renderListBar(model) {
-    var out = ['<div class="tfcc-bar">'];
-    out.push('<input class="tfcc-grow" type="search" data-act="filter" value="'
-      + escapeHtml(model.searchQuery) + '" placeholder="filter: words, by:player, tag:x, is:unread">');
-    out.push('<select data-act="sort">');
+  // extra goes on the select element; the wide bar passes '' so its markup is
+  // unchanged (tests/wide-parity.test.js).
+  function renderSortSelect(model, extra) {
+    var out = ['<select data-act="sort"' + extra + '>'];
     for (var i = 0; i < SORT_MODES.length; i += 1) {
       out.push('<option value="' + SORT_MODES[i] + '"'
         + (model.sort === SORT_MODES[i] ? ' selected' : '') + '>'
         + escapeHtml(SORT_LABELS[SORT_MODES[i]]) + '</option>');
     }
     out.push('</select>');
-    out.push('<select data-act="folder-filter"><option value="">All folders</option>');
+    return out.join('');
+  }
+
+  function renderFolderFilterSelect(model, extra) {
+    var out = ['<select data-act="folder-filter"' + extra + '><option value="">All folders</option>'];
     for (var f = 0; f < model.folders.length; f += 1) {
       out.push('<option value="' + escapeHtml(model.folders[f].id) + '"'
         + (model.folderFilter === model.folders[f].id ? ' selected' : '') + '>'
         + escapeHtml(model.folders[f].name) + '</option>');
     }
     out.push('</select>');
-    if (model.tags.length) {
-      out.push('<select data-act="tag-filter"><option value="">All tags</option>');
-      for (var t = 0; t < model.tags.length; t += 1) {
-        out.push('<option value="' + escapeHtml(model.tags[t].tag) + '"'
-          + (model.tagFilter === model.tags[t].tag ? ' selected' : '') + '>'
-          + escapeHtml(model.tags[t].tag + ' (' + model.tags[t].count + ')') + '</option>');
-      }
-      out.push('</select>');
+    return out.join('');
+  }
+
+  function renderTagFilterSelect(model, extra) {
+    if (!model.tags.length) return '';
+    var out = ['<select data-act="tag-filter"' + extra + '><option value="">All tags</option>'];
+    for (var t = 0; t < model.tags.length; t += 1) {
+      out.push('<option value="' + escapeHtml(model.tags[t].tag) + '"'
+        + (model.tagFilter === model.tags[t].tag ? ' selected' : '') + '>'
+        + escapeHtml(model.tags[t].tag + ' (' + model.tags[t].count + ')') + '</option>');
     }
+    out.push('</select>');
+    return out.join('');
+  }
+
+  // The filter bar Threads and My posts share.
+  function renderListBar(model) {
+    if (model.narrow) return renderListBarNarrow(model);
+    var out = ['<div class="tfcc-bar">'];
+    out.push('<input class="tfcc-grow" type="search" data-act="filter" value="'
+      + escapeHtml(model.searchQuery) + '" placeholder="filter: words, by:player, tag:x, is:unread">');
+    out.push(renderSortSelect(model, ''));
+    out.push(renderFolderFilterSelect(model, ''));
+    out.push(renderTagFilterSelect(model, ''));
     out.push('<button type="button" data-act="unread-only" aria-pressed="'
       + (model.unreadOnly ? 'true' : 'false') + '">Unread only</button>');
     out.push('</div>');
+    return out.join('');
+  }
+
+  // The narrow filter line (spec 4.3): the field, Unread and Filters on one
+  // line; Sort, Folder and Tag one tap away. The grid is always in the markup
+  // so aria-controls names a real element.
+  function renderListBarNarrow(model) {
+    var active = toInt(model.activeFilters, 0);
+    var out = ['<div class="tfcc-bar tfcc-filterline">'];
+    out.push('<input class="tfcc-grow" type="search" data-act="filter" value="' + escapeHtml(model.searchQuery)
+      + '" placeholder="filter: words, by:player, tag:x" aria-label="Filter threads">');
+    out.push('<button type="button" data-act="unread-only" aria-pressed="'
+      + (model.unreadOnly ? 'true' : 'false') + '">Unread</button>');
+    out.push('<button type="button" data-act="filters" aria-expanded="' + (model.filtersOpen ? 'true' : 'false')
+      + '" aria-controls="tfcc-filters" aria-label="' + escapeHtml('Filters, ' + active + ' active') + '">'
+      + glyph('funnel') + (active ? '<span>' + active + '</span>' : '') + '</button>');
+    out.push('</div>');
+    out.push('<div class="tfcc-filtergrid" id="tfcc-filters"' + (model.filtersOpen ? '' : ' hidden') + '>'
+      + renderSortSelect(model, ' aria-label="Sort"')
+      + renderFolderFilterSelect(model, ' aria-label="Folder filter"')
+      + renderTagFilterSelect(model, ' aria-label="Tag filter"') + '</div>');
     return out.join('');
   }
 
@@ -6465,6 +6510,8 @@
           if (Object.prototype.hasOwnProperty.call(INFO_KEYS, infoKey)) applyTransient({ type: 'info', key: infoKey });
           redraw(); return;
         }
+
+        if (act === 'filters') { applyTransient({ type: 'filters' }); redraw(); return; }
         if (act === 'pin' && id) { state.organizer = togglePin(state.organizer, id); persist('organizer'); recompute(now); redraw(); return; }
         if (act === 'read' && id) {
           var row = state.rows.filter(function (r) { return r.id === id; })[0];

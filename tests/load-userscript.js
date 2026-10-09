@@ -68,6 +68,7 @@ const EXPORT_NAMES = [
   'SORT_MODES', 'SORT_LABELS', 'sortThreads', 'catchUpList', 'catchUpUnchecked', 'checkAuthorPosts',
   'ROWS_SHOWN_OPTIONS', 'CAPPED_VIEWS', 'UNCAPPED_VIEWS', 'VIEW_LABELS', 'capRows', 'renderCapLine',
   // #33: narrow layout
+  'renderListBarNarrow',
   'renderNavNarrow', 'navNumeral',
   'renderHeadNarrow', 'fitHeader',
   'GLYPHS', 'glyph', 'renderInfoButton', 'renderInfoText',

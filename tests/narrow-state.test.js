@@ -172,3 +172,14 @@ test('a Torn route change inside forums.php reconciles through the redraw', () =
   api.syncToRoute(env.doc, env.win);
   assert.strictEqual(api.state.openRowId, null);
 });
+
+test('Filters toggles through the real click, and a view change closes it', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, SIX);
+  api.state.settings.view = 'threads';
+  redraw(env);
+  require('./narrow-helpers').click(env, '[data-act="filters"]');
+  assert.strictEqual(api.state.filtersOpen, true);
+  require('./narrow-helpers').click(env, '[data-act="view"][data-view="mine"]');
+  assert.strictEqual(api.state.filtersOpen, false);
+});

@@ -113,3 +113,36 @@ test('narrow My posts opens with the reaction totals, before the status line', (
   assert.ok(rx !== -1, 'the pill markup, reused');
   assert.ok(rx < html.indexOf('<div class="tfcc-infobar">'), 'it is the first line of the view');
 });
+
+// ---- filter line (spec 4.3) --------------------------------------------------
+
+test('the narrow filter line is the field, Unread and a named Filters button', () => {
+  const { api } = bootNarrow();
+  seedRows(api, [{ id: 1, unread: 1 }]);
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /<div class="tfcc-bar tfcc-filterline"><input class="tfcc-grow" type="search" data-act="filter"/);
+  assert.match(html, /data-act="unread-only" aria-pressed="false">Unread<\/button>/);
+  assert.match(html, /data-act="filters" aria-expanded="false" aria-controls="tfcc-filters" aria-label="Filters, 0 active">/);
+  assert.match(html, /<div class="tfcc-filtergrid" id="tfcc-filters" hidden><select data-act="sort" aria-label="Sort">/);
+  assert.match(html, /<select data-act="folder-filter" aria-label="Folder filter">/);
+});
+
+test('the Filters button counts and shows the active filters', () => {
+  const { api } = bootNarrow();
+  seedRows(api, [{ id: 1, unread: 1 }]);
+  api.state.organizer = api.toggleTag(api.state.organizer, '1', 'x');
+  api.recompute(NOW);
+  api.state.settings.folderFilter = 'guides';
+  api.state.settings.tagFilter = 'x';
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /aria-label="Filters, 2 active">.*<span>2<\/span><\/button>/);
+});
+
+test('open, the filter grid is visible and Filters says so', () => {
+  const { api } = bootNarrow();
+  seedRows(api, [{ id: 1, unread: 1 }]);
+  api.state.filtersOpen = true;
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /data-act="filters" aria-expanded="true"/);
+  assert.match(html, /<div class="tfcc-filtergrid" id="tfcc-filters">/);
+});
