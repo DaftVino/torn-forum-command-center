@@ -369,13 +369,17 @@ The 320px file adds a 200% text frame and four frames at 280px.
   Search on top, then Drafts, Settings and My posts below. Search is visible.
   My posts stays last and right with its #30 light-grey style, which keeps
   the QA checklist's "My posts is last and reachable" true.
-- **Counts are numbers only, as badges inside the cells:** Threads "16", Catch
-  up "3", Drafts "1", My posts "1" (owner decision a). A cell wraps only when
-  the number is large. Each cell's accessible name still says what the number
-  counts ("Threads, 16 new, 6 subscribed"; "Catch up, 3").
-- **Pending the owner's choice:** a layered alternative, in which the number
-  is a large numeral behind a one-line label, so a cell never wraps. Section
-  13f has four variants with measured contrast.
+- **Counts are a decorative numeral behind the label: variant v1 tint, the
+  owner's choice (section 13f).**
+  - Each count is a large numeral, centred and nearly the cell's height, drawn
+    in the label colour at 14% opacity (9% on the selected cell).
+  - The label sits on top at 90% opacity (96% selected), always on one line,
+    so a cell never wraps.
+  - A count of 0 draws no numeral. Search and Settings have none.
+  - The numeral is decorative (`aria-hidden`). The count is carried in each
+    cell's accessible name ("Threads, 16 new, 6 subscribed"; "Catch up, 3";
+    "Drafts, none").
+  - This supersedes the number-only badges of owner decision a.
 - **Why there is no More.** The review asked for a labelled More. Removing it
   is stronger: every view is visible, there is no menu state, and the review's
   More-focus finding cannot happen. It costs one 44px row compared with the
@@ -684,9 +688,18 @@ contract:
   drawer.
 - **No hover, no `title` dependence:** every `title` duplicates visible text or
   an aria-label. A touch WebView never shows `title`.
-- **Contrast:** only existing token pairs are used. `render-preview` gains
+- **Contrast:** only existing colour pairs are used. `render-preview` gains
   narrow 320/375 Threads and Catch up previews (dark and light, with a drawer
   open) so `contrast-audit.mjs` measures them.
+- **Nav labels over the v1 numeral:** every cell state stays at 4.5:1 or
+  better. The worst case is the selected dark Threads cell, at 4.98:1.
+  `contrast-audit.mjs` checks the label against the numeral painted on the
+  cell for every state (section 13f).
+  - The numeral itself is decorative: it is `aria-hidden` and below 3:1 by
+    design, which the owner accepted.
+  - The count reaches screen readers through each cell's accessible name.
+  - Sighted users read the numeral as a cue, not as the only carrier of the
+    number. The owner accepted this trade-off.
 - **Text size and zoom:** `min-height`/`min-width` only, auto-fit grids, and no
   fixed heights. Section 4.7 shows the 200% behaviour.
 - **Reduced motion:** the drawer and filters open without animation.
@@ -806,6 +819,8 @@ disagree, this section wins.
 
 - Narrow nav cells show the number alone: "Threads 16", "Catch up 3",
   "Drafts 1", "My posts 1". A cell wraps only when the number is large.
+  **Superseded for the nav cells by 13f:** the number is now a decorative v1
+  numeral behind the label.
 - The accessible name still says what the number counts ("Threads, 16 new,
   6 subscribed").
 - On wide panels the nav keeps today's "Catch up (3)" text form. That is
@@ -990,7 +1005,70 @@ the rules-compliance principle "stated where it happens".
 - **Size, measured:** 44 x 44 in Catch up rows. In the drawer it fills its
   grid cell.
 
-### 13f. Nav counts as a numeral behind the label: variants (owner to choose)
+### 13f. Nav counts as a numeral behind the label: decided, v1 tint
+
+**Decision (owner, 2026-10-09): v1 tint.** The numeral is drawn in the
+label's colour at 14% (9% on the selected cell), behind a label at 90%
+opacity (96% selected).
+
+**The owner accepts the trade-off.** The numeral is decorative: it measures
+1.18:1 against the cell, below the 3:1 a large-text count would need. The
+count is carried in each cell's accessible name instead ("Threads, 16 new",
+"Catch up, 3", "Drafts, none"). The numeral is `aria-hidden`.
+
+**The hard requirement.** v1's label contrast stays at or above 4.5:1 in every
+cell state. Measured in `nav-count-variants.html` (label over cell / label over
+numeral):
+
+| Cell state | Dark | Light |
+|---|---|---|
+| Default (Catch up, Threads, Drafts) | 15.3 / 10.7 | 14.1 / 10.9 |
+| No numeral (Search, Settings) | 15.3 | 14.1 |
+| Selected (Threads, tuned) | 6.1 / **4.98** (worst) | 13.1 / 11.0 |
+| My posts | 10.5 / 8.2 | 10.5 / 8.2 |
+| My posts, selected | 8.0 / 6.8 | 8.0 / **6.8** (worst) |
+
+The selected dark Threads cell is the tightest. That is why the selected
+state uses 9% and 96%, not 14% and 90%. At 14% and 90% it measured 4.14:1
+and failed.
+
+**Tokens for the implementer to copy exactly.** Add these on `#tfcc-panel`.
+They are the same in both themes, because the colour follows the cell's own
+text colour:
+
+```
+--tfcc-navnum-opacity: 0.14;            /* numeral, default cell        */
+--tfcc-navnum-opacity-selected: 0.09;   /* numeral, aria-pressed="true" */
+--tfcc-navlab-opacity: 0.9;             /* label, default cell          */
+--tfcc-navlab-opacity-selected: 0.96;   /* label, aria-pressed="true"   */
+--tfcc-navnum-size: 40px;               /* numeral font size            */
+```
+
+**The numeral's colour** is `currentColor`, the cell's text colour: `--tm-text`
+for most cells, and `--tfcc-mine-text` for My posts. The `#tfcc-panel *
+{ color: inherit }` reset must not turn it transparent. Give the numeral no
+colour of its own, and do not use `-webkit-text-stroke`; that is how v2's
+outline vanished in the first build.
+
+**Composited numeral colours**, for reference and for the audit's
+expectations:
+
+| Cell | Dark | Light |
+|---|---|---|
+| Default cell | about #323232 on #111111 | about #dedede on #ffffff |
+| Selected cell | about #3d784c on #2a6b3a | about #bed5c3 on #cfe8d4 |
+| My posts cell | about #bdbdbd on #d9d9d9 | about #bdbdbd on #d9d9d9 |
+| My posts, selected | about #a2a2a2 on #b0b0b0 | about #a2a2a2 on #b0b0b0 |
+
+**`tests/contrast-audit.mjs`** gains a check for every nav cell state in both
+themes. It composites the label (colour times opacity) over the numeral
+painted on the cell, and asserts at least 4.5:1, the same calculation as the
+mockup's in-page script. A change to any of the tokens above that drops a
+state below 4.5:1 fails the audit.
+
+The variant study follows, kept for the record.
+
+#### The variant study (before the decision)
 
 **The feedback.** The owner does not want the label and the number to wrap
 inside a cell. The alternative puts the count behind the label as a large
@@ -1063,7 +1141,8 @@ The implementation should make these tokens and add them to
 v4's label is solid: once the halo separates it from the numeral, opacity only
 costs contrast. v1 and v3 keep the semi-opaque label for comparison.
 
-**Recommendation: v4**, if the owner wants the layered look. It is the only
+**The study's recommendation was v4. The owner chose v1** (see the decision
+at the top of 13f). The original reasoning: v4, if the owner wants the layered look. It is the only
 variant where the label reads at AA and the count is still legible. If the
 owner prefers a quieter numeral (v1 or v3), the count fails 3:1. In that case
 it should be treated as decoration, and the number shown again in plain text
