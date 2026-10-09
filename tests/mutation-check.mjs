@@ -1268,6 +1268,57 @@ const MUTATIONS = [
     apply: (s) => s.replace('Never includes your key, drafts, notes or post text.',
       'A debug report carries counts. Never includes your key, drafts, notes or post text.'),
   },
+
+  // ---- #39: narrow view polish ----------------------------------------------
+  ...[
+    // 1. The Catch up action row.
+    ['the Catch up row never uses the short labels', (s) => s.replace('if (s !== null && s <= c) return CU_MODES[1];', '')],
+    ['the Catch up row keeps the full labels even when they wrap', (s) => s.replace('if (f <= c) return CU_MODES[0];', 'return CU_MODES[0];')],
+    ['the Catch up row is not fitted after a draw', (s) => s.replace('    fitCatchUp(panel || doc.getElementById(PANEL_ID), win);\n', '')],
+    ['the Catch up row is not fitted on a resize', (s) => s.replace('{ fitHeader(panel, win); fitCatchUp(panel, win); return; }', '{ fitHeader(panel, win); return; }')],
+    ['the Catch up accessible names take the short labels', (s) => s.replace('aria-label="\' + escapeHtml(full) + \'">\'', 'aria-label="\' + escapeHtml(short) + \'">\'')],
+    ['the owner\'s short catch-up label is changed', (s) => s.replace('Catch-' + String.fromCharCode(92) + 'u2191', 'Catch-up')],
+    ['the short Mark all read label is changed', (s) => s.replace("'Mark all read', 'All read')", "'Mark all read', 'Read all')")],
+    ['the Catch up row may wrap', (s) => s.replace('.tfcc-cubar { flex-wrap: nowrap;', '.tfcc-cubar { flex-wrap: wrap;')],
+    ['the Catch up wrap fallback keeps its labels on one line', (s) => s.replace(
+      '.tfcc-cu-wrap .tfcc-cubar > button { flex: 1 1 0; min-width: 44px; white-space: normal; }',
+      '.tfcc-cu-wrap .tfcc-cubar > button { flex: 1 1 0; min-width: 44px; white-space: nowrap; }')],
+    // 2. One-line row text.
+    ['a closed row\'s title is not cut to one line', (s) => s.replace("      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',\n", "      '  }',\n")],
+    ['the open row is not marked, so it never expands', (s) => s.replace("(open ? ' tfcc-open' : '')", "''")],
+    // 3. The close toggle and click-away.
+    ['the open toggle keeps the more glyph', (s) => s.replace("glyph(open ? 'close' : 'more')", "glyph('more')")],
+    ['the open toggle is not named Close actions', (s) => s.replace("(open ? 'Close actions' :", "(open ? 'Actions' :")],
+    ['dismiss no longer closes the drawer', (s) => s.replace("if (type === 'dismiss') { out.openRowId = null; return out; }", '')],
+    ['a tap elsewhere in the panel leaves the drawer open', (s) => s.replace('if (state.openRowId && !insideOpenDrawer(panel, t)) {', 'if (false) {')],
+    ['a tap inside the drawer closes it', (s) => s.replace("return !!(drawer && typeof drawer.contains === 'function' && drawer.contains(t));", 'return false;')],
+    ['a thread link redraws the closed drawer inside its click', (s) => s.replace(
+      'if (dismissed) setTimeout(function () { draw(doc, win, handlers); }, 0);', 'if (dismissed) draw(doc, win, handlers);')],
+    ['a tap on blank panel space closes the drawer without redrawing it', (s) => s.replace(
+      '          if (pressed) flushAfterPress(doc, win, handlers);\n          if (dismissed) draw(doc, win, handlers);\n',
+      '          if (pressed) flushAfterPress(doc, win, handlers);\n')],
+    ['the click-away window listener is never bound', (s) => s.replace(
+      "win.addEventListener('click', function (ev) { closeDrawerFromOutside(ev); }, true);", '')],
+    ['the click-away listener also closes on clicks inside the panel', (s) => s.replace('if (panel.contains(ev && ev.target)) return;', '')],
+    ['the click-away listener cancels the outside click', (s) => s.replace(
+      "      applyTransient({ type: 'dismiss' });\n      setTimeout(",
+      "      if (ev && ev.preventDefault) ev.preventDefault();\n      applyTransient({ type: 'dismiss' });\n      setTimeout(")],
+    // 4. The compact drawer.
+    ['the drawer emoji reach screen readers', (s) => s.replace('\'<span class="tfcc-emo" aria-hidden="true">\'', '\'<span class="tfcc-emo">\'')],
+    ['the wastebasket is named Delete', (s) => s.replace("emojiButton('archive', row.archived ? 'Unarchive' : 'Archive'", "emojiButton('archive', row.archived ? 'Unarchive' : 'Delete'")],
+    ['a pinned row is not marked on its Pin button', (s) => s.replace("class=\"tfcc-emobtn' + (on ? ' tfcc-on' : '')", "class=\"tfcc-emobtn' + ''")],
+    ['the drawer emoji stay in colour on dark', (s) => s.replace("      '  filter: grayscale(1) brightness(0) invert(1); }',", "      '  filter: none; }',")],
+    ['the drawer emoji stay in colour on light', (s) => s.replace('.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }', '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: none; }')],
+    ['drawer buttons go under the 24px floor', (s) => s.replace('.tfcc-drawer button { min-height: 32px; min-width: 32px;', '.tfcc-drawer button { min-height: 20px; min-width: 20px;')],
+    ['the drawer buttons may wrap, 4px apart', (s) => s.replace('.tfcc-drawer-btns { display: flex; flex-wrap: nowrap; gap: 8px; }', '.tfcc-drawer-btns { display: flex; flex-wrap: wrap; gap: 4px; }')],
+    ['a drawer field is shortened by its font', (s) => s.replace("      '  padding: 4px 8px; }',", "      '  padding: 4px 8px; font-size: 12px; }',")],
+  ].map(([name, apply]) => ({ name: '#39: ' + name, suite: 'tests/narrow-polish.test.js', apply })),
+  {
+    name: '#39: the wide Catch up bar takes the narrow two-label buttons',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("model.narrow ? cuButton('markall', 'Mark all read', 'All read') : btn('markall', 'Mark all read')",
+      "cuButton('markall', 'Mark all read', 'All read')"),
+  },
 ];
 
 let failures = 0;
