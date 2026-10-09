@@ -389,8 +389,9 @@ test('every My posts colour token is set in both theme blocks, to the agreed val
   for (const [k, v] of Object.entries(light)) assert.ok(lightBlock.indexOf('--tfcc-mine-' + k + ': ' + v) !== -1, 'light ' + k);
 });
 
-test('the reactions pill is its own line and wraps rather than overflowing', () => {
-  assert.match(blockFor('#tfcc-panel .tfcc-subhead'), /flex-wrap: wrap/);
+test('the reactions pill sits in the wrapping nav row and wraps rather than overflowing', () => {
+  assert.match(blockFor('#tfcc-panel .tfcc-nav'), /flex-wrap: wrap/);
+  assert.ok(!css.includes('.tfcc-subhead'), 'the separate row is gone (#30)');
   const pill = blockFor('#tfcc-panel button.tfcc-reactions');
   assert.match(pill, /white-space: normal/);
   assert.match(pill, /max-width: 100%/);
@@ -473,6 +474,21 @@ test('the logo is sized by height to the old title line and keeps #5C768F agains
   assert.match(block, /color: #5c768f/i);
   assert.match(css, /#tfcc-panel \.tfcc-logo path \{ fill: currentColor; \}/,
     'a host "svg * { fill }" rule must not repaint it');
+});
+
+test('the pill and My posts group on the right of the nav row (#30)', () => {
+  assert.match(blockFor('#tfcc-panel .tfcc-nav button.tfcc-reactions'), /margin-left: auto/);
+  assert.match(blockFor('#tfcc-panel .tfcc-nav .tfcc-reactions + button.tfcc-nav-mine'), /margin-left: 0/);
+});
+
+test('the thumbs are monochrome: black on light, white on dark (#30)', () => {
+  const dark = blockFor('#tfcc-panel .tfcc-thumb');
+  assert.match(dark, /filter: grayscale\(1\) brightness\(0\) invert\(1\)/);
+  const light = blockFor('#tfcc-panel.tfcc-theme-light .tfcc-thumb');
+  assert.match(light, /filter: grayscale\(1\) brightness\(0\);/);
+  assert.doesNotMatch(light, /invert/);
+  assert.ok(css.indexOf('#tfcc-panel.tfcc-theme-light .tfcc-thumb {') > css.indexOf('#tfcc-panel .tfcc-thumb {'),
+    'the light rule comes later and out-ranks the dark one');
 });
 
 test('the header keeps Refresh, Expand and Hide together on the right', () => {

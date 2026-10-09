@@ -492,9 +492,11 @@ test('with author-only off, the unchecked group never blocks', () => {
 });
 
 
-// ---- reconciled with #10 (reactions): the subhead follows the badge shelf ------
+// ---- reconciled with #10 (reactions): the pill follows the badge shelf --------
+// Since #30 the pill lives in the nav row, so it follows the shelf and the
+// toast by construction; this still guards that it is drawn once, there.
 
-test('the subhead follows the badge shelf', () => {
+test('the reactions pill follows the badge shelf, once, in the nav row', () => {
   const env = loadUserscript({ location: forums({ hash: THREAD }), now: NOW, gmStore: [['tfcc:key', KEY]] });
   const api = env.exports;
   api.state.badges = api.normaliseBadges({ v: 1, earned: { reader: NOW - 1000 } });
@@ -509,9 +511,12 @@ test('the subhead follows the badge shelf', () => {
   const head = out.indexOf('<div class="tfcc-head">');
   const shelf = out.indexOf('<div class="tfcc-shelf">');
   const toast = out.indexOf('<div class="tfcc-toast');
-  const sub = out.indexOf('<div class="tfcc-subhead">');
+  const pill = out.indexOf('class="tfcc-reactions');
+  const nav = out.indexOf('<div class="tfcc-nav">');
   assert.ok(head !== -1 && shelf > head && toast > shelf, 'head, then shelf, then toast');
-  assert.ok(sub > toast, 'the reactions subhead comes after the shelf and the toast');
+  assert.ok(pill > toast, 'the reactions pill comes after the shelf and the toast');
+  assert.ok(nav !== -1 && pill > nav && pill < out.indexOf('</div>', nav), 'the pill is in the nav row');
+  assert.strictEqual(out.split('class="tfcc-reactions').length, 2, 'drawn exactly once');
   assert.doesNotMatch(out.slice(head, shelf), /tfcc-reactions/, 'nothing of #10 sits in the header row');
 });
 

@@ -826,7 +826,8 @@ const MUTATIONS = [
   {
     name: 'an unknown thumbs figure renders 0',
     suite: 'tests/panel.test.js',
-    apply: (s) => s.replace("parts = rx('-') + ' up, ' + rx('-') + ' down';", "parts = rx('0') + ' up, ' + rx('0') + ' down';"),
+    apply: (s) => s.replace("parts = rx('-') + ' ' + thumb(THUMB_UP) + ' ' + rx('-') + ' ' + thumb(THUMB_DOWN);",
+      "parts = rx('0') + ' ' + thumb(THUMB_UP) + ' ' + rx('0') + ' ' + thumb(THUMB_DOWN);"),
   },
   {
     name: 'the reactions line renders while collapsed',
@@ -947,7 +948,15 @@ const MUTATIONS = [
     apply: (s) => s.replace("    out.push(btn('read', 'Mark read', ' data-id=\"' + escapeHtml(row.id) + '\"'));",
       "    out.push(btn('read', 'Mark read', ' data-id=\"' + escapeHtml(row.id) + '\"'));\n"
       + "    out.push(btn('prio-up', 'Priority +', ' data-id=\"' + escapeHtml(row.id) + '\"'));") },
-  { name: 'badges: the reactions subhead jumps ahead of the badge shelf', suite: 'tests/badges-runtime.test.js',
+  { name: 'the reactions pill lands after My posts instead of before it', suite: 'tests/panel.test.js',
+    apply: (s) => s.replace("      if (v === 'mine') out.push(renderReactions(model));\n", '')
+      .replace("    out.push('</div>');\n    return out.join('');\n  }\n\n  // The thread's priority adjustment",
+        "    out.push(renderReactions(model));\n    out.push('</div>');\n    return out.join('');\n  }\n\n  // The thread's priority adjustment") },
+  { name: 'the thumbs are read aloud as emoji names', suite: 'tests/panel.test.js',
+    apply: (s) => s.replace('<span class="tfcc-thumb" aria-hidden="true">', '<span class="tfcc-thumb">') },
+  { name: 'the thumbs keep their colours in the dark theme', suite: 'tests/style.test.js',
+    apply: (s) => s.replace(' .tfcc-thumb { filter: grayscale(1) brightness(0) invert(1); }', ' .tfcc-thumb { }') },
+  { name: 'badges: the reactions pill jumps ahead of the badge shelf', suite: 'tests/badges-runtime.test.js',
     apply: (s) => s.replace('    out.push(renderBadgeShelf(model));',
       '    out.push(renderReactions(model));\n    out.push(renderBadgeShelf(model));') },
   // My posts follow-ups (#24).

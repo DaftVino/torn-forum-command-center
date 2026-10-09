@@ -4239,12 +4239,19 @@
       '#' + PANEL_ID + ' button:hover { background: var(--tm-hover); }',
       // Thread reactions (#10). (1,1,1) beats the generic button rule (1,0,1);
       // :hover at (1,2,1) beats the generic button:hover (1,1,1).
-      '#' + PANEL_ID + ' .tfcc-subhead { display: flex; flex-wrap: wrap; gap: var(--tfcc-gap-sm);',
-      '  margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' button.tfcc-reactions { font-size: var(--tfcc-text-sm); padding: 0 8px;',
       '  border-radius: 10px; background: var(--tm-bg-3); color: var(--tm-meta);',
       '  border: 1px solid var(--tm-border); white-space: normal; text-align: left; max-width: 100%; }',
       '#' + PANEL_ID + ' button.tfcc-reactions:hover { background: var(--tm-hover); }',
+      // In the nav row (#30) the pill takes the auto margin, so it and My posts
+      // group on the right; My posts then sits flush beside it. (1,2,1) beats
+      // the button.tfcc-nav-mine margin at (1,1,1).
+      '#' + PANEL_ID + ' .tfcc-nav button.tfcc-reactions { margin-left: auto; }',
+      '#' + PANEL_ID + ' .tfcc-nav .tfcc-reactions + button.tfcc-nav-mine { margin-left: 0; }',
+      // The thumbs (#30) drawn in one colour: white on the dark panel (the
+      // default tokens are dark), black on the light one.
+      '#' + PANEL_ID + ' .tfcc-thumb { filter: grayscale(1) brightness(0) invert(1); }',
+      '#' + PANEL_ID + '.tfcc-theme-light .tfcc-thumb { filter: grayscale(1) brightness(0); }',
       '#' + PANEL_ID + ' .tfcc-rx { color: var(--tm-text); font-weight: bold; font-variant-numeric: tabular-nums; }',
       '#' + PANEL_ID + ' .tfcc-karma { display: inline-flex; align-items: center; gap: 0.25em;',
       '  white-space: nowrap; color: var(--tm-text); }',
@@ -4610,7 +4617,8 @@
       if (v === 'drafts' && model.totals.drafts) count = ' (' + model.totals.drafts + ')';
       if (v === 'mine' && model.mine && model.mine.unread) count = ' (' + model.mine.unread + ')';
       // My posts is last in VIEWS and right-aligned by its class (see the
-      // .tfcc-nav-mine rules), so it needs no special case in this loop.
+      // .tfcc-nav-mine rules). The reactions pill (#30) goes right before it.
+      if (v === 'mine') out.push(renderReactions(model));
       out.push('<button type="button" data-act="view" data-view="' + v + '"'
         + (v === 'mine' ? ' class="tfcc-nav-mine"' : '') + ' aria-pressed="'
         + (model.view === v ? 'true' : 'false') + '">' + escapeHtml(VIEW_LABELS[v] + count) + '</button>');
@@ -5222,11 +5230,22 @@
       + KARMA_ICON_SVG + '<span class="tfcc-rx">' + escapeHtml(n) + '</span></span>';
   }
 
-  // The thread reactions line (#10). Its own block under .tfcc-head, never in
-  // it: the header row belongs to the title, #9's badges and Refresh, Expand
-  // and Hide. Rendered after the collapsed early return, so hidden when
-  // collapsed. Up and down are real topic-post sums; net is labelled. Karma
-  // follows them; with no started threads and a known karma, it stands alone.
+  // The thumbs in the reactions pill (#30). The owner asked for these emoji,
+  // which overrides the ASCII-SVG icon convention for this pill only. They are
+  // escapes so the source stays ASCII (Torn PDA rewrites typographic
+  // characters), aria-hidden because the pill's aria-label says "up" and
+  // "down", and drawn monochrome by the .tfcc-thumb filter rules.
+  var THUMB_UP = '\uD83D\uDC4D';
+  var THUMB_DOWN = '\uD83D\uDC4E';
+  function thumb(glyph) {
+    return '<span class="tfcc-thumb" aria-hidden="true">' + glyph + '</span>';
+  }
+
+  // The thread reactions pill (#10). Since #30 it sits in the nav row, right
+  // before My posts, because it opens My posts; renderNav places it. The nav is
+  // drawn after the collapsed early return, so it is hidden when collapsed. Up
+  // and down are real topic-post sums; net is labelled. Karma follows them;
+  // with no started threads and a known karma, it stands alone.
   function renderReactions(model) {
     var r = model.reactions;
     if (!model.hasKey || !r) return '';
@@ -5240,14 +5259,14 @@
     if (r.state !== 'empty') {
       if (known && r.thumbThreads > 0) {
         var more = r.netThreads > 0 ? ', net ' + formatSigned(r.net) + ' on ' + r.netThreads + ' more' : '';
-        parts = rx(formatCount(r.up)) + ' up, ' + rx(formatCount(r.down)) + ' down'
+        parts = rx(formatCount(r.up)) + ' ' + thumb(THUMB_UP) + ' ' + rx(formatCount(r.down)) + ' ' + thumb(THUMB_DOWN)
           + (r.netThreads > 0 ? ', net ' + rx(formatSigned(r.net)) + ' on ' + r.netThreads + ' more' : '');
         spoken = formatCount(r.up) + ' up, ' + formatCount(r.down) + ' down' + more;
       } else if (known) {
         parts = 'net ' + rx(formatSigned(r.net));
         spoken = 'net ' + formatSigned(r.net);
       } else {
-        parts = rx('-') + ' up, ' + rx('-') + ' down';
+        parts = rx('-') + ' ' + thumb(THUMB_UP) + ' ' + rx('-') + ' ' + thumb(THUMB_DOWN);
         spoken = 'thumbs unknown';
       }
     }
@@ -5255,10 +5274,10 @@
     var title = reactionsTitle(r, model.now, MINE_PAGE_LIMIT);
     var said = (r.state === 'empty' ? '' : 'Your threads: ' + spoken + age + '. ')
       + 'Karma: ' + (karma === null ? 'unknown' : formatKarma(karma)) + '. ';
-    var lead = r.state === 'empty' ? '' : 'Your threads: ' + parts + escapeHtml(age) + ' ';
-    return '<div class="tfcc-subhead"><button type="button" class="tfcc-reactions' + (stale ? ' tfcc-stale' : '')
+    var lead = r.state === 'empty' ? '' : parts + escapeHtml(age) + ' ';
+    return '<button type="button" class="tfcc-reactions' + (stale ? ' tfcc-stale' : '')
       + '" data-act="view" data-view="mine" title="' + escapeHtml(title) + '" aria-label="'
-      + escapeHtml(said + title) + '">' + lead + renderKarma(karma) + '</button></div>';
+      + escapeHtml(said + title) + '">' + lead + renderKarma(karma) + '</button>';
   }
 
   function renderHeadId(model) {
@@ -5368,7 +5387,6 @@
     out.push(renderBadgeToast(model));
 
     if (model.collapsed) return out.join('');
-    out.push(renderReactions(model));
 
     for (var n = 0; n < model.notices.length; n += 1) {
       out.push('<div class="tfcc-' + (model.notices[n].kind === 'error' ? 'error' : 'warn') + '">'

@@ -96,6 +96,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   buttons named "Raise priority" and "Lower priority". Pinning a thread no
   longer wraps Archive onto a second line. Storage and the Priority sort are
   unchanged, and the meta line no longer repeats the number. (#30)
+- The reactions pill moved from its own row into the nav row, right before My
+  posts, which it still opens. It drops the "Your threads:" label and shows
+  thumbs-up and thumbs-down emoji in place of the words "up" and "down",
+  drawn black on the light theme and white on the dark one. Screen readers
+  still hear "up" and "down", and the hover notes, the "-" for unknown, the
+  labelled net and karma are unchanged. (#30)
 
 ### Fixed
 

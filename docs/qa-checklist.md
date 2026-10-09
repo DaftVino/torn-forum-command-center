@@ -268,7 +268,8 @@ Owner checks for the live API (spec "Prerequisite"; all block release):
 Torn PDA and desktop (#10).
 
 - [ ] Fresh install, before opening My posts: the line reads
-      `Your threads: - up, - down`, never 0.
+      `- (thumbs up) - (thumbs down)` in the nav row, just before My posts,
+      never 0. The thumbs are white on Dark and black on Light (#30).
 - [ ] Open My posts. API key log: at most 17 requests for that open, and the
       `forum/<id>/posts` ones are only for threads you started.
 - [ ] Pick a thread you started with visible thumbs. On Torn's thread page
