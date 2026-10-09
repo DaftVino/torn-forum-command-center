@@ -77,7 +77,7 @@ FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or auto
 
 ### Appearance and mobile layout
 
-- Choose **Dark**, **Light**, or **Match Torn**.
+- Choose **Match Torn** (the default), **Dark**, or **Light**.
 - Optionally hide the panel when opening one of FCC's thread links.
 - Clip long titles and summaries to one line, with the full content available through the row's expanded actions on narrow panels.
 - The see-through option uses translucent panel and row backgrounds. Expand remains solid.
@@ -166,7 +166,7 @@ Exports or imports the workspace, reports post-cache size, clears cached posts, 
 - It requests only `GM_getValue`, `GM_setValue`, and `GM_xmlhttpRequest`.
 - Its only allowed connection host is `api.torn.com`.
 - Every network request is a GET. There are no POST, PUT, or DELETE requests, no third-party requests, and no telemetry.
-- FCC does not scrape Torn forum pages. Route capture uses the current address and page title; draft support reads the reply box on the page you are viewing, and the Match Torn theme reads the page background colour.
+- FCC does not scrape Torn forum pages. Route capture uses the current address and page title; draft support reads the reply box on the page you are viewing, and the Match Torn theme (the default) reads the page background colour.
 - The script does not simulate account actions, submit forms, open windows, or navigate on its own. Inserting a draft stops at the reply box; the player presses Torn's Post button.
 - Auto refresh stops while the page is hidden or the window is unfocused.
 - A refused or invalid key is disabled instead of being retried repeatedly.

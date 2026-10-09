@@ -1134,6 +1134,8 @@ const MUTATIONS = [
     ['the logo rule ignores the token', (s) => s.replace(
       "'  color: var(--tfcc-logo); }',", "'  color: #5c768f; }',")],
   ].map(([name, apply]) => ({ name: '#53: ' + name, suite: 'tests/style.test.js', apply })),
+  { name: 'the default theme is Dark again, not Match Torn', suite: 'tests/storage.test.js',
+    apply: (s) => s.replace("      theme: 'match',", "      theme: 'dark',") },
   { name: '#53: an unlisted wide logo line', suite: 'tests/wide-parity.test.js',
     apply: (s) => s.replace("'  color: var(--tfcc-logo); }',", "'  color: var(--tfcc-logo); opacity: 1; }',") },
   {
