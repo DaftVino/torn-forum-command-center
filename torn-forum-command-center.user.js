@@ -653,12 +653,37 @@
     if (!id || !name) return null;
     var forumIds = [];
     if (Array.isArray(raw.forumIds)) {
-      for (var i = 0; i < raw.forumIds.length && forumIds.length < 40; i += 1) {
+      // #47 (PR #48 review): repeats are dropped here and the 40 cap is
+      // applied by canonicalClaims, after the cross-folder pass, so neither
+      // kind of duplicate uses up the cap.
+      for (var i = 0; i < raw.forumIds.length && i < MAX_RAW_CLAIMS; i += 1) {
         var n = toInt(raw.forumIds[i], 0);
         if (n > 0 && forumIds.indexOf(n) === -1) forumIds.push(n);
       }
     }
     return { id: id, name: name, order: toInt(raw.order, index), forumIds: forumIds };
+  }
+
+  var MAX_CLAIMS = 40;
+  var MAX_RAW_CLAIMS = 400;
+
+  // #47 (PR #48 review): a forum is claimed by one folder at most. Given the
+  // folders in the user's order, each forum stays with the FIRST folder that
+  // claims it (the one folderFor already picks, so auto-filing does not
+  // change), each list loses its repeats, and the cap applies after both.
+  // Every boundary runs it: load, upsertFolder and import.
+  function canonicalClaims(folders) {
+    var taken = {};
+    return folders.map(function (f) {
+      var ids = [];
+      for (var i = 0; i < f.forumIds.length && ids.length < MAX_CLAIMS; i += 1) {
+        var n = f.forumIds[i];
+        if (Object.prototype.hasOwnProperty.call(taken, n)) continue;
+        taken[n] = true;
+        ids.push(n);
+      }
+      return { id: f.id, name: f.name, order: f.order, forumIds: ids };
+    });
   }
 
   function normaliseOrganizer(raw, now) {
@@ -699,6 +724,7 @@
     }
 
     folders.sort(function (a, b) { return a.order - b.order; });
+    folders = canonicalClaims(folders);
     // #45: both fields are new. Absent (every organizer saved before #45),
     // Unfiled is last and nothing is collapsed; isRecoveredValue fills absent
     // top-level fields, so that is not reported as damage.
@@ -738,6 +764,19 @@
   // that is present and changed, a key the normaliser drops, and an entry it
   // drops all still differ, so they are still damage.
   function isRecoveredOrganizer(raw, value) {
+    // #47 (PR #48 review): a list of whole positive forum ids that only lost
+    // repeats, claims another folder holds first, or entries past the cap was
+    // canonicalised, not damaged. Any other value in it is still damage.
+    if (isPlainObject(raw) && Array.isArray(raw.folders) && isPlainObject(value) && Array.isArray(value.folders)) {
+      var byId = {};
+      value.folders.forEach(function (f) { byId[f.id] = f; });
+      raw = Object.assign({}, raw, { folders: raw.folders.map(function (r) {
+        if (!isPlainObject(r) || !Array.isArray(r.forumIds) || typeof r.id !== 'string') return r;
+        var v = Object.prototype.hasOwnProperty.call(byId, r.id) ? byId[r.id] : null;
+        var wellFormed = r.forumIds.every(function (n) { return typeof n === 'number' && n > 0 && Math.floor(n) === n; });
+        return v && wellFormed ? Object.assign({}, r, { forumIds: v.forumIds }) : r;
+      }) });
+    }
     if (isPlainObject(raw) && isPlainObject(raw.threads) && isPlainObject(value) && isPlainObject(value.threads)) {
       var threads = {};
       Object.keys(raw.threads).forEach(function (id) {
@@ -2504,6 +2543,31 @@
     return null;
   }
 
+  // #47: a folder claims any number of forums, and a forum is claimed by one
+  // folder at most, so auto-filing never has to choose. A claim another
+  // folder holds is refused (the same organizer comes back); it is never
+  // moved, because Settings only offers the forums nobody claims.
+  function claimForum(org, folderId, forumId) {
+    var f = toInt(forumId, 0);
+    if (f <= 0 || folderFor(org, f)) return org;
+    var i = org.folders.findIndex(function (x) { return x.id === folderId; });
+    if (i === -1 || org.folders[i].forumIds.length >= MAX_CLAIMS) return org;
+    var next = cloneOrganizer(org);
+    next.folders[i].forumIds.push(f);
+    return next;
+  }
+
+  // #47: removing a claim changes only future auto-filing. Threads already
+  // filed keep their folder, because by then the filing is theirs.
+  function unclaimForum(org, folderId, forumId) {
+    var f = toInt(forumId, 0);
+    var i = org.folders.findIndex(function (x) { return x.id === folderId; });
+    if (i === -1 || org.folders[i].forumIds.indexOf(f) === -1) return org;
+    var next = cloneOrganizer(org);
+    next.folders[i].forumIds = next.folders[i].forumIds.filter(function (x) { return x !== f; });
+    return next;
+  }
+
   // Only fills an empty slot. A thread the user filed by hand is never moved by
   // a rule, because the rule is a default and the hand placement is a decision.
   function applyAutoAssign(org, subscribedRows, now) {
@@ -2597,6 +2661,8 @@
     if (i === -1) next.folders.push(f);
     else next.folders[i] = f;
     next.folders.sort(function (a, b) { return a.order - b.order; });
+    // #47 (PR #48 review): a forum another folder holds first stays there.
+    next.folders = canonicalClaims(next.folders);
     var j = after === null ? -1 : next.folders.findIndex(function (x) { return x.id === after; });
     next.unfiledAt = j === -1 ? next.folders.length : j;
     return next;
@@ -2799,18 +2865,32 @@
     var addedFolders = 0;
     var changedThreads = 0;
     var addedDrafts = 0;
+    var wanted = {};
 
     if (Array.isArray(payload.folders)) {
       for (var i = 0; i < payload.folders.length && i < 40; i += 1) {
         var f = normaliseFolder(payload.folders[i], org.folders.length);
         if (!f) continue;
+        // #47: every claim travels. Claims are applied once the order is
+        // known, below.
+        if (!Object.prototype.hasOwnProperty.call(wanted, f.id)) wanted[f.id] = f.forumIds.slice();
         if (!org.folders.some(function (x) { return x.id === f.id; })) {
+          f.forumIds = [];
           org.folders.push(f);
           addedFolders += 1;
         }
       }
       org.folders.sort(function (a, b) { return a.order - b.order; });
       org = withFolderOrder(org, importedOrder(org, payload));
+    }
+    // #47 (PR #48 review): this device's claims are made canonical first, so a
+    // forum it already gave to a folder keeps that folder; then the export's
+    // claims are added in the final folder order, so a forum the export gave
+    // to two folders lands in the first of them.
+    org.folders = canonicalClaims(org.folders);
+    for (var wf = 0; wf < org.folders.length; wf += 1) {
+      var want = Object.prototype.hasOwnProperty.call(wanted, org.folders[wf].id) ? wanted[org.folders[wf].id] : [];
+      for (var w = 0; w < want.length; w += 1) org = claimForum(org, org.folders[wf].id, want[w]);
     }
 
     var known = {};
@@ -4877,6 +4957,56 @@
       // #45: the group toggle and the order arrows keep the 44px target.
       '#' + PANEL_ID + '.tfcc-narrow button.tfcc-grp { min-height: 44px; }',
       '#' + PANEL_ID + '.tfcc-narrow button.tfcc-move { min-width: 44px; min-height: 44px; }',
+      // #47: narrow Settings, tighter. One scale: 4px from a label to its own
+      // control, 8px between items (and between stacked targets), 12px
+      // between sections. Targets stay 44px and text keeps its size; only the
+      // whitespace around them shrinks. Everything hangs off .tfcc-set, the
+      // narrow Settings wrapper, so no other view moves.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-section { margin-bottom: 12px; padding-bottom: 0; }',
+      // (Every item ends in an 8px margin, which the border keeps inside the
+      // section, so the bottom matches the 8px padding at the top.)
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-section > h4 { margin-bottom: 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kv { gap: 8px; margin-bottom: 8px; }',
+      // A label shares its control's line where both fit, and stacks only
+      // where they do not, 4px above it (its -4px margin on the 8px gap).
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kv > label { flex: 1 1 8em; min-height: 0; margin-bottom: -4px; }',
+      // A checkbox's label is its 44px target, on the checkbox's line, with
+      // the info icon (if any) after the checkbox.
+      // The checkbox leads its line, so every checkbox lines up at the left
+      // and every info icon at the right.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kvc > label { min-height: 44px; margin-bottom: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kvc > input[type="checkbox"] { order: -1; margin: 0; }',
+      // The new folder's name field shares Add's line.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kv > input[type="text"] { flex: 1 1 6em; min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-infobar { margin-bottom: 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set p.tfcc-note { margin: 0 0 8px 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-actions { margin: 0 0 8px 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-draft { display: block; margin: 0 0 8px 0; }',
+      // A note or info bar that explains the row above it sits 4px under it.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kv + .tfcc-infobar { margin-top: -4px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kv + p.tfcc-note { margin-top: -4px; }',
+      // #47: a folder row: name and arrows, then its claimed forums, then the
+      // claim menu and Delete.
+      // Line 1: the name takes what the arrows and Delete leave, wrapping
+      // inside itself on a long name. Line 2 (.tfcc-claimline): the chips,
+      // then the menu, wrapping onto further lines when there are many.
+      // The name's line break never splits a word: at its narrowest the name
+      // takes the first line alone and the controls drop under it, still
+      // right-aligned.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder > label { flex: 1 1 0; min-width: min-content;',
+      '  flex-direction: column; align-items: flex-start; justify-content: center; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder > button.tfcc-move:first-of-type { margin-left: auto; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set button.tfcc-del { display: inline-flex; align-items: center;',
+      '  justify-content: center; padding: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-claimline { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px;',
+      '  min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-claimline .tfcc-claims { display: contents; }',
+      // A folder row is several lines, so a rule marks where the next begins.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder + .tfcc-forder { border-top: 1px solid var(--tm-border);',
+      '  padding-top: 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder select { flex: 1 1 8em; min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-claim { border-radius: 22px; }',
+      '#' + PANEL_ID + '.tfcc-narrow button.tfcc-unclaim { min-width: 44px; min-height: 44px; border-radius: 22px; }',
       // The header: one line. These gaps add up to HB_GAPS (20): logo-chip 6,
       // group 6, and 2 x 4 between the buttons.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-head { gap: 6px; flex-wrap: nowrap; margin-bottom: 6px; }',
@@ -5051,6 +5181,13 @@
       '#' + PANEL_ID + ' button.tfcc-move { display: inline-flex; align-items: center; justify-content: center;',
       '  min-width: 24px; min-height: 24px; padding: 0 2px; }',
       '#' + PANEL_ID + ' button.tfcc-move:disabled { opacity: 0.45; cursor: default; }',
+      // #47: a folder's claimed forums, each a chip with its remove button.
+      '#' + PANEL_ID + ' .tfcc-claims { display: inline-flex; flex-wrap: wrap; gap: var(--tfcc-gap-xs); }',
+      '#' + PANEL_ID + ' .tfcc-claim { display: inline-flex; align-items: center; gap: 2px; padding-left: 8px;',
+      '  border: 1px solid var(--tm-border); border-radius: 12px; color: var(--tm-text); }',
+      '#' + PANEL_ID + ' button.tfcc-unclaim { display: inline-flex; align-items: center; justify-content: center;',
+      '  min-width: 24px; min-height: 24px; padding: 0; border: 0; border-radius: 12px; background: transparent;',
+      '  color: inherit; }',
       '#' + PANEL_ID + ' .tfcc-draft { width: 100%; min-height: 90px; resize: vertical; }',
       '#' + PANEL_ID + ' .tfcc-hit { border-left: 3px solid var(--tm-accent-text); padding-left: 8px;',
       '  margin-bottom: var(--tfcc-gap-sm); }',
@@ -5397,6 +5534,8 @@
     check: 'M5 12.5l4.5 4.5L19 7.5',
     info: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5v.5',
     close: 'M6 6l12 12M18 6L6 18',
+    // #47: a bin, for a narrow folder row's Delete.
+    trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6',
   });
 
   function glyph(name) {
@@ -6154,10 +6293,17 @@
     checkinDays: 'days', bigBacklog: 'threads in the backlog',
   });
 
+  // #47: a Settings checkbox row. Narrow, it carries tfcc-kvc, so its label
+  // keeps the 44px target and sits on the checkbox's line; a label over a
+  // select or a text field needs no target of its own. Wide is unchanged.
+  function checkRow(model) {
+    return '<div class="tfcc-kv' + (model.narrow ? ' tfcc-kvc' : '') + '">';
+  }
+
   function renderBadgeCatalogue(model) {
     var b = model.badges || { enabled: false };
     var out = ['<div class="tfcc-section"><h4>Badges</h4>'];
-    out.push('<div class="tfcc-kv"><label for="tfcc-badges">Show badges and record progress</label>'
+    out.push(checkRow(model) + '<label for="tfcc-badges">Show badges and record progress</label>'
       + '<input id="tfcc-badges" type="checkbox" data-act="badges-toggle"' + (b.enabled ? ' checked' : '') + '></div>');
     out.push('<div class="tfcc-infobar"><span class="tfcc-note">Recorded on this device only. No request is made.'
       + '</span>' + renderInfoButton('settings-badges', model.openInfoId) + '</div>');
@@ -6281,7 +6427,7 @@
       + '; never more than ' + REQUESTS_PER_WINDOW + ' a minute.') + '</span>'
       + renderInfoButton('settings-budget', model.openInfoId) + '</div>');
     out.push(renderInfoText('settings-budget', model.openInfoId, budgetText));
-    out.push('<div class="tfcc-kv"><label for="tfcc-author">Only flag new posts by the thread author</label>'
+    out.push(checkRow(model) + '<label for="tfcc-author">Only flag new posts by the thread author</label>'
       // #45 (owner): a one-line hover summary. The checkbox's name stays its
       // label; the title is only its description.
       + '<input id="tfcc-author" type="checkbox" data-act="author-only" title="'
@@ -6331,13 +6477,13 @@
     out.push(renderInfoText('settings-rows', model.openInfoId, 'Search and Drafts always show everything. '
       + 'A capped list says how many it is hiding, and Show all lifts the cap for that list until the page '
       + 'reloads. The default is 5.'));
-    out.push('<div class="tfcc-kv"><label for="tfcc-hide">Hide Torn\'s own subscribed box</label>'
+    out.push(checkRow(model) + '<label for="tfcc-hide">Hide Torn\'s own subscribed box</label>'
       + '<input id="tfcc-hide" type="checkbox" data-act="hide-torn-box"'
       + (model.settings.hideTornBox ? ' checked' : '') + '></div>');
-    out.push('<div class="tfcc-kv"><label for="tfcc-autosave">Autosave the reply box as a draft</label>'
+    out.push(checkRow(model) + '<label for="tfcc-autosave">Autosave the reply box as a draft</label>'
       + '<input id="tfcc-autosave" type="checkbox" data-act="autosave"'
       + (model.settings.autosaveDrafts ? ' checked' : '') + '></div>');
-    out.push('<div class="tfcc-kv"><label for="tfcc-autohide">Hide the panel when I open a thread</label>'
+    out.push(checkRow(model) + '<label for="tfcc-autohide">Hide the panel when I open a thread</label>'
       + '<input id="tfcc-autohide" type="checkbox" data-act="auto-hide"'
       + (model.settings.autoHideOnOpen ? ' checked' : '') + '>'
       + renderInfoButton('settings-autohide', model.openInfoId) + '</div>');
@@ -6345,7 +6491,7 @@
       + 'and only a plain click. Opening a link in a new tab, or following links on the Torn page itself, '
       + 'leaves the panel as it is. Press Show to bring it back.'));
     // #41: on by default. A class on the panel switches the CSS (tfcc-clip).
-    out.push('<div class="tfcc-kv"><label for="tfcc-clip">Clip titles and summaries that wrap</label>'
+    out.push(checkRow(model) + '<label for="tfcc-clip">Clip titles and summaries that wrap</label>'
       + '<input id="tfcc-clip" type="checkbox" data-act="clip-lines"'
       + (model.settings.clipLines ? ' checked' : '') + '>'
       + renderInfoButton('settings-clip', model.openInfoId) + '</div>');
@@ -6354,7 +6500,7 @@
       + 'screen, hover over it. Turn this off to let them wrap.'));
     // #43 (owner): on by default. A class on the panel switches the CSS
     // (tfcc-seethrough).
-    out.push('<div class="tfcc-kv"><label for="tfcc-seethrough">See-through background</label>'
+    out.push(checkRow(model) + '<label for="tfcc-seethrough">See-through background</label>'
       + '<input id="tfcc-seethrough" type="checkbox" data-act="see-through"'
       + (model.settings.seeThrough ? ' checked' : '') + '>'
       + renderInfoButton('settings-seethrough', model.openInfoId) + '</div>');
@@ -6372,8 +6518,10 @@
     // filter, encodeState, and the First folder badge (ownFoldersFilled).
     out.push(renderInfoText('settings-folders', model.openInfoId, ''
       + 'Folders organise only threads you subscribe to (and ones you file by hand); they never add other threads '
-      + 'from a forum. To use them: add a folder below; optionally claim a forum, so new subscriptions from that '
-      + 'forum file themselves into it; or file a thread from the folder menu on its row. Filing by hand always '
+      + 'from a forum. To use them: add a folder below; optionally claim one or more forums, so new subscriptions '
+      + 'from them file themselves into it; a forum belongs to one folder at a time, and removing a claim leaves '
+      + 'the threads already filed where they are; or file a thread from the folder menu on its row. Filing by '
+      + 'hand always '
       + 'wins over a claim. The arrows set the order, Unfiled included. This helps because Catch up groups threads '
       + 'with new posts by folder, in that order, so the ones you care about most come first, and a group you do '
       + 'not need right now collapses out of the way; Threads can also be filtered to one folder. Folders stay on '
@@ -6383,25 +6531,62 @@
     // is built in: no delete, no rename, no forum claim.
     var orderKeys = folderOrderKeys({ folders: model.folders, unfiledAt: model.unfiledAt });
     var byId = {};
-    model.folders.forEach(function (x) { byId[x.id] = x; });
+    var claimed = {};
+    model.folders.forEach(function (x) {
+      byId[x.id] = x;
+      x.forumIds.forEach(function (n) { claimed[n] = true; });
+    });
+    var forumTitles = {};
+    model.categories.forEach(function (cat) { forumTitles[cat.id] = cat.title; });
     for (var i = 0; i < orderKeys.length; i += 1) {
       var unf = orderKeys[i] === UNFILED_KEY;
       var f = unf ? { id: UNFILED_KEY, name: 'Unfiled' } : byId[folderIdOfKey(orderKeys[i])];
-      out.push('<div class="tfcc-kv tfcc-forder"><label>' + escapeHtml(f.name) + '</label>');
+      // #47 (owner): narrow, Unfiled is one line: its note sits under its
+      // name, inside the label, beside the arrows. Wide keeps main's markup.
+      var unfNote = '<span class="tfcc-note">Threads in no folder</span>';
+      out.push('<div class="tfcc-kv tfcc-forder"><label>' + escapeHtml(f.name) + (unf && model.narrow ? unfNote : '')
+        + '</label>');
       out.push(moveButton(orderKeys[i], f.name, 'up', i === 0) + moveButton(orderKeys[i], f.name, 'down', i === orderKeys.length - 1));
       if (unf) {
-        out.push('<span class="tfcc-note">Threads in no folder</span></div>');
+        out.push((model.narrow ? '' : unfNote) + '</div>');
         continue;
       }
-      out.push('<select data-act="folder-forum" data-id="' + escapeHtml(f.id) + '">');
-      out.push('<option value="">Claim a forum...</option>');
+      // #47: each claimed forum is a chip with its own remove button, and the
+      // menu adds one more claim. It offers only the forums no folder claims,
+      // because a forum belongs to one folder at a time (claimForum).
+      var claimHtml = [];
+      if (f.forumIds.length) {
+        claimHtml.push('<span class="tfcc-claims">');
+        for (var q = 0; q < f.forumIds.length; q += 1) {
+          var forumName = forumTitles[f.forumIds[q]] || ('Forum ' + f.forumIds[q]);
+          var rm = 'Remove ' + forumName;
+          claimHtml.push('<span class="tfcc-claim">' + escapeHtml(forumName) + '<button type="button" class="tfcc-unclaim"'
+            + ' data-act="folder-unclaim" data-id="' + escapeHtml(f.id) + '" data-forum="' + f.forumIds[q] + '"'
+            + ' aria-label="' + escapeHtml(rm) + '" title="' + escapeHtml(rm) + '">' + glyph('close') + '</button></span>');
+        }
+        claimHtml.push('</span>');
+      }
+      claimHtml.push('<select data-act="folder-forum" data-id="' + escapeHtml(f.id) + '" aria-label="'
+        + escapeHtml('Claim a forum for ' + f.name) + '">');
+      claimHtml.push('<option value="">Claim a forum...</option>');
       for (var c = 0; c < model.categories.length; c += 1) {
         var cat = model.categories[c];
-        out.push('<option value="' + cat.id + '"'
-          + (f.forumIds.indexOf(cat.id) !== -1 ? ' selected' : '') + '>' + escapeHtml(cat.title) + '</option>');
+        if (claimed[cat.id]) continue;
+        claimHtml.push('<option value="' + cat.id + '">' + escapeHtml(cat.title) + '</option>');
       }
-      out.push('</select>');
-      out.push(btn('folder-delete', 'Delete', ' data-id="' + escapeHtml(f.id) + '" class="tfcc-danger"'));
+      claimHtml.push('</select>');
+      // Narrow, Delete is a named 44px bin icon, so the name, both arrows and
+      // Delete share one line down to a 280px phone. Wide keeps the word.
+      var delName = 'Delete ' + f.name;
+      var delHtml = model.narrow
+        ? '<button type="button" data-act="folder-delete" data-id="' + escapeHtml(f.id) + '" class="tfcc-danger tfcc-del"'
+          + ' aria-label="' + escapeHtml(delName) + '" title="' + escapeHtml(delName) + '">' + glyph('trash') + '</button>'
+        : btn('folder-delete', 'Delete', ' data-id="' + escapeHtml(f.id) + '" class="tfcc-danger"');
+      // #47 (owner): narrow, a folder row is two lines: the name, the arrows
+      // and Delete; then the chips and the claim menu, in their own line.
+      // Wide keeps main's order.
+      if (model.narrow) out.push(delHtml + '<span class="tfcc-claimline">' + claimHtml.join('') + '</span>');
+      else out.push(claimHtml.join('') + delHtml);
       out.push('</div>');
     }
     out.push('<div class="tfcc-kv"><label for="tfcc-newfolder">New folder</label>'
@@ -6677,7 +6862,11 @@
     if (model.view === 'catchup') out.push(renderCatchUpView(model));
     else if (model.view === 'search') out.push(renderSearchView(model));
     else if (model.view === 'drafts') out.push(renderDraftsView(model));
-    else if (model.view === 'settings') out.push(renderSettingsView(model));
+    // #47: narrow, Settings sits in a wrapper its tighter spacing hangs off,
+    // so no other view's sections change. Wide markup is unchanged.
+    else if (model.view === 'settings') {
+      out.push(model.narrow ? '<div class="tfcc-set">' + renderSettingsView(model) + '</div>' : renderSettingsView(model));
+    }
     else if (model.view === 'mine') out.push(renderMineView(model));
     else out.push(renderThreadsView(model));
 
@@ -7508,6 +7697,14 @@
 
   function announce(text) { state.liveMessage = { text: text, announced: false }; }
 
+  // #47: "Guides now claims API Development." and its opposite, by name.
+  function claimAnnouncement(folderId, forumId, verb) {
+    var n = toInt(forumId, 0);
+    var folder = state.organizer.folders.filter(function (f) { return f.id === folderId; })[0];
+    var cat = (state.feed.categories || []).filter(function (c) { return c.id === n; })[0];
+    return (folder ? folder.name : 'The folder') + verb + (cat ? cat.title : 'Forum ' + n) + '.';
+  }
+
   // One polite live region, rendered with the panel and announced once, the
   // way the badge toast's role="status" is (spec section 6, focus rule 5).
   // Narrow only, like the rest of the section 6 machinery: desktop markup
@@ -7822,6 +8019,18 @@
           state.organizer = toggleFolderCollapsed(state.organizer, id); persist('organizer');
           redraw(); return;
         }
+        if (act === 'folder-unclaim' && id) {
+          var forumId = el.getAttribute('data-forum');
+          var unclaimed = unclaimForum(state.organizer, id, forumId);
+          if (unclaimed !== state.organizer) {
+            state.organizer = unclaimed;
+            persist('organizer'); recompute(now);
+            announce(claimAnnouncement(id, forumId, ' no longer claims '));
+          }
+          // The chip is gone, so focus goes to the folder's claim menu.
+          state.focusIntent = [attrSel('data-act', 'folder-forum') + attrSel('data-id', id)];
+          redraw(); return;
+        }
         if (act === 'folder-delete' && id) {
           state.organizer = deleteFolder(state.organizer, id); persist('organizer'); recompute(now);
           recordBadgeEvent({ type: 'tick' }, now); redraw(); return;
@@ -7951,15 +8160,14 @@
           redraw(); return;
         }
         if (act === 'folder-forum' && id) {
-          var fid = toInt(value, 0);
-          var folder = state.organizer.folders.filter(function (f) { return f.id === id; })[0];
-          if (folder && fid > 0) {
-            var ids = folder.forumIds.slice();
-            var at = ids.indexOf(fid);
-            if (at === -1) ids.push(fid); else ids.splice(at, 1);
-            state.organizer = upsertFolder(state.organizer, Object.assign({}, folder, { forumIds: ids }));
+          // #47: the menu adds a claim; a chip's button removes one. A forum
+          // another folder claims is not offered, and claimForum refuses it.
+          var claimedOrg = claimForum(state.organizer, id, value);
+          if (claimedOrg !== state.organizer) {
+            state.organizer = claimedOrg;
             persist('organizer'); recompute(now);
             recordBadgeEvent({ type: 'tick' }, now);
+            announce(claimAnnouncement(id, value, ' now claims '));
           }
           redraw(); return;
         }

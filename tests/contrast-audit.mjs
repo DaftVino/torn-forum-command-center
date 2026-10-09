@@ -457,16 +457,72 @@ const SCRIPT = `
   // targets: 44px on a narrow panel, 24px or more on a wide one.
   const narrowPanel = panel.classList.contains('tfcc-narrow');
   const grps = Array.from(panel.querySelectorAll('button.tfcc-grp'));
-  panel.querySelectorAll('button.tfcc-grp, button.tfcc-move').forEach((b) => {
+  // #47: and so do the claimed-forum chips' remove buttons.
+  panel.querySelectorAll('button.tfcc-grp, button.tfcc-move, button.tfcc-unclaim, button.tfcc-del').forEach((b) => {
     if (b.closest('[hidden]') || getComputedStyle(b).display === 'none') return;
     const r = b.getBoundingClientRect();
     const min = narrowPanel ? 43.5 : 23.5;
-    const wide = b.classList.contains('tfcc-move');
+    const wide = !b.classList.contains('tfcc-grp');
     if (r.height < min || (wide && r.width < min)) {
       polishBad.push('"' + (b.getAttribute('aria-label') || b.textContent.trim()) + '" is ' + Math.round(r.width) + 'x' + Math.round(r.height));
     }
   });
+  // #47: Settings. At every width no two controls overlap. Narrow (the
+  // tighter layout), consecutive items in a section are at least 6px apart,
+  // except a note or info bar that explains the row above it, which sits 4px
+  // under it (3.5 allowed for rounding), so nothing collapses to zero. Wide
+  // is main's layout, whose Backup buttons meet the text box, so it is not
+  // held to the narrow gap.
+  let setGaps = 0;
+  let forderRows = 0;
+  const isSettings = !!panel.querySelector('[data-act="folder-forum"], [data-act="folder-name"]');
+  if (isSettings) {
+    const shown = (el) => !el.closest('[hidden]') && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0;
+    const ctls = Array.from(panel.querySelectorAll('.tfcc-section button, .tfcc-section select, .tfcc-section input, '
+      + '.tfcc-section textarea, .tfcc-section a.tfcc-linkbtn, .tfcc-section .tfcc-kv > label')).filter(shown);
+    for (let i = 0; i < ctls.length; i += 1) {
+      for (let j = i + 1; j < ctls.length; j += 1) {
+        if (ctls[i].contains(ctls[j]) || ctls[j].contains(ctls[i])) continue;
+        if (hits(ctls[i].getBoundingClientRect(), ctls[j].getBoundingClientRect())) {
+          polishBad.push('Settings controls overlap: ' + (ctls[i].getAttribute('data-act') || ctls[i].tagName) + ' and '
+            + (ctls[j].getAttribute('data-act') || ctls[j].tagName));
+        }
+      }
+    }
+    // #47 (owner): a narrow folder row is two lines when its chips fit: the
+    // name, both arrows and Delete share the first; the chips and the menu
+    // sit below it. Unfiled is one line.
+    if (narrowPanel) panel.querySelectorAll('.tfcc-forder').forEach((row) => {
+      const first = Array.from(row.children).filter((k) => !k.classList.contains('tfcc-claimline'));
+      const rs = first.map((k) => k.getBoundingClientRect());
+      if (!(Math.max(...rs.map((r) => r.top)) < Math.min(...rs.map((r) => r.bottom)))) {
+        polishBad.push('a folder row: name, arrows and Delete are not on one line (' + row.textContent.slice(0, 20) + ')');
+      }
+      const line2 = row.querySelector('.tfcc-claimline');
+      if (line2 && line2.getBoundingClientRect().top < Math.max(...rs.map((r) => r.bottom)) - 0.5) {
+        polishBad.push('a folder row: chips and menu share its first line');
+      }
+      forderRows += 1;
+    });
+    if (narrowPanel) panel.querySelectorAll('.tfcc-section').forEach((sec) => {
+      const kids = Array.from(sec.children).filter(shown);
+      for (let i = 1; i < kids.length; i += 1) {
+        const gap = kids[i].getBoundingClientRect().top - kids[i - 1].getBoundingClientRect().bottom;
+        const explains = kids[i - 1].classList.contains('tfcc-kv')
+          && (kids[i].classList.contains('tfcc-infobar') || (kids[i].tagName === 'P' && kids[i].classList.contains('tfcc-note')));
+        const min = explains ? 3.5 : 5.5;
+        setGaps += 1;
+        if (gap < min) {
+          polishBad.push('Settings items ' + Math.round(gap * 10) / 10 + 'px apart, under ' + Math.round(min) + ' ('
+            + (kids[i - 1].className || kids[i - 1].tagName) + ' / ' + (kids[i].className || kids[i].tagName) + ')');
+        }
+      }
+    });
+  }
   out.seen = {
+    setGaps: setGaps,
+    forderRows: forderRows,
+    unclaims: panel.querySelectorAll('button.tfcc-unclaim').length,
     polishBad: polishBad.concat(infoBad),
     grp: grps.length,
     grpCollapsed: grps.filter((b) => b.getAttribute('aria-expanded') === 'false').length,
@@ -575,6 +631,11 @@ for (const page of pages) {
   if (/^(narrow-)?catchup-/.test(page) && !seen.grp) missing.push('a folder group toggle');
   if (/catchup-collapsed/.test(page) && !seen.grpCollapsed) missing.push('a collapsed folder group');
   if (/^(narrow-)?settings-/.test(page) && !seen.moves) missing.push('the folder order arrows');
+  // #47: every Settings page measured its item gaps, and the claims pages
+  // their chips.
+  if (/^narrow-settings-/.test(page) && !seen.setGaps) missing.push('the Settings item gaps');
+  if (/^narrow-settings-/.test(page) && seen.forderRows < 4) missing.push('the folder rows');
+  if (/settings-claims/.test(page) && seen.unclaims < 3) missing.push('the claimed-forum chips');
   if (page.startsWith('narrow-catchup')) {
     if (!seen.cubar) missing.push('the Catch up action row');
     else console.log(`.. ${page}: Catch up labels ${seen.cuMode}, widths ${seen.cuWidths}`);

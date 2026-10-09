@@ -1565,3 +1565,51 @@ not regenerated).
   - **An open drawer** in a group that collapses closes: its row is no longer
     rendered, so the section 6 reconcile closes it, and it does not reopen.
   - **Focus** stays on the toggle (the same `data-act` and `data-id`).
+
+### 14h. Tighter narrow Settings, several forums per folder (#47)
+
+- **Spacing (narrow only).** Measured before: the Settings view was 3688,
+  4198 and 4579px tall at 375, 320 and 280px. The gaps came from the narrow
+  `.tfcc-kv label` rule (every label on its own 44px line, so a checkbox row
+  was 44 + 8 + 13px and a select row 44 + 8 + 44px), the browser's 12px
+  paragraph margins on `p.tfcc-note`, and the 6/8px item and section
+  margins. After: one scale, 4px from a label to its own control, 8px
+  between items (and between stacked targets), 12px between sections. A
+  label shares its control's line where both fit (`flex: 1 1 8em`) and
+  stacks 4px above it where they do not. A checkbox row (`.tfcc-kvc`, narrow
+  only) is one 44px line: the checkbox first, then its label (the 44px
+  target), then the info icon at the end. A note or info bar that explains
+  the row above sits 4px under it. Folder rows are separated by a rule.
+  **Owner (after the PR #48 review):** a narrow folder row is two lines:
+  the name, both arrows and Delete; then a `.tfcc-claimline` holding the
+  chips and the claim menu, which wrap onto further lines when there are
+  many. Narrow Delete is a 44px bin icon named and titled "Delete <name>",
+  because the word did not fit beside the name and both arrows at 280px.
+  The name never splits a word (`min-width: min-content`); at its narrowest
+  the controls drop under it, right-aligned. Unfiled is one line: its note
+  sits under its name, inside the label. Wide keeps main's markup.
+  Everything hangs off `.tfcc-narrow .tfcc-set`, a wrapper only the narrow
+  Settings view renders, so no other view and no wide output changes.
+  Targets stay 44px, fields stay 16px, no text shrinks. After: 3016, 3395
+  and 3789px, including a chip line under each claimed folder.
+- **Claims.** A folder claims any number of forums (`forumIds` was already a
+  list). `claimForum` and `unclaimForum` are pure. A forum is claimed by one
+  folder at most: the "Claim a forum..." menu lists only unclaimed forums
+  (chosen over moving a claim, which would silently change another folder's
+  auto-filing), and `claimForum` refuses a second claimant. Removing a claim
+  changes only future auto-filing; a hand filing still wins
+  (`applyAutoAssign` fills only an empty slot). Each claim renders as a chip
+  with a "Remove <forum>" button (name and title), 44px narrow and 24px
+  wide. **Canonical at every boundary (PR #48 review):** `canonicalClaims`
+  runs at load, `upsertFolder` and import. Repeats are dropped, each forum
+  stays with the FIRST folder in the user's order (the one `folderFor`
+  already picks, so auto-filing does not change), and the 40 cap applies
+  after both. Loading such data is a silent recovery
+  (`isRecoveredOrganizer` forgives a list of whole positive ids that was
+  only canonicalised); any other value in a list is still damage. Import
+  canonicalises this device's claims first, then adds the export's in the
+  final folder order, so a forum this device already gave to a folder keeps
+  it and a forum the export gave to two folders lands in the first. Wide
+  changes are listed in
+  `tests/wide-47-diffs.js` (the menu's name, the folder note, the chip
+  rules).

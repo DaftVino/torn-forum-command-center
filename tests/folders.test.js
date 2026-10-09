@@ -226,9 +226,10 @@ test('the folder note says what folders are, how to use them and why', () => {
   const s = settingsHtml(env);
   const info = /id="tfcc-info-settings-folders" hidden>([^<]*)<\/p>/.exec(s)[1];
   assert.strictEqual(info, 'Folders organise only threads you subscribe to (and ones you file by hand); they never add '
-    + 'other threads from a forum. To use them: add a folder below; optionally claim a forum, so new subscriptions '
-    + 'from that forum file themselves into it; or file a thread from the folder menu on its row. Filing by hand '
-    + 'always wins over a claim. The arrows set the order, Unfiled included. This helps because Catch up groups '
+    + 'other threads from a forum. To use them: add a folder below; optionally claim one or more forums, so new '
+    + 'subscriptions from them file themselves into it; a forum belongs to one folder at a time, and removing a claim '
+    + 'leaves the threads already filed where they are; or file a thread from the folder menu on its row. Filing by '
+    + 'hand always wins over a claim. The arrows set the order, Unfiled included. This helps because Catch up groups '
     + 'threads with new posts by folder, in that order, so the ones you care about most come first, and a group you '
     + 'do not need right now collapses out of the way; Threads can also be filtered to one folder. Folders stay on '
     + 'this device and travel in the export. With badges on, filing a thread in a folder of your own earns the '

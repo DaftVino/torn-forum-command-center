@@ -519,6 +519,21 @@ Walk on Torn PDA and on desktop, signed in to a real account.
 - [ ] Expand shows every row with no "Showing N of M" line; Shrink brings
       the cap back.
 
+## Narrow Settings and forum claims (#47)
+
+- [ ] On a phone (375, 320 and 280px), Settings scrolls noticeably shorter
+      than before; items are still clearly separate, each label sits next to
+      its control, and every checkbox, its label and its info icon share one
+      line. Tapping a checkbox's label toggles it. Fields do not zoom on iOS.
+- [ ] Settings, Folders: claim two forums for one folder. Each shows as a chip
+      with an x; the other folders' menus no longer offer them.
+- [ ] Remove one chip. Threads already filed in that folder stay there; a new
+      subscription from that forum is no longer filed.
+- [ ] A workspace from before #47 with one claimed forum shows it as one chip,
+      with no "Folders and tags were damaged" notice.
+- [ ] Export, Reset folders and tags, Import: every claim comes back.
+- [ ] On a desktop, Settings looks as before, apart from the chips.
+
 ## Sign-off
 
 Release is blocked until every box above is ticked on the same build, on a real

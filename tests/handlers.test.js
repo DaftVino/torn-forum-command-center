@@ -23,6 +23,8 @@ function renderedActions() {
   }));
   api.state.feed.categories = [{ id: 61, title: 'Tutorials', acronym: 'TG' }];
   api.state.organizer = api.toggleTag(api.state.organizer, 1, 'atag');
+  // #47: a claimed forum, so its chip's remove button renders.
+  api.state.organizer = api.claimForum(api.state.organizer, 'guides', 61);
   api.state.drafts = api.saveDraft(api.freshDrafts(), 1, 'a draft', NOW, 'Thread 1');
   api.state.postCache = api.postCacheAdd(api.freshPostCache(), 1, [
     { id: 9, authorName: 'x', at: NOW, text: 'cached body' },
