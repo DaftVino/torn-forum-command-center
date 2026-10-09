@@ -68,7 +68,7 @@ The post also avoids claims about subscriber counts because the architecture sta
 | Placeholder | Purpose | Filled by | When |
 |---|---|---|---|
 | `{{BANNER_URL}}` | Publicly reachable FCC banner image | Repository owner or forum publisher | After `banner.html` is captured, uploaded, and its final image URL is known |
-| `{{INSTALL_URL}}` | Public userscript installation page | Repository owner | After the release/install page is live and before forum publication |
+| Install link | Greasy Fork listing, https://greasyfork.org/en/scripts/599453-torn-forum-command-center | Filled by the owner, 2026-10-09 | Pinned by the verifier as the only link the post may carry |
 | `{{SHOT_THREADS_URL}}` | Threads view screenshot | Repository owner or release tester | After final UI QA on the release build |
 | `{{SHOT_MOBILE_URL}}` | Torn PDA/narrow-layout screenshot | Repository owner or release tester | After final real-device QA |
 | `{{SHOT_CATCHUP_URL}}` | Catch up view screenshot | Repository owner or release tester | After final UI QA with representative folder groups |

@@ -86,13 +86,13 @@ FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or auto
 ### Desktop with Tampermonkey
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/).
-2. Install [Torn Forum Command Center](https://greasyfork.org/en/scripts/torn-forum-command-center).
+2. Install [Torn Forum Command Center from Greasy Fork](https://greasyfork.org/en/scripts/599453-torn-forum-command-center).
 3. Visit [Torn Forums](https://www.torn.com/forums.php).
 4. Open FCC's **Settings** view and add the API key described below.
 
 ### Torn PDA
 
-1. Add the same userscript through Torn PDA's userscript manager.
+1. Add the same userscript through Torn PDA's userscript manager, using the Greasy Fork listing: https://greasyfork.org/en/scripts/599453-torn-forum-command-center.
 2. Set its injection time to **END**.
 3. Open Torn's forums in the app.
 4. Open FCC's **Settings** view and add the API key.

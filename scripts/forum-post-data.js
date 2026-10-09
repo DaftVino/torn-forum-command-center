@@ -5,12 +5,14 @@ const path = require('node:path');
 
 const KNOWN_PLACEHOLDERS = Object.freeze([
   'BANNER_URL',
-  'INSTALL_URL',
   'SHOT_THREADS_URL',
   'SHOT_MOBILE_URL',
   'SHOT_CATCHUP_URL',
   'SHOT_SETTINGS_URL',
 ]);
+
+// The published Greasy Fork listing (owner, 2026-10-09): the only link the post may carry.
+const INSTALL_URL = 'https://greasyfork.org/en/scripts/599453-torn-forum-command-center';
 
 const VIEW_LABELS = Object.freeze({
   threads: 'Threads',
@@ -268,14 +270,19 @@ function verifyPlaceholders(html) {
 function verifyLinks(html) {
   const pattern = /<a\b[^>]*\bhref="([^"]+)"[^>]*>/gi;
   let match;
+  let installLinks = 0;
   while ((match = pattern.exec(html)) !== null) {
     const href = match[1];
     if (/torn\.com\/forums/i.test(href)) {
       throw new Error(`forum post links to another Torn forum article: ${href}`);
     }
-    if (href !== '{{INSTALL_URL}}') {
+    if (href !== INSTALL_URL) {
       throw new Error(`forum post contains an unapproved link: ${href}`);
     }
+    installLinks += 1;
+  }
+  if (installLinks === 0) {
+    throw new Error(`forum post has no install link to ${INSTALL_URL}`);
   }
 }
 

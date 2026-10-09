@@ -23,7 +23,7 @@
 <p><span style="font-size: 16px; color:#5C768F"><strong>Quick start</strong></span></p>
 
 <ol>
-<li><strong><a href="{{INSTALL_URL}}">Install Forum Command Center</a></strong> in Tampermonkey or Torn PDA.</li>
+<li><strong><a href="https://greasyfork.org/en/scripts/599453-torn-forum-command-center">Install Forum Command Center</a></strong> in Tampermonkey or Torn PDA.</li>
 <li>Open <strong>Settings</strong> in FCC and choose <strong>Create a custom key on Torn</strong>. Torn's key page opens with a least-privilege key prepared for FCC; confirm it there.</li>
 <li>Paste the new key into FCC and save it. That is it.</li>
 </ol>
