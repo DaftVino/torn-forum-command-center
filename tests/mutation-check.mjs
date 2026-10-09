@@ -1119,7 +1119,7 @@ const MUTATIONS = [
     ['the pill line stops centring', (s) => s.replace(
       '.tfcc-rxline { display: flex; justify-content: center;', '.tfcc-rxline { display: flex; justify-content: flex-start;')],
     ['the pill stretches to the full width', (s) => s.replace(
-      ".tfcc-rxpill { display: inline-flex;", ".tfcc-rxpill { display: flex;")],
+      ".tfcc-rxpill { display: inline-flex;", ".tfcc-rxpill { display: inline-flex; width: 100%;")],
     ['the pill gets a border', (s) => s.replace(
       "'  border: 0; border-radius: 999px; background: var(--tm-bg-2);", "'  border: 1px solid var(--tm-border); border-radius: 999px; background: var(--tm-bg-2);")],
   ].map(([name, apply]) => ({ name: '#53: ' + name, suite: 'tests/narrow-view.test.js', apply })),
