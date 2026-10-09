@@ -4714,6 +4714,13 @@
       '  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
       '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row-l2 .tfcc-meta > * { margin-right: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta { white-space: normal; overflow: visible; }',
+      // PR #42 review: the parts have no space between them, so inline they
+      // join into unbreakable runs that pushed the last part out of the meta
+      // column, under the row's buttons, at 280px. Open, each part is atomic:
+      // the line breaks between parts, and a part wider than the column
+      // wraps inside itself. Closed, they stay inline so the ellipsis cuts.
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta > * { display: inline-block;',
+      '  max-width: 100%; overflow-wrap: anywhere; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns { flex: none; display: inline-flex; gap: 6px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns button { display: inline-flex; align-items: center;',
       '  justify-content: center; min-width: 44px; min-height: 44px; padding: 0 6px; }',

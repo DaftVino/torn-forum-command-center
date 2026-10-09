@@ -188,6 +188,19 @@ test('narrow, on: the open row shows its title, meta and note whole', () => {
   assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow.tfcc-clip .tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta'), whole);
 });
 
+// PR #42 review: the meta's parts are concatenated with no space between
+// them, so in the one-line block they form unbreakable runs ("draftreference")
+// that pushed the last part out of the meta column, under the row's buttons,
+// at 280px. Open, each part is an atomic inline-block, so the line may break
+// between parts, and a part wider than the column wraps inside itself.
+test('narrow, on: an open row\'s meta parts wrap between and within themselves (PR #42 review)', () => {
+  const { api } = bootNarrow();
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow.tfcc-clip .tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta > *'),
+    /display: inline-block;\s+max-width: 100%; overflow-wrap: anywhere;/);
+  // Closed, the parts stay inline, so the ellipsis can cut inside one.
+  assert.doesNotMatch(cssRule(api, '#tfcc-panel.tfcc-narrow.tfcc-clip .tfcc-row-l2 .tfcc-meta > *'), /inline-block/);
+});
+
 test('off: the narrow title and meta wrap as before #39 (block band, flex meta)', () => {
   const { api } = bootNarrow();
   const title = cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row-t .tfcc-row-title a');

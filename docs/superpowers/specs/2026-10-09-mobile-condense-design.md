@@ -1336,6 +1336,19 @@ The owner made 14b's one-line cut a setting, and carried it to desktop.
   title and summary are cut to one line at 720px wide and at 375, 320 and
   280px; off, they wrap; an open long row is whole. The contrast audit fails
   a page whose setting does not do this.
-- **Found, not changed:** in the open narrow row at 280px the meta line's
-  last tag can sit past the meta's box under the row's buttons (visible
-  overflow, no overlap with a control). This predates #41 (#39's open meta).
+- **Resolved (PR #42 review):** in the open narrow row at 280px the meta
+  line's last part sat past the meta's column, under the row's buttons, so
+  opening the drawer did not reliably show the whole meta. It predated #41
+  (#39's open meta). The cause: the parts are rendered with no space between
+  them, so in the block meta adjacent parts joined into unbreakable runs
+  ("draft" + "reference"). The fix is the least invasive one: in the open
+  row each meta part is `display: inline-block; max-width: 100%;
+  overflow-wrap: anywhere`, so the line breaks between parts and a part
+  wider than the column wraps inside itself. Closed rows keep inline parts,
+  so the ellipsis still cuts inside one; the layout of the row is unchanged.
+  The contrast audit now checks containment and overlap, not only hidden
+  overflow: in an open row, and in every row with clipping off, each meta
+  part must sit inside the row's content box and its meta column and clear
+  of every row button. Before the fix it failed four previews (Threads and
+  Catch up drawers at 280px, both themes); after it, every preview passes at
+  375, 320 and 280px with clipping on and off.

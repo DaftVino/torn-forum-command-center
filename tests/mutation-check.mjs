@@ -1370,6 +1370,9 @@ const MUTATIONS = [
       "'.tfcc-narrow.tfcc-clip .tfcc-row-l2 .tfcc-meta {',", "'.tfcc-narrow .tfcc-row-l2 .tfcc-meta {',")],
     ['an open narrow row keeps its note cut', (s) => s.replace(
       ".tfcc-clip .tfcc-row.tfcc-open > .tfcc-note { white-space: normal; overflow: visible; }',", ".tfcc-clip .tfcc-row.tfcc-open > .tfcc-note { }',")],
+    ['an open row\'s meta parts join into unbreakable runs again (PR #42 review)', (s) => s.replace(
+      ".tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta > * { display: inline-block;',\n      '  max-width: 100%; overflow-wrap: anywhere; }',",
+      ".tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta > * { }',")],
     ['unticking the checkbox is not saved', (s) => s.replace(
       "          state.settings.clipLines = !!el.checked;\n          persist('settings'); redraw(); return;",
       "          state.settings.clipLines = !!el.checked;\n          redraw(); return;")],
