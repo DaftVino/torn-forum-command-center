@@ -478,7 +478,7 @@ test('the toast moves only when the user allows motion', () => {
   assert.strictEqual(css.split('tfcc-fade-in 160ms').length, 2, 'the animation is applied in one place only');
 });
 
-test('the logo is sized by height to the badge chip and keeps #5C768F against a host svg rule (#30)', () => {
+test('the logo is sized by height to the badge chip and keeps its colour against a host svg rule (#30)', () => {
   const block = blockFor('#tfcc-panel .tfcc-logo');
   assert.match(block, /height: 28px/, 'the badge chip height (min-height 28px, border-box)');
   assert.match(blockFor('#tfcc-panel button.tfcc-chip'), /min-height: 28px/, 'the chip it matches is still 28px');
