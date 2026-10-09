@@ -1412,8 +1412,9 @@ const MUTATIONS = [
   {
     name: '#41: the Settings checkbox moves out of Appearance',
     suite: 'tests/wide-parity.test.js',
-    apply: (s) => s.replace("      + 'screen, hover over it. Turn this off to let them wrap.'));\n    out.push('</div>');",
-      "      + 'screen, hover over it. Turn this off to let them wrap.'));\n    out.push('</div><div>');"),
+    // #43: the see-through setting now follows it inside Appearance.
+    apply: (s) => s.replace("      + 'screen, hover over it. Turn this off to let them wrap.'));\n    // #43 (owner)",
+      "      + 'screen, hover over it. Turn this off to let them wrap.'));\n    out.push('</div><div>');\n    // #43 (owner)"),
   },
   {
     name: '#39: the wide Catch up bar takes the narrow two-label buttons',
