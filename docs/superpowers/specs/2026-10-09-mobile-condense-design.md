@@ -1423,15 +1423,37 @@ change desktop too, deliberately, each as a listed replacement in
   the drawer), its focus ring and every attribute, with a transparent fill and
   border. Hover and open tint the icon in the accent colour. The audit
   measures the icon and the tint at 3:1 or better against what they sit on.
-- **Transparency.** The panel background is `--tfcc-panel-bg` (`--tm-bg` at
-  50%) and every surface on `--tm-bg-2` (thread rows, the badge shelf and
-  toast) is `--tfcc-surface-bg` (75%). Sections in Search, Drafts and Settings
-  have no fill of their own, so their text sits on the 50% panel. Alpha on the
-  tokens, never `opacity`, so text and controls stay opaque; controls keep the
-  solid `--tm-bg-3`. Takeover restores the solid tokens. A 6px backdrop blur
-  (prefixed for WebKit) sits behind the panel and is off in takeover; it
-  evens out a busy page but cannot help a plain one, so contrast is measured
-  without it.
+- **See-through background (owner decision, after the first PR review).** A
+  setting, Settings > Appearance, after the clip setting: "See-through
+  background", on by default (`settings.seeThrough`: absent is on, an explicit
+  false is kept, anything else takes the default without a "Settings were
+  damaged" notice, through `isRecoveredSettings`). Its info note, "About
+  see-through": "The panel shows Torn's page through it. Text can be harder to
+  read over a busy page, or one much lighter or darker than the panel. Turn
+  this off to make the panel solid." The runtime puts `tfcc-seethrough` on the
+  panel while it is on, and every see-through rule hangs off that class:
+  - **Base layers only.** The panel's own background (behind the nav
+    buttons) is `--tfcc-base-bg`, `--tm-bg` at 50%, and the thread row card
+    (Threads, Catch up, My posts, and Search's matching threads, which are the
+    same row) is `--tfcc-row-bg`, `--tm-bg-2` at 75%. They are dedicated
+    tokens, so every other fill is main's exactly: buttons, nav cells, fields
+    and selects, the search bar, pills, chips, tags, the badge chip, shelf and
+    toast, the tag and note popup, info panels. The shelf and toast share
+    `--tm-bg-2` with the rows, which is why the row has its own token. A test
+    checks every background line of main's stylesheet is still there.
+  - Alpha on the colour, never `opacity`, so text and controls stay opaque.
+  - A 6px backdrop blur (prefixed for WebKit) rides the same class. It evens
+    out a busy page but cannot help a plain one, so contrast is measured
+    without it.
+  - Expand stays solid either way (`.tfcc-seethrough.tfcc-takeover` rules).
+  - Off, the panel is exactly main's: main's own background lines were never
+    edited. Text layering is unchanged: bare text stays on the panel, by the
+    owner's choice; the setting is the trade-off.
+  - **Parity.** The wide golden is compared with the setting off, as #41 did
+    for clip. The only markup change is the new Settings checkbox, a listed
+    literal; a separate test pins what on adds (the checkbox ticked; the
+    stylesheet text is the same), and every new rule is listed and starts
+    `#tfcc-panel.tfcc-seethrough`.
 - **Readability over Torn's page (measured, report only).** We cannot read
   the page (ADR 0001), so the audit composites the panel over pure black,
   pure white and a busy mid-grey stripe (worst stripe) in both themes. Over a
@@ -1439,8 +1461,11 @@ change desktop too, deliberately, each as a listed replacement in
   white). Over the opposite, text sitting straight on the 50% panel falls far
   below 4.5:1 (dark over white: 1.20 at worst; light over black: 1.95), while
   text on the 75% rows mostly holds (dark over white 5.21, light over black
-  4.15). The owner's 50/75 values were not changed. The full table is in the
-  #43 pull request and printed by `tests/contrast-audit.mjs`.
+  4.15). The owner kept 50/75 and accepted the trade-off through the setting.
+  Re-measured with the base-only scope, the table is unchanged (the shelf and
+  toast were never in the measured views); it is in the #43 pull request and
+  printed by `tests/contrast-audit.mjs`. With the setting off, and in Expand,
+  the same views are solid and pass AA.
 - **Expand shows every row.** While the panel is expanded, the capped views
   (Threads, Catch up, My posts) show every row and no "Showing N of M" line
   (the pure `rowLimitFor` returns All in takeover). `state.showAll` is never

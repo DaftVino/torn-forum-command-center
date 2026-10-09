@@ -508,8 +508,12 @@ Walk on Torn PDA and on desktop, signed in to a real account.
 - [ ] A saved note shows as a bar under Note.
 - [ ] My posts looks like the other nav buttons until it is the current view.
 - [ ] Info icons have no box; hovering or opening one tints it.
-- [ ] Torn's page shows through the panel and its rows in both themes, and
-      text stays readable over the forum page behind it. Expand is solid.
+- [ ] With "See-through background" on (the default), Torn's page shows
+      through the panel's base and the thread rows only, in both themes;
+      buttons, fields, pills, the shelf and the popup stay solid. Note how
+      readable text is over the forum page behind it. Expand is solid.
+- [ ] Turn "See-through background" off: the panel is solid, as before #43,
+      and it stays off after a reload.
 - [ ] Expand shows every row with no "Showing N of M" line; Shrink brings
       the cap back.
 

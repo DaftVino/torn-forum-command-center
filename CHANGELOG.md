@@ -100,13 +100,14 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - The narrow drawer's priority starts with an info button that explains the
   number: your own ranking from -2 to +2, saved only on this device, which
   the My priority sort lists higher first, after pinned threads. (#43)
-- The panel is see-through, at every width and in every view except Expand:
-  its background is 50% opaque and the thread rows (and the badge shelf and
-  toast) 75%, so Torn's page shows through, with a light blur behind the
-  panel. Text and controls stay fully opaque. Expand stays solid. Over a page
-  much lighter than a dark panel, or much darker than a light one, text that
-  sits straight on the panel can fall below the usual contrast; the measured
-  figures are in the #43 pull request. (#43)
+- The panel is see-through behind its content (#43): the panel's own
+  background is 50% opaque and the thread rows 75%, so Torn's page shows
+  through, with a light blur behind the panel. Buttons, fields, pills, the
+  badge shelf and every other fill stay solid, and so does text. Expand stays
+  solid. Over a page much lighter than a dark panel, or much darker than a
+  light one, text that sits straight on the panel can be hard to read; the
+  measured figures are in the #43 pull request. Settings, Appearance: **See-
+  through background**, on by default, turns it off.
 - The narrow drawer's Archive button shows an archive box (UXWing's "archive
   files" icon, inline and in the theme's text colour) instead of the
   wastebasket, so it reads as archive, not delete. (#41)
