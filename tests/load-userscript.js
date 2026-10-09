@@ -74,6 +74,8 @@ const EXPORT_NAMES = [
   'renderListBarNarrow',
   'renderNavNarrow', 'navNumeral',
   'renderHeadNarrow', 'fitHeader',
+  // #39: narrow polish
+  'CU_GAP', 'CU_MODES', 'catchUpLabelMode', 'fitCatchUp',
   'GLYPHS', 'glyph', 'renderInfoButton', 'renderInfoText',
   'groupCatchUp', 'renderedRowIds', 'SEARCH_ROWS_MAX', 'replaceSettings',
   'NARROW_CLASS', 'applyTransient', 'measurePanelWidth', 'setNarrow', 'watchPanelWidth', 'onPanelWidth',

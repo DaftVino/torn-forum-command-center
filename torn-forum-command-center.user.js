@@ -205,6 +205,12 @@
   var LOGO_PER_HB = 0.545;
   var LOGO_MIN_PX = 16;
   var LOGO_MAX_PX = 24;
+  // The narrow Catch up action row (#39): its controls sit 6px apart and never
+  // wrap. CU_MODES are the label sets it can use: the full labels, the short
+  // ones, and, when even those cannot fit, the short labels wrapping inside
+  // their own buttons on the one row.
+  var CU_GAP = 6;
+  var CU_MODES = Object.freeze(['full', 'short', 'wrap']);
 
   // Info buttons (#33, spec 13d): key -> the button's accessible name. The
   // explanation text always stays in the markup; only its hidden attribute
@@ -1918,6 +1924,32 @@
       if (headerLogoWidth(s) + chip + count + n * s + showAt + HB_GAPS <= c) return { size: s, fits: true };
     }
     return { size: HB_MIN, fits: false };
+  }
+
+  // Which labels keep the narrow Catch up row on one line (#39). full and short
+  // are the widths of the row's controls (Mark all read, Set catch-up point,
+  // its info button) with each label set, measured by the runtime. The full
+  // labels win while they fit; the short ones only when the full would wrap;
+  // 'wrap' when even the short ones cannot fit, so the labels wrap inside
+  // their buttons and the row still holds one line of controls. Unknown
+  // widths keep the full labels.
+  function catchUpLabelMode(content, full, short) {
+    var need = function (ws) {
+      if (!Array.isArray(ws) || !ws.length) return null;
+      var sum = CU_GAP * (ws.length - 1);
+      for (var i = 0; i < ws.length; i += 1) {
+        if (typeof ws[i] !== 'number' || !isFinite(ws[i]) || ws[i] < 0) return null;
+        sum += ws[i];
+      }
+      return sum;
+    };
+    var c = typeof content === 'number' && isFinite(content) ? content : 0;
+    var f = need(full);
+    if (!(c > 0) || f === null) return CU_MODES[0];
+    if (f <= c) return CU_MODES[0];
+    var s = need(short);
+    if (s !== null && s <= c) return CU_MODES[1];
+    return CU_MODES[2];
   }
 
   // The number the narrow Filters button shows: the filters it hides. Sort is
@@ -4665,6 +4697,21 @@
       '  align-items: center; gap: 6px; min-width: 0; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-infogroup > :first-child { flex: 1 1 auto; white-space: normal;',
       '  justify-content: center; text-align: center; }',
+      // #39: the Catch up actions share one line. Each control keeps its own
+      // width (so fitCatchUp measures it), the panel's tfcc-cu-short class
+      // swaps in the short labels, and tfcc-cu-wrap lets them wrap inside
+      // their buttons when even the short labels cannot fit.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-cubar { flex-wrap: nowrap; align-items: stretch; gap: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-cubar > button { flex: none; white-space: nowrap; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-cubar .tfcc-infogroup { flex: none; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-cubar .tfcc-infogroup > :first-child { flex: none; white-space: nowrap; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-lshort { display: none; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-short .tfcc-lfull { display: none; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-short .tfcc-lshort { display: inline; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar > button { flex: 1 1 0; min-width: 44px; white-space: normal; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar .tfcc-infogroup { flex: 1 1 0; min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar .tfcc-infogroup > :first-child { flex: 1 1 0;',
+      '  min-width: 44px; white-space: normal; }',
       '#' + PANEL_ID + ' .tfcc-error { color: var(--tm-bad-text); font-weight: bold;',
       '  margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-warn { color: var(--tm-warn-text); margin-bottom: var(--tfcc-gap-sm); }',
@@ -5440,19 +5487,28 @@
     return out.join('');
   }
 
+  // A narrow Catch up action (#39): both label sets are in the markup and the
+  // panel's tfcc-cu-short class picks one. The accessible name is always the
+  // full label.
+  function cuButton(action, full, short) {
+    return '<button type="button" data-act="' + escapeHtml(action) + '" aria-label="' + escapeHtml(full) + '">'
+      + '<span class="tfcc-lfull">' + escapeHtml(full) + '</span>'
+      + '<span class="tfcc-lshort" aria-hidden="true">' + escapeHtml(short) + '</span></button>';
+  }
+
   function renderCatchUpView(model) {
     var out = [];
-    out.push('<div class="tfcc-bar">');
+    out.push(model.narrow ? '<div class="tfcc-bar tfcc-cubar">' : '<div class="tfcc-bar">');
     if (!model.narrow) {
       out.push('<span class="tfcc-note">Since ' + escapeHtml(model.lastCatchUpAt
         ? formatAbsoluteTime(model.lastCatchUpAt) : 'your first run') + '</span>');
     }
-    out.push(btn('markall', 'Mark all read'));
-    // Narrow, the info button is grouped with the control it explains, so it
-    // never wraps onto a line of its own (PR #38 review); Mark all read takes
-    // its own line when the three do not fit.
+    out.push(model.narrow ? cuButton('markall', 'Mark all read', 'All read') : btn('markall', 'Mark all read'));
+    // Narrow, the info button is grouped with the control it explains, and the
+    // three share one line (#39): fitCatchUp picks the label set that fits.
     if (model.narrow) out.push('<span class="tfcc-infogroup">');
-    out.push(btn('catchup-done', 'Set catch-up point to now'));
+    out.push(model.narrow ? cuButton('catchup-done', 'Set catch-up point to now', 'Catch-\u2191 2 \u2193')
+      : btn('catchup-done', 'Set catch-up point to now'));
     out.push(renderInfoButton('catchup', model.openInfoId));
     if (model.narrow) out.push('</span>');
     out.push('</div>');
@@ -6158,11 +6214,12 @@
   // class flips at once because renderPanel always writes it.
   function onPanelWidth(doc, win, panel, handlers, width) {
     var next = narrowFor(width, state.narrow);
-    if (next === state.narrow) { fitHeader(panel, win); return; }
+    if (next === state.narrow) { fitHeader(panel, win); fitCatchUp(panel, win); return; }
     setNarrow(next);
     if (panel && panel.classList) panel.classList.toggle(NARROW_CLASS, state.narrow);
     draw(doc, win, handlers);
     fitHeader(panel, win);
+    fitCatchUp(panel, win);
   }
 
   var resizeWatch = null;
@@ -6247,6 +6304,52 @@
       if (!r.fits && countW > 0) r = solve(false);
       setHeaderSize(panel, r.size);
       return r.size;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Keeps the narrow Catch up action row on one line (#39). Like fitHeader it
+  // runs after every draw and on every resize, and reads only this script's
+  // own nodes: the bar's width and its three controls, measured with each
+  // label set. The choice is a class on the panel, so it survives the next
+  // innerHTML rewrite. Returns the mode it set, or null.
+  var CU_SHORT_CLASS = 'tfcc-cu-short';
+  var CU_WRAP_CLASS = 'tfcc-cu-wrap';
+
+  function fitCatchUp(panel, win) {
+    try {
+      if (!panel || !panel.classList) return null;
+      // 'wrap' uses the short labels too, so it carries both classes.
+      var setMode = function (m) {
+        panel.classList.toggle(CU_SHORT_CLASS, m !== 'full');
+        panel.classList.toggle(CU_WRAP_CLASS, m === 'wrap');
+      };
+      // The bar's controls, by their own data-act: markall renders only here.
+      var mark = state.narrow ? panel.querySelector('button[data-act="markall"]') : null;
+      if (!mark) { setMode('full'); return null; }
+      var ctl = [mark, panel.querySelector('button[data-act="catchup-done"]'),
+        panel.querySelector('button[data-info="catchup"]')];
+      var bar = panel.querySelector('.tfcc-cubar');
+      var content = bar && bar.clientWidth > 0 ? bar.clientWidth : 0;
+      if (!(content > 0)) {
+        var cs = win && typeof win.getComputedStyle === 'function' ? win.getComputedStyle(panel) : null;
+        var pad = cs ? (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) : 0;
+        content = (panel.clientWidth || 0) - pad;
+      }
+      if (!(content > 0)) return null;
+      var widths = function () {
+        return ctl.map(function (el) {
+          var r = el && typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect() : null;
+          return r && typeof r.width === 'number' ? r.width : 0;
+        });
+      };
+      setMode('full');
+      var full = widths();
+      setMode('short');
+      var mode = catchUpLabelMode(content, full, widths());
+      setMode(mode);
+      return mode;
     } catch (e) {
       return null;
     }
@@ -6768,6 +6871,7 @@
     // The chip's width changes with its counts and Show replaces Hide, so the
     // header is re-fitted after every draw, not only on resize.
     fitHeader(panel || doc.getElementById(PANEL_ID), win);
+    fitCatchUp(panel || doc.getElementById(PANEL_ID), win);
     state.mounted = true;
   }
 

@@ -255,7 +255,7 @@ test('narrow Catch up keeps its info button in one group with "Set catch-up poin
   const { api } = bootNarrow();
   api.state.settings.view = 'catchup';
   const html = api.panelHtml(api.buildPanelModel(NOW));
-  assert.match(html, /<span class="tfcc-infogroup"><button type="button" data-act="catchup-done">Set catch-up point to now<\/button><button type="button" class="tfcc-info" data-act="info" data-info="catchup"/);
+  assert.match(html, /<span class="tfcc-infogroup"><button type="button" data-act="catchup-done" aria-label="Set catch-up point to now"><span class="tfcc-lfull">Set catch-up point to now<\/span><span class="tfcc-lshort" aria-hidden="true">[^<]*<\/span><\/button><button type="button" class="tfcc-info" data-act="info" data-info="catchup"/);
 });
 
 test('narrow Search keeps its info button in one group with "Search on Torn"', () => {
