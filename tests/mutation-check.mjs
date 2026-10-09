@@ -1580,7 +1580,7 @@ const MUTATIONS = [
     ['the first folder\'s up arrow is not disabled', (s) => s.replace(
       "      out.push(moveButton(orderKeys[i], f.name, 'up', i === 0)", "      out.push(moveButton(orderKeys[i], f.name, 'up', false)")],
     ['Unfiled can be deleted', (s) => s.replace(
-      "      if (unf) {\n        out.push('<span class=\"tfcc-note\">Threads in no folder</span></div>');\n        continue;\n      }\n", '')],
+      "      if (unf) {\n        out.push((model.narrow ? '' : unfNote) + '</div>');\n        continue;\n      }\n", '')],
     ['focus is lost when an arrow reaches its end', (s) => s.replace(
       "          var mAct = atEnd ? (act === 'folder-up' ? 'folder-down' : 'folder-up') : act;", '          var mAct = act;')],
     ['a real folder with id "unfiled" collides with built-in Unfiled (PR #46 review)', (s) => s.replace(
@@ -1693,6 +1693,23 @@ const MUTATIONS = [
     ['an import keeps this device\'s duplicate claims', (s) => s.replace(
       '    org.folders = canonicalClaims(org.folders);\n    for (var wf', '    for (var wf')],
   ].map(([name, apply]) => ({ name: '#47: ' + name, suite: 'tests/claims.test.js', apply })),
+  // #47 (owner): a narrow folder row is two lines.
+  ...[
+    ['narrow Delete drops back under the chips and menu', (s) => s.replace(
+      `if (model.narrow) out.push(delHtml + '<span class="tfcc-claimline">' + claimHtml.join('') + '</span>');`,
+      `if (model.narrow) out.push('<span class="tfcc-claimline">' + claimHtml.join('') + '</span>' + delHtml);`)],
+    ['the narrow bin Delete loses its name', (s) => s.replace(
+      `' aria-label="' + escapeHtml(delName) + '" title="'`, `' title="'`)],
+    ['the chips and menu stop starting a line of their own', (s) => s.replace(
+      "'.tfcc-narrow .tfcc-set .tfcc-claimline { flex: 1 1 100%;", "'.tfcc-narrow .tfcc-set .tfcc-claimline { flex: 0 1 auto;")],
+    ['Unfiled\'s note leaves its name on a narrow panel', (s) => s.replace(
+      "(unf && model.narrow ? unfNote : '')", "''").replace("(model.narrow ? '' : unfNote)", 'unfNote')],
+  ].map(([name, apply]) => ({ name: '#47: ' + name, suite: 'tests/settings-spacing.test.js', apply })),
+  {
+    name: '#47: the bin Delete reaches a wide panel',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace('      var delHtml = model.narrow\n', '      var delHtml = true\n'),
+  },
   // #47 item 1: tighter narrow Settings.
   ...[
     ['sections lose their larger separation', (s) => s.replace(

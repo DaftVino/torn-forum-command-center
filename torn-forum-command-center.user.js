@@ -4987,14 +4987,24 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kv + p.tfcc-note { margin-top: -4px; }',
       // #47: a folder row: name and arrows, then its claimed forums, then the
       // claim menu and Delete.
-      // The name fills the first line beside the two 44px arrows (2 x 44 +
-      // 2 x 8 = 104), so whatever follows starts a line of its own.
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder > label { flex: 1 0 calc(100% - 104px); }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder .tfcc-claims { flex: 1 1 100%; gap: 8px; }',
+      // Line 1: the name takes what the arrows and Delete leave, wrapping
+      // inside itself on a long name. Line 2 (.tfcc-claimline): the chips,
+      // then the menu, wrapping onto further lines when there are many.
+      // The name's line break never splits a word: at its narrowest the name
+      // takes the first line alone and the controls drop under it, still
+      // right-aligned.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder > label { flex: 1 1 0; min-width: min-content;',
+      '  flex-direction: column; align-items: flex-start; justify-content: center; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder > button.tfcc-move:first-of-type { margin-left: auto; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set button.tfcc-del { display: inline-flex; align-items: center;',
+      '  justify-content: center; padding: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-claimline { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px;',
+      '  min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-claimline .tfcc-claims { display: contents; }',
       // A folder row is several lines, so a rule marks where the next begins.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder + .tfcc-forder { border-top: 1px solid var(--tm-border);',
       '  padding-top: 8px; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder select { flex: 1 1 0; min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder select { flex: 1 1 8em; min-width: 0; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-claim { border-radius: 22px; }',
       '#' + PANEL_ID + '.tfcc-narrow button.tfcc-unclaim { min-width: 44px; min-height: 44px; border-radius: 22px; }',
       // The header: one line. These gaps add up to HB_GAPS (20): logo-chip 6,
@@ -5524,6 +5534,8 @@
     check: 'M5 12.5l4.5 4.5L19 7.5',
     info: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5v.5',
     close: 'M6 6l12 12M18 6L6 18',
+    // #47: a bin, for a narrow folder row's Delete.
+    trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6',
   });
 
   function glyph(name) {
@@ -6529,36 +6541,52 @@
     for (var i = 0; i < orderKeys.length; i += 1) {
       var unf = orderKeys[i] === UNFILED_KEY;
       var f = unf ? { id: UNFILED_KEY, name: 'Unfiled' } : byId[folderIdOfKey(orderKeys[i])];
-      out.push('<div class="tfcc-kv tfcc-forder"><label>' + escapeHtml(f.name) + '</label>');
+      // #47 (owner): narrow, Unfiled is one line: its note sits under its
+      // name, inside the label, beside the arrows. Wide keeps main's markup.
+      var unfNote = '<span class="tfcc-note">Threads in no folder</span>';
+      out.push('<div class="tfcc-kv tfcc-forder"><label>' + escapeHtml(f.name) + (unf && model.narrow ? unfNote : '')
+        + '</label>');
       out.push(moveButton(orderKeys[i], f.name, 'up', i === 0) + moveButton(orderKeys[i], f.name, 'down', i === orderKeys.length - 1));
       if (unf) {
-        out.push('<span class="tfcc-note">Threads in no folder</span></div>');
+        out.push((model.narrow ? '' : unfNote) + '</div>');
         continue;
       }
       // #47: each claimed forum is a chip with its own remove button, and the
       // menu adds one more claim. It offers only the forums no folder claims,
       // because a forum belongs to one folder at a time (claimForum).
+      var claimHtml = [];
       if (f.forumIds.length) {
-        out.push('<span class="tfcc-claims">');
+        claimHtml.push('<span class="tfcc-claims">');
         for (var q = 0; q < f.forumIds.length; q += 1) {
           var forumName = forumTitles[f.forumIds[q]] || ('Forum ' + f.forumIds[q]);
           var rm = 'Remove ' + forumName;
-          out.push('<span class="tfcc-claim">' + escapeHtml(forumName) + '<button type="button" class="tfcc-unclaim"'
+          claimHtml.push('<span class="tfcc-claim">' + escapeHtml(forumName) + '<button type="button" class="tfcc-unclaim"'
             + ' data-act="folder-unclaim" data-id="' + escapeHtml(f.id) + '" data-forum="' + f.forumIds[q] + '"'
             + ' aria-label="' + escapeHtml(rm) + '" title="' + escapeHtml(rm) + '">' + glyph('close') + '</button></span>');
         }
-        out.push('</span>');
+        claimHtml.push('</span>');
       }
-      out.push('<select data-act="folder-forum" data-id="' + escapeHtml(f.id) + '" aria-label="'
+      claimHtml.push('<select data-act="folder-forum" data-id="' + escapeHtml(f.id) + '" aria-label="'
         + escapeHtml('Claim a forum for ' + f.name) + '">');
-      out.push('<option value="">Claim a forum...</option>');
+      claimHtml.push('<option value="">Claim a forum...</option>');
       for (var c = 0; c < model.categories.length; c += 1) {
         var cat = model.categories[c];
         if (claimed[cat.id]) continue;
-        out.push('<option value="' + cat.id + '">' + escapeHtml(cat.title) + '</option>');
+        claimHtml.push('<option value="' + cat.id + '">' + escapeHtml(cat.title) + '</option>');
       }
-      out.push('</select>');
-      out.push(btn('folder-delete', 'Delete', ' data-id="' + escapeHtml(f.id) + '" class="tfcc-danger"'));
+      claimHtml.push('</select>');
+      // Narrow, Delete is a named 44px bin icon, so the name, both arrows and
+      // Delete share one line down to a 280px phone. Wide keeps the word.
+      var delName = 'Delete ' + f.name;
+      var delHtml = model.narrow
+        ? '<button type="button" data-act="folder-delete" data-id="' + escapeHtml(f.id) + '" class="tfcc-danger tfcc-del"'
+          + ' aria-label="' + escapeHtml(delName) + '" title="' + escapeHtml(delName) + '">' + glyph('trash') + '</button>'
+        : btn('folder-delete', 'Delete', ' data-id="' + escapeHtml(f.id) + '" class="tfcc-danger"');
+      // #47 (owner): narrow, a folder row is two lines: the name, the arrows
+      // and Delete; then the chips and the claim menu, in their own line.
+      // Wide keeps main's order.
+      if (model.narrow) out.push(delHtml + '<span class="tfcc-claimline">' + claimHtml.join('') + '</span>');
+      else out.push(claimHtml.join('') + delHtml);
       out.push('</div>');
     }
     out.push('<div class="tfcc-kv"><label for="tfcc-newfolder">New folder</label>'

@@ -64,6 +64,36 @@ test('the Settings wrapper and the checkbox-row class render on a narrow panel o
   }
 });
 
+// #47 (owner): a narrow folder row is two lines: name, arrows and Delete;
+// then its chips and the claim menu. Wide keeps main's order.
+test('a narrow folder row puts Delete on the first line and the chips with the menu on the second', () => {
+  const { env, api: a } = bootNarrow({ width: 288 });
+  a.state.feed.categories = [{ id: 61, title: 'Tutorials and Guides' }, { id: 4, title: 'Suggestions' }];
+  a.state.organizer = a.claimForum(a.claimForum(a.state.organizer, 'guides', 61), 'guides', 4);
+  a.state.settings.view = 'settings';
+  const html = redraw(env);
+  const row = /<div class="tfcc-kv tfcc-forder"><label>Guides<\/label>([\s\S]*?)<div class="tfcc-kv/.exec(html)[1];
+  const acts = [...row.matchAll(/(data-act="[a-z-]+"|class="tfcc-claimline"|<\/span><\/div>)/g)].map((m) => m[1]);
+  assert.deepStrictEqual(acts, ['data-act="folder-up"', 'data-act="folder-down"', 'data-act="folder-delete"',
+    'class="tfcc-claimline"', 'data-act="folder-unclaim"', 'data-act="folder-unclaim"', 'data-act="folder-forum"',
+    '</span></div>']);
+  // Narrow Delete is a named 44px bin icon, so line 1 fits at 280px.
+  assert.match(row, /<button type="button" data-act="folder-delete" data-id="guides" class="tfcc-danger tfcc-del" aria-label="Delete Guides" title="Delete Guides"><svg class="tfcc-gl"/);
+  // Unfiled is one line: its note under its name, inside the label.
+  const unf = /<div class="tfcc-kv tfcc-forder"><label>Unfiled<span class="tfcc-note">Threads in no folder<\/span><\/label>([\s\S]*?)<\/div>/.exec(html);
+  assert.ok(unf, 'the Unfiled row');
+  assert.doesNotMatch(unf[1], /tfcc-claimline|folder-delete|tfcc-note/, 'Unfiled stays one line');
+  assert.match(rule('.tfcc-narrow .tfcc-set .tfcc-claimline'), /flex: 1 1 100%;/);
+  // Wide: main's order, no second-line wrapper.
+  const wide = bootNarrow({ width: 900 });
+  wide.api.state.organizer = a.state.organizer;
+  wide.api.state.feed.categories = a.state.feed.categories;
+  wide.api.state.settings.view = 'settings';
+  const w = redraw(wide.env);
+  assert.ok(!w.includes('tfcc-claimline'));
+  assert.match(w, /<\/select><button type="button" data-act="folder-delete" data-id="guides"/);
+});
+
 test('each narrow checkbox row is the label, then the checkbox, then any info button', () => {
   const { env, api: a } = bootNarrow({ width: 288 });
   a.state.settings.view = 'settings';

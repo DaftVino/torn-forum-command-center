@@ -458,7 +458,7 @@ const SCRIPT = `
   const narrowPanel = panel.classList.contains('tfcc-narrow');
   const grps = Array.from(panel.querySelectorAll('button.tfcc-grp'));
   // #47: and so do the claimed-forum chips' remove buttons.
-  panel.querySelectorAll('button.tfcc-grp, button.tfcc-move, button.tfcc-unclaim').forEach((b) => {
+  panel.querySelectorAll('button.tfcc-grp, button.tfcc-move, button.tfcc-unclaim, button.tfcc-del').forEach((b) => {
     if (b.closest('[hidden]') || getComputedStyle(b).display === 'none') return;
     const r = b.getBoundingClientRect();
     const min = narrowPanel ? 43.5 : 23.5;
@@ -474,6 +474,7 @@ const SCRIPT = `
   // is main's layout, whose Backup buttons meet the text box, so it is not
   // held to the narrow gap.
   let setGaps = 0;
+  let forderRows = 0;
   const isSettings = !!panel.querySelector('[data-act="folder-forum"], [data-act="folder-name"]');
   if (isSettings) {
     const shown = (el) => !el.closest('[hidden]') && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0;
@@ -488,6 +489,21 @@ const SCRIPT = `
         }
       }
     }
+    // #47 (owner): a narrow folder row is two lines when its chips fit: the
+    // name, both arrows and Delete share the first; the chips and the menu
+    // sit below it. Unfiled is one line.
+    if (narrowPanel) panel.querySelectorAll('.tfcc-forder').forEach((row) => {
+      const first = Array.from(row.children).filter((k) => !k.classList.contains('tfcc-claimline'));
+      const rs = first.map((k) => k.getBoundingClientRect());
+      if (!(Math.max(...rs.map((r) => r.top)) < Math.min(...rs.map((r) => r.bottom)))) {
+        polishBad.push('a folder row: name, arrows and Delete are not on one line (' + row.textContent.slice(0, 20) + ')');
+      }
+      const line2 = row.querySelector('.tfcc-claimline');
+      if (line2 && line2.getBoundingClientRect().top < Math.max(...rs.map((r) => r.bottom)) - 0.5) {
+        polishBad.push('a folder row: chips and menu share its first line');
+      }
+      forderRows += 1;
+    });
     if (narrowPanel) panel.querySelectorAll('.tfcc-section').forEach((sec) => {
       const kids = Array.from(sec.children).filter(shown);
       for (let i = 1; i < kids.length; i += 1) {
@@ -505,6 +521,7 @@ const SCRIPT = `
   }
   out.seen = {
     setGaps: setGaps,
+    forderRows: forderRows,
     unclaims: panel.querySelectorAll('button.tfcc-unclaim').length,
     polishBad: polishBad.concat(infoBad),
     grp: grps.length,
@@ -617,6 +634,7 @@ for (const page of pages) {
   // #47: every Settings page measured its item gaps, and the claims pages
   // their chips.
   if (/^narrow-settings-/.test(page) && !seen.setGaps) missing.push('the Settings item gaps');
+  if (/^narrow-settings-/.test(page) && seen.forderRows < 4) missing.push('the folder rows');
   if (/settings-claims/.test(page) && seen.unclaims < 3) missing.push('the claimed-forum chips');
   if (page.startsWith('narrow-catchup')) {
     if (!seen.cubar) missing.push('the Catch up action row');

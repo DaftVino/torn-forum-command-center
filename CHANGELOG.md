@@ -20,9 +20,11 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   Settings items shrink to one scale (4px from a label to its control, 8px
   between items, 12px between sections), a label shares its control's line
   where both fit, and each checkbox sits before its label with the info icon
-  at the end of the line. Targets stay 44px and text keeps its size. The
-  Settings view is about 17% shorter at 375, 320 and 280px. Desktop is
-  unchanged.
+  at the end of the line. Each folder is two lines: its name, the arrows and
+  a bin-icon Delete (named "Delete <folder>"); then its forum chips and the
+  claim menu. Unfiled is one line, its note under its name. Targets stay
+  44px and text keeps its size. The Settings view is about 17 to 19% shorter
+  at 375, 320 and 280px. Desktop is unchanged.
 - Folder order (#45). Settings lists your folders and a built-in **Unfiled**
   with up and down arrows; the order sets the order of the Catch up groups and
   of every folder menu. Unfiled can be moved but not deleted or renamed. A
