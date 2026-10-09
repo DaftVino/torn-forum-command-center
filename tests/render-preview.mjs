@@ -300,6 +300,9 @@ const NARROW_STATES = [
     api.state.openEditor = { id: '16474152', field: 'tag' }; }],
   ['threads-drawer-note', () => { api.state.settings.view = 'threads'; api.state.openRowId = '16589908';
     api.state.openEditor = { id: '16589908', field: 'note' }; }],
+  // #43: the drawer's priority explanation open, under its icon row.
+  ['threads-drawer-prioinfo', () => { api.state.settings.view = 'threads'; api.state.openRowId = '16474152';
+    api.state.openInfoId = 'priority'; }],
   ['catchup-drawer-note', () => { api.state.settings.view = 'catchup'; api.state.openRowId = '16474152';
     api.state.openEditor = { id: '16474152', field: 'note' }; }],
 ];

@@ -86,8 +86,9 @@ test('the drawer shows priority as the number then + and -, on the button row, i
     const { drawer, row } = drawerRow(api, env, view, '7');
     const model = api.buildPanelModel(NOW);
     const wide = api.renderPriority(model.rows.find((r) => r.id === '7'));
-    assert.ok(row.includes('<span class="tfcc-dprio">' + wide + '</span>'), view + ': the desktop markup, last on the row');
-    assert.ok(row.endsWith('<span class="tfcc-dprio">' + wide + '</span>'), view + ': right of Archive');
+    assert.ok(row.endsWith(wide + '</span>'), view + ': the desktop markup, last on the row, right of Archive');
+    assert.match(row, /<span class="tfcc-dprio"><button type="button" class="tfcc-info" data-act="info" data-info="priority"[^>]*>[\s\S]*?<\/button><span class="tfcc-prio"/,
+      view + ': info, then the number');
     assert.match(row, /<span class="tfcc-prio" title="[^"]+">\+2<\/span><button type="button" data-act="prio-up" data-id="7" class="tfcc-prio-btn" aria-label="Raise priority" title="Raise this thread's priority by 1">\+<\/button><button type="button" data-act="prio-down" data-id="7" class="tfcc-prio-btn" aria-label="Lower priority" title="Lower this thread's priority by 1">-<\/button>/);
     assert.doesNotMatch(drawer, /tfcc-step|Priority \+2/, view + ': the full-width stepper is gone');
   }

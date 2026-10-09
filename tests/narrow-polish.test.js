@@ -424,7 +424,7 @@ test('Pin and Draft are emoji buttons and Archive an icon button, on one row, na
     + ' title="Archive">' + ARCHIVE_SVG_HEAD), 'the archive icon, named Archive');
   assert.ok(!btns[1].includes(BIN), 'no wastebasket');
   assert.match(btns[1], /data-act="read" data-id="7" aria-label="Mark read" title="Mark read"/, 'Mark read shares the row outside Catch up');
-  assert.deepStrictEqual(Array.from(btns[1].matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]), ['pin', 'read', 'draft', 'archive', 'prio-up', 'prio-down']);
+  assert.deepStrictEqual(Array.from(btns[1].matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]), ['pin', 'read', 'draft', 'archive', 'info', 'prio-up', 'prio-down']);
 });
 
 test('the archive icon is a clean inline ASCII SVG drawn in currentColor (#41)', () => {

@@ -1438,6 +1438,20 @@ const MUTATIONS = [
       "  flex: none; padding: 0; border-color: transparent;")],
     ['the popup outlives its drawer', (s) => s.replace(
       '    state.openEditor = reconcileEditor(state.openEditor, state.openRowId);\n', '')],
+  ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/compact-drawer.test.js', apply })),
+  ...[
+    ['the drawer loses its priority info button', (s) => s.replace(
+      "'<span class=\"tfcc-dprio\">' + renderInfoButton('priority', model.openInfoId) + renderPriority(row)",
+      "'<span class=\"tfcc-dprio\">' + renderPriority(row)")],
+    ['the priority info stays open when another row opens', (s) => s.replace(
+      '      out.openRowId = out.openRowId === ev.id ? null : ev.id;\n      if (drawerInfo) out.openInfoId = null;\n',
+      '      out.openRowId = out.openRowId === ev.id ? null : ev.id;\n')],
+    ['the priority info outlives a closed drawer', (s) => s.replace(
+      "    if (out.openRowId === null && DRAWER_INFO_KEYS.indexOf(out.openInfoId) !== -1) out.openInfoId = null;\n", '')],
+    ['the priority text drops the range', (s) => s.replace('from -2 to +2, saved only on this device.', 'saved only on this device.')],
+    ['the priority key is not registered', (s) => s.replace("    priority: 'About priority',\n", '')],
+  ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/info.test.js', apply })),
+  ...[
     ['a tap elsewhere in the drawer leaves the popup open', (s) => s.replace(
       'if (state.openEditor && !insideOpenEditor(panel, t)) {', 'if (false) {')],
     ['Escape no longer cancels the popup', (s) => s.replace("if (key !== 'Escape' && key !== 'Esc' && ", "if (key !== 'Esc' && ")],

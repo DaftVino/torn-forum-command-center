@@ -183,8 +183,11 @@ test('every view has an info key list, and every listed key has a name', () => {
     assert.ok(Array.isArray(api.INFO_KEYS_BY_VIEW[v]), v);
     for (const k of api.INFO_KEYS_BY_VIEW[v]) assert.match(api.INFO_KEYS[k], /^About /, k);
   }
-  const listed = [].concat(...api.VIEWS.map((v) => api.INFO_KEYS_BY_VIEW[v]));
-  assert.deepStrictEqual(listed.slice().sort(), Object.keys(api.INFO_KEYS).sort(), 'no key is orphaned or listed twice');
+  // #43: the drawer's priority key is listed by the two views with drawers;
+  // every other key belongs to exactly one view.
+  const listed = [].concat(...api.VIEWS.map((v) => api.INFO_KEYS_BY_VIEW[v]).map((ks) => ks.filter((k) => k !== 'priority')));
+  assert.deepStrictEqual(listed.concat(['priority']).sort(), Object.keys(api.INFO_KEYS).sort(), 'no key is orphaned or listed twice');
+  assert.deepStrictEqual(api.VIEWS.filter((v) => api.INFO_KEYS_BY_VIEW[v].includes('priority')).sort(), ['catchup', 'threads']);
 });
 
 // ---- the focus plan (spec section 6, focus rules) --------------------------

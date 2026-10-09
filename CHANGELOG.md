@@ -94,6 +94,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Every info button is drawn as a bare "i" icon, with no button fill or
   border, at every width. It keeps its tap target and focus ring; hovering it
   or opening it tints the icon instead of filling a box. (#43)
+- The narrow drawer's priority starts with an info button that explains the
+  number: your own ranking from -2 to +2, saved only on this device, which
+  the My priority sort lists higher first, after pinned threads. (#43)
 - The narrow drawer's Archive button shows an archive box (UXWing's "archive
   files" icon, inline and in the theme's text colour) instead of the
   wastebasket, so it reads as archive, not delete. (#41)

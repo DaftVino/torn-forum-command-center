@@ -213,7 +213,7 @@ test('an open drawer holds every row action at 44px, in the spec order', () => {
   const row = rowOf(api.panelHtml(api.buildPanelModel(NOW)), '7');
   assert.match(row, /data-act="row-more" data-id="7" aria-expanded="true"/);
   const acts = Array.from(row.slice(row.indexOf('tfcc-drawer')).matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]);
-  assert.deepStrictEqual(acts, ['pin', 'read', 'draft', 'archive', 'prio-up', 'prio-down', 'folder', 'editor', 'editor']);
+  assert.deepStrictEqual(acts, ['pin', 'read', 'draft', 'archive', 'info', 'prio-up', 'prio-down', 'folder', 'editor', 'editor']);
 });
 
 test('in Catch up the drawer leaves out Mark read, which is already on the row', () => {

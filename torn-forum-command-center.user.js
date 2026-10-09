@@ -226,10 +226,15 @@
     'settings-clip': 'About clipping',
     'settings-folders': 'About folders',
     'settings-badges': 'About badges',
+    // #43: in the open narrow row's drawer, before the priority number.
+    priority: 'About priority',
   });
+  // #43: info keys that live in the open row's drawer. One shared key: only
+  // the open drawer renders it, and it closes whenever that drawer does.
+  var DRAWER_INFO_KEYS = Object.freeze(['priority']);
   var INFO_KEYS_BY_VIEW = Object.freeze({
-    threads: Object.freeze([]),
-    catchup: Object.freeze(['catchup']),
+    threads: Object.freeze(['priority']),
+    catchup: Object.freeze(['catchup', 'priority']),
     search: Object.freeze(['search']),
     drafts: Object.freeze([]),
     settings: Object.freeze(['settings-budget', 'settings-author', 'settings-rows', 'settings-autohide',
@@ -1995,13 +2000,17 @@
     if (TRANSIENT_RESET_EVENTS.indexOf(type) !== -1) {
       return { openRowId: null, filtersOpen: false, openInfoId: null, drawerEdit: out.drawerEdit };
     }
+    // #43: an explanation inside the drawer closes with it, and when another
+    // row's drawer opens instead.
+    var drawerInfo = DRAWER_INFO_KEYS.indexOf(out.openInfoId) !== -1;
     if (type === 'row-more' && typeof ev.id === 'string' && ev.id) {
       out.openRowId = out.openRowId === ev.id ? null : ev.id;
+      if (drawerInfo) out.openInfoId = null;
       return out;
     }
     if (type === 'filters') { out.filtersOpen = !out.filtersOpen; return out; }
     // #39: a tap anywhere but the open drawer and its toggle closes the drawer.
-    if (type === 'dismiss') { out.openRowId = null; return out; }
+    if (type === 'dismiss') { out.openRowId = null; if (drawerInfo) out.openInfoId = null; return out; }
     if (type === 'info' && Object.prototype.hasOwnProperty.call(INFO_KEYS, ev.key)) {
       out.openInfoId = out.openInfoId === ev.key ? null : ev.key;
       return out;
@@ -2019,6 +2028,7 @@
     var keys = Array.isArray(infoKeys) ? infoKeys : [];
     if (out.openRowId !== null && ids.indexOf(out.openRowId) === -1) out.openRowId = null;
     if (out.openInfoId !== null && keys.indexOf(out.openInfoId) === -1) out.openInfoId = null;
+    if (out.openRowId === null && DRAWER_INFO_KEYS.indexOf(out.openInfoId) !== -1) out.openInfoId = null;
     return out;
   }
 
@@ -4775,6 +4785,8 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-dprio { display: contents; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-dprio > :first-child { margin-left: auto; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-dprio .tfcc-prio { flex: none; }',
+      // #43: the priority explanation spans the drawer, under the icon row.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer > .tfcc-infotext { grid-column: 1 / -1; margin: 0; }',
       // #43: folder, Tag and Note on one row; the select takes what is left.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-org { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-org select { flex: 1 1 0; min-width: 32px; }',
@@ -5418,6 +5430,13 @@
     + '2.84-4.31 7.74-6.58 14.65-6.88h44.43v-76.57c0-4.81 3.93-8.74 8.74-8.74h83.23c4.81 0 8.75 3.94 8.75 '
     + '8.74v76.57h44.31z"/></svg>';
 
+  // #43: what priority does, from the code: setPriority clamps it to
+  // PRIORITY_MIN..PRIORITY_MAX, sortThreads uses it only for the My priority
+  // sort (higher first, after pinned threads), and it is kept in the
+  // organizer in this script's storage.
+  var PRIORITY_INFO_TEXT = 'Your own ranking for this thread, from -2 to +2, saved only on this device. '
+    + 'The My priority sort lists higher numbers first, after pinned threads.';
+
   // A compact drawer button (#39): the icon is decoration (aria-hidden); the
   // name and the hint are the words. tfcc-on marks a set state (pinned, a
   // draft saved, archived), so the state never rests on the name alone.
@@ -5443,8 +5462,11 @@
     out.push(emojiButton('archive', row.archived ? 'Unarchive' : 'Archive', ARCHIVE_SVG, row.archived, row.id));
     // #43: priority in the desktop style (the number, then + and -), right-
     // aligned on the same row: the wide row's own renderPriority markup.
-    out.push('<span class="tfcc-dprio">' + renderPriority(row) + '</span>');
+    // #43: an info button first, so the number is explained where it shows.
+    out.push('<span class="tfcc-dprio">' + renderInfoButton('priority', model.openInfoId) + renderPriority(row) + '</span>');
     out.push('</div>');
+    // Under the icon row, so opening it never makes that row wider.
+    out.push(renderInfoText('priority', model.openInfoId, PRIORITY_INFO_TEXT));
     // #43: folder, Tag and Note share one row. Tag and Note open a small
     // popup in the drawer instead of holding inline fields.
     var ed = model.openEditor && model.openEditor.id === String(row.id) ? model.openEditor.field : null;
