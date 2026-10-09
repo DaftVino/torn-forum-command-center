@@ -5130,7 +5130,8 @@
     var open = openKey === key;
     return '<button type="button" class="tfcc-info" data-act="info" data-info="' + escapeHtml(key)
       + '" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="tfcc-info-' + escapeHtml(key)
-      + '" aria-label="' + escapeHtml(INFO_KEYS[key]) + '">' + glyph('info') + '</button>';
+      + '" aria-label="' + escapeHtml(INFO_KEYS[key]) + '" title="' + escapeHtml(INFO_KEYS[key]) + '">'
+      + glyph('info') + '</button>';
   }
 
   // html is this script's own text, already escaped where it carries data.
@@ -5339,7 +5340,7 @@
   // the row's title so a screen reader hears which thread.
   function readButton(row) {
     var id = escapeHtml(row.id);
-    return '<button type="button" class="tfcc-read" data-act="read" data-id="' + id + '" aria-label="Mark read"'
+    return '<button type="button" class="tfcc-read" data-act="read" data-id="' + id + '" aria-label="Mark read" title="Mark read"'
       + ' aria-describedby="tfcc-title-' + id + '">' + glyph('check') + '</button>';
   }
 
@@ -5438,7 +5439,8 @@
     out.push('<button type="button" data-act="row-more" data-id="' + id + '" aria-expanded="'
       + (open ? 'true' : 'false') + '" aria-controls="tfcc-act-' + id + '" aria-label="'
       // #39: while open the toggle is a close X; the same button closes it.
-      + (open ? 'Close actions' : escapeHtml('Actions for ' + row.title)) + '">'
+      + (open ? 'Close actions' : escapeHtml('Actions for ' + row.title)) + '" title="'
+      + (open ? 'Close actions' : 'Actions') + '">'
       + glyph(open ? 'close' : 'more') + '</button>');
     out.push('</span></div>');
     if (row.note) out.push('<div class="tfcc-note">' + escapeHtml(row.note) + '</div>');
@@ -5520,7 +5522,7 @@
     out.push('<button type="button" data-act="unread-only" aria-pressed="'
       + (model.unreadOnly ? 'true' : 'false') + '">Unread</button>');
     out.push('<button type="button" data-act="filters" aria-expanded="' + (model.filtersOpen ? 'true' : 'false')
-      + '" aria-controls="tfcc-filters" aria-label="' + escapeHtml('Filters, ' + active + ' active') + '">'
+      + '" aria-controls="tfcc-filters" aria-label="' + escapeHtml('Filters, ' + active + ' active') + '" title="Filters">'
       + glyph('funnel') + (active ? '<span>' + active + '</span>' : '') + '</button>');
     out.push('</div>');
     out.push('<div class="tfcc-filtergrid" id="tfcc-filters"' + (model.filtersOpen ? '' : ' hidden') + '>'
@@ -6122,14 +6124,16 @@
     out.push('<div class="tfcc-head-id">' + LOGO_SVG + renderBadgeChip(model) + count + '</div>');
     out.push('<div class="tfcc-head-ctl"><span class="tfcc-head-btns">');
     out.push('<button type="button" class="tfcc-hbtn" data-act="refresh" aria-label="'
-      + (model.refreshing ? 'Refreshing" aria-busy="true"' : 'Refresh"') + '>' + glyph('refresh') + '</button>');
+      + (model.refreshing ? 'Refreshing" title="Refreshing" aria-busy="true"' : 'Refresh" title="Refresh"') + '>'
+      + glyph('refresh') + '</button>');
     out.push('<button type="button" class="tfcc-hbtn" data-act="takeover" aria-pressed="'
-      + (model.takeover ? 'true' : 'false') + '" aria-label="' + (model.takeover ? 'Shrink' : 'Expand') + '">'
+      + (model.takeover ? 'true' : 'false') + '" aria-label="' + (model.takeover ? 'Shrink' : 'Expand')
+      + '" title="' + (model.takeover ? 'Shrink' : 'Expand') + '">'
       + glyph(model.takeover ? 'shrink' : 'expand') + '</button>');
     if (model.collapsed) {
       out.push('<button type="button" class="tfcc-hshow" data-act="collapse">' + glyph('down') + '<span>Show</span></button>');
     } else {
-      out.push('<button type="button" class="tfcc-hbtn" data-act="collapse" aria-label="Hide the panel">'
+      out.push('<button type="button" class="tfcc-hbtn" data-act="collapse" aria-label="Hide the panel" title="Hide the panel">'
         + glyph('up') + '</button>');
     }
     out.push('</span></div></div>');

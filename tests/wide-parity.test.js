@@ -35,16 +35,54 @@ const D13 = require('./wide-13d-diffs');
 // golden is compared with the setting OFF (tests/wide-seed.js), where every
 // wide row is main's; the test "what clip on adds" below pins the rest.
 const D41 = require('./wide-41-diffs');
+// #43: the owner's wide changes (info hover notes, the My posts colour, the
+// semi-transparent backgrounds, the bare info icon), applied last. Each
+// markup entry states how many places it changes; each CSS entry replaces
+// one line of main's stylesheet, required exactly once.
+const D43 = require('./wide-43-diffs');
 
-function expectedView(view) {
+function expectedView(view, before43) {
   let html = golden.views[view];
   for (const d of D13.concat(D41).filter((x) => x.view === view)) {
     const n = html.split(d.from).length - 1;
     assert.strictEqual(n, 1, 'item ' + d.item + ': its "from" occurs ' + n + ' times in main\'s ' + view);
     html = html.replace(d.from, () => d.to);
   }
+  if (before43) return html;
+  for (const d of D43.markup) {
+    const before = html;
+    html = d.apply(html);
+    const changed = d.count(before);
+    if (changed === 0) assert.strictEqual(html, before, 'item ' + d.item + ' changed ' + view + ', which it does not name');
+  }
   return html;
 }
+
+// Main's stylesheet with the #43 line replacements applied.
+function expectedCss() {
+  const out = golden.css.slice();
+  for (const d of D43.css) {
+    const at = [];
+    out.forEach((line, i) => { if (line === d.from) at.push(i); });
+    assert.strictEqual(at.length, 1, 'item ' + d.item + ': its "from" occurs ' + at.length + ' times in the main stylesheet');
+    out.splice(at[0], 1, ...d.to);
+  }
+  return out;
+}
+
+test('every #43 markup entry changes exactly the places it names', () => {
+  const titles = (h) => (h.match(/ title="/g) || []).length;
+  for (const d of D43.markup) {
+    let total = 0;
+    for (const view of Object.keys(golden.views)) {
+      const before = expectedView(view, true);
+      total += d.count(before);
+      assert.strictEqual(titles(d.apply(before)) - titles(before), d.count(before),
+        d.item + ' in ' + view + ': one hover note per place it names');
+    }
+    assert.ok(total > 0, d.item + ' matches nothing');
+  }
+});
 
 test('every complete wide view is main\'s, byte for byte, apart from the listed 13d items', () => {
   const now = captureWide(loadUserscript, FORUMS_LOCATION);
@@ -72,7 +110,7 @@ test('no stylesheet line from main was removed or edited, apart from the rules t
   const now = captureWide(loadUserscript, FORUMS_LOCATION).css;
   let at = 0;
   const missing = [];
-  for (const line of golden.css) {
+  for (const line of expectedCss()) {
     if (MOVED_OUT_OF_MEDIA.has(line)) continue;
     const found = now.indexOf(line, at);
     if (found === -1) missing.push(line); else at = found + 1;
@@ -105,11 +143,12 @@ const WIDE_41_SELECTORS = new Set([
 ]);
 
 test('every new stylesheet rule is scoped to .tfcc-narrow or is a listed 13d or #41 rule', () => {
-  const old = new Set(golden.css);
+  const old = new Set(expectedCss());
   const stray = captureWide(loadUserscript, FORUMS_LOCATION).css
     .filter((line) => !old.has(line) && line.indexOf('{') !== -1)
     .map((line) => line.slice(0, line.indexOf('{')).trim())
-    .filter((sel) => sel.indexOf('.tfcc-narrow') === -1 && !WIDE_13D_SELECTORS.has(sel) && !WIDE_41_SELECTORS.has(sel));
+    .filter((sel) => sel.indexOf('.tfcc-narrow') === -1 && !WIDE_13D_SELECTORS.has(sel) && !WIDE_41_SELECTORS.has(sel)
+      && !D43.selectors.has(sel));
   assert.deepStrictEqual(stray, [], 'a new rule a wide panel would see');
   for (const sel of WIDE_41_SELECTORS) assert.ok(sel.startsWith('#tfcc-panel.tfcc-clip '), sel);
 });

@@ -1406,6 +1406,15 @@ const MUTATIONS = [
     suite: 'tests/rows-cap.test.js',
     apply: (s) => s.replace('var limit = rowLimitFor(s.rowsShown, s.takeover);', 'var limit = s.rowsShown;'),
   },
+  ...[
+    ['the check mark loses its hover note', (s) => s.replace('aria-label="Mark read" title="Mark read"', 'aria-label="Mark read"')],
+    ['the info buttons lose their hover note', (s) => s.replace(
+      "+ '\" title=\"' + escapeHtml(INFO_KEYS[key]) + '\">'", "+ '\">'")],
+    ['the narrow Hide button loses its hover note', (s) => s.replace(
+      'aria-label="Hide the panel" title="Hide the panel">', 'aria-label="Hide the panel">')],
+    ['the Filters button loses its hover note', (s) => s.replace(
+      "' active') + '\" title=\"Filters\">'", "' active') + '\">'")],
+  ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/compact-drawer.test.js', apply })),
 ];
 
 let failures = 0;

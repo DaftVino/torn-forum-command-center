@@ -172,8 +172,8 @@ test('dismiss closes the drawer and nothing else', () => {
 test('the toggle shows a close X while open, named Close actions, and the more glyph while closed', () => {
   const { panel } = openRow();
   const html = panel.innerHTML;
-  assert.match(html, new RegExp('<button type="button" data-act="row-more" data-id="1" aria-expanded="true" aria-controls="tfcc-act-1" aria-label="Close actions"><svg class="tfcc-gl"[^>]*><path d="M6 6l12 12M18 6L6 18"/></svg></button>'));
-  assert.match(html, /data-act="row-more" data-id="2" aria-expanded="false" aria-controls="tfcc-act-2" aria-label="Actions for Two"><svg class="tfcc-gl"[^>]*><path d="M5.5 12h1M11.5 12h1M17.5 12h1"\/>/);
+  assert.match(html, new RegExp('<button type="button" data-act="row-more" data-id="1" aria-expanded="true" aria-controls="tfcc-act-1" aria-label="Close actions" title="Close actions"><svg class="tfcc-gl"[^>]*><path d="M6 6l12 12M18 6L6 18"/></svg></button>'));
+  assert.match(html, /data-act="row-more" data-id="2" aria-expanded="false" aria-controls="tfcc-act-2" aria-label="Actions for Two" title="Actions"><svg class="tfcc-gl"[^>]*><path d="M5.5 12h1M11.5 12h1M17.5 12h1"\/>/);
 });
 
 test('tapping the X closes the drawer and keeps focus on the toggle', () => {
@@ -412,7 +412,7 @@ test('Pin and Draft are emoji buttons and Archive an icon button, on one row, na
   assert.ok(btns[1].includes('<button type="button" class="tfcc-emobtn" data-act="archive" data-id="7" aria-label="Archive"'
     + ' title="Archive">' + ARCHIVE_SVG_HEAD), 'the archive icon, named Archive');
   assert.ok(!btns[1].includes(BIN), 'no wastebasket');
-  assert.match(btns[1], /data-act="read" data-id="7" aria-label="Mark read"/, 'Mark read shares the row outside Catch up');
+  assert.match(btns[1], /data-act="read" data-id="7" aria-label="Mark read" title="Mark read"/, 'Mark read shares the row outside Catch up');
   assert.deepStrictEqual(Array.from(btns[1].matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]), ['pin', 'read', 'draft', 'archive']);
 });
 
