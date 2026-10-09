@@ -363,8 +363,11 @@ Walk on Torn PDA and on desktop, signed in to a real account.
 
 - [ ] Upgrade from the previous release: no "were damaged" notice, and no
       badges appear until you do something (no backfill).
-- [ ] The cup chip sits right after "Forum Command Center" in Dark, Light and
+- [ ] The cup chip sits right after the FCC logo in Dark, Light and
       Match Torn (toggle Torn's own theme while it is open).
+- [ ] The FCC logo (#30) is crisp, about one text line tall, in its blue-grey
+      `#5C768F` in both themes, and a screen reader names it "Forum Command
+      Center".
 - [ ] At the narrowest PDA width, portrait and landscape: Refresh, Expand and
       Hide stay together and in order; the control group wraps whole.
 - [ ] Tap the cup itself, and the number: the shelf opens both times.

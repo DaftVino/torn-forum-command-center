@@ -933,6 +933,11 @@ const MUTATIONS = [
     apply: (s) => s.replace('&& toInt(ctx.blockers, 0) === 0;', ';') },
   { name: 'badges: an author-only unchecked row does not block a check-in', suite: 'tests/badges-runtime.test.js',
     apply: (s) => s.replace('var cu = catchUpRowsNow().concat(catchUpUncheckedNow());', 'var cu = catchUpRowsNow();') },
+  // -- QA polish (#30) ------------------------------------------------------
+  { name: 'the header logo loses its accessible name', suite: 'tests/panel.test.js',
+    apply: (s) => s.replace(' role="img" aria-label="Forum Command Center" focusable="false">', ' focusable="false">') },
+  { name: 'a host svg fill rule can repaint the logo', suite: 'tests/style.test.js',
+    apply: (s) => s.replace("      '#' + PANEL_ID + ' .tfcc-logo path { fill: currentColor; }',\n", '') },
   { name: 'badges: the reactions subhead jumps ahead of the badge shelf', suite: 'tests/badges-runtime.test.js',
     apply: (s) => s.replace('    out.push(renderBadgeShelf(model));',
       '    out.push(renderReactions(model));\n    out.push(renderBadgeShelf(model));') },

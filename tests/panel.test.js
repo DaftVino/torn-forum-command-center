@@ -36,6 +36,41 @@ test('the loading shell renders before anything is requested', () => {
   assert.match(html, /Forum Command Center/);
 });
 
+// ---- the header logo (#30) ------------------------------------------------
+
+function headOf(html) {
+  const i = html.indexOf('<div class="tfcc-head-id">');
+  return html.slice(i, html.indexOf('</div>', i));
+}
+
+test('the header shows the FCC logo, named for assistive tech, in place of the title text', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1 }]);
+  const states = {
+    open: env.exports.panelHtml(env.exports.buildPanelModel(NOW)),
+    loading: env.exports.panelHtml(env.exports.loadingModel(NOW)),
+    fatal: env.exports.panelHtml(env.exports.errorModel('x', 'broken', NOW)),
+  };
+  env.exports.state.settings.collapsed = true;
+  states.collapsed = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  for (const [name, html] of Object.entries(states)) {
+    const head = headOf(html);
+    assert.match(head, /<svg class="tfcc-logo"[^>]* viewBox="0 0 127 66" role="img" aria-label="Forum Command Center"/, name);
+    assert.ok(head.includes(env.exports.LOGO_SVG), name + ': the constant is what is injected');
+    assert.doesNotMatch(head.replace(/<[^>]*>/g, ''), /Forum Command Center/, name + ': no visible title text');
+  }
+});
+
+test('the logo carries no fixed id, no labelledby and no <title>, and keeps the owner colour', () => {
+  const { exports: api } = loadUserscript();
+  const svg = api.LOGO_SVG;
+  assert.doesNotMatch(svg, /\sid=/, 'a fixed id would collide on Torn\'s page');
+  assert.doesNotMatch(svg, /aria-labelledby/);
+  assert.doesNotMatch(svg, /<title/);
+  assert.match(svg, /fill="#5C768F"/);
+  assert.strictEqual((svg.match(/<path /g) || []).length, 3, 'F, C and C');
+});
+
 test('a fatal error renders a named message and a way out', () => {
   const env = loadUserscript();
   const html = env.exports.panelHtml(env.exports.errorModel('torn', 'That API key is not valid.', NOW));

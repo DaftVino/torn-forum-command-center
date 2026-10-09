@@ -466,9 +466,18 @@ test('the toast moves only when the user allows motion', () => {
   assert.strictEqual(css.split('tfcc-fade-in 160ms').length, 2, 'the animation is applied in one place only');
 });
 
+test('the logo is sized by height to the old title line and keeps #5C768F against a host svg rule (#30)', () => {
+  const block = blockFor('#tfcc-panel .tfcc-logo');
+  assert.match(block, /height: 1\.5em/, 'the title line height: 14px at line-height 1.5');
+  assert.match(block, /width: auto/, 'width follows the viewBox');
+  assert.match(block, /color: #5c768f/i);
+  assert.match(css, /#tfcc-panel \.tfcc-logo path \{ fill: currentColor; \}/,
+    'a host "svg * { fill }" rule must not repaint it');
+});
+
 test('the header keeps Refresh, Expand and Hide together on the right', () => {
   assert.match(blockFor('#tfcc-panel .tfcc-head-ctl'), /margin-left: auto/);
   assert.match(blockFor('#tfcc-panel .tfcc-head-btns'), /flex-wrap: nowrap/);
-  assert.doesNotMatch(blockFor('#tfcc-panel .tfcc-title'), /margin-right: auto/);
+  assert.doesNotMatch(blockFor('#tfcc-panel .tfcc-logo'), /margin-right: auto/);
   assert.match(blockFor('#tfcc-panel button.tfcc-chip'), /flex: 0 0 auto/);
 });

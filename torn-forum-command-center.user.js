@@ -101,6 +101,21 @@
     + 'M 648 511 L 686 551 L 548 686 L 511 648 Z '
     + 'M 451 413 L 587 548 L 551 587 L 413 452 Z'
     + '"/></svg>';
+  // The owner's FCC logo (#30), in place of the header's title text. No id,
+  // no aria-labelledby and no <title>: a fixed id would collide on Torn's page,
+  // so the accessible name is an aria-label. The fill is the owner's colour;
+  // the .tfcc-logo rules repeat it so a host "svg * { fill }" cannot win.
+  // Sized by height in the stylesheet; the width follows the viewBox. No
+  // xmlns: the HTML parser places an inline svg in its namespace itself.
+  var LOGO_SVG = '<svg class="tfcc-logo" width="40" height="21"'
+    + ' viewBox="0 0 127 66" role="img" aria-label="Forum Command Center" focusable="false">'
+    + '<g fill="#5C768F">'
+    + '<path d="M10 20 21 10h22l-5 10H21v6h15l-5 10H21v17H10Z"/>'
+    + '<path d="M79 16l-7 7c-2.9-2.8-6.7-4-10.5-4-6.6 0-11 5.2-11 12.5s4.4 12.5 11 12.5c3.8 0 7.6-1.2 10.5-4'
+    + 'l7 7c-4.7 4.6-10.8 7-17.5 7C49 54 40 44.4 40 31.5S49 9 61.5 9C68.2 9 74.3 11.4 79 16Z"/>'
+    + '<path d="M116 16l-7 7c-2.9-2.8-6.7-4-10.5-4-6.6 0-11 5.2-11 12.5S91.9 44 98.5 44c3.8 0 7.6-1.2 10.5-4'
+    + 'l7 7c-4.7 4.6-10.8 7-17.5 7C86 54 77 44.4 77 31.5S86 9 98.5 9c6.7 0 12.8 2.4 17.5 7Z"/>'
+    + '</g></svg>';
   var DEEP_SEARCH_MAX_PAGES = 5;
   var DEEP_SEARCH_MAX_THREADS = 10;
   var POSTS_PER_PAGE = 20;
@@ -4175,7 +4190,13 @@
       '  overflow-y: auto; overflow-x: hidden; padding: 12px; }',
       '#' + PANEL_ID + ' .tfcc-head { display: flex; align-items: center; gap: var(--tfcc-gap);',
       '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap); }',
-      '#' + PANEL_ID + ' .tfcc-title { font-weight: bold; }',
+      // The logo (#30) stands where the bold title text stood: one title line
+      // tall (14px at line-height 1.5), its width from the viewBox. The fill
+      // is pinned here as well as on the element, because a host rule beats a
+      // presentation attribute. Contrast is in tests/contrast-audit.mjs.
+      '#' + PANEL_ID + ' .tfcc-logo { display: block; flex: none; height: 1.5em; width: auto;',
+      '  color: #5c768f; }',
+      '#' + PANEL_ID + ' .tfcc-logo path { fill: currentColor; }',
       // Title group left, control group right. The buttons are one nowrap unit,
       // so at 320-360 px the control group wraps onto its own line WHOLE and
       // Refresh, Expand and Hide stay together, in order.
@@ -5218,8 +5239,7 @@
   }
 
   function renderHeadId(model) {
-    return '<div class="tfcc-head-id"><span class="tfcc-title">Forum Command Center</span>'
-      + renderBadgeChip(model) + '</div>';
+    return '<div class="tfcc-head-id">' + LOGO_SVG + renderBadgeChip(model) + '</div>';
   }
 
   function streakWords(s) {
