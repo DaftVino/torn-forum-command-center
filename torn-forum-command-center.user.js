@@ -6202,6 +6202,47 @@
     }
   }
 
+  // #33, spec section 6 "Dirty inputs": a redraw held while a press that began
+  // in the panel is in progress is flushed by the click, a pointercancel, or
+  // this long after the pointer lifts with no click. Nothing is flushed while
+  // the pointer is still down, so a slow tap keeps its target.
+  var PRESS_FLUSH_MS = 300;
+  var pressTimer = null;
+  var pressWinBound = false;
+
+  function clearPress() {
+    if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
+    state.pressActive = false;
+  }
+
+  function flushAfterPress(doc, win, handlers) {
+    if (state.pendingRedraw && !panelHasEditableFocus(doc)) draw(doc, win, handlers, true);
+  }
+
+  // Armed only by a pointerup.
+  function armPressTimer(doc, win, handlers) {
+    if (!state.pressActive) return;
+    if (pressTimer !== null) clearTimeout(pressTimer);
+    pressTimer = setTimeout(function () {
+      pressTimer = null;
+      if (!state.pressActive) return;
+      clearPress();
+      flushAfterPress(doc, win, handlers);
+    }, PRESS_FLUSH_MS);
+  }
+
+  // The timer is not armed here: a press may last as long as it likes.
+  function startPress(doc, win, handlers) {
+    if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
+    state.pressActive = true;
+  }
+
+  function endPress(doc, win, handlers) {
+    if (!state.pressActive) return;
+    clearPress();
+    flushAfterPress(doc, win, handlers);
+  }
+
   function renderPanel(doc, win, model, handlers, force) {
     injectStyleOnce(doc);
     var mount = findMountPoint(doc);
@@ -6256,6 +6297,10 @@
       watchPanelWidth(doc, win, panel, handlers);
       panel.addEventListener('click', function (ev) {
         var t = ev && ev.target;
+        // The press this click ends is over before its action runs, so the
+        // action's own redraw also renders anything held during the press.
+        var pressed = state.pressActive === true;
+        if (pressed) clearPress();
         // A thread link the panel rendered. The browser follows it; this only
         // gives the auto-hide setting a chance to persist first (issue #8).
         var link = threadLinkOf(t, panel);
@@ -6266,14 +6311,23 @@
               shiftKey: !!ev.shiftKey, altKey: !!ev.altKey, defaultPrevented: !!ev.defaultPrevented,
             });
           }
+          // Never redraw inside the click that follows a link: the anchor must
+          // still be there when the browser acts on it. onThreadLink's own
+          // zero-delay redraw usually renders the held change; this covers a
+          // click that does not auto-hide.
+          if (pressed) setTimeout(function () { flushAfterPress(doc, win, handlers); }, 0);
           return;
         }
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
-        if (!act || typeof handlers.onAction !== 'function') return;
+        if (!act || typeof handlers.onAction !== 'function') {
+          if (pressed) flushAfterPress(doc, win, handlers);
+          return;
+        }
         // #33: the plan is captured before the action runs, from the rows the
         // user was looking at, and consumed by the action's own redraw.
         state.focusIntent = focusPlan(focusTargetOf(t), lastRender);
         try { handlers.onAction(act, t); } finally { state.focusIntent = null; }
+        if (pressed) flushAfterPress(doc, win, handlers);
       });
       panel.addEventListener('change', function (ev) {
         var t = ev && ev.target;
@@ -6295,6 +6349,16 @@
         if (!act || typeof handlers.onInput !== 'function') return;
         handlers.onInput(act, t);
       });
+      panel.addEventListener('pointerdown', function () { startPress(doc, win, handlers); });
+      panel.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); });
+      panel.addEventListener('pointercancel', function () { endPress(doc, win, handlers); });
+      // A pointer that lifts outside the panel (a mouse dragged off it) must
+      // still end the press, or redraws would be held forever. This listens to
+      // an event on the window; it reads no Torn markup (ADR 0001).
+      if (!pressWinBound && win && typeof win.addEventListener === 'function') {
+        pressWinBound = true;
+        win.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); }, true);
+      }
       // An update deferred while the user was typing has to arrive eventually.
       // Waiting a tick lets focus settle first, so this does not fire while the
       // caret is simply moving from one field to the next.
@@ -6302,6 +6366,8 @@
         if (!state.pendingRedraw) return;
         setTimeout(function () {
           if (!state.pendingRedraw) return;
+          // A press in progress flushes on its own click (#33).
+          if (state.pressActive) return;
           if (panelHasEditableFocus(doc)) return;
           draw(doc, win, handlers, true);
         }, 0);
@@ -6658,6 +6724,11 @@
   function makeHandlers(doc, win) {
     var commitTimer = null;
     function redraw() {
+      // #33: while a press that began in the panel is in progress, a redraw
+      // would replace the node under the finger and the tap would never arrive
+      // as a click. Hold it; the click, a pointercancel or the timer after
+      // pointerup flushes it (spec section 6, dirty inputs).
+      if (state.pressActive) { state.pendingRedraw = true; return; }
       // A text field's commit (state.deferCommit, set by the change listener)
       // redraws a tick later, once focus has settled: Tab lands on the next
       // control and the redraw restores focus there; Enter leaves focus in the
@@ -6673,6 +6744,15 @@
         return;
       }
       draw(doc, win, handlers, true);
+    }
+    // Work that finishes later (a refresh, My posts, deep search, a key check)
+    // lands whenever it lands, maybe while the user is typing. It is not
+    // forced, so renderPanel's caret guard defers it exactly as it defers an
+    // auto refresh (plan review: a forced completion destroyed the only copy
+    // of a half-typed drawer field).
+    function quietRedraw() {
+      if (state.pressActive) { state.pendingRedraw = true; return; }
+      draw(doc, win, handlers, false);
     }
 
     function idOf(el) { return el && el.getAttribute ? el.getAttribute('data-id') : null; }
@@ -6715,7 +6795,7 @@
           // Refresh refreshes what the user is looking at: My posts runs its own
           // bounded fetch, every other view runs the Threads refresh, never both.
           var run = state.settings.view === 'mine' ? refreshMine(now) : refreshAll(now);
-          run.then(function () { if (isForumsPage(win.location)) redraw(); });
+          run.then(function () { if (isForumsPage(win.location)) quietRedraw(); });
           redraw();
           return;
         }
@@ -6724,7 +6804,7 @@
           if (VIEWS.indexOf(v) !== -1) { setView(v); persist('settings'); }
           // Opening My posts is the user input that pays for it, once per TTL.
           if (v === 'mine' && isKeyShaped(loadApiKey()) && mineIsDue(state.mine, now, MINE_TTL_MS)) {
-            refreshMine(now).then(function () { if (isForumsPage(win.location)) redraw(); });
+            refreshMine(now).then(function () { if (isForumsPage(win.location)) quietRedraw(); });
           }
           redraw(); return;
         }
@@ -6799,7 +6879,7 @@
             // Every other fallible action here reports its outcome. Dropping
             // this one made an empty query look identical to a broken feature.
             if (res && !res.ok && res.detail) notice(res.detail, 'warn');
-            redraw();
+            quietRedraw();
           });
           redraw(); return;
         }
@@ -6810,7 +6890,7 @@
           // tried.
           if (res.ok) clearKeyRejection();
           notice(res.ok ? 'Key saved.' : (res.detail || 'That key was not accepted.'), res.ok ? 'info' : 'error');
-          if (res.ok) refreshAll(Date.now()).then(function () { if (isForumsPage(win.location)) redraw(); });
+          if (res.ok) refreshAll(Date.now()).then(function () { if (isForumsPage(win.location)) quietRedraw(); });
           redraw(); return;
         }
         if (act === 'key-clear') {

@@ -4602,7 +4602,8 @@ test('a forced redraw before the commit keeps what was typed and the caret', () 
   note.selectionStart = 2;
   note.selectionEnd = 3;
   panel.dispatchEvent({ type: 'input', target: note });
-  assert.deepStrictEqual(api.state.drawerEdit, { id: '1', field: 'note-input', value: 'half', selStart: 2, selEnd: 3 });
+  // state lives in the vm realm; transform() brings it across for deepStrictEqual.
+  assert.deepStrictEqual(env.transform(api.state.drawerEdit), { id: '1', field: 'note-input', value: 'half', selStart: 2, selEnd: 3 });
   env.doc.activeElement = note;
   panel.contains = () => true;
   redraw(env);
@@ -4641,6 +4642,8 @@ test('typed, rotated across the breakpoint, refreshed, then blurred: the value p
 
 Run: `node --test tests/dirty-input.test.js`
 Expected: FAIL: the change's redraw lands immediately, and the refresh completion forces through the caret.
+
+> Amended during implementation: the `drawerEdit` assertion compares through `env.transform`, because `api.state` is a vm-realm object.
 
 - [ ] **Step 4: Implement the press helpers**
 
