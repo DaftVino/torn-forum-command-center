@@ -247,3 +247,29 @@ test('a hostile attribute value cannot break out of the selector', () => {
 test('an empty target still ends at the fallback', () => {
   assert.deepStrictEqual(api.focusPlan(null, null), ['[data-act="view"][aria-pressed="true"]']);
 });
+
+// ---- the collapsed count is part of the solve (PR #38 review) ---------------
+// Show is passed as its width at 24px plus a slope: its padding is
+// clamp(4px, 0.2 x size, 10px) a side, linear across 24-44px (65px at 24 is
+// spec 13b's own figure). The count "16" is about 30px; "128" about 37px.
+
+test('Show grows with the size when a slope is given', () => {
+  // 320 collapsed, no count, compact chip: spec 13b's 37.
+  assert.deepStrictEqual(api.headerButtonSize(270, 58, 65, 2, 0, 0.4), { size: 37, fits: true });
+});
+
+test('the collapsed count and its 6px gap are part of the one-line solve', () => {
+  // 320 collapsed with "16": one line at 26px, where 26.5 would overflow.
+  assert.deepStrictEqual(api.headerButtonSize(270, 58, 65, 2, 30, 0.4), { size: 26, fits: true });
+  const need = (s, count) => api.headerLogoWidth(s) + 58 + (count ? count + 6 : 0) + 2 * s
+    + (65 + 0.4 * (s - 24)) + api.HB_GAPS;
+  assert.ok(need(26, 30) <= 270 && need(26.5, 30) > 270, 'the largest size that keeps the count on the line');
+  // 375 with "16", normal chip: 38.
+  assert.deepStrictEqual(api.headerButtonSize(325, 72, 65, 2, 30, 0.4), { size: 38, fits: true });
+});
+
+test('when even 24px cannot hold the count, the solve says so', () => {
+  // 280 with "16", and 320 with "128": the count has to wrap.
+  assert.deepStrictEqual(api.headerButtonSize(230, 58, 65, 2, 30, 0.4), { size: 24, fits: false });
+  assert.deepStrictEqual(api.headerButtonSize(270, 58, 65, 2, 37, 0.4), { size: 24, fits: false });
+});

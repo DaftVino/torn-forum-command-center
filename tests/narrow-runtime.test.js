@@ -100,17 +100,20 @@ test('measurePanelWidth survives a panel without a rect', () => {
 // The chip measures 72px normal and 58px compact (spec 13b). The Show button's
 // width follows the size, because its padding is clamp(4px, 0.2 x hb, 10px) on
 // each side: 13b's own figure of 65px at a 24px size gives 55.4 + 0.4 x hb.
-function fitEnv(width, collapsed) {
+function fitEnv(width, collapsed, count) {
+  // count: [unread to seed, the bare count's measured width]
   let panel = null;
   const hbNow = () => parseFloat(panel.style.getPropertyValue('--tfcc-hb')) || 44;
   const measure = (n) => {
     if (n.classList.contains('tfcc-chip')) return n.classList.contains('tfcc-compact') ? 58 : 72;
     if (n.classList.contains('tfcc-hshow')) return 55.4 + 0.4 * hbNow();
+    if (n.classList.contains('tfcc-hcount')) return count ? count[1] : 0;
     return 0;
   };
   const { env, api } = bootNarrow({ width, env: { measure, gmStore: collapsed
     ? [['tfcc:settings', JSON.stringify({ v: 1, collapsed: true })]] : [] } });
   panel = panelOf(env);
+  if (count) seedRows(api, [{ id: 1, unread: count[0] }]);
   redraw(env);
   return { env, api, hb: () => panel.style.getPropertyValue('--tfcc-hb') };
 }
@@ -175,4 +178,28 @@ test('a crossing redraws once; inside the band nothing redraws; while typing it 
   assert.strictEqual(panel.classList.contains('tfcc-narrow'), true, 'the class flips at once');
   assert.strictEqual(panel.renderCount, before, 'the markup waits for focus to leave');
   assert.strictEqual(api.state.pendingRedraw, true);
+});
+
+// ---- the collapsed count (PR #38 review) -------------------------------------
+
+test('collapsed with a count, the header stays on one line wherever it fits at 24px or more', () => {
+  for (const [width, count, size] of [[343, [16, 30], '38px'], [288, [16, 30], '26px'], [343, [128, 37], '36.5px']]) {
+    const { env, hb } = fitEnv(width, true, count);
+    const html = panelOf(env).innerHTML;
+    assert.match(html, new RegExp('<span aria-hidden="true">' + count[0] + '</span>'), 'precondition: the count renders');
+    assert.strictEqual(hb(), size, width + 'px, count ' + count[0]);
+    // The one-line geometry: logo + chip + count and gap + buttons + Show + gaps fit the content width.
+    const s = parseFloat(size);
+    const compact = panelOf(env).querySelector('.tfcc-chip').classList.contains('tfcc-compact');
+    const total = env.exports.headerLogoWidth(s) + (compact ? 58 : 72) + count[1] + 6 + 2 * s
+      + (55.4 + 0.4 * s) + env.exports.HB_GAPS;
+    assert.ok(total <= width - 2 - 16, width + 'px: ' + total.toFixed(1) + 'px of ' + (width - 18));
+  }
+});
+
+test('only when 24px cannot hold it does the count wrap, and the buttons are sized without it', () => {
+  // 280 with "16", and 320 with "128": the count goes under the logo, and the
+  // buttons get the size the header has without it (24.5 and 37).
+  assert.strictEqual(fitEnv(248, true, [16, 30]).hb(), '24.5px');
+  assert.strictEqual(fitEnv(288, true, [128, 37]).hb(), '37px');
 });

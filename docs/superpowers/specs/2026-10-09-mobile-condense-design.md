@@ -892,6 +892,7 @@ normal and 58px compact.
   with Show re-measured at each size as 55.4 + 0.4 x s from its padding
   clamp, gives 37 and 24.5; the mockup's 36.5 came from its own text metrics.)
 - **200% text at 320:** the chip widens to 86px, so s = 38, still one line.
+- **Collapsed with an unread count** (PR #38 review): the bare count and its 6px gap are part of the solve, so the header stays on one line whenever it fits at 24px or more ("16" at 375: 38px; at 320: 26px); only when even 24px cannot hold it (280, or a 3-digit count at 320) does the count wrap under the logo, and the buttons are then sized without it.
 - 1.284 is 2.356 x 0.545, the logo's width per pixel of button size while the
   logo is between its clamps (button sizes of 29.4-44px).
 

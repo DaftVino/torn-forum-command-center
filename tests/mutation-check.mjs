@@ -1188,9 +1188,24 @@ const MUTATIONS = [
       "var chip = panel.querySelector('.tfcc-chip') || document.querySelector('.tfcc-chip');"),
   },
   {
-    name: 'Show is not measured again at the size it gets',
+    name: 'Show is measured at one size only',
     suite: 'tests/narrow-runtime.test.js',
-    apply: (s) => s.replace('if (show) { r = headerButtonSize(content, width(chip), width(show), icons); setHeaderSize(panel, r.size); }', ''),
+    apply: (s) => s.replace('slope = (width(show) - show24) / (HB_MAX - HB_MIN);', 'slope = 0;'),
+  },
+  {
+    name: 'the collapsed count is left out of the header solve',
+    suite: 'tests/narrow-engine.test.js',
+    apply: (s) => s.replace("var count = typeof countW === 'number' && countW > 0 ? countW + HB_COUNT_GAP : 0;", 'var count = 0;'),
+  },
+  {
+    name: 'fitHeader never measures the collapsed count',
+    suite: 'tests/narrow-runtime.test.js',
+    apply: (s) => s.replace("var countW = width(panel.querySelector('.tfcc-hcount'));", 'var countW = 0;'),
+  },
+  {
+    name: 'a count that cannot fit shrinks the buttons instead of wrapping',
+    suite: 'tests/narrow-runtime.test.js',
+    apply: (s) => s.replace('if (!r.fits && countW > 0) r = solve(false);', ''),
   },
   {
     name: 'the narrow chip loses its 44px box',

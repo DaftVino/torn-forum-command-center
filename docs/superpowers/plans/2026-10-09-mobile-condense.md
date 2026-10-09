@@ -2780,6 +2780,8 @@ Expected: FAIL: the header is the wide one, and `--tfcc-hb` is never set.
 
 > Amended during implementation: `tests/narrow-runtime.test.js` also gains "a crossing redraws once; inside the band nothing redraws; while typing it defers", the `renderCount`/`pendingRedraw` assertions moved here from Task 6.
 
+> Amended after the PR #38 review: `headerButtonSize` also takes the collapsed count's width (plus `HB_COUNT_GAP`, 6px) and a Show slope, so Show is measured at 24px and 44px and solved exactly; when even 24px cannot hold the count, `fitHeader` re-solves without it and the count wraps (spec 13b). Tests cover counts 16 and 128 at 375, 320 and 280px.
+
 - [ ] **Step 4: The chip's pill**
 
 In `renderBadgeChip(model)`, replace the final `return` with:

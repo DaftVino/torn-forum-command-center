@@ -196,6 +196,9 @@
   var HB_STEP = 0.5;
   var HB_COMPACT_BELOW = 36;
   var HB_GAPS = 20;
+  // The collapsed header's bare unread count sits in the logo group, 6px
+  // after the chip (the group's gap). It is part of the one-line solve.
+  var HB_COUNT_GAP = 6;
   // The logo's viewBox is 106 x 45; its height follows the button size between
   // 16 and 24px.
   var LOGO_ASPECT = 106 / 45;
@@ -1899,13 +1902,20 @@
   // keeps logo, chip, buttons and the Show label on one line of `content`
   // pixels. fits is false only when even HB_MIN does not fit; the runtime then
   // lets the logo-and-chip group wrap, never the buttons (spec 13b, last resort).
-  function headerButtonSize(content, chipW, showW, icons) {
+  // countW is the collapsed header's bare unread count (0 when there is none);
+  // it and its HB_COUNT_GAP are part of the line. showW is the Show button at
+  // HB_MIN; showSlope is how much wider it gets per pixel of size (its padding
+  // follows the size), 0 for a fixed width.
+  function headerButtonSize(content, chipW, showW, icons, countW, showSlope) {
     var c = typeof content === 'number' && isFinite(content) ? content : 0;
     var chip = typeof chipW === 'number' && chipW > 0 ? chipW : 0;
     var show = typeof showW === 'number' && showW > 0 ? showW : 0;
+    var count = typeof countW === 'number' && countW > 0 ? countW + HB_COUNT_GAP : 0;
+    var slope = typeof showSlope === 'number' && isFinite(showSlope) ? showSlope : 0;
     var n = icons === 2 ? 2 : 3;
     for (var s = HB_MAX; s >= HB_MIN; s -= HB_STEP) {
-      if (headerLogoWidth(s) + chip + n * s + show + HB_GAPS <= c) return { size: s, fits: true };
+      var showAt = show > 0 ? show + slope * (s - HB_MIN) : 0;
+      if (headerLogoWidth(s) + chip + count + n * s + showAt + HB_GAPS <= c) return { size: s, fits: true };
     }
     return { size: HB_MIN, fits: false };
   }
@@ -6195,16 +6205,31 @@
         var r = el && typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect() : null;
         return r && typeof r.width === 'number' ? r.width : 0;
       };
+      // Show's padding follows the size, linearly across HB_MIN-HB_MAX, so it
+      // is measured at both ends and the solve sees its width at every size.
+      var show24 = 0;
+      var slope = 0;
+      if (show) {
+        setHeaderSize(panel, HB_MIN);
+        show24 = width(show);
+        setHeaderSize(panel, HB_MAX);
+        slope = (width(show) - show24) / (HB_MAX - HB_MIN);
+      }
+      // The collapsed bare count (spec 13a) shares the line with the logo.
+      var countW = width(panel.querySelector('.tfcc-hcount'));
+      var solve = function (withCount) {
+        return headerButtonSize(content, width(chip), show24, icons, withCount ? countW : 0, slope);
+      };
       if (chip && chip.classList) chip.classList.remove('tfcc-compact');
-      setHeaderSize(panel, HB_MAX);
-      var r = headerButtonSize(content, width(chip), width(show), icons);
+      var r = solve(true);
       if (r.size < HB_COMPACT_BELOW && chip && chip.classList) {
         chip.classList.add('tfcc-compact');
-        r = headerButtonSize(content, width(chip), width(show), icons);
+        r = solve(true);
       }
+      // Last resort (spec 13b): when even HB_MIN cannot hold the count, the
+      // count wraps under the logo and the buttons are sized without it.
+      if (!r.fits && countW > 0) r = solve(false);
       setHeaderSize(panel, r.size);
-      // Show's padding follows the size, so measure it once more at that size.
-      if (show) { r = headerButtonSize(content, width(chip), width(show), icons); setHeaderSize(panel, r.size); }
       return r.size;
     } catch (e) {
       return null;

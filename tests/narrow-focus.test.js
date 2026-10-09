@@ -150,6 +150,7 @@ test('every querySelector call site in the source is one of the known ones', () 
     'doc(REPLY_SELECTORS[i])',
     "doc('[data-act=\"' + act + '\"]')",
     "panel('.tfcc-chip')",
+    "panel('.tfcc-hcount')",
     "panel('.tfcc-hbtn')",
     "panel('.tfcc-hshow')",
     'panel(plan[i])',
