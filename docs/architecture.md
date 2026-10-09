@@ -375,7 +375,7 @@ Node only, no browser. `tests/load-userscript.js` reads the production file,
 injects an export statement in memory only, and runs it in a `vm` context with
 mocked globals. The file on disk is never modified by a test.
 
-`tests/mutation-check.mjs` is run by hand. It breaks each of 222 user-visible
+`tests/mutation-check.mjs` is run by hand. It breaks each of 227 user-visible
 promises in turn and asserts the matching suite notices. It found six tests
 that passed for the wrong reason and is the reason several of them now assert
 absolute values rather than the constant they were testing.
