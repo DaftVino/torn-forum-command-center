@@ -15,8 +15,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   every API call site, so a new endpoint fails the suite until its selection is
   added. The link format is unverified, and release is gated on the QA
   checklist comparing it with a link generated on torn.com/api.html.
-- Settings, Appearance: **Hide the panel when I open a thread**, off by
-  default. A plain click on a thread link in the panel (Threads, Catch up,
+- Settings, Appearance: **Hide the panel when I open a thread**, on by
+  default (#30). A plain click on a thread link in the panel (Threads, Catch up,
   Search, Drafts, and My posts) collapses the panel and leaves Expand, then the
   thread opens. Show brings it back. New-tab clicks and Torn's own links leave
   the panel alone. (#8)
@@ -29,7 +29,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   the script sees them, cleared by Mark read or by your own post, and
   labelled as a local count. A thread not yet looked up says so. (#2)
 - A Rows shown setting in Settings: 3, 5, 10, 20, 30 or All. The default is
-  All, so nothing changes until you pick one. It caps Threads, Catch up and
+  5 (#30). It caps Threads, Catch up and
   My posts after every filter and the sort. A capped list says "Showing 10 of
   42" and offers Show all, which lasts until the page reloads. Search and
   Drafts always show everything, and the nav counts still count every
@@ -82,12 +82,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   is unchanged at 13. (#10)
 - The custom key link also asks for `user` profile, read only by the karma
   fallback. (#10)
-- **Hide the panel when I open a thread** is now on by default. A settings
-  blob saved without the field turns it on; one that stored it off keeps it
-  off, and neither reports "Settings were damaged". (#30)
-- Rows shown defaults to 5 (was All). A stored choice, All included, is kept;
-  a settings blob without the field gets 5, and the Settings note names the
-  default. (#30)
 - The panel header shows the owner's FCC logo in place of the "Forum Command
   Center" text, inline, in its own colour `#5C768F`, one title line tall, with
   "Forum Command Center" as its accessible name. (#30)
