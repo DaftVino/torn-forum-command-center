@@ -43,7 +43,7 @@ const D43 = require('./wide-43-diffs');
 
 function expectedView(view, before43) {
   let html = golden.views[view];
-  for (const d of D13.concat(D41).filter((x) => x.view === view)) {
+  for (const d of D13.concat(D41, D43.literals).filter((x) => x.view === view)) {
     const n = html.split(d.from).length - 1;
     assert.strictEqual(n, 1, 'item ' + d.item + ': its "from" occurs ' + n + ' times in main\'s ' + view);
     html = html.replace(d.from, () => d.to);
@@ -155,6 +155,10 @@ test('every new stylesheet rule is scoped to .tfcc-narrow or is a listed 13d or 
       && !D43.selectors.has(sel));
   assert.deepStrictEqual(stray, [], 'a new rule a wide panel would see');
   for (const sel of WIDE_41_SELECTORS) assert.ok(sel.startsWith('#tfcc-panel.tfcc-clip '), sel);
+  // #43: every see-through rule hangs off its setting's class.
+  for (const sel of D43.selectors) {
+    if (sel.indexOf('tfcc-seethrough') !== -1) assert.ok(/^#tfcc-panel\.tfcc-seethrough(\.| |$)/.test(sel), sel);
+  }
 });
 
 // #41: with the clip setting ON, the wide output is the OFF output plus
@@ -189,4 +193,25 @@ test('what clip on adds to the wide output, and nothing more (#41)', () => {
   assert.ok(noted.length > 0, 'the seed has a note');
   assert.ok(on.rows.threads.some((r) => r.includes('<div class="tfcc-note" title="The one to link people to.">')));
   assert.deepStrictEqual(on.nav, off.nav);
+});
+
+// #43 (owner): with "See-through background" ON, the wide markup is the OFF
+// markup plus exactly the Settings checkbox ticked. The see-through itself is
+// the tfcc-seethrough class the runtime puts on the panel (not markup), and
+// every rule it switches on is listed in wide-43-diffs.js; the stylesheet is
+// the same text either way.
+test('what see-through on adds to the wide output, and nothing more (#43)', () => {
+  const off = captureWide(loadUserscript, FORUMS_LOCATION, false, false);
+  const on = captureWide(loadUserscript, FORUMS_LOCATION, false, true);
+  assert.deepStrictEqual(on.css, off.css);
+  for (const view of Object.keys(off.views)) {
+    let want = off.views[view];
+    if (view === 'settings') {
+      assert.ok(want.includes('data-act="see-through">'), 'the checkbox is there, unticked, with it off');
+      want = want.replace('data-act="see-through">', 'data-act="see-through" checked>');
+    }
+    assert.strictEqual(on.views[view], want, view);
+  }
+  assert.deepStrictEqual(on.nav, off.nav);
+  assert.deepStrictEqual(on.rows, off.rows);
 });

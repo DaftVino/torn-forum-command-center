@@ -1469,16 +1469,48 @@ const MUTATIONS = [
     ['the priority key is not registered', (s) => s.replace("    priority: 'About priority',\n", '')],
   ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/info.test.js', apply })),
   ...[
-    ['the panel is solid again', (s) => s.replace("'  background: var(--tfcc-panel-bg); color: var(--tm-text);", "'  background: var(--tm-bg); color: var(--tm-text);")],
-    ['the rows are solid again', (s) => s.replace("'  background: var(--tfcc-surface-bg); padding:", "'  background: var(--tm-bg-2); padding:")],
-    ['the panel is 60% opaque, not the owner\'s 50%', (s) => s.replace('--tfcc-panel-bg: rgba(31, 31, 31, 0.5);', '--tfcc-panel-bg: rgba(31, 31, 31, 0.6);')],
-    ['the light surface is 70% opaque, not the owner\'s 75%', (s) => s.replace('--tfcc-surface-bg: rgba(232, 232, 232, 0.75);', '--tfcc-surface-bg: rgba(232, 232, 232, 0.7);')],
-    ['takeover lets the page show through', (s) => s.replace(
-      "'.tfcc-takeover { --tfcc-panel-bg: var(--tm-bg); --tfcc-surface-bg: var(--tm-bg-2);',", "'.tfcc-takeover {',")],
+    ['the see-through panel is solid', (s) => s.replace(".tfcc-seethrough { background: var(--tfcc-base-bg);',", ".tfcc-seethrough { background: var(--tm-bg);',")],
+    ['the see-through rows are solid', (s) => s.replace(".tfcc-seethrough .tfcc-row { background: var(--tfcc-row-bg); }',", ".tfcc-seethrough .tfcc-row { background: var(--tm-bg-2); }',")],
+    ['the panel is 60% opaque, not the owner\'s 50%', (s) => s.replace('--tfcc-base-bg: rgba(31, 31, 31, 0.5);', '--tfcc-base-bg: rgba(31, 31, 31, 0.6);')],
+    ['the light row is 70% opaque, not the owner\'s 75%', (s) => s.replace('--tfcc-row-bg: rgba(232, 232, 232, 0.75);', '--tfcc-row-bg: rgba(232, 232, 232, 0.7);')],
+    ['takeover lets the page show through', (s) => s.replace(".tfcc-seethrough.tfcc-takeover { background: var(--tm-bg);',", ".tfcc-seethrough.tfcc-takeover {',")],
+    ['takeover rows let the page show through', (s) => s.replace(".tfcc-seethrough.tfcc-takeover .tfcc-row { background: var(--tm-bg-2); }',", ".tfcc-seethrough.tfcc-takeover .tfcc-row { }',")],
+    ['the shelf and toast go see-through too (owner: base layers only)', (s) => s.replace(
+      "'  background: var(--tm-bg-2); }',", "'  background: var(--tfcc-row-bg); }',")],
+    ['the row token fills every row, setting or not', (s) => s.replace(
+      "'  background: var(--tm-bg-2); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }',",
+      "'  background: var(--tfcc-row-bg); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }',")],
     ['transparency by opacity, which fades the text', (s) => s.replace(
-      "'  padding: 10px 12px; margin: 12px 0; font-size: var(--tfcc-text); line-height: 1.5; }',",
-      "'  padding: 10px 12px; margin: 12px 0; font-size: var(--tfcc-text); line-height: 1.5; opacity: 0.5; }',")],
+      "'  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',",
+      "'  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); opacity: 0.5; }',")],
+    ['the blur outlives the setting', (s) => s.replace(
+      "'#' + PANEL_ID + '.tfcc-seethrough { background: var(--tfcc-base-bg);',\n      '  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',",
+      "'#' + PANEL_ID + '.tfcc-seethrough { background: var(--tfcc-base-bg); }',\n      '#' + PANEL_ID + ' { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',")],
+    ['see-through defaults off', (s) => s.replace('      seeThrough: true,\n    };', '      seeThrough: false,\n    };')],
+    ['a junk see-through value is reported as damage', (s) => s.replace(
+      "    var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now, isRecoveredSettings);",
+      "    var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now);")],
+    ['a stored see-through off is not kept', (s) => s.replace(
+      "out.seeThrough = typeof raw.seeThrough === 'boolean' ? raw.seeThrough : d.seeThrough;", 'out.seeThrough = d.seeThrough;')],
+    ['unticking see-through is not saved', (s) => s.replace(
+      "          state.settings.seeThrough = !!el.checked;\n          persist('settings'); redraw(); return;",
+      "          state.settings.seeThrough = !!el.checked;\n          redraw(); return;")],
+    ['the panel class ignores the setting', (s) => s.replace(
+      "panel.classList.toggle(SEETHROUGH_CLASS, !state.settings || state.settings.seeThrough !== false);",
+      'panel.classList.toggle(SEETHROUGH_CLASS, true);')],
+    ['the see-through note is not written', (s) => s.replace("'Turn this off to make the panel solid.'", "''")],
   ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/transparency.test.js', apply })),
+  {
+    name: '#43: a see-through rule escapes its switch onto every wide panel',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("'#' + PANEL_ID + '.tfcc-seethrough .tfcc-row { background: var(--tfcc-row-bg); }',",
+      "'#' + PANEL_ID + ' .tfcc-row-x { background: var(--tfcc-row-bg); }',"),
+  },
+  {
+    name: '#43: the see-through checkbox renders ticked with the setting off',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("+ (model.settings.seeThrough ? ' checked' : '') + '>'", "+ ' checked>'"),
+  },
   ...[
     ['a tap elsewhere in the drawer leaves the popup open', (s) => s.replace(
       'if (state.openEditor && !insideOpenEditor(panel, t)) {', 'if (false) {')],

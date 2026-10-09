@@ -39,7 +39,7 @@ const markup = [
     changed: (before, after) => {
       const titled = (h) => Array.from(h.matchAll(/data-act="info" data-info="([a-z0-9-]+)"[^>]* title="[^"]*">/g), (m) => m[1]);
       const was = titled(before);
-      return titled(after).filter((k, i) => was.indexOf(k) === -1 || i >= was.length);
+      return titled(after).filter((k) => was.indexOf(k) === -1);
     },
   },
 ];
@@ -65,15 +65,10 @@ const css = [
   { item: MINE, from: '  color: var(--tfcc-mine-text); }', to: [] },
   { item: MINE, from: '#tfcc-panel button.tfcc-nav-mine[aria-pressed="true"] { background: var(--tfcc-mine-pressed);', to: [] },
   { item: MINE, from: '  color: var(--tfcc-mine-text); box-shadow: inset 0 -3px 0 var(--tfcc-mine-text); }', to: [] },
-  // 4. Semi-transparent backgrounds (#43 item 5, owner): the panel at 50%,
-  //    the surfaces on --tm-bg-2 (thread rows, the badge shelf and toast) at
-  //    75%, by alpha on two new tokens (inserted into the theme blocks, so not
-  //    replacements); solid again in takeover. Only these three lines change.
-  { item: '43 transparency', from: '  background: var(--tm-bg); color: var(--tm-text); border-radius: 6px;',
-    to: ['  background: var(--tfcc-panel-bg); color: var(--tm-text); border-radius: 6px;'] },
-  { item: '43 transparency', from: '  background: var(--tm-bg-2); }', to: ['  background: var(--tfcc-surface-bg); }'] },
-  { item: '43 transparency', from: '  background: var(--tm-bg-2); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }',
-    to: ['  background: var(--tfcc-surface-bg); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }'] },
+  // 4. See-through backgrounds (#43 item 5, the owner's decision) replace no
+  //    line of main's: main's solid fills stay, and the translucent base
+  //    layers are new rules behind the setting's panel class (below), with
+  //    their two tokens inserted into the theme blocks.
 ];
 
 // 3. Every info button is a bare icon (#43, owner): its 13d rules (new since
@@ -81,10 +76,35 @@ const css = [
 //    and one new rule tints the icon on hover instead of filling a box.
 const selectors = new Set([
   '#tfcc-panel button.tfcc-info:hover',
-  // 4. Semi-transparent backgrounds (see the css entries above): the takeover
-  //    rules that make them solid again, and the panel's backdrop blur.
-  '#tfcc-panel.tfcc-takeover',
-  '#tfcc-panel',
+  // 4. See-through backgrounds: every rule hangs off the setting's class,
+  //    which the panel carries only while the setting is on, so a wide panel
+  //    with it off sees none of them (the golden is compared that way).
+  '#tfcc-panel.tfcc-seethrough',
+  '#tfcc-panel.tfcc-seethrough .tfcc-row',
+  '#tfcc-panel.tfcc-seethrough.tfcc-takeover',
+  '#tfcc-panel.tfcc-seethrough.tfcc-takeover .tfcc-row',
 ]);
 
-module.exports = { markup, css, selectors };
+// 5. The Settings checkbox for see-through (#43, owner), with the setting off
+//    (the state the golden is compared in): one literal insertion after the
+//    clip setting's explanation. What turning it on adds is asserted by its
+//    own test in tests/wide-parity.test.js.
+const CLIP_END = 'on a wider screen, hover over it. Turn this off to let them wrap.</p>';
+const literals = [
+  {
+    item: '43 see-through setting', view: 'settings',
+    from: CLIP_END,
+    to: CLIP_END
+      + '<div class="tfcc-kv"><label for="tfcc-seethrough">See-through background</label>'
+      + '<input id="tfcc-seethrough" type="checkbox" data-act="see-through">'
+      + '<button type="button" class="tfcc-info" data-act="info" data-info="settings-seethrough" aria-expanded="false"'
+      + ' aria-controls="tfcc-info-settings-seethrough" aria-label="About see-through" title="About see-through">'
+      + '<svg class="tfcc-gl" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">'
+      + '<path d="M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5v.5"/></svg></button></div>'
+      + '<p class="tfcc-note tfcc-infotext" id="tfcc-info-settings-seethrough" hidden>The panel shows Torn\'s page '
+      + 'through it. Text can be harder to read over a busy page, or one much lighter or darker than the panel. '
+      + 'Turn this off to make the panel solid.</p>',
+  },
+];
+
+module.exports = { markup, css, selectors, literals };

@@ -44,6 +44,8 @@ const OWNER_13D = {
       'settings-autohide': 'About hiding the panel',
       // #41: the clip setting's explanation, 13d pattern.
       'settings-clip': 'About clipping',
+      // #43 (owner): the see-through setting's note.
+      'settings-seethrough': 'About see-through',
       'settings-folders': 'About folders',
       'settings-badges': 'About badges',
     },
@@ -53,6 +55,7 @@ const OWNER_13D = {
       'Search and Drafts always show everything.',
       'Only thread links in this panel do this, and only a plain click.',
       'Each row\'s title and summary stay on one line',
+      'The panel shows Torn\'s page through it.',
       'A folder can claim a forum',
       'Earned from what you do here',
     ],

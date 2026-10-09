@@ -224,6 +224,7 @@
     'settings-rows': 'About Rows shown',
     'settings-autohide': 'About hiding the panel',
     'settings-clip': 'About clipping',
+    'settings-seethrough': 'About see-through',
     'settings-folders': 'About folders',
     'settings-badges': 'About badges',
     // #43: in the open narrow row's drawer, before the priority number.
@@ -238,7 +239,7 @@
     search: Object.freeze(['search']),
     drafts: Object.freeze([]),
     settings: Object.freeze(['settings-budget', 'settings-author', 'settings-rows', 'settings-autohide',
-      'settings-clip', 'settings-folders', 'settings-badges']),
+      'settings-clip', 'settings-seethrough', 'settings-folders', 'settings-badges']),
     mine: Object.freeze(['mine']),
   });
   // The events that close every disclosure (spec section 6 table).
@@ -471,6 +472,9 @@
       // #41: clip a row's title and summary to one line, at every width. On
       // by default; a stored false is kept.
       clipLines: true,
+      // #43 (owner): the panel base and row cards are translucent. On by
+      // default; a stored false is kept.
+      seeThrough: true,
     };
   }
 
@@ -499,6 +503,9 @@
     // takes the default (on): clipping is presentation only, so a corrupt
     // value costs nothing worse than the default look.
     out.clipLines = typeof raw.clipLines === 'boolean' ? raw.clipLines : d.clipLines;
+    // #43: the same rule. Presentation only, so a junk value is not damage
+    // either (isRecoveredSettings).
+    out.seeThrough = typeof raw.seeThrough === 'boolean' ? raw.seeThrough : d.seeThrough;
     out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1
       ? 0 : toInt(raw.keyRejected, 0);
     out.folderFilter = typeof raw.folderFilter === 'string' ? safeString(raw.folderFilter, 64) : null;
@@ -677,6 +684,17 @@
       threads: threads,
       lastCatchUpAt: Math.max(0, toInt(raw.lastCatchUpAt, 0)),
     };
+  }
+
+  // #43: a present see-through value that is not a boolean takes the default
+  // without a "Settings were damaged" notice: it only changes how the panel
+  // looks. Any other difference is still damage.
+  function isRecoveredSettings(raw, value) {
+    if (isPlainObject(raw) && Object.prototype.hasOwnProperty.call(raw, 'seeThrough') && typeof raw.seeThrough !== 'boolean') {
+      raw = Object.assign({}, raw);
+      delete raw.seeThrough;
+    }
+    return isRecoveredValue(raw, value);
   }
 
   // An upgrade adds per-thread fields (issue #4). They are nested inside the
@@ -3606,7 +3624,7 @@
   }
 
   function loadAll(now) {
-    var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now);
+    var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now, isRecoveredSettings);
     var o = loadKey(STORAGE_KEYS.organizer, normaliseOrganizer, now, isRecoveredOrganizer);
     var d = loadKey(STORAGE_KEYS.drafts, normaliseDrafts, now);
     var f = loadKey(STORAGE_KEYS.feed, normaliseFeed, now);
@@ -4466,12 +4484,12 @@
       '  --tfcc-tier-legend: #c9a2ff; --tfcc-locked: #8a8a8a;',
       // "started" in My posts (#30): 6.2:1 on the row, 7.8:1 on the tag fill.
       '  --tfcc-started: #ff8080;',
-      // #43 (owner): Torn's page shows through. The panel's own background is
-      // 50% opaque and the surfaces on it (thread rows, the badge shelf and
-      // toast: everything on --tm-bg-2) 75%. Alpha on the background colour
-      // only, never opacity, so text and controls stay fully opaque. The
-      // values are --tm-bg and --tm-bg-2 with alpha; takeover restores them.
-      '  --tfcc-panel-bg: rgba(31, 31, 31, 0.5); --tfcc-surface-bg: rgba(38, 38, 38, 0.75);',
+      // #43 (owner): the "See-through background" setting's two base layers,
+      // --tm-bg and --tm-bg-2 with alpha: the panel's own background at 50%
+      // and the thread row card at 75%. Dedicated tokens, so no other fill
+      // (controls, pills, the shelf and toast, popups) changes. They are
+      // painted only under #tfcc-panel.tfcc-seethrough.
+      '  --tfcc-base-bg: rgba(31, 31, 31, 0.5); --tfcc-row-bg: rgba(38, 38, 38, 0.75);',
       // #33: the narrow header button size; fitHeader overrides it inline.
       '  --tfcc-hb: 44px;',
       // #33 nav numerals, v1 tint (spec 13f). The same in both themes, because
@@ -4489,18 +4507,14 @@
       '  --tfcc-tier-legend: #6a2fb5; --tfcc-locked: #6e6e6e;',
       // "started" (#30): 6.5:1 on the row, 8.0:1 on the tag fill.
       '  --tfcc-started: #a11414;',
-      '  --tfcc-panel-bg: rgba(242, 242, 242, 0.5); --tfcc-surface-bg: rgba(232, 232, 232, 0.75);',
+      '  --tfcc-base-bg: rgba(242, 242, 242, 0.5); --tfcc-row-bg: rgba(232, 232, 232, 0.75);',
       '}',
       '#' + FALLBACK_ID + ' { position: fixed; right: 12px; bottom: 12px; z-index: 2147483000;',
       '  box-sizing: border-box; width: min(960px, calc(100vw - 24px)); max-width: calc(100vw - 24px);',
       '  max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }',
       '#' + PANEL_ID + ' { box-sizing: border-box; width: 100%; border: 1px solid var(--tm-border-2);',
-      '  background: var(--tfcc-panel-bg); color: var(--tm-text); border-radius: 6px;',
+      '  background: var(--tm-bg); color: var(--tm-text); border-radius: 6px;',
       '  padding: 10px 12px; margin: 12px 0; font-size: var(--tfcc-text); line-height: 1.5; }',
-      // #43: a readability aid behind the translucent panel. A blur evens out
-      // a busy page under it (it cannot help a plain one, so the colours were
-      // measured without it). A browser without it simply shows the page.
-      '#' + PANEL_ID + ' { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',
       '#' + PANEL_ID + ' * { box-sizing: border-box; }',
       // Inheritance is the weakest source in CSS: a value is inherited only
       // when NO rule matches. Torn styles bare elements - td, h4, p, code - so
@@ -4517,11 +4531,18 @@
       '#' + PANEL_ID + '.tfcc-takeover { position: fixed; inset: 0; margin: 0; border-radius: 0;',
       '  z-index: 2147483000; height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh;',
       '  overflow-y: auto; overflow-x: hidden; padding: 12px; }',
-      // #43: Expand (takeover) covers the page, so nothing shows through: the
-      // solid tokens again, in either theme (this rule comes after both theme
-      // blocks), and no blur.
-      '#' + PANEL_ID + '.tfcc-takeover { --tfcc-panel-bg: var(--tm-bg); --tfcc-surface-bg: var(--tm-bg-2);',
+      // #43 (owner): "See-through background", one class on the panel. Only
+      // the panel's base and the row cards go translucent; text and every
+      // control stay opaque (alpha on the colour, never opacity). The blur is
+      // a readability aid for a busy page under it; it cannot help a plain
+      // one, so contrast was measured without it, and a browser without it
+      // simply shows the page. Expand covers the page, so it stays solid.
+      '#' + PANEL_ID + '.tfcc-seethrough { background: var(--tfcc-base-bg);',
+      '  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',
+      '#' + PANEL_ID + '.tfcc-seethrough .tfcc-row { background: var(--tfcc-row-bg); }',
+      '#' + PANEL_ID + '.tfcc-seethrough.tfcc-takeover { background: var(--tm-bg);',
       '  -webkit-backdrop-filter: none; backdrop-filter: none; }',
+      '#' + PANEL_ID + '.tfcc-seethrough.tfcc-takeover .tfcc-row { background: var(--tm-bg-2); }',
       '#' + PANEL_ID + ' .tfcc-head { display: flex; align-items: center; gap: var(--tfcc-gap);',
       '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap); }',
       // The logo (#30) stands where the bold title text stood: as tall as the
@@ -4552,7 +4573,7 @@
       '#' + PANEL_ID + ' .tfcc-locked { color: var(--tfcc-locked); }',
       '#' + PANEL_ID + ' .tfcc-shelf, #' + PANEL_ID + ' .tfcc-toast { border: 1px solid var(--tm-border);',
       '  border-radius: 4px; padding: var(--tfcc-gap-sm) var(--tfcc-gap); margin-bottom: var(--tfcc-gap);',
-      '  background: var(--tfcc-surface-bg); }',
+      '  background: var(--tm-bg-2); }',
       '#' + PANEL_ID + ' .tfcc-badge-row { display: flex; gap: var(--tfcc-gap-sm); align-items: center;',
       '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap-xs); }',
       '#' + PANEL_ID + ' .tfcc-bar-track { display: inline-block; background: var(--tm-bg-3);',
@@ -4624,7 +4645,7 @@
       '#' + PANEL_ID + ' .tfcc-grow { flex: 1 1 180px; min-width: 0; }',
       '#' + PANEL_ID + ' .tfcc-rows { display: flex; flex-direction: column; gap: var(--tfcc-gap-xs); }',
       '#' + PANEL_ID + ' .tfcc-row { border: 1px solid var(--tm-border); border-radius: 4px;',
-      '  background: var(--tfcc-surface-bg); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }',
+      '  background: var(--tm-bg-2); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-row-main { display: flex; align-items: baseline; gap: var(--tfcc-gap-sm);',
       '  flex-wrap: wrap; }',
       '#' + PANEL_ID + ' .tfcc-row-title { font-weight: bold; overflow-wrap: anywhere;',
@@ -5147,6 +5168,7 @@
         authorOnly: s.authorOnly,
         autoHideOnOpen: s.autoHideOnOpen,
         clipLines: s.clipLines !== false,
+        seeThrough: s.seeThrough !== false,
         deepSearchPages: s.deepSearchPages,
         rowsShown: s.rowsShown,
       },
@@ -6109,6 +6131,15 @@
     out.push(renderInfoText('settings-clip', model.openInfoId, 'Each row\'s title and summary stay on one line, '
       + 'ending in ... when they would wrap. On a phone, open a row\'s actions to read it whole; on a wider '
       + 'screen, hover over it. Turn this off to let them wrap.'));
+    // #43 (owner): on by default. A class on the panel switches the CSS
+    // (tfcc-seethrough).
+    out.push('<div class="tfcc-kv"><label for="tfcc-seethrough">See-through background</label>'
+      + '<input id="tfcc-seethrough" type="checkbox" data-act="see-through"'
+      + (model.settings.seeThrough ? ' checked' : '') + '>'
+      + renderInfoButton('settings-seethrough', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-seethrough', model.openInfoId, 'The panel shows Torn\'s page through it. '
+      + 'Text can be harder to read over a busy page, or one much lighter or darker than the panel. '
+      + 'Turn this off to make the panel solid.'));
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><div class="tfcc-infobar"><h4>Folders</h4>'
@@ -6463,6 +6494,7 @@
   // #33: the class the narrow stylesheet hangs off. On our own element only.
   var NARROW_CLASS = 'tfcc-narrow';
   var CLIP_CLASS = 'tfcc-clip';
+  var SEETHROUGH_CLASS = 'tfcc-seethrough';
 
   // The panel's border-box width, or 0 when it cannot be read. Reads only this
   // script's #tfcc-panel (the owner's ADR 0001 ruling, spec section 5).
@@ -6766,6 +6798,8 @@
     // #41: the clip setting is one class; the loading and error models carry
     // no rows, so they keep whatever the setting says.
     if (panel.classList) panel.classList.toggle(CLIP_CLASS, !state.settings || state.settings.clipLines !== false);
+    // #43: the see-through setting is one class too.
+    if (panel.classList) panel.classList.toggle(SEETHROUGH_CLASS, !state.settings || state.settings.seeThrough !== false);
 
     var html = panelHtml(model);
 
@@ -7637,6 +7671,10 @@
         }
         if (act === 'auto-hide') {
           state.settings.autoHideOnOpen = !!el.checked;
+          persist('settings'); redraw(); return;
+        }
+        if (act === 'see-through') {
+          state.settings.seeThrough = !!el.checked;
           persist('settings'); redraw(); return;
         }
         if (act === 'clip-lines') {

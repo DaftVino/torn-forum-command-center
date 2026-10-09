@@ -219,7 +219,9 @@ function page(title, theme, body, width, hostile, narrow, extraCss, underlay, ta
     '<p class="label">' + title + '</p>',
     // #41: the runtime puts tfcc-clip on the panel while the setting is on.
     '<div id="tfcc-panel" class="tfcc-theme-' + theme + (narrow ? ' tfcc-narrow' : '') + (takeover ? ' tfcc-takeover' : '')
-      + (api.state.settings.clipLines !== false ? ' tfcc-clip' : '') + '">' + body + '</div>',
+      + (api.state.settings.clipLines !== false ? ' tfcc-clip' : '')
+      // #43: the see-through setting is a class too (on by default).
+      + (api.state.settings.seeThrough !== false ? ' tfcc-seethrough' : '') + '">' + body + '</div>',
     // #33: the production fitHeader and headerButtonSize, verbatim, so the
     // preview's header is sized exactly as the script sizes it.
     narrow ? '<script>' + FIT_HEADER_SHIM + '</script>' : '',
@@ -340,10 +342,11 @@ api.state.settings.clipLines = true;
 Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false, openEditor: null });
 api.state.settings.collapsed = false;
 
-// #43: the translucent panel over each underlay, in both themes: rows and a
+// #43: the see-through panel over each underlay, in both themes: rows and a
 // drawer, Catch up's heading, and the views whose text sits straight on the
 // panel (Search's posts, Settings). Report-only in the audit unless they
-// pass. The same views in takeover must be solid, so those are audited.
+// pass. The same views in takeover, and with the setting off, must be solid,
+// so those are audited.
 const UNDERLAY_STATES = [
   ['narrow-threads-drawer', true, () => { api.state.settings.view = 'threads'; api.state.openRowId = '16474152'; }],
   ['narrow-catchup', true, () => { api.state.settings.view = 'catchup'; }],
@@ -361,13 +364,15 @@ for (const [label, narrowState, setUp] of UNDERLAY_STATES) {
       setUp();
       const body = api.panelHtml(api.buildPanelModel(NOW));
       const width = narrowState ? 343 : 900;
-      for (const takeover of [false, true]) {
-        if (takeover && label !== 'wide-threads' && label !== 'narrow-threads-drawer') continue;
-        const name = (takeover ? 'takeover-' : '') + `underlay-${uname}-${label}-${theme}.html`;
-        fs.writeFileSync(path.join(outDir, name), page(`${label} over ${uname}${takeover ? ' / takeover' : ''} / ${theme}`,
-          theme, body, width, false, narrowState, '', underlay, takeover));
+      for (const [prefix, takeover, see] of [['', false, true], ['takeover-', true, true], ['solid-', false, false]]) {
+        if (prefix && label !== 'wide-threads' && label !== 'narrow-threads-drawer') continue;
+        api.state.settings.seeThrough = see;
+        const name = prefix + `underlay-${uname}-${label}-${theme}.html`;
+        fs.writeFileSync(path.join(outDir, name), page(`${label} over ${uname}${takeover ? ' / takeover' : ''}`
+          + `${see ? '' : ' / see-through off'} / ${theme}`, theme, body, width, false, narrowState, '', underlay, takeover));
         written.push(name);
       }
+      api.state.settings.seeThrough = true;
     }
   }
 }
