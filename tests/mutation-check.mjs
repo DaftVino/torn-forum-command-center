@@ -799,7 +799,7 @@ const MUTATIONS = [
   {
     name: 'topic lookups run after a throttle',
     suite: 'tests/reactions-lookups.test.js',
-    apply: (s) => s.replace('if (stale() || (er && er.stoppedEarly)) return outcome;', 'if (stale()) return outcome;'),
+    apply: (s) => s.replace('if (stale() || throttled) return outcome;', 'if (stale()) return outcome;'),
   },
   {
     name: 'an unknown thumbs figure renders 0',
@@ -914,6 +914,24 @@ const MUTATIONS = [
   { name: 'badges: the reactions subhead jumps ahead of the badge shelf', suite: 'tests/badges-runtime.test.js',
     apply: (s) => s.replace('    out.push(renderBadgeShelf(model));',
       '    out.push(renderReactions(model));\n    out.push(renderBadgeShelf(model));') },
+  // My posts follow-ups (#24).
+  { name: 'my posts: a stale run still writes its error', suite: 'tests/staleness.test.js',
+    apply: (s) => s.replace("        if (stale()) return { ok: false, reason: 'stale' };\n        return fail({ reason: 'network'",
+      "        return fail({ reason: 'network'") },
+  { name: 'my posts: a throttle is never recorded', suite: 'tests/mine-refresh.test.js',
+    apply: (s) => s.replace('state.mineThrottled = throttled;', 'state.mineThrottled = false;') },
+  { name: 'my posts: the throttle notice is not rendered', suite: 'tests/mine-refresh.test.js',
+    apply: (s) => s.replace('    if (m.throttled) {', '    if (false) {') },
+  { name: 'my posts: the throttle notice never clears', suite: 'tests/mine-refresh.test.js',
+    apply: (s) => s.replace('state.mineThrottled = throttled;', 'state.mineThrottled = state.mineThrottled || throttled;') },
+  { name: 'my posts: dropped threads are not counted', suite: 'tests/mine-refresh.test.js',
+    apply: (s) => s.replace('state.mineDropped = { threads: list.length - started.length, posts: 0 };',
+      'state.mineDropped = { threads: 0, posts: 0 };') },
+  { name: 'my posts: dropped posts are not counted', suite: 'tests/mine-refresh.test.js',
+    apply: (s) => s.replace('state.mineDropped.posts = plist.length - posts.length;', '') },
+  { name: 'catch up: Mark all read stops at the rows cap', suite: 'tests/rows-cap.test.js',
+    apply: (s) => s.replace("        if (act === 'markall') {\n          for (var i = 0; i < state.rows.length; i += 1) {",
+      "        if (act === 'markall') {\n          for (var i = 0; i < Math.min(state.rows.length, toInt(state.settings.rowsShown, 0) || state.rows.length); i += 1) {") },
 ];
 
 let failures = 0;
