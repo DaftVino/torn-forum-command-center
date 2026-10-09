@@ -4,6 +4,16 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Changed
+
+- On a phone, the reactions totals at the top of My posts are a small
+  centered pill instead of a full-width button (#53): thumbs up, thumbs down
+  and karma, with "-" for a figure not known yet. It is no longer tappable,
+  since it already sits inside My posts. When some threads you started still
+  show Torn's net rating, the status line under it says so ("Thumbs pending on
+  1 of 3 threads you started."); a screen reader still hears the full figures,
+  net included. Desktop is unchanged.
+
 ## [0.2.0] - 2026-10-09
 
 ### Added

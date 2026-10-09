@@ -1089,6 +1089,40 @@ const MUTATIONS = [
     apply: (s) => s.replace("var out = ['<div class=\"tfcc-nav tfcc-navgrid\">'];",
       "var out = ['<div class=\"tfcc-nav tfcc-navgrid\">' + renderReactions(model)];"),
   },
+  // #53: the narrow My posts reactions pill.
+  ...[
+    ['the narrow pill is a button again', (s) => s.replace(
+      "return '<div class=\"tfcc-rxpill'", "return '<button type=\"button\" class=\"tfcc-rxpill'")],
+    ['the narrow pill gets a data-act', (s) => s.replace(
+      "+ '\" role=\"group\" aria-label=\"'", "+ '\" data-act=\"view\" data-view=\"mine\" role=\"group\" aria-label=\"'")],
+    ['the narrow pill gets a title', (s) => s.replace(
+      "+ '\" role=\"group\" aria-label=\"'", "+ '\" title=\"' + escapeHtml(title) + '\" role=\"group\" aria-label=\"'")],
+    ['the narrow pill renders the nav button', (s) => s.replace(
+      'var rx = renderReactionsPill(model);', 'var rx = renderReactions(model);')],
+    ['the pill aria-label drops net', (s) => s.replace(
+      "+ (r.netThreads > 0 ? ', net ' + formatSigned(r.net) + ' on ' + r.netThreads + ' more' : '');\n    } else if (known) {\n      spoken = 'net '",
+      ";\n    } else if (known) {\n      spoken = 'net '")],
+    ['the pill shows net on the visible line', (s) => s.replace(
+      "+ '<span class=\"tfcc-rxdot\" aria-hidden=\"true\">\\u2022</span>';",
+      "+ (r.netThreads > 0 ? ' net ' + rx(formatSigned(r.net)) : '') + '<span class=\"tfcc-rxdot\" aria-hidden=\"true\">\\u2022</span>';")],
+    ['an unknown thumb shows 0', (s) => s.replace(
+      "lead = rx(thumbs ? formatCount(r.up) : '-')", "lead = rx(thumbs ? formatCount(r.up) : '0')")],
+    ['the thumbs clause appears when every thread is checked', (s) => s.replace(
+      '    if (n <= 0) return \'\';\n    return \'Thumbs pending', '    return \'Thumbs pending')],
+    ['the thumbs clause never appears', (s) => s.replace('if (pending) status.push(pending);', '')],
+    ['the thumbs clause reaches the wide status line', (s) => s.replace(
+      'if (!model.narrow || !model.hasKey || !r) return \'\';', 'if (!model.hasKey || !r) return \'\';')],
+    ['a stale pill loses tfcc-stale', (s) => s.replace(
+      "'<div class=\"tfcc-rxpill' + (stale ? ' tfcc-stale' : '')", "'<div class=\"tfcc-rxpill'")],
+    ['a stale pill loses its visible age', (s) => s.replace(
+      "+ (age ? '<span class=\"tfcc-rxage\">' + escapeHtml(age) + '</span>' : '')", '')],
+    ['the pill line stops centring', (s) => s.replace(
+      '.tfcc-rxline { display: flex; justify-content: center;', '.tfcc-rxline { display: flex; justify-content: flex-start;')],
+    ['the pill stretches to the full width', (s) => s.replace(
+      ".tfcc-rxpill { display: inline-flex;", ".tfcc-rxpill { display: flex;")],
+    ['the pill gets a border', (s) => s.replace(
+      "'  border: 0; border-radius: 999px; background: var(--tm-bg-2);", "'  border: 1px solid var(--tm-border); border-radius: 999px; background: var(--tm-bg-2);")],
+  ].map(([name, apply]) => ({ name: '#53: ' + name, suite: 'tests/narrow-view.test.js', apply })),
   {
     name: 'the collapsed count says "16 new" to sighted users',
     suite: 'tests/narrow-view.test.js',

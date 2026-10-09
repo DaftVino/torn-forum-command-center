@@ -5044,9 +5044,18 @@
       '  opacity: var(--tfcc-navnum-opacity-selected); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid button[aria-pressed="true"] .tfcc-navlab {',
       '  opacity: var(--tfcc-navlab-opacity-selected); }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxline { margin-bottom: 6px; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxline button.tfcc-reactions { width: 100%; min-width: 44px;',
-      '  min-height: 44px; border-radius: 4px; padding: 0 10px; }',
+      // #53: the My posts reactions pill. Not a button, so no border and no
+      // 44px target: a content-sized rounded fill (the row card's), centred
+      // on its line, 6 + 18 + 6 = 30px tall. The parts are flex items, so the
+      // spacing is gaps and margins, with wider gaps either side of the dot.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxline { display: flex; justify-content: center; margin: 0 0 4px 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxpill { display: inline-flex; align-items: center; justify-content: center;',
+      '  flex-wrap: wrap; gap: 4px; max-width: 100%; box-sizing: border-box; padding: 6px 14px;',
+      '  border: 0; border-radius: 999px; background: var(--tm-bg-2); color: var(--tm-meta);',
+      '  font-size: 14px; line-height: 18px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxpill .tfcc-thumb + .tfcc-rx { margin-left: 4px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxpill .tfcc-rxdot { margin: 0 4px; color: var(--tm-muted); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxpill .tfcc-rxage { margin-left: 2px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-filterline { flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-filterline .tfcc-grow { flex: 1 1 8em; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-filterline button { display: inline-flex; align-items: center;',
@@ -6027,9 +6036,10 @@
     var m = model.mine;
     var out = [];
     // #33 (spec 13c): narrow, the reaction totals are the first line of My
-    // posts, in the existing pill markup. Wide, the pill stays in the nav.
+    // posts; since #53 a compact centered pill, not the nav button. Wide, the
+    // button stays in the nav.
     if (model.narrow) {
-      var rx = renderReactions(model);
+      var rx = renderReactionsPill(model);
       if (rx) out.push('<div class="tfcc-rxline">' + rx + '</div>');
     }
     // Spec 13d item 4: the live status stays visible; the standing
@@ -6037,6 +6047,8 @@
     var status = [];
     if (m.fetchedAt) status.push('Updated ' + formatRelativeTime(m.fetchedAt, model.now) + '.');
     if (m.unchecked) status.push(m.unchecked + ' not checked yet.');
+    var pending = reactionsPending(model);
+    if (pending) status.push(pending);
     out.push('<div class="tfcc-infobar">'
       + (status.length ? '<span class="tfcc-note">' + escapeHtml(status.join(' ')) + '</span>' : '')
       + renderInfoButton('mine', model.openInfoId) + '</div>');
@@ -6684,6 +6696,56 @@
     return '<button type="button" class="tfcc-reactions' + (stale ? ' tfcc-stale' : '')
       + '" data-act="view" data-view="mine" title="' + escapeHtml(title) + '" aria-label="'
       + escapeHtml(said + title) + '">' + lead + renderKarma(karma) + '</button>';
+  }
+
+  // The narrow reactions pill (#53): the first line of My posts, so it is not
+  // a button (it would only open the view it sits in) and has no title (a
+  // tooltip does nothing on touch). It shows up, down and karma; an unknown
+  // figure is "-". Net moves to the status line (reactionsPending) and to the
+  // aria-label, which carries the sentence the nav button speaks. A stale
+  // pill keeps tfcc-stale and its visible age, as the button does.
+  function renderReactionsPill(model) {
+    var r = model.reactions;
+    if (!model.hasKey || !r) return '';
+    var karma = isReactionNumber(r.karma, true) ? r.karma : null;
+    if (r.state === 'empty' && karma === null) return '';
+    var known = r.state === 'known';
+    var stale = known && r.stale;
+    var rx = function (v) { return '<span class="tfcc-rx">' + escapeHtml(v) + '</span>'; };
+    var thumbs = known && r.thumbThreads > 0;
+    var spoken = 'thumbs unknown';
+    if (thumbs) {
+      spoken = formatCount(r.up) + ' up, ' + formatCount(r.down) + ' down'
+        + (r.netThreads > 0 ? ', net ' + formatSigned(r.net) + ' on ' + r.netThreads + ' more' : '');
+    } else if (known) {
+      spoken = 'net ' + formatSigned(r.net);
+    }
+    var age = stale ? '(' + formatRelativeTime(r.updatedAt, model.now) + ')' : '';
+    var said = (r.state === 'empty' ? '' : 'Your threads: ' + spoken + (age ? ' ' + age : '') + '. ')
+      + 'Karma: ' + (karma === null ? 'unknown' : formatKarma(karma)) + '. ';
+    var title = reactionsTitle(r, model.now, MINE_PAGE_LIMIT, 'Refresh');
+    var lead = '';
+    if (r.state !== 'empty') {
+      lead = rx(thumbs ? formatCount(r.up) : '-') + thumb(THUMB_UP)
+        + rx(thumbs ? formatCount(r.down) : '-') + thumb(THUMB_DOWN)
+        + (age ? '<span class="tfcc-rxage">' + escapeHtml(age) + '</span>' : '')
+        + '<span class="tfcc-rxdot" aria-hidden="true">\u2022</span>';
+    }
+    return '<div class="tfcc-rxpill' + (stale ? ' tfcc-stale' : '') + '" role="group" aria-label="'
+      + escapeHtml(said + title) + '">' + lead
+      + '<span class="tfcc-karma">' + KARMA_ICON_SVG + rx(formatKarma(karma)) + '</span></div>';
+  }
+
+  // The status-line clause for the narrow pill (#53): how many started
+  // threads still lack thumbs. Worded "pending" so it is not read as the
+  // reply lookups that the same line already calls "not checked yet".
+  function reactionsPending(model) {
+    var r = model.reactions;
+    if (!model.narrow || !model.hasKey || !r) return '';
+    if (r.state !== 'known' && r.state !== 'missing') return '';
+    var n = r.started - r.thumbThreads;
+    if (n <= 0) return '';
+    return 'Thumbs pending on ' + n + ' of ' + r.started + ' ' + plural(r.started, 'thread') + ' you started.';
   }
 
   function renderHeadId(model) {
