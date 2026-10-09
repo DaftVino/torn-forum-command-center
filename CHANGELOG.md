@@ -6,6 +6,18 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 
+- Folder order (#45). Settings lists your folders and a built-in **Unfiled**
+  with up and down arrows; the order sets the order of the Catch up groups and
+  of every folder menu. Unfiled can be moved but not deleted or renamed. A
+  saved workspace from before keeps working, with Unfiled last (Catch up used
+  to sort its groups by name). Exports carry the order. The Threads view
+  stays a flat list with its folder filter.
+- Collapsible Catch up groups (#45). Each folder group's heading, Unfiled's
+  too, is a toggle that hides or shows its rows; the choice is remembered on
+  this device and is not exported. Mark all read still covers hidden rows.
+- The Settings folder note now says folders organise only threads you
+  subscribe to (and ones you file by hand), and never add other threads from
+  a forum (#45).
 - A "Create a custom key on Torn" button in the Settings key section (#17). It
   opens Torn's own key page in a new tab, pre-filled with the name "Forum
   Command Center" and exactly the selections the script requests: `user`
