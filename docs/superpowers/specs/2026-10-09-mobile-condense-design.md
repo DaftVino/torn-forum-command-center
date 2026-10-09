@@ -1533,10 +1533,21 @@ not regenerated).
   "Move <name> down"). The first up and the last down are `disabled`. Unfiled
   has no forum claim, no delete and no rename; it reads "Threads in no
   folder". Focus stays on the arrow pressed, or moves to the other arrow when
-  the move reaches an end. The folder note adds: "Folders organise only
-  threads you subscribe to (and ones you file by hand); they never add other
-  threads from a forum. The arrows set the order of the groups in Catch up and
-  of the folder menus."
+  the move reaches an end. The folder note (owner rewrite) says what a folder
+  is, how to use one and why it helps: folders organise only threads you
+  subscribe to (and ones you file by hand) and never add others; add one,
+  optionally claim a forum (`applyAutoAssign`), or file from the row's folder
+  menu, a hand filing winning over a claim; the arrows set the order, Unfiled
+  included; Catch up groups by folder in that order and groups collapse;
+  Threads filters to one folder; folders stay on the device and travel in the
+  export; with badges on, a thread in a folder of your own earns First folder
+  (`ownFoldersFilled`). One paragraph, the 13d info pattern.
+- **Author-only (owner).** The "About author-only mode" text leads with what
+  the setting does: a thread is flagged new only when its author posts, so
+  other people's replies do not mark it new; it suits guides, scripts and
+  announcements. The cost, "not checked" and My posts details follow as
+  before. The checkbox gains `title="Only show new when the thread's author
+  posts, not other people's replies"`; its accessible name stays its label.
 - **Folder menus.** The folders follow the order. "Unfiled" stays the first
   option of a row's folder select, as the "no folder" choice (and so every
   wide row is still main's byte for byte).

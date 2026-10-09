@@ -1601,6 +1601,23 @@ const MUTATIONS = [
     apply: (s) => s.replace("+ groupDomId(g.key) + '\" title=\"' + escapeHtml((open ? 'Collapse ' : 'Expand ') + g.name)",
       "+ groupDomId(g.key) + '\" title=\"' + escapeHtml((open ? 'Hide ' : 'Show ') + g.name)"),
   },
+  // #45 (owner): the folder and author-only explanations.
+  {
+    name: '#45: the folder note stops explaining the order arrows',
+    suite: 'tests/folders.test.js',
+    apply: (s) => s.replace("wins over a claim. The arrows set the order, Unfiled included. This helps", "wins over a claim. This helps"),
+  },
+  {
+    name: '#45: the author-only explanation no longer leads with what it does',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace("'With this on, a thread in Threads and Catch up is flagged new only when its author posts, '",
+      "'With this on, a thread in Threads and Catch up counts as new only when its author posts, '"),
+  },
+  {
+    name: '#45: the author-only checkbox loses its hover summary',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace(`type="checkbox" data-act="author-only" title="'`, `type="checkbox" data-act="author-only" data-x="'`),
+  },
   // PR #46 review: the wide CSS list pins complete lines, not selectors.
   {
     name: '#45: an unlisted declaration joins an approved wide rule',

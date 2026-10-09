@@ -15,9 +15,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Collapsible Catch up groups (#45). Each folder group's heading, Unfiled's
   too, is a toggle that hides or shows its rows; the choice is remembered on
   this device and is not exported. Mark all read still covers hidden rows.
-- The Settings folder note now says folders organise only threads you
-  subscribe to (and ones you file by hand), and never add other threads from
-  a forum (#45).
+- The Settings folder note now explains what folders are (they organise
+  only threads you subscribe to, or file by hand, and never add other threads
+  from a forum), how to use them and why they help (#45).
+- Settings, author-only mode: its explanation now leads with what it does (a
+  thread is flagged new only when its author posts, so other people's replies
+  do not mark it new), and the checkbox has a hover summary (#45).
 - A "Create a custom key on Torn" button in the Settings key section (#17). It
   opens Torn's own key page in a new tab, pre-filled with the name "Forum
   Command Center" and exactly the selections the script requests: `user`

@@ -6282,11 +6282,17 @@
       + renderInfoButton('settings-budget', model.openInfoId) + '</div>');
     out.push(renderInfoText('settings-budget', model.openInfoId, budgetText));
     out.push('<div class="tfcc-kv"><label for="tfcc-author">Only flag new posts by the thread author</label>'
-      + '<input id="tfcc-author" type="checkbox" data-act="author-only"'
+      // #45 (owner): a one-line hover summary. The checkbox's name stays its
+      // label; the title is only its description.
+      + '<input id="tfcc-author" type="checkbox" data-act="author-only" title="'
+      + escapeHtml('Only show new when the thread\'s author posts, not other people\'s replies') + '"'
       + (model.settings.authorOnly ? ' checked' : '') + '></div>');
     // Shown whether the setting is on or off, so the limits are read first.
-    var authorText = 'With this on, a thread in Threads and Catch up counts as new only when its '
-      + 'author has posted since you last looked. Each activity lookup then reads the thread\'s posts since '
+    // #45 (owner): it leads with what the setting does for the user.
+    var authorText = 'With this on, a thread in Threads and Catch up is flagged new only when its author posts, '
+      + 'so replies and comments from other people do not mark it new. This suits threads where you follow the '
+      + 'author\'s updates, such as guides, scripts and announcements. It counts the author\'s posts since you '
+      + 'last looked. Each activity lookup then reads the thread\'s posts since '
       + 'you last looked, ' + POSTS_PER_PAGE + ' at a time, newest first, instead of its last-post time. '
       + 'Each page is one lookup from the same allowance, so the cost does not change: with your setting of '
       + model.settings.enrichBudget + ', a Threads refresh is at most ' + (3 + model.settings.enrichBudget)

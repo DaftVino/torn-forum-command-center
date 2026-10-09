@@ -63,6 +63,24 @@ const FOLDER_NOTE = 'hidden>A folder can claim a forum, and new subscriptions fr
   + 'Filing a thread by hand always wins over a rule.</p>';
 
 const literals = [
+  // 5. Settings, author-only (owner): the checkbox gains a one-line hover
+  //    summary (its name stays its label) ...
+  {
+    item: '45 author-only hover', view: 'settings',
+    from: '<input id="tfcc-author" type="checkbox" data-act="author-only">',
+    to: '<input id="tfcc-author" type="checkbox" data-act="author-only" title="Only show new when the thread&#39;s author '
+      + 'posts, not other people&#39;s replies">',
+  },
+  // ... and its explanation leads with what the setting does; the rest of
+  //    the 13d text (cost, "not checked", My posts) follows unchanged.
+  {
+    item: '45 author-only explanation', view: 'settings',
+    from: 'hidden>With this on, a thread in Threads and Catch up counts as new only when its author has posted since you '
+      + 'last looked. Each activity lookup',
+    to: 'hidden>With this on, a thread in Threads and Catch up is flagged new only when its author posts, so replies and '
+      + 'comments from other people do not mark it new. This suits threads where you follow the author\'s updates, such '
+      + 'as guides, scripts and announcements. It counts the author\'s posts since you last looked. Each activity lookup',
+  },
   // 2. Catch up: the group heading becomes a toggle (button, aria-expanded,
   //    aria-controls, a chevron, a title), keeping "Unfiled (3)"; its rows
   //    get the id the toggle controls. The seed's only group is Unfiled.
