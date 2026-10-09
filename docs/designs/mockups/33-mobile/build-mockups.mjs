@@ -596,7 +596,7 @@ function rHead(o) {
   // Collapsed keeps the word: with no nav on screen, a bare "16" says nothing.
   // The badge is text in the id group, so it is what wraps, never a button.
   return '<div class="r-head"><div class="r-id">' + LOGO + rChip()
-    + (collapsed ? '<span class="tfcc-badge">16 new</span>' : '') + '</div>'
+    + (collapsed ? '<span class="tfcc-badge"><span aria-hidden="true">16</span><span class="m-sr">16 new</span></span>' : '') + '</div>'
     + '<span class="r-ctl tfcc-head-btns">'
     + '<button type="button" class="r-ico" data-act="refresh" aria-label="Refresh">' + ico('refresh') + '</button>'
     + '<button type="button" class="r-ico" data-act="takeover" aria-pressed="false" aria-label="Expand">' + ico('expand') + '</button>'
@@ -642,10 +642,13 @@ function rRow(r, o) {
   if (r.draft) bits.push('<span class="tfcc-tag">draft</span>');
   for (const t of r.tags) bits.push('<span class="tfcc-tag">' + esc(t) + '</span>');
   let h = '<div class="tfcc-row" data-id="' + r.id + '">'
-    + '<div class="r-t">' + (r.pinned ? '<span class="tfcc-pinned" title="Pinned">*</span>' : '') + titleLink(r) + '</div>'
+    + '<div class="r-t">' + (r.pinned ? '<span class="tfcc-pinned" title="Pinned">*</span>' : '')
+    + titleLink(r).replace('<a href=', '<a id="tfcc-title-' + r.id + '" href=') + '</div>'
     + '<div class="r-l2"><div class="tfcc-meta">' + bits.join('') + '</div><span class="r-btns">'
-    + (catchup ? '<button type="button" class="r-read" data-act="read"' + id + ' aria-label="Mark read: ' + esc(r.title) + '">'
-      + ico('check', 18) + 'Read</button>' : '')
+    // Owner decision e: the check mark alone. The name is "Mark read"; the
+    // title reaches a screen reader through aria-describedby.
+    + (catchup ? '<button type="button" class="r-read" data-act="read"' + id + ' aria-label="Mark read"'
+      + ' aria-describedby="tfcc-title-' + r.id + '">' + ico('check', 20) + '</button>' : '')
     + '<button type="button" data-act="row-more"' + id + ' aria-expanded="' + (open ? 'true' : 'false') + '"'
     + ' aria-controls="tfcc-act-' + r.id + '" aria-label="Actions for ' + esc(r.title) + '">' + ico(open ? 'close' : 'more', 18) + '</button>'
     + '</span></div>';
@@ -653,7 +656,8 @@ function rRow(r, o) {
   if (open) {
     h += '<div class="r-drawer" id="tfcc-act-' + r.id + '">'
       + '<button type="button" data-act="pin"' + id + '>' + ico('pin', 18) + (r.pinned ? 'Unpin' : 'Pin') + '</button>'
-      + (catchup ? '' : '<button type="button" data-act="read"' + id + '>' + ico('read', 18) + 'Mark read</button>')
+      + (catchup ? '' : '<button type="button" class="r-read" data-act="read"' + id + ' aria-label="Mark read"'
+        + ' aria-describedby="tfcc-title-' + r.id + '">' + ico('check', 20) + '</button>')
       + '<button type="button" data-act="draft"' + id + '>' + ico('draft', 18) + (r.draft ? 'Edit draft' : 'Draft') + '</button>'
       + '<button type="button" data-act="archive"' + id + '>' + ico('archive', 18) + 'Archive</button>'
       + '<div class="r-step r-wide"><button type="button" data-act="prio-down"' + id + ' aria-label="Lower priority">-</button>'
@@ -782,6 +786,176 @@ const FIT_SCRIPT = `<script>
 })();
 </script>`;
 
+// ---- Nav count variants (owner feedback: numeral behind the label) -----------
+// The count is a large numeral layered behind a one-line label. Three ways to
+// keep the label at AA (4.5:1) where it crosses the numeral:
+//   v1 tint  - numeral in the label's own colour at 14% opacity; label at 90%.
+//   v2 ghost - numeral as an outline (text stroke) at 45%; label solid.
+//   v3 halo  - numeral in the unread green at 35%; label at 92% with a halo
+//              of the cell's own background.
+// The in-page script composites the real computed colours and prints the
+// ratios under each block: label over the cell, label over the numeral.
+const NAV_CSS = `
+body.nv-body { display: block; }
+.nv-grid { display: grid; grid-template-columns: repeat(6, max-content); gap: 20px 24px; align-items: start; }
+.nv-head { font: bold 13px/1.4 Arial, sans-serif; color: #111; grid-column: 1 / -1; margin: 10px 0 0 0; }
+.nv-res { font: 11px/1.45 ui-monospace, Consolas, monospace; color: #111; white-space: pre-wrap; margin: 6px 0 0 0; }
+#tfcc-panel .nv-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+#tfcc-panel .nv-nav + .nv-nav { margin-top: 8px; }
+#tfcc-panel button.nv { --nv-cell: var(--tm-bg-3); position: relative; overflow: hidden; min-height: 44px; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center; white-space: nowrap; background: var(--nv-cell); }
+#tfcc-panel button.nv[aria-pressed="true"] { --nv-cell: var(--tm-good-bg); box-shadow: inset 0 -3px 0 var(--tm-text); }
+#tfcc-panel button.nv.tfcc-nav-mine { --nv-cell: var(--tfcc-mine-bg); color: var(--tfcc-mine-text); }
+#tfcc-panel button.nv.tfcc-nav-mine[aria-pressed="true"] { --nv-cell: var(--tfcc-mine-pressed);
+  box-shadow: inset 0 -3px 0 var(--tfcc-mine-text); }
+#tfcc-panel .nv-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 40px; font-weight: 800; line-height: 1; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+#tfcc-panel .nv-lab { position: relative; font-weight: bold; font-size: 13px; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%; }
+#tfcc-panel.nv-v1 .nv-num { color: currentColor; opacity: 0.14; }
+#tfcc-panel.nv-v1 .nv-lab { opacity: 0.9; }
+/* The selected cell is darker green in the dark theme, so it gets less numeral
+   and more label to stay above 4.5:1 (measured). */
+#tfcc-panel.nv-v1 button.nv[aria-pressed="true"] .nv-num { opacity: 0.09; }
+#tfcc-panel.nv-v1 button.nv[aria-pressed="true"] .nv-lab { opacity: 0.96; }
+#tfcc-panel button.nv { --nv-ink: var(--tm-text); }
+#tfcc-panel button.nv.tfcc-nav-mine { --nv-ink: var(--tfcc-mine-text); }
+#tfcc-panel.nv-v2 .nv-num { color: transparent; -webkit-text-stroke: 1.5px var(--nv-ink); opacity: 0.45; }
+/* v4: the numeral is itself legible (3:1 or better against the cell, the
+   large-text threshold, because it IS the count), and the label is solid with
+   a crisp 1.5px halo in the cell colour, so the label's adjacent pixels are
+   the cell, not the numeral. Numeral colours chosen per cell state. */
+#tfcc-panel.nv-v4 button.nv { --nv-numc: #6b6b6b; }
+#tfcc-panel.nv-v4.tfcc-theme-light button.nv { --nv-numc: #8c8c8c; }
+#tfcc-panel.nv-v4 button.nv[aria-pressed="true"] { --nv-numc: #000000; }
+#tfcc-panel.nv-v4.tfcc-theme-light button.nv[aria-pressed="true"] { --nv-numc: #787878; }
+#tfcc-panel.nv-v4 button.nv.tfcc-nav-mine { --nv-numc: #737373; }
+#tfcc-panel.nv-v4 button.nv.tfcc-nav-mine[aria-pressed="true"] { --nv-numc: #555555; }
+#tfcc-panel.nv-v4 .nv-num { color: var(--nv-numc); }
+#tfcc-panel.nv-v4 .nv-lab { text-shadow: -1.5px 0 var(--nv-cell), 1.5px 0 var(--nv-cell), 0 -1.5px var(--nv-cell),
+  0 1.5px var(--nv-cell), -1px -1px var(--nv-cell), 1px 1px var(--nv-cell), -1px 1px var(--nv-cell), 1px -1px var(--nv-cell); }
+#tfcc-panel.nv-v3 .nv-num { color: var(--tm-good-text); opacity: 0.35; }
+#tfcc-panel.nv-v3 .nv-lab { opacity: 0.92; text-shadow: 0 0 2px var(--nv-cell), 0 0 2px var(--nv-cell), 0 0 3px var(--nv-cell); }
+/* Green on the green selected cell is the failing case: there the numeral
+   takes the label colour, faintly. */
+#tfcc-panel.nv-v3 button.nv[aria-pressed="true"] .nv-num { color: currentColor; opacity: 0.1; }
+`;
+
+function nvCell(view, label, n, pressed, cls) {
+  const has = n !== null && n !== 0;
+  const said = label + (n === null ? '' : ', ' + (n === 0 ? 'none' : n + (view === 'threads' || view === 'mine' ? ' new' : '')));
+  return '<button type="button" class="nv' + (cls ? ' ' + cls : '') + '" data-act="view" data-view="' + view + '"'
+    + ' aria-pressed="' + (pressed ? 'true' : 'false') + '" aria-label="' + esc(said) + '">'
+    + (has ? '<span class="nv-num" aria-hidden="true">' + n + '</span>' : '')
+    + '<span class="nv-lab">' + esc(label) + '</span></button>';
+}
+function nvBlocks() {
+  // Block 1: Threads selected, Drafts at 0, My posts at 128.
+  // Block 2: My posts selected, Catch up at 104, Drafts at 2.
+  return '<div class="nv-nav">'
+    + nvCell('threads', 'Threads', 16, true) + nvCell('catchup', 'Catch up', 3, false) + nvCell('search', 'Search', null, false)
+    + nvCell('drafts', 'Drafts', 0, false) + nvCell('settings', 'Settings', null, false)
+    + nvCell('mine', 'My posts', 128, false, 'tfcc-nav-mine') + '</div>'
+    + '<div class="nv-nav">'
+    + nvCell('threads', 'Threads', 7, false) + nvCell('catchup', 'Catch up', 104, false) + nvCell('search', 'Search', null, false)
+    + nvCell('drafts', 'Drafts', 2, false) + nvCell('settings', 'Settings', null, false)
+    + nvCell('mine', 'My posts', 1, true, 'tfcc-nav-mine') + '</div>';
+}
+function nvFrame(variant, theme, width) {
+  return '<div class="phone" style="width:' + width + 'px"><p class="cap">' + variant + ' / ' + theme + ' / ' + width + '</p>'
+    + '<div class="screen ' + theme + '" style="width:' + width + 'px">'
+    + '<div id="tfcc-panel" class="tfcc-theme-' + theme + ' tfcc-narrow nv-' + variant + '">' + nvBlocks() + '</div></div>'
+    + '<p class="nv-res">measuring...</p></div>';
+}
+const NV_LABELS = {
+  v1: 'v1 tint: numeral in the label colour at 14%, label at 90% opacity',
+  v2: 'v2 ghost: numeral as a 1.5px outline at 45%, solid label',
+  v3: 'v3 halo: numeral in the unread green at 35%, label at 92% with a soft background halo',
+  v4: 'v4 legible numeral: numeral at 3:1+ against the cell (it is the count), solid label with a crisp cell-colour halo',
+};
+function nvPage() {
+  const cells = [];
+  for (const v of ['v1', 'v2', 'v3', 'v4']) {
+    cells.push('<p class="nv-head">' + esc(NV_LABELS[v]) + '</p>');
+    for (const theme of ['dark', 'light']) for (const w of [375, 320, 280]) cells.push(nvFrame(v, theme, w));
+  }
+  return '<div class="nv-grid">' + cells.join('\n') + '</div>' + NV_SCRIPT;
+}
+// Composites the computed colours the way the browser paints them and prints
+// the WCAG ratios. "over numeral" is the label against the numeral painted on
+// the cell: the worst pixel the label can sit on. The v3 halo is NOT credited.
+const NV_SCRIPT = `<script>
+(function () {
+  function parse(c) { var m = c.match(/rgba?\\(([^)]+)\\)/); if (!m) return [0, 0, 0, 0];
+    var p = m[1].split(',').map(function (x) { return parseFloat(x); }); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; }
+  function over(fg, a, bg) { return [fg[0] * a + bg[0] * (1 - a), fg[1] * a + bg[1] * (1 - a), fg[2] * a + bg[2] * (1 - a)]; }
+  function lum(c) { var f = function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); }
+  function ratio(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+  var all = [];
+  document.querySelectorAll('[id="tfcc-panel"]').forEach(function (p) {
+    var worst = 99, where = '', lines = [], numWorst = 99, numWhere = '', halo = 99;
+    // Only v4's halo is solid (zero-blur offsets), so only v4 gets halo credit:
+    // its label's adjacent pixels are the cell colour.
+    var crisp = p.classList.contains('nv-v4');
+    p.querySelectorAll('button.nv').forEach(function (b) {
+      var bg = parse(getComputedStyle(b).backgroundColor);
+      var lab = b.querySelector('.nv-lab'), ls = getComputedStyle(lab), lc = parse(ls.color);
+      var la = lc[3] * parseFloat(ls.opacity);
+      var r1 = ratio(over(lc, la, bg), bg), r2 = null;
+      var num = b.querySelector('.nv-num');
+      if (num) {
+        var ns = getComputedStyle(num), na = parseFloat(ns.opacity);
+        var fill = parse(ns.color), stroke = parse(ns.webkitTextStrokeColor || 'rgba(0,0,0,0)');
+        var paint = fill[3] > 0 ? over(fill, fill[3] * na, bg) : over(stroke, stroke[3] * na, bg);
+        r2 = ratio(over(lc, la, paint), paint);
+        var rn = ratio(paint, bg);
+        if (rn < numWorst) { numWorst = rn; numWhere = num.textContent + ' in ' + lab.textContent
+          + (b.getAttribute('aria-pressed') === 'true' ? '*' : ''); }
+      }
+      if (crisp) halo = Math.min(halo, r1);
+      var w = Math.min(r1, r2 === null ? 99 : r2);
+      var name = lab.textContent + (b.getAttribute('aria-pressed') === 'true' ? '*' : '');
+      lines.push(name + ' ' + r1.toFixed(1) + (r2 === null ? '' : '/' + r2.toFixed(1)));
+      if (w < worst) { worst = w; where = name + (r2 !== null && r2 <= r1 ? ' over numeral' : ' over cell'); }
+      var lw = lab.getBoundingClientRect().width, bw = b.getBoundingClientRect().width;
+      if (lab.scrollWidth > lab.clientWidth + 1) lines.push('  (' + lab.textContent + ' truncated)');
+    });
+    var res = p.closest('.phone').querySelector('.nv-res');
+    var cap = p.closest('.phone').querySelector('.cap').textContent;
+    var uniq = lines.filter(function (x, i) { return lines.indexOf(x) === i; });
+    var labelVerdict = crisp ? halo : worst;
+    res.textContent = 'LABEL worst ' + worst.toFixed(2) + ':1 raw (' + where + ')'
+      + (crisp ? ', ' + halo.toFixed(2) + ':1 against its halo' : '')
+      + ' -> ' + (labelVerdict >= 4.5 ? 'PASS AA' : 'FAIL AA')
+      + '\\nNUMERAL (the count) worst ' + numWorst.toFixed(2) + ':1 vs cell (' + numWhere + ') -> '
+      + (numWorst >= 3 ? 'PASS 3:1 large text' : 'FAIL 3:1, count not legible')
+      + '\\nlabel/cell / label/numeral (* = selected):\\n' + uniq.join('  ');
+    all.push(cap + ' | label raw ' + worst.toFixed(2) + ' (' + where + ')' + (crisp ? ' halo ' + halo.toFixed(2) : '')
+      + ' | numeral ' + numWorst.toFixed(2) + ' (' + numWhere + ')');
+  });
+  window.__nv = all.join('\\n');
+})();
+</script>`;
+
+// ---- The four nav variants inside a full panel (quick comparison) --------------
+function nvInPanel(variant, theme) {
+  const nav = '<div class="nv-nav" style="margin-bottom:6px">'
+    + nvCell('threads', 'Threads', 16, true) + nvCell('catchup', 'Catch up', 3, false) + nvCell('search', 'Search', null, false)
+    + nvCell('drafts', 'Drafts', 0, false) + nvCell('settings', 'Settings', null, false)
+    + nvCell('mine', 'My posts', 128, false, 'tfcc-nav-mine') + '</div>';
+  const rows = ROWS.slice(0, 4).map((r) => rRow(r, {})).join('');
+  const body = rHead({}) + nav + rFilter(false) + '<div class="tfcc-rows">' + rows + '</div>';
+  return '<div class="phone" style="width:375px"><p class="cap" style="font-weight:bold">' + esc(NV_LABELS[variant]) + '</p>'
+    + '<div class="screen ' + theme + '" style="width:375px">'
+    + '<div id="tfcc-panel" class="tfcc-theme-' + theme + ' tfcc-narrow nv-' + variant + '">' + body + '</div></div></div>';
+}
+function nvInPanelPage() {
+  const row = (theme) => '<div style="display:flex;gap:24px;align-items:flex-start;margin-bottom:24px">'
+    + ['v1', 'v2', 'v3', 'v4'].map((v) => nvInPanel(v, theme)).join('') + '</div>';
+  return '<div style="display:block">' + row('dark') + row('light') + '</div>' + FIT_SCRIPT;
+}
+
 // ---- write -----------------------------------------------------------------------
 const FOLD = 560;
 const FOLD_LABEL = 'about one screen of PDA web view';
@@ -821,6 +995,12 @@ const files = {
     'Issue #33 revised recommendation (task-first A, after the Codex review) at 320px, dark and light, plus 200% text.',
     ['<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start;max-width:1900px">'
       + revisedPage(320).join('\n') + '</div>' + FIT_SCRIPT], REVISED_CSS),
+  'nav-count-variants.html': page('Nav count variants',
+    'Issue #33 nav cells with the count as a numeral behind the label: three contrast treatments, dark and light, 375/320/280px.',
+    [nvPage()], REVISED_CSS + NAV_CSS),
+  'nav-variants-in-panel.html': page('Nav variants in the panel',
+    'Issue #33 quick comparison: the four nav-count variants in a full revised panel at 375px, dark and light.',
+    [nvInPanelPage()], REVISED_CSS + NAV_CSS),
 };
 
 for (const [name, html] of Object.entries(files)) {
