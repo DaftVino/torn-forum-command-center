@@ -70,6 +70,25 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Changed
 
+- Narrow view polish (#39). In the narrow layout only:
+  - Catch up's "Mark all read", "Set catch-up point to now" and its info
+    button share one line. Where the full labels would wrap they shorten to
+    "All read" and "Catch-" up arrow "2" down arrow, measured on the panel's
+    own nodes; screen readers keep the full names. At very large text the
+    labels wrap inside their buttons instead of the row wrapping.
+  - Each row's title, meta line and note are one line with an ellipsis until
+    the row's drawer opens. The title keeps its full text for screen readers
+    and its full-width tap band.
+  - The open row's "..." becomes an X named "Close actions". A tap anywhere
+    else, in the panel or outside it, closes the drawer and still does its
+    own job. Outside clicks are seen by one capture-phase window listener
+    that only checks whether the click was inside the panel and never cancels
+    it.
+  - The drawer is compact: Pin, Draft and Archive are monochrome pin, pencil
+    and wastebasket buttons on one row with Mark read, named in words, and
+    every drawer control is 32px with 8px gaps. Fields keep 16px text. The
+    wastebasket means Archive, which can be undone.
+
 - An unsubscribed thread of your own whose only local state is a visit or a
   read marker now lives in My posts rather than Threads. (#2)
 - The Settings request note states the My posts budget: at most 12 requests

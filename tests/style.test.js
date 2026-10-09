@@ -606,7 +606,9 @@ test('every narrow control outside the header has a real 44px box (#33, spec pri
     '#tfcc-panel.tfcc-narrow .tfcc-linkbtn', '#tfcc-panel.tfcc-narrow input:not([type="checkbox"])']) {
     assert.match(blockFor(sel), /min-height: 44px; min-width: 44px;/, sel);
   }
-  const headerOrTitle = /tfcc-hbtn|tfcc-hshow|tfcc-chip|tfcc-row-title a/;
+  // #39: the row drawer is compact by the owner's choice (32px, 24px floor),
+  // checked in tests/narrow-polish.test.js.
+  const headerOrTitle = /tfcc-hbtn|tfcc-hshow|tfcc-chip|tfcc-row-title a|tfcc-drawer/;
   for (const [sel, body] of narrowRules()) {
     if (!/button|select|input|tfcc-linkbtn/.test(sel) || headerOrTitle.test(sel)) continue;
     for (const prop of ['min-height', 'min-width']) {

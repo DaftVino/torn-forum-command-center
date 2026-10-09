@@ -274,6 +274,19 @@ it, so the ADR is unchanged (repo-standards section 6.3).
 `tests/narrow-focus.test.js` records every `document.querySelector` call to
 keep it that way.
 
+The narrow polish (#39) adds two more readings of the script's own nodes and
+one window listener, all inside the same ruling. `fitCatchUp` measures the
+Catch up action row's three controls (with each label set) to keep them on one
+line, from the same draw and resize path as `fitHeader`. A tap in the panel
+outside the open row's drawer closes the drawer; telling inside from outside
+reads only `#tfcc-act-<id>` in the panel. A click outside the panel closes it
+through one capture-phase `click` listener on the window, bound once like the
+press-hold `pointerup` listener. That listener asks a single question,
+whether `#tfcc-panel` contains the event's target. It reads no Torn markup,
+never calls `preventDefault` or stops propagation, and redraws only the panel,
+after the click has been dispatched, so Torn's own links behave exactly as
+before. It is an event subscription, not a third DOM access.
+
 The narrow markup is a branch of each renderer on `model.narrow`; the wide
 markup is main's, byte for byte, and `tests/wide-parity.test.js` compares it
 with a golden captured before #33. The transient view state (the open drawer,

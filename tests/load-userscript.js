@@ -74,6 +74,8 @@ const EXPORT_NAMES = [
   'renderListBarNarrow',
   'renderNavNarrow', 'navNumeral',
   'renderHeadNarrow', 'fitHeader',
+  // #39: narrow polish
+  'CU_GAP', 'CU_MODES', 'CU_SHORT_CLASS', 'CU_WRAP_CLASS', 'catchUpLabelMode', 'fitCatchUp',
   'GLYPHS', 'glyph', 'renderInfoButton', 'renderInfoText',
   'groupCatchUp', 'renderedRowIds', 'SEARCH_ROWS_MAX', 'replaceSettings',
   'NARROW_CLASS', 'applyTransient', 'measurePanelWidth', 'setNarrow', 'watchPanelWidth', 'onPanelWidth',
@@ -232,6 +234,22 @@ function makeSandbox(options = {}) {
     return stub;
   }
 
+  // The offset just past an element's closing tag, counting nested elements of
+  // the same name. A void element ends where its opening tag does.
+  const VOID = new Set(['input', 'br', 'img', 'hr', 'meta', 'link', 'path']);
+  function endOf(html, tag, start, openLen) {
+    if (VOID.has(tag) || /\/>$/.test(html.slice(start, start + openLen))) return start + openLen;
+    const re = new RegExp('<(/?)' + tag + '\\b[^>]*>', 'gi');
+    re.lastIndex = start + openLen;
+    let depth = 1;
+    let t;
+    while ((t = re.exec(html))) {
+      if (t[1]) depth -= 1; else if (!/\/>$/.test(t[0])) depth += 1;
+      if (depth === 0) return re.lastIndex;
+    }
+    return html.length;
+  }
+
   function queryIn(el, sel, all) {
     const p = parseSelector(sel);
     if (!p) return all ? [] : null;
@@ -253,7 +271,17 @@ function makeSandbox(options = {}) {
       if (!p.classes.every((c) => cls.includes(c))) continue;
       if (!p.attrs.every(([k, v]) => attrs[k] === v)) continue;
       let node = el._q.nodes.get(idx);
-      if (!node) { node = makeStub(tag, attrs); el._q.nodes.set(idx, node); }
+      if (!node) {
+        node = makeStub(tag, attrs);
+        // #39: where the element sits in its parent's markup, so a stub can
+        // answer contains() for another stub from the same render.
+        node._owner = el._q;
+        node._start = m.index;
+        node._end = endOf(el._innerHTML, tag, m.index, m[0].length);
+        node.contains = (other) => other === node || (!!other && other._owner === node._owner
+          && other._start > node._start && other._start < node._end);
+        el._q.nodes.set(idx, node);
+      }
       if (!all) return node;
       out.push(node);
     }

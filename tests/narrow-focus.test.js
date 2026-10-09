@@ -154,6 +154,13 @@ test('every querySelector call site in the source is one of the known ones', () 
     "panel('.tfcc-hbtn')",
     "panel('.tfcc-hshow')",
     'panel(plan[i])',
+    // #39: the Catch up row's fit, on this script's own nodes.
+    "panel('.tfcc-cubar')",
+    "panel('button[data-act=\"markall\"]')",
+    "panel('button[data-act=\"catchup-done\"]')",
+    "panel('button[data-info=\"catchup\"]')",
+    // #39: the open row's drawer, to tell a tap inside it from one elsewhere.
+    'panel(sel)',
   ].sort());
 });
 

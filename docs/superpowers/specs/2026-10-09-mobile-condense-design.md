@@ -1152,3 +1152,114 @@ owner prefers a quieter numeral (v1 or v3), the count fails 3:1. In that case
 it should be treated as decoration, and the number shown again in plain text
 somewhere, which defeats the point. The number-only badges in section 4.2
 remain the fallback.
+
+## 14. Narrow polish (#39)
+
+The owner's feedback on the narrow layout after #33 / PR #38. Every change is
+in the narrow layout only; the wide markup is unchanged
+(`tests/wide-parity.test.js`). Reviewed against the `ui-ux-pro-max` guidance
+(touch targets and spacing, truncation, icon and state rules). Its points, and
+how they were applied:
+
+| Guidance | Applied as |
+|---|---|
+| Touch targets 44px, 8px between targets (`touch-target-size`, `touch-spacing`) | Navigation, the row's Read and Actions, and the Catch up actions keep 44px. Only the drawer drops, by the owner's choice, to 32px: above WCAG 2.5.8's 24px floor, with 8px between every drawer target |
+| Truncate with an ellipsis and offer the full text (`truncation-strategy`) | One line with an ellipsis; the row's toggle is the expand. The text is never removed, so screen readers read it whole |
+| Prefer wrapping as text grows (`dynamic-type`) | At 200% text the Catch up labels wrap inside their buttons rather than the row wrapping; truncated rows still expand on open |
+| Icon-only buttons need labels (`aria-labels`) | Every emoji and the X are `aria-hidden`; the buttons are named in words ("Pin" / "Unpin", "Draft" / "Edit draft", "Archive" / "Unarchive", "Close actions"), with a matching `title` on the emoji buttons |
+| No emoji as icons (`no-emoji-icons`) | Overridden by the owner's choice of emoji. The risks it names (font-dependent colour, no theming) are handled by drawing them monochrome with the thumbs' filter (white on dark, black on light), measured at 3:1 or better in `tests/contrast-audit.mjs` |
+| State not by colour or label alone (`state-clarity`, `color-not-only`) | A set state (pinned, a draft saved, archived) also draws a 3px inset bar under its button, like a selected nav cell |
+| A visible close (`modal-escape`) | The open row's "..." becomes an X; a tap anywhere else closes it too |
+| 16px fields so iOS does not zoom (`readable-font-size`) | Drawer fields are shorter by padding (4px 8px) only; their text stays at the narrow 16px |
+
+### 14a. The Catch up action row
+
+- Mark all read, Set catch-up point to now and its info button sit on one row
+  (`.tfcc-cubar`, `flex-wrap: nowrap`). They never wrap.
+- **Labels by measurement.** `fitCatchUp` runs where `fitHeader` runs (after
+  every draw, and from the `ResizeObserver`) and reads only the panel's own
+  nodes: the bar's width and its three controls, measured with each label set.
+  The pure `catchUpLabelMode(content, full, short)` returns `full` while the
+  full labels fit, `short` only when they would wrap, else `wrap`. The choice
+  is a class on the panel (`tfcc-cu-short`, plus `tfcc-cu-wrap`), so it
+  survives each `innerHTML` rewrite.
+- **Short labels:** "All read" and the owner's "Catch-", up arrow, "2", down
+  arrow (U+2191 and U+2193, written as JS escapes so the source stays ASCII).
+  The accessible names stay "Mark all read" and "Set catch-up point to now"
+  (`aria-label`; the short label span is `aria-hidden`).
+- **Measured in the previews:** at 14px text the full labels need about 340px
+  against 325px of content at 375, so all three phone widths (375, 320, 280)
+  use the short labels, which need about 218px.
+- **The fallback.** If even the short labels cannot fit (200% text at 320 and
+  375 in the previews), the row still holds one line of controls: the info
+  group is flattened (`display: contents`), so the two label buttons share the
+  width equally (`flex: 1 1 0`, at least 44px; 107px each at 320 and 135px at
+  375 under 200% text) and their labels wrap inside them; the info button
+  keeps 44px. The audit fails an unequal split or a label wider than its
+  button (PR #40 review: before the fix the split was 141 / 73 at 320 and the
+  catch-up label overflowed). Nothing here goes below
+  44px, so this row never needs the header's 24px floor.
+- **Known trade-off:** the short catch-up label is not contained in its
+  accessible name "Set catch-up point to now" (WCAG 2.5.3, label in name, level
+  A). The owner asked for the full names; a voice-control user saying the
+  visible label may not reach it. "All read" is contained in "Mark all read".
+
+### 14b. One-line row text
+
+- In every list that renders rows (Threads, Catch up, My posts, Search's
+  matching threads) the title link, the note (tagline) and the meta line are
+  one line with `text-overflow: ellipsis`.
+- **The meta line collapses too (decision).** Closed, a row is a summary; the
+  meta wrapped to two or three lines at 320px, which undid most of the saving.
+  Live status (unread, "not checked yet", "not subscribed", "locked") renders
+  first in the meta, so it is the last thing the ellipsis reaches, and the
+  open drawer shows the whole line. Search hits (post text) and the Drafts
+  list have no drawer and are unchanged.
+- The open row (`openRowId`) carries `tfcc-open` and shows all three whole.
+- The title anchor stays one `display: block` band of full width and at least
+  24px, so the cut never shrinks the tap target; its text is whole in the
+  markup, so its accessible name is the full title.
+
+### 14c. The close toggle and click-away
+
+- While open, the Actions toggle draws an inline ASCII SVG X (`GLYPHS.close`),
+  keeps `data-act="row-more"` and `aria-expanded="true"`, and is named "Close
+  actions". Closed it is the "..." named "Actions for <title>". Tapping it
+  again closes the drawer; opening another row closes the first (unchanged).
+- **Inside the panel:** a click whose target is neither the open row's toggle
+  nor inside its drawer (`#tfcc-act-<id>`) applies the pure `dismiss`
+  transition (`openRowId` to null, nothing else) at once, then does its own
+  job; an action that redraws renders the drawer closed in that one redraw.
+  The closing redraw itself runs after dispatch (zero delay) for every
+  target, so the tapped node is still there for its native default action: a
+  link followed, a field focused, a select's picker, a label's control (PR #40
+  review). The press-hold flush is deferred the same way. With a dirty drawer
+  field the press-hold still gives one redraw: commit, close and the tapped
+  action.
+  Focus follows the tapped control's own plan, as before.
+- **Outside the panel:** one capture-phase `click` listener on the window,
+  bound once like `pressWinBound`. It checks only whether `#tfcc-panel`
+  contains the target; it reads no Torn markup, never calls `preventDefault`
+  or stops propagation, and redraws only the panel after dispatch. `click`,
+  not `pointerdown`, so scrolling the page does not close the drawer. ADR
+  0001: an event subscription that inspects the script's own node, within the
+  owner's ruling in section 5; recorded in `docs/architecture.md`.
+
+### 14d. The compact drawer
+
+- Pin, Draft and Archive are the owner's emoji (pin U+1F4CC, pencil U+270F
+  U+FE0F, wastebasket U+1F5D1 U+FE0F, written as escapes) in `aria-hidden`
+  spans, drawn monochrome with the thumbs' filters: `grayscale(1)
+  brightness(0) invert(1)` on dark, `grayscale(1) brightness(0)` on light.
+  They sit on one row (`.tfcc-drawer-btns`, nowrap) with the check-mark Mark
+  read outside Catch up. The buttons keep their `data-act` values and are
+  named and hinted in words.
+- **Sizes:** drawer buttons (the four above and the priority stepper's - and
+  +) are 32 x 32 minimum; the folder select and the tag and note fields are
+  32px tall minimum with 4px 8px padding and 16px text; 8px between all drawer
+  targets (grid gap, button row gap, stepper gap). Navigation, Read, Actions
+  and the Catch up actions keep 44px.
+- **Archive and the wastebasket.** The owner chose the wastebasket. Archive is
+  reversible, not a delete, so the name and the hint say "Archive" (or
+  "Unarchive"), never "Delete"; the mutation check fails if the name changes.
+  Whether the hint should add "(can be undone)" is left to the owner.

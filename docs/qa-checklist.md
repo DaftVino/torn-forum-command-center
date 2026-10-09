@@ -129,6 +129,40 @@ Walk on Torn PDA, portrait, on the narrowest phone you have, then landscape.
 - [ ] Android system font at 200%: nothing clips or scrolls sideways; the header
       is still one line.
 
+### Narrow polish (#39)
+
+- [ ] Catch up: "Mark all read", "Set catch-up point to now" and the info
+      button share one line at 375, 320 and 280px. Where the full labels would
+      wrap they read "All read" and "Catch-" up arrow "2" down arrow. TalkBack
+      still reads "Mark all read" and "Set catch-up point to now". At 200%
+      system font the three stay on one row and the labels wrap inside them.
+- [ ] Every list (Threads, Catch up, My posts, Search) shows each row's title,
+      meta line and note as one line ending in "...". Opening the row's
+      drawer shows all three in full; closing it cuts them again. TalkBack
+      reads the whole title.
+- [ ] A long title still opens its thread when tapped anywhere along its line.
+- [ ] While a drawer is open its "..." button is an X; TalkBack reads "Close
+      actions, expanded". Tap the X: the drawer closes.
+- [ ] With a drawer open, tap a nav cell, the Unread button, another row's
+      title, and empty panel space in turn (reopening it each time): each tap
+      closes the drawer AND does its own job (switches view, filters, opens
+      the thread).
+- [ ] With a drawer open, tap one of Torn's own links outside the panel: the
+      drawer closes and Torn's link opens as normal. Tap empty page space
+      outside the panel: the drawer closes and nothing else happens.
+- [ ] Type a note in a drawer, then tap outside the panel without pressing
+      Enter: the note is saved and the drawer closes.
+- [ ] The drawer shows a pin, a check mark, a pencil and a wastebasket on one
+      row, in white on the dark theme and black on the light theme (no colour
+      emoji). TalkBack reads them as "Pin" (or "Unpin"), "Mark read", "Draft"
+      (or "Edit draft") and "Archive" (or "Unarchive"). A pinned row's pin
+      button is underlined.
+- [ ] The wastebasket archives, it does not delete: the thread leaves the list
+      and comes back with Unarchive.
+- [ ] The drawer's buttons, stepper, folder select and fields are visibly
+      smaller than the nav and Actions buttons, still easy to hit, and tapping
+      a field does not zoom the page (iOS).
+
 ### Hide on opening a thread
 
 - [ ] Fresh install: Settings shows "Hide the panel when I open a thread"

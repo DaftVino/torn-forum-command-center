@@ -150,10 +150,14 @@ test('open, the filter grid is visible and Filters says so', () => {
 // ---- rows (spec 4.4, 13e) ----------------------------------------------------
 
 function rowOf(html, id) {
-  const i = html.indexOf('<div class="tfcc-row" data-id="' + id + '">');
-  assert.ok(i !== -1, 'row ' + id + ' rendered');
-  const next = html.indexOf('<div class="tfcc-row" data-id=', i + 10);
-  return html.slice(i, next === -1 ? undefined : next);
+  // #39: an open row also carries tfcc-open.
+  const m = new RegExp('<div class="tfcc-row(?: tfcc-open)?" data-id="' + id + '">').exec(html);
+  assert.ok(m, 'row ' + id + ' rendered');
+  const i = m.index;
+  const rest = /<div class="tfcc-row(?: tfcc-open)?" data-id=/g;
+  rest.lastIndex = i + 10;
+  const n = rest.exec(html);
+  return html.slice(i, n ? n.index : undefined);
 }
 
 test('a narrow row gives the title the whole width, with unread and buttons on line 2', () => {
@@ -255,7 +259,7 @@ test('narrow Catch up keeps its info button in one group with "Set catch-up poin
   const { api } = bootNarrow();
   api.state.settings.view = 'catchup';
   const html = api.panelHtml(api.buildPanelModel(NOW));
-  assert.match(html, /<span class="tfcc-infogroup"><button type="button" data-act="catchup-done">Set catch-up point to now<\/button><button type="button" class="tfcc-info" data-act="info" data-info="catchup"/);
+  assert.match(html, /<span class="tfcc-infogroup"><button type="button" data-act="catchup-done" aria-label="Set catch-up point to now"><span class="tfcc-lfull">Set catch-up point to now<\/span><span class="tfcc-lshort" aria-hidden="true">[^<]*<\/span><\/button><button type="button" class="tfcc-info" data-act="info" data-info="catchup"/);
 });
 
 test('narrow Search keeps its info button in one group with "Search on Torn"', () => {

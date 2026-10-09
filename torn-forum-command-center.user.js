@@ -205,6 +205,12 @@
   var LOGO_PER_HB = 0.545;
   var LOGO_MIN_PX = 16;
   var LOGO_MAX_PX = 24;
+  // The narrow Catch up action row (#39): its controls sit 6px apart and never
+  // wrap. CU_MODES are the label sets it can use: the full labels, the short
+  // ones, and, when even those cannot fit, the short labels wrapping inside
+  // their own buttons on the one row.
+  var CU_GAP = 6;
+  var CU_MODES = Object.freeze(['full', 'short', 'wrap']);
 
   // Info buttons (#33, spec 13d): key -> the button's accessible name. The
   // explanation text always stays in the markup; only its hidden attribute
@@ -1920,6 +1926,32 @@
     return { size: HB_MIN, fits: false };
   }
 
+  // Which labels keep the narrow Catch up row on one line (#39). full and short
+  // are the widths of the row's controls (Mark all read, Set catch-up point,
+  // its info button) with each label set, measured by the runtime. The full
+  // labels win while they fit; the short ones only when the full would wrap;
+  // 'wrap' when even the short ones cannot fit, so the labels wrap inside
+  // their buttons and the row still holds one line of controls. Unknown
+  // widths keep the full labels.
+  function catchUpLabelMode(content, full, short) {
+    var need = function (ws) {
+      if (!Array.isArray(ws) || !ws.length) return null;
+      var sum = CU_GAP * (ws.length - 1);
+      for (var i = 0; i < ws.length; i += 1) {
+        if (typeof ws[i] !== 'number' || !isFinite(ws[i]) || ws[i] < 0) return null;
+        sum += ws[i];
+      }
+      return sum;
+    };
+    var c = typeof content === 'number' && isFinite(content) ? content : 0;
+    var f = need(full);
+    if (!(c > 0) || f === null) return CU_MODES[0];
+    if (f <= c) return CU_MODES[0];
+    var s = need(short);
+    if (s !== null && s <= c) return CU_MODES[1];
+    return CU_MODES[2];
+  }
+
   // The number the narrow Filters button shows: the filters it hides. Sort is
   // an order and Unread has its own visible toggle, so neither counts.
   function activeFilterCount(settings) {
@@ -1953,6 +1985,8 @@
       return out;
     }
     if (type === 'filters') { out.filtersOpen = !out.filtersOpen; return out; }
+    // #39: a tap anywhere but the open drawer and its toggle closes the drawer.
+    if (type === 'dismiss') { out.openRowId = null; return out; }
     if (type === 'info' && Object.prototype.hasOwnProperty.call(INFO_KEYS, ev.key)) {
       out.openInfoId = out.openInfoId === ev.key ? null : ev.key;
       return out;
@@ -4643,20 +4677,49 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t { display: flex; gap: 4px; align-items: flex-start; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title { line-height: 1.35; }',
       // The whole title band opens the thread: at least 24px (WCAG 2.2 AA).
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title a { display: block; padding: 3px 0; min-height: 24px; }',
+      // #39: one line with an ellipsis until the row's drawer opens. The cut is
+      // visual only: the link's text, and so its accessible name, is whole,
+      // and the block keeps the full width and 24px height of the tap target.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title a { display: block; padding: 3px 0; min-height: 24px;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title { flex: 1 1 0; min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row > .tfcc-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row.tfcc-open .tfcc-row-t .tfcc-row-title a { white-space: normal; overflow: visible; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row.tfcc-open > .tfcc-note { white-space: normal; overflow: visible; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-pinned { padding-top: 3px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 { display: flex; gap: 6px; align-items: flex-start; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 .tfcc-meta { flex: 1 1 0; min-width: 0; margin-top: 0;',
-      '  padding-top: 2px; gap: var(--tfcc-gap-sm); }',
+      '  padding-top: 2px; gap: var(--tfcc-gap-sm);',
+      // #39: the meta is one line too, status first so a live status is the
+      // last thing cut. A block, not a flex row, so the ellipsis can show.
+      '  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 .tfcc-meta > * { margin-right: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta { white-space: normal; overflow: visible; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns { flex: none; display: inline-flex; gap: 6px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns button { display: inline-flex; align-items: center;',
       '  justify-content: center; min-width: 44px; min-height: 44px; padding: 0 6px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns button[aria-expanded="true"] { background: var(--tm-hover); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer { display: grid;',
-      '  grid-template-columns: repeat(auto-fit, minmax(7.5em, 1fr)); gap: 6px; margin-top: 6px;',
+      '  grid-template-columns: repeat(auto-fit, minmax(7.5em, 1fr)); gap: 8px; margin-top: 6px;',
       '  padding-top: 8px; border-top: 1px solid var(--tm-border); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer .tfcc-wide { grid-column: 1 / -1; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-step { display: flex; align-items: center; gap: 6px; }',
+      // #39: the drawer is compact. Its controls are 32px (WCAG 2.5.8's floor
+      // is 24px) with 8px between them; navigation outside it keeps 44px.
+      // Fields get shorter by padding, never by font: they stay 16px so iOS
+      // does not zoom.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer button { min-height: 32px; min-width: 32px; padding: 0 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer select { min-height: 32px; min-width: 32px; padding: 4px 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer input:not([type="checkbox"]) { min-height: 32px; min-width: 32px;',
+      '  padding: 4px 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-btns { display: flex; flex-wrap: nowrap; gap: 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-btns button { display: inline-flex; flex: none; align-items: center;',
+      '  justify-content: center; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer button.tfcc-on { box-shadow: inset 0 -3px 0 currentColor; }',
+      // Monochrome, exactly as the thumbs (#30): white on dark, black on light.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-emo { display: block; font-size: 16px; line-height: 1;',
+      '  filter: grayscale(1) brightness(0) invert(1); }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-step { display: flex; align-items: center; gap: 8px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-step span { flex: 1 1 auto; text-align: center; color: var(--tm-meta); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-vh { font-size: var(--tfcc-text); margin: 2px 0 6px 0; }',
       // A narrow info button and the control it explains share one line; at
@@ -4665,6 +4728,24 @@
       '  align-items: center; gap: 6px; min-width: 0; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-infogroup > :first-child { flex: 1 1 auto; white-space: normal;',
       '  justify-content: center; text-align: center; }',
+      // #39: the Catch up actions share one line. Each control keeps its own
+      // width (so fitCatchUp measures it), the panel's tfcc-cu-short class
+      // swaps in the short labels, and tfcc-cu-wrap lets them wrap inside
+      // their buttons when even the short labels cannot fit.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-cubar { flex-wrap: nowrap; align-items: stretch; gap: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-cubar > button { flex: none; white-space: nowrap; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-cubar .tfcc-infogroup { flex: none; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-cubar .tfcc-infogroup > :first-child { flex: none; white-space: nowrap; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-lshort { display: none; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-short .tfcc-lfull { display: none; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-short .tfcc-lshort { display: inline; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar > button { flex: 1 1 0; min-width: 44px; white-space: normal; }',
+      // The group is flattened, so the two label buttons are siblings in one
+      // flex row with the same basis and share the width equally; the info
+      // button keeps its own 44px (PR #40 review).
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar .tfcc-infogroup { display: contents; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar .tfcc-infogroup > :first-child { flex: 1 1 0;',
+      '  min-width: 44px; white-space: normal; }',
       '#' + PANEL_ID + ' .tfcc-error { color: var(--tm-bad-text); font-weight: bold;',
       '  margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-warn { color: var(--tm-warn-text); margin-bottom: var(--tfcc-gap-sm); }',
@@ -4994,6 +5075,7 @@
     more: 'M5.5 12h1M11.5 12h1M17.5 12h1',
     check: 'M5 12.5l4.5 4.5L19 7.5',
     info: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5v.5',
+    close: 'M6 6l12 12M18 6L6 18',
   });
 
   function glyph(name) {
@@ -5213,6 +5295,25 @@
       + ' aria-describedby="tfcc-title-' + id + '">' + glyph('check') + '</button>';
   }
 
+  // The drawer's emoji (#39, the owner's choice), as escapes so the source
+  // stays ASCII. Drawn monochrome by the .tfcc-emo filter rules, like the
+  // thumbs. The wastebasket means Archive, which is reversible: the button's
+  // name and hint say Archive (or Unarchive), never Delete.
+  var DRAWER_EMOJI = Object.freeze({
+    pin: '\uD83D\uDCCC',
+    draft: '\u270F\uFE0F',
+    archive: '\uD83D\uDDD1\uFE0F',
+  });
+
+  // A compact drawer button (#39): the emoji is decoration (aria-hidden); the
+  // name and the hint are the words. tfcc-on marks a set state (pinned, a
+  // draft saved, archived), so the state never rests on the name alone.
+  function emojiButton(action, label, emoji, on, rowId) {
+    return '<button type="button" class="tfcc-emobtn' + (on ? ' tfcc-on' : '') + '" data-act="' + escapeHtml(action)
+      + '" data-id="' + escapeHtml(rowId) + '" aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '">'
+      + '<span class="tfcc-emo" aria-hidden="true">' + emoji + '</span></button>';
+  }
+
   // The drawer's controls (spec 4.4): the same data-act values as the wide
   // action row, each at least 44px. Mark read is left out in Catch up, where
   // the row already shows it.
@@ -5221,10 +5322,14 @@
     var edit = model.drawerEdit && model.drawerEdit.id === String(row.id) ? model.drawerEdit : null;
     var p = toInt(row.priority, 0);
     var out = [];
-    out.push(btn('pin', row.pinned ? 'Unpin' : 'Pin', id));
+    // #39: Pin, Draft and Archive are compact emoji buttons on one row, with
+    // Mark read beside them outside Catch up.
+    out.push('<div class="tfcc-drawer-btns tfcc-wide">');
+    out.push(emojiButton('pin', row.pinned ? 'Unpin' : 'Pin', DRAWER_EMOJI.pin, row.pinned, row.id));
     if (!inCatchUp) out.push(readButton(row));
-    out.push(btn('draft', row.hasDraft ? 'Edit draft' : 'Draft', id));
-    out.push(btn('archive', row.archived ? 'Unarchive' : 'Archive', id));
+    out.push(emojiButton('draft', row.hasDraft ? 'Edit draft' : 'Draft', DRAWER_EMOJI.draft, row.hasDraft, row.id));
+    out.push(emojiButton('archive', row.archived ? 'Unarchive' : 'Archive', DRAWER_EMOJI.archive, row.archived, row.id));
+    out.push('</div>');
     out.push('<div class="tfcc-step tfcc-wide">'
       + btn('prio-down', '-', id + ' aria-label="Lower priority"')
       + '<span>Priority ' + escapeHtml((p > 0 ? '+' : '') + p) + '</span>'
@@ -5246,7 +5351,9 @@
     var open = model.openRowId === String(row.id);
     var inCatchUp = model.view === 'catchup';
     var p = toInt(row.priority, 0);
-    var out = ['<div class="tfcc-row" data-id="' + id + '">'];
+    // #39: tfcc-open lets the open row show its title, meta and note whole;
+    // every other row holds each to one line.
+    var out = ['<div class="tfcc-row' + (open ? ' tfcc-open' : '') + '" data-id="' + id + '">'];
     out.push('<div class="tfcc-row-t">');
     if (row.pinned) out.push('<span class="tfcc-pinned" title="Pinned">*</span>');
     out.push('<span class="tfcc-row-title"><a id="tfcc-title-' + id + '" href="' + escapeHtml(threadUrl(row)) + '"'
@@ -5257,7 +5364,9 @@
     if (inCatchUp) out.push(readButton(row));
     out.push('<button type="button" data-act="row-more" data-id="' + id + '" aria-expanded="'
       + (open ? 'true' : 'false') + '" aria-controls="tfcc-act-' + id + '" aria-label="'
-      + escapeHtml('Actions for ' + row.title) + '">' + glyph('more') + '</button>');
+      // #39: while open the toggle is a close X; the same button closes it.
+      + (open ? 'Close actions' : escapeHtml('Actions for ' + row.title)) + '">'
+      + glyph(open ? 'close' : 'more') + '</button>');
     out.push('</span></div>');
     if (row.note) out.push('<div class="tfcc-note">' + escapeHtml(row.note) + '</div>');
     out.push('<div class="tfcc-drawer" id="tfcc-act-' + id + '"'
@@ -5440,19 +5549,28 @@
     return out.join('');
   }
 
+  // A narrow Catch up action (#39): both label sets are in the markup and the
+  // panel's tfcc-cu-short class picks one. The accessible name is always the
+  // full label.
+  function cuButton(action, full, short) {
+    return '<button type="button" data-act="' + escapeHtml(action) + '" aria-label="' + escapeHtml(full) + '">'
+      + '<span class="tfcc-lfull">' + escapeHtml(full) + '</span>'
+      + '<span class="tfcc-lshort" aria-hidden="true">' + escapeHtml(short) + '</span></button>';
+  }
+
   function renderCatchUpView(model) {
     var out = [];
-    out.push('<div class="tfcc-bar">');
+    out.push(model.narrow ? '<div class="tfcc-bar tfcc-cubar">' : '<div class="tfcc-bar">');
     if (!model.narrow) {
       out.push('<span class="tfcc-note">Since ' + escapeHtml(model.lastCatchUpAt
         ? formatAbsoluteTime(model.lastCatchUpAt) : 'your first run') + '</span>');
     }
-    out.push(btn('markall', 'Mark all read'));
-    // Narrow, the info button is grouped with the control it explains, so it
-    // never wraps onto a line of its own (PR #38 review); Mark all read takes
-    // its own line when the three do not fit.
+    out.push(model.narrow ? cuButton('markall', 'Mark all read', 'All read') : btn('markall', 'Mark all read'));
+    // Narrow, the info button is grouped with the control it explains, and the
+    // three share one line (#39): fitCatchUp picks the label set that fits.
     if (model.narrow) out.push('<span class="tfcc-infogroup">');
-    out.push(btn('catchup-done', 'Set catch-up point to now'));
+    out.push(model.narrow ? cuButton('catchup-done', 'Set catch-up point to now', 'Catch-\u2191 2 \u2193')
+      : btn('catchup-done', 'Set catch-up point to now'));
     out.push(renderInfoButton('catchup', model.openInfoId));
     if (model.narrow) out.push('</span>');
     out.push('</div>');
@@ -6158,11 +6276,12 @@
   // class flips at once because renderPanel always writes it.
   function onPanelWidth(doc, win, panel, handlers, width) {
     var next = narrowFor(width, state.narrow);
-    if (next === state.narrow) { fitHeader(panel, win); return; }
+    if (next === state.narrow) { fitHeader(panel, win); fitCatchUp(panel, win); return; }
     setNarrow(next);
     if (panel && panel.classList) panel.classList.toggle(NARROW_CLASS, state.narrow);
     draw(doc, win, handlers);
     fitHeader(panel, win);
+    fitCatchUp(panel, win);
   }
 
   var resizeWatch = null;
@@ -6252,6 +6371,52 @@
     }
   }
 
+  // Keeps the narrow Catch up action row on one line (#39). Like fitHeader it
+  // runs after every draw and on every resize, and reads only this script's
+  // own nodes: the bar's width and its three controls, measured with each
+  // label set. The choice is a class on the panel, so it survives the next
+  // innerHTML rewrite. Returns the mode it set, or null.
+  var CU_SHORT_CLASS = 'tfcc-cu-short';
+  var CU_WRAP_CLASS = 'tfcc-cu-wrap';
+
+  function fitCatchUp(panel, win) {
+    try {
+      if (!panel || !panel.classList) return null;
+      // 'wrap' uses the short labels too, so it carries both classes.
+      var setMode = function (m) {
+        panel.classList.toggle(CU_SHORT_CLASS, m !== 'full');
+        panel.classList.toggle(CU_WRAP_CLASS, m === 'wrap');
+      };
+      // The bar's controls, by their own data-act: markall renders only here.
+      var mark = state.narrow ? panel.querySelector('button[data-act="markall"]') : null;
+      if (!mark) { setMode('full'); return null; }
+      var ctl = [mark, panel.querySelector('button[data-act="catchup-done"]'),
+        panel.querySelector('button[data-info="catchup"]')];
+      var bar = panel.querySelector('.tfcc-cubar');
+      var content = bar && bar.clientWidth > 0 ? bar.clientWidth : 0;
+      if (!(content > 0)) {
+        var cs = win && typeof win.getComputedStyle === 'function' ? win.getComputedStyle(panel) : null;
+        var pad = cs ? (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) : 0;
+        content = (panel.clientWidth || 0) - pad;
+      }
+      if (!(content > 0)) return null;
+      var widths = function () {
+        return ctl.map(function (el) {
+          var r = el && typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect() : null;
+          return r && typeof r.width === 'number' ? r.width : 0;
+        });
+      };
+      setMode('full');
+      var full = widths();
+      setMode('short');
+      var mode = catchUpLabelMode(content, full, widths());
+      setMode(mode);
+      return mode;
+    } catch (e) {
+      return null;
+    }
+  }
+
   // #33, spec section 6 "Dirty inputs": a redraw held while a press that began
   // in the panel is in progress is flushed by the click, a pointercancel, or
   // this long after the pointer lifts with no click. Nothing is flushed while
@@ -6291,6 +6456,39 @@
     if (!state.pressActive) return;
     clearPress();
     flushAfterPress(doc, win, handlers);
+  }
+
+  // #39: true when a click on t keeps the open drawer open: t is that row's
+  // toggle (which closes it itself) or anything inside its drawer. Our own
+  // nodes only.
+  function insideOpenDrawer(panel, t) {
+    var id = state.openRowId;
+    if (!id || !t) return false;
+    try {
+      var get = function (k) { return typeof t.getAttribute === 'function' ? t.getAttribute(k) : null; };
+      if (get('data-act') === 'row-more' && get('data-id') === id) return true;
+      var sel = attrSel('id', 'tfcc-act-' + id);
+      var drawer = panel.querySelector(sel);
+      return !!(drawer && typeof drawer.contains === 'function' && drawer.contains(t));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  var clickAwayBound = false;
+  var clickAwayCtx = null;
+
+  function closeDrawerFromOutside(ev) {
+    try {
+      var c = clickAwayCtx;
+      if (!c || !state.openRowId) return;
+      var panel = c.doc.getElementById(PANEL_ID);
+      if (!panel || typeof panel.contains !== 'function') return;
+      // Inside the panel, the panel's own click listener decides.
+      if (panel.contains(ev && ev.target)) return;
+      applyTransient({ type: 'dismiss' });
+      setTimeout(function () { draw(c.doc, c.win, c.handlers); }, 0);
+    } catch (e) { /* a click elsewhere on the page must never throw */ }
   }
 
   function renderPanel(doc, win, model, handlers, force) {
@@ -6351,6 +6549,19 @@
         // action's own redraw also renders anything held during the press.
         var pressed = state.pressActive === true;
         if (pressed) clearPress();
+        // #39: a tap anywhere but the open drawer and its toggle closes the
+        // drawer, and then still does its own job below. The state closes at
+        // once, so an action that redraws renders it closed in its own single
+        // redraw (another row's toggle, a nav cell). The closing redraw itself
+        // waits until after dispatch, for every target: the tapped node must
+        // still be in the DOM while its native default action runs (a field
+        // taking focus, a select opening, a label activating its control, a
+        // link being followed). Not forced, so a caret in the panel defers it
+        // (PR #40 review).
+        if (state.openRowId && !insideOpenDrawer(panel, t)) {
+          applyTransient({ type: 'dismiss' });
+          setTimeout(function () { draw(doc, win, handlers); }, 0);
+        }
         // A thread link the panel rendered. The browser follows it; this only
         // gives the auto-hide setting a chance to persist first (issue #8).
         var link = threadLinkOf(t, panel);
@@ -6369,15 +6580,23 @@
           return;
         }
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+        // A held redraw is flushed after dispatch too, never inside the click:
+        // an action that redraws has already rendered it (pressed was cleared
+        // above), so the flush only matters for a tap with no redraw of its own,
+        // which is exactly a native control (field, select, label) whose node
+        // must survive its click (PR #40 review).
+        var flushLater = function () {
+          if (pressed) setTimeout(function () { flushAfterPress(doc, win, handlers); }, 0);
+        };
         if (!act || typeof handlers.onAction !== 'function') {
-          if (pressed) flushAfterPress(doc, win, handlers);
+          flushLater();
           return;
         }
         // #33: the plan is captured before the action runs, from the rows the
         // user was looking at, and consumed by the action's own redraw.
         state.focusIntent = focusPlan(focusTargetOf(t), lastRender);
         try { handlers.onAction(act, t); } finally { state.focusIntent = null; }
-        if (pressed) flushAfterPress(doc, win, handlers);
+        flushLater();
       });
       panel.addEventListener('change', function (ev) {
         var t = ev && ev.target;
@@ -6408,6 +6627,16 @@
       if (!pressWinBound && win && typeof win.addEventListener === 'function') {
         pressWinBound = true;
         win.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); }, true);
+      }
+      // #39: a click outside the panel closes an open drawer. One capture-phase
+      // listener on the window, bound once. It only asks whether the target is
+      // inside this script's own #tfcc-panel: it reads no Torn markup (ADR
+      // 0001), never cancels or stops the event, and redraws only our panel,
+      // after dispatch, so Torn's own link still does its job.
+      clickAwayCtx = { doc: doc, win: win, handlers: handlers };
+      if (!clickAwayBound && win && typeof win.addEventListener === 'function') {
+        clickAwayBound = true;
+        win.addEventListener('click', function (ev) { closeDrawerFromOutside(ev); }, true);
       }
       // An update deferred while the user was typing has to arrive eventually.
       // Waiting a tick lets focus settle first, so this does not fire while the
@@ -6768,6 +6997,7 @@
     // The chip's width changes with its counts and Show replaces Hide, so the
     // header is re-fitted after every draw, not only on resize.
     fitHeader(panel || doc.getElementById(PANEL_ID), win);
+    fitCatchUp(panel || doc.getElementById(PANEL_ID), win);
     state.mounted = true;
   }
 
