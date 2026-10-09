@@ -104,6 +104,46 @@ test('fitCatchUp never throws and reads nothing outside the panel', () => {
   assert.doesNotThrow(() => api.fitCatchUp({ classList: { toggle() {} }, querySelector() { throw new Error('x'); } }, env.win));
 });
 
+// ---- 2. one-line row text ----------------------------------------------------
+
+test('only the row whose drawer is open carries tfcc-open, in every list view', () => {
+  for (const view of ['threads', 'catchup', 'mine']) {
+    const { env, api } = bootNarrow();
+    seedRows(api, [{ id: 1, unread: 1 }, { id: 2, unread: 1 }]);
+    api.state.settings.view = view;
+    const ids = api.buildPanelModel(NOW).renderedIds;
+    if (!ids.length) continue;
+    api.state.openRowId = ids[0];
+    const html = redraw(env);
+    assert.match(html, new RegExp('<div class="tfcc-row tfcc-open" data-id="' + ids[0] + '">'), view);
+    assert.strictEqual((html.match(/tfcc-row tfcc-open/g) || []).length, 1, view + ': one open row');
+  }
+  const { env, api } = bootNarrow();
+  seedRows(api, [{ id: 1, unread: 1 }]);
+  assert.doesNotMatch(redraw(env), /tfcc-open/, 'nothing open, nothing marked');
+});
+
+test('the title link keeps its whole text in the markup, so its accessible name is the full title', () => {
+  const { env, api } = bootNarrow();
+  const long = 'A thread with a deliberately very long title that has to be cut on a narrow phone';
+  seedRows(api, [{ id: 1, title: long, unread: 1 }]);
+  assert.match(redraw(env), new RegExp('data-tfcc-thread="1">' + long + '</a>'));
+});
+
+test('closed rows hold the title, tagline and meta to one line with an ellipsis; an open row shows them whole', () => {
+  const { api } = bootNarrow();
+  const oneLine = /white-space: nowrap; overflow: hidden; text-overflow: ellipsis/;
+  // The title band stays a block of at least 24px: the truncation never cuts the tap target.
+  const title = cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row-t .tfcc-row-title a');
+  assert.match(title, /display: block; padding: 3px 0; min-height: 24px;/);
+  assert.match(title, oneLine);
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row > .tfcc-note'), oneLine);
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row-l2 .tfcc-meta'), oneLine);
+  for (const sel of ['.tfcc-row-t .tfcc-row-title a', '> .tfcc-note', '.tfcc-row-l2 .tfcc-meta']) {
+    assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row.tfcc-open ' + sel), /white-space: normal; overflow: visible;/, sel);
+  }
+});
+
 // One rule body from the stylesheet, by its exact selector.
 function cssRule(api, sel) {
   const css = api.panelStyleText();

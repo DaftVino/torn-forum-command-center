@@ -4675,11 +4675,24 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t { display: flex; gap: 4px; align-items: flex-start; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title { line-height: 1.35; }',
       // The whole title band opens the thread: at least 24px (WCAG 2.2 AA).
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title a { display: block; padding: 3px 0; min-height: 24px; }',
+      // #39: one line with an ellipsis until the row's drawer opens. The cut is
+      // visual only: the link's text, and so its accessible name, is whole,
+      // and the block keeps the full width and 24px height of the tap target.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title a { display: block; padding: 3px 0; min-height: 24px;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title { flex: 1 1 0; min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row > .tfcc-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row.tfcc-open .tfcc-row-t .tfcc-row-title a { white-space: normal; overflow: visible; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row.tfcc-open > .tfcc-note { white-space: normal; overflow: visible; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-pinned { padding-top: 3px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 { display: flex; gap: 6px; align-items: flex-start; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 .tfcc-meta { flex: 1 1 0; min-width: 0; margin-top: 0;',
-      '  padding-top: 2px; gap: var(--tfcc-gap-sm); }',
+      '  padding-top: 2px; gap: var(--tfcc-gap-sm);',
+      // #39: the meta is one line too, status first so a live status is the
+      // last thing cut. A block, not a flex row, so the ellipsis can show.
+      '  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 .tfcc-meta > * { margin-right: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta { white-space: normal; overflow: visible; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns { flex: none; display: inline-flex; gap: 6px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns button { display: inline-flex; align-items: center;',
       '  justify-content: center; min-width: 44px; min-height: 44px; padding: 0 6px; }',
@@ -5293,7 +5306,9 @@
     var open = model.openRowId === String(row.id);
     var inCatchUp = model.view === 'catchup';
     var p = toInt(row.priority, 0);
-    var out = ['<div class="tfcc-row" data-id="' + id + '">'];
+    // #39: tfcc-open lets the open row show its title, meta and note whole;
+    // every other row holds each to one line.
+    var out = ['<div class="tfcc-row' + (open ? ' tfcc-open' : '') + '" data-id="' + id + '">'];
     out.push('<div class="tfcc-row-t">');
     if (row.pinned) out.push('<span class="tfcc-pinned" title="Pinned">*</span>');
     out.push('<span class="tfcc-row-title"><a id="tfcc-title-' + id + '" href="' + escapeHtml(threadUrl(row)) + '"'
