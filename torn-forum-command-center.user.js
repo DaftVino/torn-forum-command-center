@@ -4705,6 +4705,8 @@
       // lightened for dark: 6.91:1 on the row, 7.52:1 on the panel. The logo
       // blue itself is 3.49:1 here, too low for 12px text.
       '  --tfcc-prio: #8db3d9;',
+      // #53 (owner): the logo's colour, per theme. Dark keeps #5C768F.
+      '  --tfcc-logo: #5c768f;',
       // #43 (owner): the "See-through background" setting's two base layers,
       // --tm-bg and --tm-bg-2 with alpha: the panel's own background at 50%
       // and the thread row card at 75%. Dedicated tokens, so no other fill
@@ -4731,6 +4733,9 @@
       // #45: the logo blue darkened for light: 6.21:1 on the row, 6.80:1 on
       // the panel (the logo blue is 4.22:1 here).
       '  --tfcc-prio: #2e5680;',
+      // #53 (owner): #5C768F was all but invisible here; a muted dark blue,
+      // 8.20:1 on the panel and 7.49:1 on the row, apart from the priority blue.
+      '  --tfcc-logo: #2e4a66;',
       '  --tfcc-base-bg: rgba(242, 242, 242, 0.5); --tfcc-row-bg: rgba(232, 232, 232, 0.75);',
       '}',
       '#' + FALLBACK_ID + ' { position: fixed; right: 12px; bottom: 12px; z-index: 2147483000;',
@@ -4774,7 +4779,7 @@
       // is pinned here as well as on the element, because a host rule beats a
       // presentation attribute. Contrast is in tests/contrast-audit.mjs.
       '#' + PANEL_ID + ' .tfcc-logo { display: block; flex: none; height: 28px; width: auto;',
-      '  color: #5c768f; }',
+      '  color: var(--tfcc-logo); }',
       '#' + PANEL_ID + ' .tfcc-logo path { fill: currentColor; }',
       // Title group left, control group right. The buttons are one nowrap unit,
       // so at 320-360 px the control group wraps onto its own line WHOLE and

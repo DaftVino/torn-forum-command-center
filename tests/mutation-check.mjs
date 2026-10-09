@@ -1123,6 +1123,19 @@ const MUTATIONS = [
     ['the pill gets a border', (s) => s.replace(
       "'  border: 0; border-radius: 999px; background: var(--tm-bg-2);", "'  border: 1px solid var(--tm-border); border-radius: 999px; background: var(--tm-bg-2);")],
   ].map(([name, apply]) => ({ name: '#53: ' + name, suite: 'tests/narrow-view.test.js', apply })),
+  // #53 (owner): the logo's per-theme colour.
+  ...[
+    ['the light logo is the raw #5C768F again', (s) => s.replace(
+      "'  --tfcc-logo: #2e4a66;',", "'  --tfcc-logo: #5c768f;',")],
+    ['the light logo goes black', (s) => s.replace(
+      "'  --tfcc-logo: #2e4a66;',", "'  --tfcc-logo: #141414;',")],
+    ['the dark logo changes colour', (s) => s.replace(
+      "'  --tfcc-logo: #5c768f;',", "'  --tfcc-logo: #8db3d9;',")],
+    ['the logo rule ignores the token', (s) => s.replace(
+      "'  color: var(--tfcc-logo); }',", "'  color: #5c768f; }',")],
+  ].map(([name, apply]) => ({ name: '#53: ' + name, suite: 'tests/style.test.js', apply })),
+  { name: '#53: an unlisted wide logo line', suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("'  color: var(--tfcc-logo); }',", "'  color: var(--tfcc-logo); opacity: 1; }',") },
   {
     name: 'the collapsed count says "16 new" to sighted users',
     suite: 'tests/narrow-view.test.js',

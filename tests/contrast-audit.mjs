@@ -169,6 +169,22 @@ const SCRIPT = `
       text: el.parentElement ? (el.parentElement.getAttribute('aria-label') || '') : '',
     });
   });
+  // #53 (owner): the header logo, per theme: 3:1 or better on dark (the
+  // owner's #5C768F, a graphic), 4.5:1 or better on light, where it was all
+  // but invisible. Recorded for the underlay report too.
+  const logoEl = panel.querySelector('svg.tfcc-logo');
+  let logoRatio = 0;
+  if (logoEl) {
+    const fill = parse(getComputedStyle(logoEl.querySelector('path')).fill);
+    if (fill) {
+      const r = ratio(fill, effectiveBg(logoEl, fill));
+      logoRatio = Math.round(r * 100) / 100;
+      note('logo', r, 'logo');
+      const need = panel.classList.contains('tfcc-theme-light') ? ${MIN_NORMAL} : ${MIN_LARGE};
+      if (r < need) out.push({ tag: 'svg', cls: 'tfcc-logo', color: getComputedStyle(logoEl.querySelector('path')).fill,
+        bg: 'panel', ratio: logoRatio, need: need, text: 'FCC logo' });
+    }
+  }
   // #43: every info button is a bare icon. No fill and no visible border of
   // its own, so its glyph (WCAG 1.4.11, a meaningful graphic) is measured at
   // 3:1 or better against whatever the button sits on, and in its hover and
@@ -560,6 +576,7 @@ const SCRIPT = `
     grpCollapsed: grps.filter((b) => b.getAttribute('aria-expanded') === 'false').length,
     moves: panel.querySelectorAll('button.tfcc-move').length,
     icos: icos.length,
+    logoRatio: logoRatio,
     rxpill: !!rxpill,
     rxGeo: rxGeo,
     clip: clip,
@@ -628,7 +645,7 @@ for (const page of pages) {
     for (const [cat, v] of Object.entries(seen.cats || {})) {
       if (!report[key][cat] || v.r < report[key][cat].r) report[key][cat] = Object.assign({ page: u[2] }, v);
     }
-    const line = ['body', 'meta', 'nav', 'icon', 'prio'].filter((c) => seen.cats && seen.cats[c])
+    const line = ['body', 'meta', 'nav', 'icon', 'prio', 'logo'].filter((c) => seen.cats && seen.cats[c])
       .map((c) => c + ' ' + seen.cats[c].r).join(', ');
     console.log(`RR ${page}: worst ${line}; ${rows.length} below AA (report only)`);
     if (rows.length) reportBelow += 1;
@@ -638,6 +655,8 @@ for (const page of pages) {
   // started row whose red "started" (#30) must have been measured.
   const missing = [];
   if (!seen.logo) missing.push('the FCC logo');
+  else if (!seen.logoRatio) missing.push('the FCC logo colour');
+  else if (/^(threads-dark|threads-light|narrow-threads-375-)/.test(page)) console.log(`.. ${page}: logo ${seen.logoRatio}:1`);
   if (page.startsWith('mine-') && !seen.started) missing.push('a red "started" tag');
   // #45: every Threads page, wide and narrow, has a row with a priority, so
   // its blue number must have been measured.
@@ -727,11 +746,11 @@ for (const page of pages) {
 // #43: the transparency table, worst case per theme and underlay.
 if (Object.keys(report).length) {
   console.log('\nTranslucent panel, worst contrast per theme and underlay (report only; AA is 4.5 for text, 3 for icons):');
-  console.log('| Theme / underlay | Body text | Meta text | Nav labels | Info icons | Any text on a row (75%) | Priority number |');
-  console.log('|---|---|---|---|---|---|---|');
+  console.log('| Theme / underlay | Body text | Meta text | Nav labels | Info icons | Any text on a row (75%) | Priority number | Logo |');
+  console.log('|---|---|---|---|---|---|---|---|');
   for (const key of Object.keys(report).sort()) {
     const c = (k) => (report[key][k] ? report[key][k].r.toFixed(2) + ' (' + report[key][k].page + ')' : '-');
-    console.log('| ' + key + ' | ' + c('body') + ' | ' + c('meta') + ' | ' + c('nav') + ' | ' + c('icon') + ' | ' + c('row') + ' | ' + c('prio') + ' |');
+    console.log('| ' + key + ' | ' + c('body') + ' | ' + c('meta') + ' | ' + c('nav') + ' | ' + c('icon') + ' | ' + c('row') + ' | ' + c('prio') + ' | ' + c('logo') + ' |');
   }
   console.log(reportBelow + ' underlay preview(s) have text below AA; these are reported, not failed.');
 }
