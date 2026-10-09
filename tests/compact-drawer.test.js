@@ -124,6 +124,42 @@ test('the drawer\'s Mark read check mark is hinted "Mark read", like its name (#
   assert.match(drawer, /data-act="read" data-id="7" aria-label="Mark read" title="Mark read"/);
 });
 
+// ---- the bare info icon (owner, #43) ---------------------------------------
+
+function ruleBody(css, sel) {
+  const at = css.indexOf(sel + ' {');
+  assert.ok(at !== -1, 'no rule for ' + sel);
+  return css.slice(at + sel.length + 2, css.indexOf('}', at));
+}
+
+test('every info button is a bare icon: no fill, no visible border, the same 44px target (#43)', () => {
+  const { api } = bootNarrow();
+  const css = api.panelStyleText();
+  const base = ruleBody(css, '#tfcc-panel button.tfcc-info');
+  assert.match(base, /min-width: 44px; min-height: 44px;/, 'the tap target is kept');
+  assert.match(base, /border-color: transparent;/);
+  assert.match(base, /background: transparent;/);
+  for (const sel of ['#tfcc-panel button.tfcc-info:hover', '#tfcc-panel button.tfcc-info[aria-expanded="true"]']) {
+    const body = ruleBody(css, sel);
+    assert.match(body, /background: transparent;/, sel + ' brings no box back');
+    assert.match(body, /color: var\(--tm-accent-text\);/, sel + ' tints the icon instead');
+  }
+  // Nothing later gives it a fill or a border again, and focus keeps the ring.
+  for (const m of css.matchAll(/([^\n{}]*tfcc-info\b[^{]*)\{([^}]*)\}/g)) {
+    if (/tfcc-infotext|tfcc-infobar|tfcc-infogroup/.test(m[1])) continue;
+    assert.doesNotMatch(m[2], /background:\s*var|border-color:\s*var|outline:\s*(none|0)/, m[1].trim());
+  }
+  assert.match(css, /#tfcc-panel :focus-visible \{ outline: var\(--tfcc-focus-ring\); outline-offset: 2px; \}/);
+});
+
+test('an info button is still a real button with its name, hint, state and target (#43)', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, [{ id: 1, unread: 1 }]);
+  api.state.settings.view = 'catchup';
+  const html = redraw(env);
+  assert.match(html, /<button type="button" class="tfcc-info" data-act="info" data-info="catchup" aria-expanded="false" aria-controls="tfcc-info-catchup" aria-label="[^"]+" title="[^"]+"><svg class="tfcc-gl"/);
+});
+
 // ---- item 3: folder, Tag and Note on one row; the tag and note popup -------
 
 function openDrawer(rows) {

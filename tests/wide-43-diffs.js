@@ -45,6 +45,11 @@ const css = [
   { item: MINE, from: '  color: var(--tfcc-mine-text); box-shadow: inset 0 -3px 0 var(--tfcc-mine-text); }', to: [] },
 ];
 
-const selectors = new Set([]);
+// 3. Every info button is a bare icon (#43, owner): its 13d rules (new since
+//    main, so not lines of the golden) now set a transparent fill and border,
+//    and one new rule tints the icon on hover instead of filling a box.
+const selectors = new Set([
+  '#tfcc-panel button.tfcc-info:hover',
+]);
 
 module.exports = { markup, css, selectors };

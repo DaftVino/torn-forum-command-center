@@ -1428,6 +1428,14 @@ const MUTATIONS = [
       ".tfcc-dprio > :first-child { margin-left: auto; }',", ".tfcc-dprio > :first-child { }',")],
     ['the drawer row targets shrink below the 24px floor', (s) => s.replace(
       "  justify-content: center; min-width: 24px; padding: 0; }',", "  justify-content: center; min-width: 0; padding: 0; }',")],
+    ['an info button gets its filled box back', (s) => s.replace(
+      "padding: 0; border-color: transparent; background: transparent; }',", "padding: 0; border-color: var(--tm-border); }',")],
+    ['an open info button fills its box again', (s) => s.replace(
+      "button.tfcc-info[aria-expanded=\"true\"] { background: transparent; color: var(--tm-accent-text); }',",
+      "button.tfcc-info[aria-expanded=\"true\"] { background: var(--tm-hover); }',")],
+    ['an info button loses its tap target', (s) => s.replace(
+      "  flex: none; min-width: 44px; min-height: 44px; padding: 0; border-color: transparent;",
+      "  flex: none; padding: 0; border-color: transparent;")],
     ['the popup outlives its drawer', (s) => s.replace(
       '    state.openEditor = reconcileEditor(state.openEditor, state.openRowId);\n', '')],
     ['a tap elsewhere in the drawer leaves the popup open', (s) => s.replace(

@@ -4634,9 +4634,14 @@
       '  flex-wrap: nowrap; margin-bottom: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + ' .tfcc-infobar > .tfcc-note { flex: 0 1 auto; min-width: 0; }',
       '#' + PANEL_ID + ' .tfcc-infobar h4 { margin: 0; }',
+      // #43 (owner): an info button is a bare icon, at every width. It keeps
+      // its 44px target and a transparent border (so its box does not move);
+      // only the fill and the outline go. Hover and open tint the icon in the
+      // accent colour instead of filling a box; focus keeps the panel ring.
       '#' + PANEL_ID + ' button.tfcc-info { display: inline-flex; align-items: center; justify-content: center;',
-      '  flex: none; min-width: 44px; min-height: 44px; padding: 0; border-color: var(--tm-border); }',
-      '#' + PANEL_ID + ' button.tfcc-info[aria-expanded="true"] { background: var(--tm-hover); }',
+      '  flex: none; min-width: 44px; min-height: 44px; padding: 0; border-color: transparent; background: transparent; }',
+      '#' + PANEL_ID + ' button.tfcc-info:hover { background: transparent; color: var(--tm-accent-text); }',
+      '#' + PANEL_ID + ' button.tfcc-info[aria-expanded="true"] { background: transparent; color: var(--tm-accent-text); }',
       '#' + PANEL_ID + ' .tfcc-infotext { border-left: 3px solid var(--tm-accent-text);',
       '  padding: 2px 0 2px 8px; margin: 0 0 var(--tfcc-gap-sm) 0; }',
       // Narrow only: the collapsed count's name, the view heading and the live

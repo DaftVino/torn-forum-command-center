@@ -129,6 +129,33 @@ const SCRIPT = `
       text: el.parentElement ? (el.parentElement.getAttribute('aria-label') || '') : '',
     });
   });
+  // #43: every info button is a bare icon. No fill and no visible border of
+  // its own, so its glyph (WCAG 1.4.11, a meaningful graphic) is measured at
+  // 3:1 or better against whatever the button sits on, and in its hover and
+  // open tint too.
+  const infoBad = [];
+  let infoIcons = 0;
+  panel.querySelectorAll('button.tfcc-info').forEach((b) => {
+    if (b.closest('[hidden]') || getComputedStyle(b).display === 'none') return;
+    const cs = getComputedStyle(b);
+    const fill = parse(cs.backgroundColor);
+    const edge = parse(cs.borderTopColor);
+    if (fill && fill.a > 0) infoBad.push('an info button has a fill (' + cs.backgroundColor + ')');
+    if (edge && edge.a > 0 && parseFloat(cs.borderTopWidth) > 0) infoBad.push('an info button has a visible border');
+    if (b.getBoundingClientRect().width < 23.5) infoBad.push('an info button target under 24px');
+    const glyph = b.querySelector('svg');
+    if (!glyph) { infoBad.push('an info button has no icon'); return; }
+    infoIcons += 1;
+    const bg = effectiveBg(b);
+    const tints = [parse(getComputedStyle(glyph).color), parse(getComputedStyle(panel).getPropertyValue('--tm-accent-text').trim()
+      .replace(/^#(..)(..)(..)$/, (m, r, g, bl) => 'rgb(' + parseInt(r, 16) + ', ' + parseInt(g, 16) + ', ' + parseInt(bl, 16) + ')'))];
+    tints.forEach((fg, i) => {
+      if (!fg) return;
+      const r = ratio(fg, bg);
+      if (r < ${MIN_LARGE}) out.push({ tag: 'info', cls: 'tfcc-info (' + (i ? 'hover/open tint' : 'icon') + ')', color: 'rgb(' + fg.r + ', ' + fg.g + ', ' + fg.b + ')',
+        bg: 'rgb(' + bg.r + ', ' + bg.g + ', ' + bg.b + ')', ratio: Math.round(r * 100) / 100, need: ${MIN_LARGE}, text: b.getAttribute('aria-label') });
+    });
+  });
   // #30: the elements this audit must have measured, so a preview that stops
   // rendering them fails rather than passing by omission.
   // #33, spec 13f: every nav label at 4.5:1 or better over the numeral painted
@@ -377,7 +404,7 @@ const SCRIPT = `
     if (Math.round(box.width) !== 18 || Math.round(box.height) !== 18) polishBad.push('the archive icon is ' + Math.round(box.width) + 'x' + Math.round(box.height));
   }
   out.seen = {
-    polishBad: polishBad,
+    polishBad: polishBad.concat(infoBad),
     icos: icos.length,
     clip: clip,
     cut: cut,
@@ -389,6 +416,7 @@ const SCRIPT = `
     drawerBtns: !!drawerBtns,
     drawerGeo: drawerGeo,
     editorSeen: editorSeen,
+    infoIcons: infoIcons,
     org: !!org,
     emos: emos.length,
     navcells: panel.querySelectorAll('.tfcc-navgrid button').length,
@@ -476,6 +504,8 @@ for (const page of pages) {
     else console.log(`.. ${page}: clip off, ${seen.wrapped} wrapped`);
   }
   if (page.startsWith('narrow-threads-drawer-long-') && !seen.openWhole) missing.push('the open long row shown whole');
+  // #43: a view with info buttons must have measured their bare icons.
+  if (/(^|-)(catchup|search|settings)(-|\.)/.test(page) && !page.startsWith('badges-') && !seen.infoIcons) missing.push('a bare info icon');
   if ((seen.polishBad || []).length) seen.headBad = (seen.headBad || []).concat(seen.polishBad);
   if (seen.headBad && seen.headBad.length) {
     console.log(`!! ${page}: ${seen.headBad.join('; ')}`);
