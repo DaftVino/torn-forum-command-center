@@ -807,7 +807,7 @@ All six are closed by the owner's decisions of 2026-10-09 (section 13):
    for later. The owner files those issues.
 
 Nothing is left open. One fact for the implementer: the collapsed header at a
-280px viewport reaches the 24px floor (section 13b).
+280px viewport comes within half a step of the 24px floor (24.5px, section 13b).
 
 ## 13. Owner decisions, 2026-10-09
 
@@ -886,8 +886,11 @@ normal and 58px compact.
 | about 280 | 230 | normal chip: (230 - 92) / 4.284 = 32.2, under 36, so compact; then (230 - 58 - 20) / 4.284 = 35.5, so 35 | 2.356 x 19.1 + 58 + 105 + 20 = 228 <= 230 | 35px buttons, header 35px, one line |
 | floor | 188 | s = 24 | 2.356 x 16 + 58 + 72 + 20 = 187.7 | fits down to C = 188 (a 206px panel) |
 
-- **Collapsed** (two icons plus "Show"): one line at 320 with s = 36.5. At
-  280 it reaches the 24px floor: 37.7 + 58 + 48 + 65 + 20 = 228.7 <= 230.
+- **Collapsed** (two icons plus "Show"): one line at 320 with s = 37. At
+  280, s = 24.5, half a step above the 24px floor: 37.7 + 58 + 49 + 65.2 + 20
+  = 229.9 <= 230. (Corrected in the #33 plan review: the algorithm above,
+  with Show re-measured at each size as 55.4 + 0.4 x s from its padding
+  clamp, gives 37 and 24.5; the mockup's 36.5 came from its own text metrics.)
 - **200% text at 320:** the chip widens to 86px, so s = 38, still one line.
 - 1.284 is 2.356 x 0.545, the logo's width per pixel of button size while the
   logo is between its clamps (button sizes of 29.4-44px).
