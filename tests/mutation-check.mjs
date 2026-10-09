@@ -1193,6 +1193,16 @@ const MUTATIONS = [
     apply: (s) => s.replace('slope = (width(show) - show24) / (HB_MAX - HB_MIN);', 'slope = 0;'),
   },
   {
+    name: 'an info bar lets its button wrap away from its note',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace("'  flex-wrap: nowrap; margin-bottom: var(--tfcc-gap-sm); }',", "'  flex-wrap: wrap; margin-bottom: var(--tfcc-gap-sm); }',"),
+  },
+  {
+    name: 'narrow Catch up loses the group that keeps its info button on the line',
+    suite: 'tests/narrow-view.test.js',
+    apply: (s) => s.replace("if (model.narrow) out.push('<span class=\"tfcc-infogroup\">');", "if (false) out.push('<span class=\"tfcc-infogroup\">');"),
+  },
+  {
     name: 'the collapsed count is left out of the header solve',
     suite: 'tests/narrow-engine.test.js',
     apply: (s) => s.replace("var count = typeof countW === 'number' && countW > 0 ? countW + HB_COUNT_GAP : 0;", 'var count = 0;'),
