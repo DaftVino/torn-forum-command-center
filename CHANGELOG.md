@@ -95,6 +95,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Upgrading no longer reports "Folders and tags were damaged" because a
   release added a per-thread field. A present field that is wrong, an unknown
   field and a dropped entry are still reported. (#4)
+- A My posts fetch that fails after Reset everything or Clear key no longer
+  shows its error; a late failure is dropped like a late answer. (#24)
 
 ## [0.1.0] - 2026-08-07
 

@@ -3742,6 +3742,8 @@
         return res;
       })
       .catch(function (e) {
+        // A stale run's error is dropped like its answer (#24).
+        if (stale()) return { ok: false, reason: 'stale' };
         return fail({ reason: 'network', detail: e && e.message }, 'My posts could not be loaded.');
       });
 
