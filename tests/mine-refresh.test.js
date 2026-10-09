@@ -295,6 +295,32 @@ test('lookups stopped by a throttle say so, and the rows not reached stay not ch
   assert.ok(!after.includes(THROTTLE_NOTICE), 'the notice outlived the throttle');
 });
 
+test('rows Torn sent without an id are dropped and counted in the debug report, counts only (#24)', async () => {
+  const env = await bootAndClear(mineTable({
+    'user/forumthreads': forumThreadsPayload([{ id: 10, replies: 3 }, { id: 0, title: 'NO ID THREAD' }, { id: -4 }]),
+    'user/forumposts': forumPostsPayload([
+      { id: 1, threadId: 20, at: 1600000200 }, { id: 2, threadId: 21, at: 1600000100 },
+      { id: 3, threadId: 0, content: 'DROPPED POST BODY' },
+    ]),
+  }));
+  env.exports.refreshMine(NOW);
+  await settle(env);
+  assert.strictEqual(env.exports.state.mine.threads.length, 3, 'the dropped rows are not stored');
+  const report = env.exports.buildDebugReport();
+  assert.match(report, /my posts dropped rows: threads 2, posts 1/);
+  for (const needle of [KEY, 'NO ID THREAD', 'DROPPED POST BODY']) {
+    assert.strictEqual(report.indexOf(needle), -1, 'the report leaked ' + needle);
+  }
+});
+
+test('a clean My posts run reports no dropped rows', async () => {
+  const env = await bootAndClear(mineTable());
+  assert.match(env.exports.buildDebugReport(), /my posts dropped rows: threads 0, posts 0/, 'before any run');
+  env.exports.refreshMine(NOW);
+  await settle(env);
+  assert.match(env.exports.buildDebugReport(), /my posts dropped rows: threads 0, posts 0/);
+});
+
 test('a run that is not throttled shows no throttle notice', async () => {
   const env = await bootAndClear(mineTable());
   env.exports.state.settings.view = 'mine';

@@ -101,6 +101,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   lookups stop at the rate limiter, as the spec asked. The rows not reached
   still say `not checked yet`, and the next run that is not throttled clears
   the notice. (#24)
+- The debug report now counts the My posts rows the last run dropped because
+  Torn sent them without an id, per list, as the spec asked. Counts only: no
+  title, no content, no key. (#24)
 
 ## [0.1.0] - 2026-08-07
 

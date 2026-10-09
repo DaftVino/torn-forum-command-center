@@ -3203,6 +3203,9 @@
     // The last My posts run stopped its lookups at a throttle (#24). Runtime
     // only: a reload starts without the notice, and the next run decides again.
     mineThrottled: false,
+    // Rows the last My posts run dropped for a missing id, per list (#24).
+    // Counts only, for the debug report; runtime only, like mineThrottled.
+    mineDropped: { threads: 0, posts: 0 },
     rows: [],
     loading: false,
     refreshing: false,
@@ -3693,6 +3696,7 @@
         var list = pickList(res.data, ['forumThreads', 'forum_threads', 'threads']);
         if (!list) return fail({ reason: 'parse', detail: MINE_SHAPE_THREADS });
         started = list.map(mineThreadFromApi).filter(Boolean);
+        state.mineDropped = { threads: list.length - started.length, posts: 0 };
         return tornApiGet('user/forumposts', params, options).then(function (pres) {
           if (stale()) return { ok: false, reason: 'stale' };
           var complete = false;
@@ -3709,6 +3713,7 @@
               outcome = fail({ reason: 'parse', detail: MINE_SHAPE_POSTS });
             } else {
               posts = plist.map(minePostFromApi).filter(Boolean);
+              state.mineDropped.posts = plist.length - posts.length;
               postRows = plist;
               complete = true;
               state.mineError = null;
@@ -5501,6 +5506,9 @@
         mineStarted: state.mine.threads.filter(function (t) { return t.started; }).length,
         minePosted: state.mine.threads.filter(function (t) { return t.posted; }).length,
         mineUnchecked: state.mine.threads.filter(function (t) { return !t.totalKnown; }).length,
+        // Rows the last run dropped for a missing id (#24): counts, never a row.
+        mineDroppedThreads: toInt(state.mineDropped.threads, 0),
+        mineDroppedPosts: toInt(state.mineDropped.posts, 0),
         // Issue #4: rows Torn cannot answer (too many new) apart from rows
         // simply not reached yet. Counts only, never an author.
         authorUnchecked: state.rows.filter(function (r) { return r.authorState === 'unchecked'; }).length,
@@ -5559,6 +5567,7 @@
       'my posts started: ' + c.counts.mineStarted,
       'my posts posted in: ' + c.counts.minePosted,
       'my posts unchecked: ' + c.counts.mineUnchecked,
+      'my posts dropped rows: threads ' + c.counts.mineDroppedThreads + ', posts ' + c.counts.mineDroppedPosts,
       'my posts thumbs checked: ' + c.counts.mineThumbsChecked,
       'my posts thumbs found: ' + c.counts.mineThumbsFound,
       'my posts fetched: ' + (c.mineFetchedAt ? 'set' : 'never'),
@@ -5910,6 +5919,7 @@
           state.settings = freshSettings(); state.organizer = freshOrganizer(now); state.showAll = {};
           state.drafts = freshDrafts(); state.feed = freshFeed(); state.postCache = freshPostCache();
           state.mine = freshMine(); state.mineError = null; state.mineThrottled = false;
+          state.mineDropped = { threads: 0, posts: 0 };
           // A real reset: no backfill, nothing re-awarded until a new event earns it.
           state.badges = freshBadges(); state.badgeShelfOpen = false; state.badgeCatalogueOpen = false;
           state.badgeToast = null; state.dwell = freshDwell();
