@@ -478,14 +478,41 @@ test('the toast moves only when the user allows motion', () => {
   assert.strictEqual(css.split('tfcc-fade-in 160ms').length, 2, 'the animation is applied in one place only');
 });
 
-test('the logo is sized by height to the badge chip and keeps #5C768F against a host svg rule (#30)', () => {
+test('the logo is sized by height to the badge chip and keeps its colour against a host svg rule (#30)', () => {
   const block = blockFor('#tfcc-panel .tfcc-logo');
   assert.match(block, /height: 28px/, 'the badge chip height (min-height 28px, border-box)');
   assert.match(blockFor('#tfcc-panel button.tfcc-chip'), /min-height: 28px/, 'the chip it matches is still 28px');
   assert.match(block, /width: auto/, 'width follows the viewBox');
-  assert.match(block, /color: #5c768f/i);
+  assert.match(block, /color: var\(--tfcc-logo\);/, 'one rule, its colour a per-theme token (#53)');
   assert.match(css, /#tfcc-panel \.tfcc-logo path \{ fill: currentColor; \}/,
     'a host "svg * { fill }" rule must not repaint it');
+});
+
+// #53 (owner): the logo was all but invisible on the light theme. Dark keeps
+// the owner's #5C768F; light takes a muted dark blue at AA on the panel, kept
+// apart from the light priority blue, and still a blue rather than black.
+test('the logo colour is a token per theme: #5C768F dark, a muted dark blue at AA on light (#53)', () => {
+  const lum = (hex) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const ratio = (a, b) => { const x = lum(a); const y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const token = (block, name) => {
+    const m = new RegExp(name + ':\\s*(#[0-9a-f]{6})', 'i').exec(block);
+    assert.ok(m, name + ' missing');
+    return m[1].toLowerCase();
+  };
+  const dark = blockFor('#tfcc-panel');
+  const light = blockFor('#tfcc-panel.tfcc-theme-light');
+  assert.strictEqual(token(dark, '--tfcc-logo'), '#5c768f', 'dark is unchanged');
+  const logo = token(light, '--tfcc-logo');
+  assert.ok(ratio(logo, token(light, '--tm-bg')) >= 4.5, 'AA on the light panel');
+  assert.ok(ratio(logo, token(light, '--tm-bg-2')) >= 4.5, 'AA on the light row fill too');
+  assert.notStrictEqual(logo, token(light, '--tfcc-prio'), 'apart from the priority blue');
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(logo.slice(i, i + 2), 16));
+  assert.ok(b > r + 32 && b > g + 16, 'a blue');
+  assert.ok(ratio(logo, '#000000') >= 2, 'not black');
 });
 
 test('the pill and My posts group on the right of the nav row (#30)', () => {

@@ -104,14 +104,151 @@ test('a count over 999 shows as 999+', () => {
   assert.strictEqual(api.navNumeral(128), '128');
 });
 
-test('narrow My posts opens with the reaction totals, before the status line', () => {
-  const { api } = bootNarrow({ env: { gmStore: [['tfcc:key', 'abcdefghij123456']] } });
-  api.state.mine = api.setKarma(api.freshMine(), 1208, NOW);
+// ---- My posts reactions pill (#53) -------------------------------------------
+
+const RX_KEY = { env: { gmStore: [['tfcc:key', 'abcdefghij123456']] } };
+const UP = '\uD83D\uDC4D';
+const DOWN = '\uD83D\uDC4E';
+
+// threads: [[id, fields]] for started threads; fields as setReactionFields
+// takes them, or null for a started thread nothing has reported on.
+function mineWith(api, threads, karma, fetchedAt) {
+  const mine = Object.assign(api.freshMine(), { fetchedAt: fetchedAt === undefined ? NOW : fetchedAt });
+  mine.threads = threads.map(([id, fields]) => {
+    const t = Object.assign(api.freshMineThread(id, NOW), { started: true, title: 'Started ' + id });
+    if (fields) api.setReactionFields(t, fields);
+    return t;
+  });
+  api.state.mine = karma === undefined ? mine : api.setKarma(mine, karma, NOW);
   api.state.settings.view = 'mine';
-  const html = api.panelHtml(api.buildPanelModel(NOW));
-  const rx = html.indexOf('<div class="tfcc-rxline"><button type="button" class="tfcc-reactions');
-  assert.ok(rx !== -1, 'the pill markup, reused');
+  api.recompute(NOW);
+  return api.panelHtml(api.buildPanelModel(NOW));
+}
+
+function rxPillOf(html) {
+  const i = html.indexOf('<div class="tfcc-rxline">');
+  assert.ok(i !== -1, 'the pill line renders');
+  const end = html.indexOf('<div class="tfcc-infobar">', i);
+  return html.slice(i, end);
+}
+
+// The pill is a flex row, so its parts are separated by gaps, not spaces.
+const rxText = (html) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+const ariaOf = (pill) => (/aria-label="([^"]*)"/.exec(pill) || [])[1] || '';
+const noteOf = (html) => {
+  const m = /<div class="tfcc-infobar">(?:<span class="tfcc-note">([^<]*)<\/span>)?/.exec(html);
+  return m && m[1] ? m[1] : '';
+};
+
+const BOTH = [[1, { topicAt: NOW, up: 30, down: 4 }], [2, { topicAt: NOW, up: 4, down: 1 }],
+  [3, { reactAt: NOW, rating: -3 }]];
+
+test('narrow My posts opens with the reactions pill, before the status line', () => {
+  const { api } = bootNarrow(RX_KEY);
+  const html = mineWith(api, [], 1208);
+  const rx = html.indexOf('<div class="tfcc-rxline"><div class="tfcc-rxpill" role="group" aria-label="');
+  assert.ok(rx !== -1, 'the pill is a labelled group');
   assert.ok(rx < html.indexOf('<div class="tfcc-infobar">'), 'it is the first line of the view');
+});
+
+test('the narrow pill is not a button: no button, no data-act, no title anywhere in it', () => {
+  const { api } = bootNarrow(RX_KEY);
+  const pill = rxPillOf(mineWith(api, BOTH, 1208));
+  assert.doesNotMatch(pill, /<button/, 'it already sits inside My posts');
+  assert.doesNotMatch(pill, /data-act=/);
+  assert.doesNotMatch(pill, /data-view=/);
+  assert.doesNotMatch(pill, / title="/, 'titles are useless on touch');
+  assert.doesNotMatch(pill, /tfcc-reactions/, 'not the nav button markup');
+});
+
+test('the narrow pill shows up, down, a faint dot and karma, and no net', () => {
+  const { api } = bootNarrow(RX_KEY);
+  const pill = rxPillOf(mineWith(api, BOTH, 1208));
+  assert.strictEqual(rxText(pill), '34 ' + UP + ' 5 ' + DOWN + ' \u2022 1,208');
+  assert.match(pill, /<span class="tfcc-rx">34<\/span>/, 'the numbers are bold (tfcc-rx)');
+  assert.match(pill, /<span class="tfcc-rxdot" aria-hidden="true">\u2022<\/span>/);
+  assert.match(pill, /<span class="tfcc-thumb" aria-hidden="true">/, 'the monochrome thumbs, reused');
+  assert.ok(pill.includes(api.KARMA_ICON_SVG), 'the karma icon, reused');
+  assert.doesNotMatch(rxText(pill), /net|more/, 'net moves out of the pill');
+});
+
+test('the pill\'s aria-label carries the full sentence, net included', () => {
+  const { api } = bootNarrow(RX_KEY);
+  const aria = ariaOf(rxPillOf(mineWith(api, BOTH, 1208)));
+  assert.match(aria, /^Your threads: 34 up, 5 down, net -3 on 1 more\. Karma: 1,208\. /);
+  assert.match(aria, /Thumbs up and down from the opening post of 2 of 3 threads you started\. 1 more shows Torn&#39;s net rating until checked\./);
+  assert.doesNotMatch(aria, /Open My posts/, 'it is already open');
+});
+
+test('the status line names the threads whose thumbs are unchecked, and only then', () => {
+  const { api } = bootNarrow(RX_KEY);
+  let html = mineWith(api, BOTH, 1208, NOW - 4 * 60000);
+  // "3 not checked yet" is the reply lookups (none of these rows has a total
+  // yet); the thumbs clause says what it is about, so the two never merge.
+  assert.strictEqual(noteOf(html), 'Updated 4m ago. 3 not checked yet. Thumbs pending on 1 of 3 threads you started.');
+  html = mineWith(api, BOTH.slice(0, 2), 1208, NOW - 4 * 60000);
+  assert.strictEqual(noteOf(html), 'Updated 4m ago. 2 not checked yet.', 'every thumb checked: nothing added');
+  html = mineWith(api, [[1, { reactAt: NOW, rating: 2 }]], 1208, NOW - 4 * 60000);
+  assert.strictEqual(noteOf(html), 'Updated 4m ago. 1 not checked yet. Thumbs pending on 1 of 1 thread you started.');
+});
+
+test('wide, the status line never carries the thumbs clause (the nav pill says net)', () => {
+  const { api } = bootNarrow(Object.assign({ width: 900 }, RX_KEY));
+  api.state.narrow = false;
+  const html = mineWith(api, BOTH, 1208, NOW - 4 * 60000);
+  assert.doesNotMatch(html, /Thumbs pending/);
+});
+
+test('unknown values show "-", never 0', () => {
+  const { api } = bootNarrow(RX_KEY);
+  // Started threads Torn has said nothing about, and no karma yet.
+  let pill = rxPillOf(mineWith(api, [[1, null]]));
+  assert.strictEqual(rxText(pill), '- ' + UP + ' - ' + DOWN + ' \u2022 -');
+  // Net ratings only: the thumbs are still unknown.
+  pill = rxPillOf(mineWith(api, [[1, { reactAt: NOW, rating: 2 }]], 7));
+  assert.strictEqual(rxText(pill), '- ' + UP + ' - ' + DOWN + ' \u2022 7');
+  assert.match(ariaOf(pill), /^Your threads: net \+2\. Karma: 7\. /);
+});
+
+test('with no started threads the pill is karma alone, with no dot', () => {
+  const { api } = bootNarrow(RX_KEY);
+  const pill = rxPillOf(mineWith(api, [], 1208));
+  assert.strictEqual(rxText(pill), '1,208');
+  assert.doesNotMatch(pill, /tfcc-rxdot/);
+});
+
+test('stale figures keep tfcc-stale and a visible age on the pill', () => {
+  const { api } = bootNarrow(RX_KEY);
+  const old = NOW - 3 * 24 * 3600000;
+  const pill = rxPillOf(mineWith(api, [[1, { topicAt: old, up: 1, down: 1 }]], 9));
+  assert.match(pill, /<div class="tfcc-rxpill tfcc-stale" role="group"/);
+  assert.match(pill, /<span class="tfcc-rxage">\(3d ago\)<\/span>/);
+  assert.match(ariaOf(pill), /Refresh to update\./, 'the action that works from here');
+});
+
+test('the pill line centres a shrink-to-fit, borderless, rounded pill about 30px tall', () => {
+  const css = bootNarrow().api.panelStyleText();
+  const block = (sel) => {
+    const i = css.indexOf(sel + ' {');
+    assert.ok(i !== -1, 'no rule block for ' + sel);
+    return css.slice(i, css.indexOf('}', i));
+  };
+  const line = block('#tfcc-panel.tfcc-narrow .tfcc-rxline');
+  assert.match(line, /display: flex;/);
+  assert.match(line, /justify-content: center;/);
+  assert.match(line, /margin: 0 0 4px 0;/);
+  const pill = block('#tfcc-panel.tfcc-narrow .tfcc-rxpill');
+  assert.match(pill, /display: inline-flex;/);
+  assert.match(pill, /max-width: 100%;/);
+  assert.doesNotMatch(pill, /(^|[ ;])width:/, 'sized to its content');
+  assert.doesNotMatch(pill, /flex: 1|flex-grow/, 'never stretched');
+  assert.match(pill, /border-radius: 999px;/);
+  assert.match(pill, /padding: 6px 14px;/);
+  assert.match(pill, /line-height: 18px;/, '6 + 18 + 6 = 30px');
+  assert.match(pill, /font-size: 14px;/);
+  assert.match(pill, /background: var\(--tm-bg-2\);/, 'the row card fill');
+  assert.match(pill, /border: 0;/, 'no border, so it does not read as a button');
+  assert.doesNotMatch(css, /\.tfcc-rxline button\.tfcc-reactions/, 'the full-width button rule is gone');
 });
 
 // ---- filter line (spec 4.3) --------------------------------------------------

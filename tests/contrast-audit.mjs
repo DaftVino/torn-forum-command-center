@@ -169,6 +169,22 @@ const SCRIPT = `
       text: el.parentElement ? (el.parentElement.getAttribute('aria-label') || '') : '',
     });
   });
+  // #53 (owner): the header logo, per theme: 3:1 or better on dark (the
+  // owner's #5C768F, a graphic), 4.5:1 or better on light, where it was all
+  // but invisible. Recorded for the underlay report too.
+  const logoEl = panel.querySelector('svg.tfcc-logo');
+  let logoRatio = 0;
+  if (logoEl) {
+    const fill = parse(getComputedStyle(logoEl.querySelector('path')).fill);
+    if (fill) {
+      const r = ratio(fill, effectiveBg(logoEl, fill));
+      logoRatio = Math.round(r * 100) / 100;
+      note('logo', r, 'logo');
+      const need = panel.classList.contains('tfcc-theme-light') ? ${MIN_NORMAL} : ${MIN_LARGE};
+      if (r < need) out.push({ tag: 'svg', cls: 'tfcc-logo', color: getComputedStyle(logoEl.querySelector('path')).fill,
+        bg: 'panel', ratio: logoRatio, need: need, text: 'FCC logo' });
+    }
+  }
   // #43: every info button is a bare icon. No fill and no visible border of
   // its own, so its glyph (WCAG 1.4.11, a meaningful graphic) is measured at
   // 3:1 or better against whatever the button sits on, and in its hover and
@@ -434,6 +450,38 @@ const SCRIPT = `
     if (r < ${MIN_LARGE}) out.push({ tag: 'emoji', cls: 'tfcc-emo', color: light ? 'black' : 'white', bg: 'button',
       ratio: Math.round(r * 100) / 100, need: ${MIN_LARGE}, text: el.parentElement.getAttribute('aria-label') });
   }
+  // #53: the narrow My posts reactions pill. Its text and karma icon are
+  // measured by the walks above, on the pill's own fill; its thumbs are
+  // emoji drawn monochrome by a filter, so their ink is measured here at 3:1.
+  // Geometry: it is sized to its content (narrower than its line) and
+  // centred in it to within 2px, and about 30px tall.
+  const rxpill = panel.querySelector('.tfcc-rxpill');
+  let rxGeo = '';
+  if (rxpill) {
+    const p = rxpill.getBoundingClientRect();
+    const line = rxpill.parentElement.getBoundingClientRect();
+    if (!(p.width < line.width - 1)) polishBad.push('the reactions pill fills its line (' + Math.round(p.width) + ' of ' + Math.round(line.width) + 'px)');
+    const off = (p.left + p.width / 2) - (line.left + line.width / 2);
+    if (Math.abs(off) > 2) polishBad.push('the reactions pill is ' + Math.round(off * 10) / 10 + 'px off centre');
+    if (p.height > 34 && !rxpill.querySelector('.tfcc-rxage')) polishBad.push('the reactions pill is ' + Math.round(p.height) + 'px tall');
+    const thumbs = Array.from(rxpill.querySelectorAll('.tfcc-thumb'));
+    if (thumbs.length !== 2) polishBad.push('the reactions pill has ' + thumbs.length + ' thumbs');
+    for (const el of thumbs) {
+      const f = getComputedStyle(el).filter;
+      const want = light ? 'grayscale(1) brightness(0)' : 'grayscale(1) brightness(0) invert(1)';
+      if (f !== want) { polishBad.push('pill thumb filter is "' + f + '", not "' + want + '"'); continue; }
+      const ink = light ? { r: 0, g: 0, b: 0, a: 1 } : { r: 255, g: 255, b: 255, a: 1 };
+      const r = ratio(ink, effectiveBg(el, ink));
+      note('icon', r, 'pill thumb');
+      if (r < ${MIN_LARGE}) out.push({ tag: 'emoji', cls: 'tfcc-rxpill tfcc-thumb', color: light ? 'black' : 'white', bg: 'pill',
+        ratio: Math.round(r * 100) / 100, need: ${MIN_LARGE}, text: 'thumb' });
+    }
+    const fill = parse(getComputedStyle(rxpill).backgroundColor);
+    if (!fill || fill.a === 0) polishBad.push('the reactions pill has no fill');
+    if (parseFloat(getComputedStyle(rxpill).borderTopWidth) > 0) polishBad.push('the reactions pill has a border');
+    rxGeo = 'pill ' + Math.round(p.width) + 'x' + Math.round(p.height) + ' in a ' + Math.round(line.width)
+      + 'px line, centre off by ' + Math.round(off * 10) / 10 + 'px';
+  }
   // #41: the archive icon paints its path in the button's currentColor, in
   // both themes, at 3:1 or better against the button (WCAG 1.4.11), and no
   // filter recolours it.
@@ -528,6 +576,9 @@ const SCRIPT = `
     grpCollapsed: grps.filter((b) => b.getAttribute('aria-expanded') === 'false').length,
     moves: panel.querySelectorAll('button.tfcc-move').length,
     icos: icos.length,
+    logoRatio: logoRatio,
+    rxpill: !!rxpill,
+    rxGeo: rxGeo,
     clip: clip,
     cut: cut,
     wrapped: wrapped,
@@ -594,7 +645,7 @@ for (const page of pages) {
     for (const [cat, v] of Object.entries(seen.cats || {})) {
       if (!report[key][cat] || v.r < report[key][cat].r) report[key][cat] = Object.assign({ page: u[2] }, v);
     }
-    const line = ['body', 'meta', 'nav', 'icon', 'prio'].filter((c) => seen.cats && seen.cats[c])
+    const line = ['body', 'meta', 'nav', 'icon', 'prio', 'logo'].filter((c) => seen.cats && seen.cats[c])
       .map((c) => c + ' ' + seen.cats[c].r).join(', ');
     console.log(`RR ${page}: worst ${line}; ${rows.length} below AA (report only)`);
     if (rows.length) reportBelow += 1;
@@ -604,6 +655,8 @@ for (const page of pages) {
   // started row whose red "started" (#30) must have been measured.
   const missing = [];
   if (!seen.logo) missing.push('the FCC logo');
+  else if (!seen.logoRatio) missing.push('the FCC logo colour');
+  else if (/^(threads-dark|threads-light|narrow-threads-375-)/.test(page)) console.log(`.. ${page}: logo ${seen.logoRatio}:1`);
   if (page.startsWith('mine-') && !seen.started) missing.push('a red "started" tag');
   // #45: every Threads page, wide and narrow, has a row with a priority, so
   // its blue number must have been measured.
@@ -636,6 +689,11 @@ for (const page of pages) {
   if (/^narrow-settings-/.test(page) && !seen.setGaps) missing.push('the Settings item gaps');
   if (/^narrow-settings-/.test(page) && seen.forderRows < 4) missing.push('the folder rows');
   if (/settings-claims/.test(page) && seen.unclaims < 3) missing.push('the claimed-forum chips');
+  // #53: every narrow My posts page has the reactions pill, measured.
+  if (page.startsWith('narrow-mine-')) {
+    if (!seen.rxpill) missing.push('the reactions pill');
+    else console.log(`.. ${page}: ${seen.rxGeo}`);
+  }
   if (page.startsWith('narrow-catchup')) {
     if (!seen.cubar) missing.push('the Catch up action row');
     else console.log(`.. ${page}: Catch up labels ${seen.cuMode}, widths ${seen.cuWidths}`);
@@ -688,11 +746,11 @@ for (const page of pages) {
 // #43: the transparency table, worst case per theme and underlay.
 if (Object.keys(report).length) {
   console.log('\nTranslucent panel, worst contrast per theme and underlay (report only; AA is 4.5 for text, 3 for icons):');
-  console.log('| Theme / underlay | Body text | Meta text | Nav labels | Info icons | Any text on a row (75%) | Priority number |');
-  console.log('|---|---|---|---|---|---|---|');
+  console.log('| Theme / underlay | Body text | Meta text | Nav labels | Info icons | Any text on a row (75%) | Priority number | Logo |');
+  console.log('|---|---|---|---|---|---|---|---|');
   for (const key of Object.keys(report).sort()) {
     const c = (k) => (report[key][k] ? report[key][k].r.toFixed(2) + ' (' + report[key][k].page + ')' : '-');
-    console.log('| ' + key + ' | ' + c('body') + ' | ' + c('meta') + ' | ' + c('nav') + ' | ' + c('icon') + ' | ' + c('row') + ' | ' + c('prio') + ' |');
+    console.log('| ' + key + ' | ' + c('body') + ' | ' + c('meta') + ' | ' + c('nav') + ' | ' + c('icon') + ' | ' + c('row') + ' | ' + c('prio') + ' | ' + c('logo') + ' |');
   }
   console.log(reportBelow + ' underlay preview(s) have text below AA; these are reported, not failed.');
 }
