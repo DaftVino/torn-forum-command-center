@@ -186,3 +186,64 @@ test('every view has an info key list, and every listed key has a name', () => {
   const listed = [].concat(...api.VIEWS.map((v) => api.INFO_KEYS_BY_VIEW[v]));
   assert.deepStrictEqual(listed.slice().sort(), Object.keys(api.INFO_KEYS).sort(), 'no key is orphaned or listed twice');
 });
+
+// ---- the focus plan (spec section 6, focus rules) --------------------------
+
+const IDS = ['1', '2', '3'];
+const NARROW_CATCHUP = { ids: IDS, view: 'catchup', narrow: true };
+
+test('Read removes the first row: same control, then the next row\'s Read, then the heading', () => {
+  assert.deepStrictEqual(api.focusPlan({ act: 'read', id: '1' }, NARROW_CATCHUP), [
+    '[data-act="read"][data-id="1"]', '[data-act="read"][data-id="2"]', '#tfcc-vh',
+  ]);
+});
+
+test('Read removes a middle row: next row first, then the previous row', () => {
+  assert.deepStrictEqual(api.focusPlan({ act: 'read', id: '2' }, NARROW_CATCHUP), [
+    '[data-act="read"][data-id="2"]', '[data-act="read"][data-id="3"]', '[data-act="read"][data-id="1"]', '#tfcc-vh',
+  ]);
+});
+
+test('Read removes the last row: the previous row, then the heading', () => {
+  assert.deepStrictEqual(api.focusPlan({ act: 'read', id: '3' }, NARROW_CATCHUP), [
+    '[data-act="read"][data-id="3"]', '[data-act="read"][data-id="2"]', '#tfcc-vh',
+  ]);
+});
+
+test('Read removes the only row: the heading', () => {
+  assert.deepStrictEqual(api.focusPlan({ act: 'read', id: '9' }, { ids: ['9'], view: 'catchup', narrow: true }), [
+    '[data-act="read"][data-id="9"]', '#tfcc-vh',
+  ]);
+});
+
+test('Archive from a Threads drawer falls back to the neighbours\' Actions', () => {
+  assert.deepStrictEqual(api.focusPlan({ act: 'archive', id: '2' }, { ids: IDS, view: 'threads', narrow: true }), [
+    '[data-act="archive"][data-id="2"]', '[data-act="row-more"][data-id="3"]', '[data-act="row-more"][data-id="1"]', '#tfcc-vh',
+  ]);
+});
+
+test('wide falls back to the same control on the neighbour, then the pressed nav cell', () => {
+  assert.deepStrictEqual(api.focusPlan({ act: 'read', id: '1' }, { ids: IDS, view: 'catchup', narrow: false }), [
+    '[data-act="read"][data-id="1"]', '[data-act="read"][data-id="2"]', '[data-act="view"][aria-pressed="true"]',
+  ]);
+});
+
+test('view, info and collapse controls name themselves exactly', () => {
+  assert.deepStrictEqual(api.focusPlan({ act: 'view', view: 'drafts' }, { ids: [], view: 'drafts', narrow: true }),
+    ['[data-act="view"][data-view="drafts"]', '#tfcc-vh']);
+  assert.deepStrictEqual(api.focusPlan({ act: 'info', info: 'catchup' }, NARROW_CATCHUP),
+    ['[data-act="info"][data-info="catchup"]', '#tfcc-vh']);
+  assert.deepStrictEqual(api.focusPlan({ act: 'collapse' }, NARROW_CATCHUP), ['[data-act="collapse"]', '#tfcc-vh']);
+});
+
+test('a hostile attribute value cannot break out of the selector', () => {
+  // Quotes and backslashes are dropped, so the value stays inside its own
+  // attribute and cannot open a second selector.
+  const plan = api.focusPlan({ act: 'read', id: '1"] , #x[a="\\' }, NARROW_CATCHUP);
+  assert.strictEqual(plan[0], '[data-act="read"][data-id="1] , #x[a="]');
+  assert.strictEqual(plan.length, 2, 'an id not in the list adds no neighbours');
+});
+
+test('an empty target still ends at the fallback', () => {
+  assert.deepStrictEqual(api.focusPlan(null, null), ['[data-act="view"][aria-pressed="true"]']);
+});

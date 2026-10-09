@@ -228,6 +228,9 @@
   });
   // The events that close every disclosure (spec section 6 table).
   var TRANSIENT_RESET_EVENTS = Object.freeze(['view', 'collapse', 'auto-hide', 'breakpoint']);
+  // The narrow view heading: the focus fallback when a row and both its
+  // neighbours are gone (spec section 6, focus rule 3).
+  var VIEW_HEADING_ID = 'tfcc-vh';
 
   var THEMES = Object.freeze(['dark', 'light', 'match']);
 
@@ -1957,6 +1960,41 @@
     var keys = Array.isArray(infoKeys) ? infoKeys : [];
     if (out.openRowId !== null && ids.indexOf(out.openRowId) === -1) out.openRowId = null;
     if (out.openInfoId !== null && keys.indexOf(out.openInfoId) === -1) out.openInfoId = null;
+    return out;
+  }
+
+  // An attribute-equals selector part. Quotes and backslashes are dropped, not
+  // escaped: ids and keys are this script's own tokens and never contain them,
+  // so a value that does is forged and must not shape the selector.
+  function attrSel(name, value) {
+    return '[' + name + '="' + String(value).replace(/["\\]/g, '') + '"]';
+  }
+
+  // Where focus goes after a redraw (spec section 6, focus rules). ctx.ids are
+  // the rows rendered before the action, in DOM order, so the successor is
+  // known even when the action removes the row.
+  function focusPlan(target, ctx) {
+    var t = isPlainObject(target) ? target : {};
+    var c = isPlainObject(ctx) ? ctx : {};
+    var ids = Array.isArray(c.ids) ? c.ids : [];
+    var narrow = c.narrow === true;
+    var out = [];
+    if (typeof t.act === 'string' && t.act) {
+      var same = attrSel('data-act', t.act);
+      if (t.id) same += attrSel('data-id', t.id);
+      if (t.view) same += attrSel('data-view', t.view);
+      if (t.info) same += attrSel('data-info', t.info);
+      out.push(same);
+      if (t.id) {
+        var at = ids.indexOf(String(t.id));
+        var equiv = narrow ? (c.view === 'catchup' ? 'read' : 'row-more') : t.act;
+        if (at !== -1) {
+          if (at + 1 < ids.length) out.push(attrSel('data-act', equiv) + attrSel('data-id', ids[at + 1]));
+          if (at > 0) out.push(attrSel('data-act', equiv) + attrSel('data-id', ids[at - 1]));
+        }
+      }
+    }
+    out.push(narrow ? '#' + VIEW_HEADING_ID : attrSel('data-act', 'view') + attrSel('aria-pressed', 'true'));
     return out;
   }
 
