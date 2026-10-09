@@ -72,6 +72,10 @@ org = api.toggleTag(org, 16589908, 'reference');
 org = api.toggleTag(org, 16474152, 'read-later');
 org = api.setFolder(org, 16407150, 'scripts');
 org.threads['16589908'].note = 'The one to link people to.';
+// #41: a summary long enough to wrap, so the clip previews show the cut.
+org = api.toggleTag(org, 15978774, 'long');
+org.threads['15978774'].note = 'A long summary note that goes on well past the width of a phone, and past a narrow '
+  + 'desktop column too, so the clip setting has something to cut.';
 org.lastCatchUpAt = NOW - 24 * 60 * MIN;
 api.state.organizer = api.applyAutoAssign(org, api.state.feed.subscribed, NOW);
 
@@ -202,7 +206,9 @@ function page(title, theme, body, width, hostile, narrow, extraCss) {
     extraCss || '',
     '</style></head><body><div class="frame">',
     '<p class="label">' + title + '</p>',
-    '<div id="tfcc-panel" class="tfcc-theme-' + theme + (narrow ? ' tfcc-narrow' : '') + '">' + body + '</div>',
+    // #41: the runtime puts tfcc-clip on the panel while the setting is on.
+    '<div id="tfcc-panel" class="tfcc-theme-' + theme + (narrow ? ' tfcc-narrow' : '')
+      + (api.state.settings.clipLines !== false ? ' tfcc-clip' : '') + '">' + body + '</div>',
     // #33: the production fitHeader and headerButtonSize, verbatim, so the
     // preview's header is sized exactly as the script sizes it.
     narrow ? '<script>' + FIT_HEADER_SHIM + '</script>' : '',
@@ -240,6 +246,21 @@ const narrow = api.panelHtml(api.buildPanelModel(NOW));
 fs.writeFileSync(path.join(outDir, 'threads-narrow.html'), page('threads / narrow 375px', 'dark', narrow, 375));
 written.push('threads-narrow.html');
 
+// #41: the clip setting on and off on a wide panel, at a desktop column narrow
+// enough (720px) that the long title and summary would wrap.
+for (const clip of [true, false]) {
+  api.state.settings.clipLines = clip;
+  for (const theme of ['dark', 'light']) {
+    api.state.settings.theme = theme;
+    const body = api.panelHtml(api.buildPanelModel(NOW));
+    const name = `clip-${clip ? 'on' : 'off'}-threads-wide-${theme}.html`;
+    fs.writeFileSync(path.join(outDir, name), page(`threads / clip ${clip ? 'on' : 'off'} / wide 720px / ${theme}`, theme, body, 720));
+    written.push(name);
+  }
+}
+api.state.settings.clipLines = true;
+api.state.settings.theme = 'dark';
+
 // The cap line at PDA width, where it has to wrap without stranding the button.
 api.state.settings.rowsShown = 3;
 const cappedNarrow = api.panelHtml(api.buildPanelModel(NOW));
@@ -270,6 +291,10 @@ const NARROW_STATES = [
   ['catchup-200', () => { api.state.settings.view = 'catchup'; }, TEXT_200],
   ['threads-drawer-200', () => { api.state.settings.view = 'threads'; api.state.openRowId = '16474152'; }, TEXT_200],
   ['threads-drawer-pinned', () => { api.state.settings.view = 'threads'; api.state.openRowId = '16589908'; }],
+  // #41: the clip setting off, where the title, summary and meta wrap again;
+  // and on with the long row's drawer open, where it shows them whole.
+  ['threads-clipoff', () => { api.state.settings.view = 'threads'; api.state.settings.clipLines = false; }],
+  ['threads-drawer-long', () => { api.state.settings.view = 'threads'; api.state.openRowId = '15978774'; }],
 ];
 for (const [label, setUp, extraCss] of NARROW_STATES) {
   for (const [vp, panelPx] of [[375, 343], [320, 288], [280, 248]]) {
@@ -278,6 +303,7 @@ for (const [label, setUp, extraCss] of NARROW_STATES) {
     for (const theme of ['dark', 'light']) {
       Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false });
       api.state.settings.collapsed = false;
+      api.state.settings.clipLines = true;
       api.state.settings.theme = theme;
       setUp();
       const body = api.panelHtml(api.buildPanelModel(NOW));
@@ -289,6 +315,7 @@ for (const [label, setUp, extraCss] of NARROW_STATES) {
   }
 }
 api.state.narrow = false;
+api.state.settings.clipLines = true;
 Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false });
 api.state.settings.collapsed = false;
 

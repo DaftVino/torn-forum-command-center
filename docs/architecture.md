@@ -265,6 +265,10 @@ per-render measurement is the whole mechanism. `fitHeader` then sizes the
 header buttons (`--tfcc-hb`, 24 to 44px) from the panel's content width, the
 chip and the Show button, so the header stays on one line.
 
+`renderPanel` also writes `tfcc-clip` while `settings.clipLines` is on (#41,
+the default). Every rule that cuts a row's title, note or narrow meta line to
+one line hangs off that class, so the setting is one switch at every width.
+
 **The owner's ruling (2026-10-09):** a `ResizeObserver` on the script's own
 `#tfcc-panel`, and measuring nodes inside it, stays within ADR 0001. It is not
 a third DOM access: ADR 0001 confines access to Torn's markup to the mount

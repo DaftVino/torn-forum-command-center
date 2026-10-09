@@ -244,3 +244,8 @@ signed-in account on real hardware.
 ## License
 
 MIT. See `LICENSE`.
+
+The drawer's Archive icon is UXWing's "archive files" icon
+(https://uxwing.com/archive-files-icon/), used under the UXWing license, which
+allows commercial use and does not require attribution. It is credited here
+anyway.

@@ -1277,7 +1277,9 @@ const MUTATIONS = [
     ['the Catch up row is not fitted after a draw', (s) => s.replace('    fitCatchUp(panel || doc.getElementById(PANEL_ID), win);\n', '')],
     ['the Catch up row is not fitted on a resize', (s) => s.replace('{ fitHeader(panel, win); fitCatchUp(panel, win); return; }', '{ fitHeader(panel, win); return; }')],
     ['the Catch up accessible names take the short labels', (s) => s.replace('aria-label="\' + escapeHtml(full) + \'">\'', 'aria-label="\' + escapeHtml(short) + \'">\'')],
-    ['the owner\'s short catch-up label is changed', (s) => s.replace('Catch-' + String.fromCharCode(92) + 'u2191', 'Catch-up')],
+    ['the owner\'s short catch-up label is changed', (s) => s.replace("'Set catch-up point to now', 'Caught up')", "'Set catch-up point to now', 'Catch up')")],
+    ['the short catch-up label goes back to the arrows (#41)', (s) => s.replace("'Set catch-up point to now', 'Caught up')",
+      "'Set catch-up point to now', 'Catch-' + String.fromCharCode(8593) + ' 2 ' + String.fromCharCode(8595))")],
     ['the short Mark all read label is changed', (s) => s.replace("'Mark all read', 'All read')", "'Mark all read', 'Read all')")],
     ['the Catch up row may wrap', (s) => s.replace('.tfcc-cubar { flex-wrap: nowrap;', '.tfcc-cubar { flex-wrap: wrap;')],
     ['the Catch up wrap fallback keeps its labels on one line', (s) => s.replace(
@@ -1315,7 +1317,7 @@ const MUTATIONS = [
       "      if (ev && ev.preventDefault) ev.preventDefault();\n      applyTransient({ type: 'dismiss' });\n      setTimeout(")],
     // 4. The compact drawer.
     ['the drawer emoji reach screen readers', (s) => s.replace('\'<span class="tfcc-emo" aria-hidden="true">\'', '\'<span class="tfcc-emo">\'')],
-    ['the wastebasket is named Delete', (s) => s.replace("emojiButton('archive', row.archived ? 'Unarchive' : 'Archive'", "emojiButton('archive', row.archived ? 'Unarchive' : 'Delete'")],
+    ['the archive button is named Delete', (s) => s.replace("emojiButton('archive', row.archived ? 'Unarchive' : 'Archive'", "emojiButton('archive', row.archived ? 'Unarchive' : 'Delete'")],
     ['a pinned row is not marked on its Pin button', (s) => s.replace("class=\"tfcc-emobtn' + (on ? ' tfcc-on' : '')", "class=\"tfcc-emobtn' + ''")],
     ['the drawer emoji stay in colour on dark', (s) => s.replace("      '  filter: grayscale(1) brightness(0) invert(1); }',", "      '  filter: none; }',")],
     ['the drawer emoji stay in colour on light', (s) => s.replace('.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }', '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: none; }')],
@@ -1323,6 +1325,71 @@ const MUTATIONS = [
     ['the drawer buttons may wrap, 4px apart', (s) => s.replace('.tfcc-drawer-btns { display: flex; flex-wrap: nowrap; gap: 8px; }', '.tfcc-drawer-btns { display: flex; flex-wrap: wrap; gap: 4px; }')],
     ['a drawer field is shortened by its font', (s) => s.replace("      '  padding: 4px 8px; }',", "      '  padding: 4px 8px; font-size: 12px; }',")],
   ].map(([name, apply]) => ({ name: '#39: ' + name, suite: 'tests/narrow-polish.test.js', apply })),
+  ...[
+    ['the archive button goes back to the wastebasket', (s) => s.replace(
+      "row.archived ? 'Unarchive' : 'Archive', ARCHIVE_SVG,", "row.archived ? 'Unarchive' : 'Archive', emojiIcon('" + String.fromCharCode(92) + "uD83D" + String.fromCharCode(92) + "uDDD1'),")],
+    ['the archive icon reaches screen readers', (s) => s.replace(
+      ' width="18" height="18" aria-hidden="true"', ' width="18" height="18"')],
+    ['the archive icon takes a fixed colour', (s) => s.replace(
+      'focusable="false"><path fill="currentColor" fill-rule="evenodd"', 'focusable="false"><path fill="#000" fill-rule="evenodd"')],
+    ['a host svg fill rule can recolour the archive icon', (s) => s.replace(
+      ".tfcc-narrow .tfcc-archico path { fill: currentColor; }',", ".tfcc-narrow .tfcc-archico path { }',")],
+    ['the archive icon is drawn through the emoji filter', (s) => s.replace(
+      ".tfcc-narrow .tfcc-archico { display: block; flex: none; }',", ".tfcc-narrow .tfcc-archico { display: block; flex: none; filter: invert(1); }',")],
+    ['the archive icon carries an xmlns', (s) => s.replace(
+      "'<svg class=\"tfcc-archico\" viewBox", "'<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"tfcc-archico\" viewBox")],
+  ].map(([name, apply]) => ({ name: '#41: ' + name, suite: 'tests/narrow-polish.test.js', apply })),
+  // #41: the clip setting.
+  ...[
+    ['clipping defaults off', (s) => s.replace('      clipLines: true,\n', '      clipLines: false,\n')],
+    ['an absent clipLines field turns clipping off', (s) => s.replace(
+      "out.clipLines = typeof raw.clipLines === 'boolean' ? raw.clipLines : d.clipLines;", 'out.clipLines = raw.clipLines === true;')],
+    ['a junk clipLines value is coerced instead of defaulted', (s) => s.replace(
+      "out.clipLines = typeof raw.clipLines === 'boolean' ? raw.clipLines : d.clipLines;", 'out.clipLines = !!raw.clipLines;')],
+    ['an explicit off is not kept', (s) => s.replace(
+      "out.clipLines = typeof raw.clipLines === 'boolean' ? raw.clipLines : d.clipLines;", 'out.clipLines = d.clipLines;')],
+    ['the panel never carries tfcc-clip', (s) => s.replace(
+      'panel.classList.toggle(CLIP_CLASS, !state.settings || state.settings.clipLines !== false);', '')],
+    ['the panel carries tfcc-clip whatever the setting says', (s) => s.replace(
+      'panel.classList.toggle(CLIP_CLASS, !state.settings || state.settings.clipLines !== false);', 'panel.classList.toggle(CLIP_CLASS, true);')],
+    ['a wide title has no tooltip', (s) => s.replace(
+      "out.push('<span class=\"tfcc-row-title\"' + (clip ? ' title=\"' + escapeHtml(row.title) + '\"' : '')",
+      "out.push('<span class=\"tfcc-row-title\"' + ''")],
+    ['a wide note has no tooltip', (s) => s.replace(
+      "out.push('<div class=\"tfcc-note\"' + (clip ? ' title=\"' + escapeHtml(row.note) + '\"' : '') + '>'",
+      "out.push('<div class=\"tfcc-note\"' + '>'")],
+    ['the wide title is not cut', (s) => s.replace(
+      ".tfcc-clip .tfcc-row-main .tfcc-row-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',",
+      ".tfcc-clip .tfcc-row-main .tfcc-row-title { }',")],
+    ['the note is not cut', (s) => s.replace(
+      ".tfcc-clip .tfcc-row > .tfcc-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',",
+      ".tfcc-clip .tfcc-row > .tfcc-note { }',")],
+    ['the narrow title is cut whatever the setting says', (s) => s.replace(
+      "'.tfcc-narrow.tfcc-clip .tfcc-row-t .tfcc-row-title a {',", "'.tfcc-narrow .tfcc-row-t .tfcc-row-title a {',")],
+    ['the narrow meta is cut whatever the setting says', (s) => s.replace(
+      "'.tfcc-narrow.tfcc-clip .tfcc-row-l2 .tfcc-meta {',", "'.tfcc-narrow .tfcc-row-l2 .tfcc-meta {',")],
+    ['an open narrow row keeps its note cut', (s) => s.replace(
+      ".tfcc-clip .tfcc-row.tfcc-open > .tfcc-note { white-space: normal; overflow: visible; }',", ".tfcc-clip .tfcc-row.tfcc-open > .tfcc-note { }',")],
+    ['an open row\'s meta parts join into unbreakable runs again (PR #42 review)', (s) => s.replace(
+      ".tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta > * { display: inline-block;',\n      '  max-width: 100%; overflow-wrap: anywhere; }',",
+      ".tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta > * { }',")],
+    ['unticking the checkbox is not saved', (s) => s.replace(
+      "          state.settings.clipLines = !!el.checked;\n          persist('settings'); redraw(); return;",
+      "          state.settings.clipLines = !!el.checked;\n          redraw(); return;")],
+    ['the checkbox does not show the setting', (s) => s.replace("+ (model.settings.clipLines ? ' checked' : '') + '>'", "+ '>'")],
+    ['the clip info key is not registered', (s) => s.replace("    'settings-clip': 'About clipping',\n", '')],
+  ].map(([name, apply]) => ({ name: '#41: ' + name, suite: 'tests/clip-lines.test.js', apply })),
+  {
+    name: '#41: wide rows carry the tooltip with clipping off',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("var clip = model.clipLines === true;", 'var clip = true;'),
+  },
+  {
+    name: '#41: the Settings checkbox moves out of Appearance',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("      + 'screen, hover over it. Turn this off to let them wrap.'));\n    out.push('</div>');",
+      "      + 'screen, hover over it. Turn this off to let them wrap.'));\n    out.push('</div><div>');"),
+  },
   {
     name: '#39: the wide Catch up bar takes the narrow two-label buttons',
     suite: 'tests/wide-parity.test.js',

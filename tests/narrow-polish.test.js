@@ -34,7 +34,9 @@ test('narrow Catch up renders both labels; the accessible names stay full', () =
   const html = redraw(env);
   assert.match(html, /<div class="tfcc-bar tfcc-cubar">/);
   assert.match(html, /<button type="button" data-act="markall" aria-label="Mark all read"><span class="tfcc-lfull">Mark all read<\/span><span class="tfcc-lshort" aria-hidden="true">All read<\/span><\/button>/);
-  assert.match(html, /<button type="button" data-act="catchup-done" aria-label="Set catch-up point to now"><span class="tfcc-lfull">Set catch-up point to now<\/span><span class="tfcc-lshort" aria-hidden="true">Catch-\u2191 2 \u2193<\/span><\/button>/);
+  assert.match(html, /<button type="button" data-act="catchup-done" aria-label="Set catch-up point to now"><span class="tfcc-lfull">Set catch-up point to now<\/span><span class="tfcc-lshort" aria-hidden="true">Caught up<\/span><\/button>/);
+  // #41: the owner replaced the arrow label, which confused; none is left.
+  assert.doesNotMatch(html, /\u2191|\u2193|Catch-/);
 });
 
 // Widths at 14px text: full labels 103 and 181, short 70 and 92, the info
@@ -134,13 +136,16 @@ test('closed rows hold the title, tagline and meta to one line with an ellipsis;
   const { api } = bootNarrow();
   const oneLine = /white-space: nowrap; overflow: hidden; text-overflow: ellipsis/;
   // The title band stays a block of at least 24px: the truncation never cuts the tap target.
+  // #41: the cut is switched by the clip setting (tfcc-clip, on by default);
+  // tests/clip-lines.test.js covers the off case.
   const title = cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row-t .tfcc-row-title a');
   assert.match(title, /display: block; padding: 3px 0; min-height: 24px;/);
-  assert.match(title, oneLine);
-  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row > .tfcc-note'), oneLine);
-  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row-l2 .tfcc-meta'), oneLine);
-  for (const sel of ['.tfcc-row-t .tfcc-row-title a', '> .tfcc-note', '.tfcc-row-l2 .tfcc-meta']) {
-    assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row.tfcc-open ' + sel), /white-space: normal; overflow: visible;/, sel);
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow.tfcc-clip .tfcc-row-t .tfcc-row-title a'), oneLine);
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-clip .tfcc-row > .tfcc-note'), oneLine);
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow.tfcc-clip .tfcc-row-l2 .tfcc-meta'), oneLine);
+  for (const [scope, sel] of [['.tfcc-narrow.tfcc-clip', '.tfcc-row-t .tfcc-row-title a'], ['.tfcc-clip', '> .tfcc-note'],
+    ['.tfcc-narrow.tfcc-clip', '.tfcc-row-l2 .tfcc-meta']]) {
+    assert.match(cssRule(api, '#tfcc-panel' + scope + ' .tfcc-row.tfcc-open ' + sel), /white-space: normal; overflow: visible;/, sel);
   }
 });
 
@@ -384,6 +389,8 @@ test('the click-away listener is bound once, in the capture phase, and checks on
 const PIN = '\uD83D\uDCCC';
 const PENCIL = '\u270F\uFE0F';
 const BIN = '\uD83D\uDDD1\uFE0F';
+// #41: Archive draws UXWing's "archive files" icon, not the wastebasket.
+const ARCHIVE_SVG_HEAD = '<svg class="tfcc-archico" viewBox="0 0 512 441.48" width="18" height="18" aria-hidden="true" focusable="false">';
 
 function drawerOf(html, id) {
   const i = html.indexOf('<div class="tfcc-drawer" id="tfcc-act-' + id + '">');
@@ -391,7 +398,7 @@ function drawerOf(html, id) {
   return html.slice(i, html.indexOf('</div></div>', i) + 12);
 }
 
-test('Pin, Draft and Archive are emoji buttons on one row, named and hinted in words', () => {
+test('Pin and Draft are emoji buttons and Archive an icon button, on one row, named and hinted in words', () => {
   const { env, api } = bootNarrow();
   seedRows(api, [{ id: 7, unread: 1 }]);
   api.state.openRowId = '7';
@@ -402,9 +409,39 @@ test('Pin, Draft and Archive are emoji buttons on one row, named and hinted in w
     + label + '" title="' + label + '"><span class="tfcc-emo" aria-hidden="true">' + glyph + '</span></button>';
   assert.ok(btns[1].includes(emo('pin', 'Pin', PIN)), 'pin');
   assert.ok(btns[1].includes(emo('draft', 'Draft', PENCIL)), 'pencil');
-  assert.ok(btns[1].includes(emo('archive', 'Archive', BIN)), 'wastebasket, named Archive');
+  assert.ok(btns[1].includes('<button type="button" class="tfcc-emobtn" data-act="archive" data-id="7" aria-label="Archive"'
+    + ' title="Archive">' + ARCHIVE_SVG_HEAD), 'the archive icon, named Archive');
+  assert.ok(!btns[1].includes(BIN), 'no wastebasket');
   assert.match(btns[1], /data-act="read" data-id="7" aria-label="Mark read"/, 'Mark read shares the row outside Catch up');
   assert.deepStrictEqual(Array.from(btns[1].matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]), ['pin', 'read', 'draft', 'archive']);
+});
+
+test('the archive icon is a clean inline ASCII SVG drawn in currentColor (#41)', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, [{ id: 7, unread: 1 }]);
+  api.state.openRowId = '7';
+  const d = drawerOf(redraw(env), '7');
+  const svg = /<svg class="tfcc-archico"[\s\S]*?<\/svg>/.exec(d);
+  assert.ok(svg, 'the archive icon renders');
+  assert.ok(svg[0].startsWith(ARCHIVE_SVG_HEAD));
+  assert.match(svg[0], /^[\x20-\x7e]+$/, 'ASCII');
+  assert.doesNotMatch(svg[0], /\sid=|xmlns|<title|style=/, 'no id, no xmlns, no title, no inline style');
+  assert.match(svg[0], /<path fill="currentColor" fill-rule="evenodd" d="m439\.55 3\.74 /, 'currentColor, with the original evenodd hole');
+  assert.strictEqual((svg[0].match(/<path/g) || []).length, 1, 'one path');
+  // The UXWing licence is quoted beside the icon.
+  const src = require('./load-userscript').readSource();
+  assert.match(src, /uxwing\.com\/archive-files-icon/);
+  assert.match(src, /without attribution/);
+});
+
+test('the archive icon is monochrome in currentColor in both themes, never a filter (#41)', () => {
+  const { api } = bootNarrow();
+  // Sized by its width and height attributes (18px, the 16px emoji's optical
+  // match), like the .tfcc-gl glyphs: a narrow rule never fixes a height.
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-archico'), /display: block; flex: none;/);
+  // (1,2,1) beats the host's "svg * { fill }" the way the logo rule does.
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-archico path'), /fill: currentColor;/);
+  assert.doesNotMatch(api.panelStyleText(), /\.tfcc-archico[^{]*\{[^}]*filter/, 'currentColor already follows the theme');
 });
 
 test('the pinned state is marked on the Pin button', () => {

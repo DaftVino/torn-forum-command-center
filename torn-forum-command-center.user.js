@@ -223,6 +223,7 @@
     'settings-author': 'About author-only mode',
     'settings-rows': 'About Rows shown',
     'settings-autohide': 'About hiding the panel',
+    'settings-clip': 'About clipping',
     'settings-folders': 'About folders',
     'settings-badges': 'About badges',
   });
@@ -232,7 +233,7 @@
     search: Object.freeze(['search']),
     drafts: Object.freeze([]),
     settings: Object.freeze(['settings-budget', 'settings-author', 'settings-rows', 'settings-autohide',
-      'settings-folders', 'settings-badges']),
+      'settings-clip', 'settings-folders', 'settings-badges']),
     mine: Object.freeze(['mine']),
   });
   // The events that close every disclosure (spec section 6 table).
@@ -462,6 +463,9 @@
       rowsShown: 5,
       // Issue #9. On by default; Settings has the off switch.
       badges: true,
+      // #41: clip a row's title and summary to one line, at every width. On
+      // by default; a stored false is kept.
+      clipLines: true,
     };
   }
 
@@ -486,6 +490,10 @@
     out.autoHideOnOpen = Object.prototype.hasOwnProperty.call(raw, 'autoHideOnOpen')
       ? raw.autoHideOnOpen === true : d.autoHideOnOpen;
     out.badges = raw.badges !== false;
+    // #41: only a real boolean is kept. Absent, or present but not a boolean,
+    // takes the default (on): clipping is presentation only, so a corrupt
+    // value costs nothing worse than the default look.
+    out.clipLines = typeof raw.clipLines === 'boolean' ? raw.clipLines : d.clipLines;
     out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1
       ? 0 : toInt(raw.keyRejected, 0);
     out.folderFilter = typeof raw.folderFilter === 'string' ? safeString(raw.folderFilter, 64) : null;
@@ -4585,6 +4593,14 @@
       '  margin-top: var(--tfcc-gap-xs); }',
       '#' + PANEL_ID + ' .tfcc-actions button { font-size: var(--tfcc-text-sm); padding: 1px 6px; }',
       '#' + PANEL_ID + ' .tfcc-note { color: var(--tm-muted); font-size: var(--tfcc-text-sm); }',
+      // #41: "Clip titles and summaries that wrap", one class on the panel. A
+      // row's title and note (its summary) are one line with an ellipsis at
+      // every width; a wide row carries the full text as a title tooltip and
+      // a narrow one shows it whole while its drawer is open. Thread rows
+      // only: Search hits and Drafts are not .tfcc-row.
+      '#' + PANEL_ID + '.tfcc-clip .tfcc-row-main .tfcc-row-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-clip .tfcc-row > .tfcc-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-clip .tfcc-row.tfcc-open > .tfcc-note { white-space: normal; overflow: visible; }',
       // #33: anything carrying the hidden attribute stays hidden, whatever a
       // display rule on it or on the host says.
       '#' + PANEL_ID + ' [hidden] { display: none !important; }',
@@ -4677,24 +4693,34 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t { display: flex; gap: 4px; align-items: flex-start; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title { line-height: 1.35; }',
       // The whole title band opens the thread: at least 24px (WCAG 2.2 AA).
-      // #39: one line with an ellipsis until the row's drawer opens. The cut is
-      // visual only: the link's text, and so its accessible name, is whole,
-      // and the block keeps the full width and 24px height of the tap target.
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title a { display: block; padding: 3px 0; min-height: 24px;',
-      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title a { display: block; padding: 3px 0; min-height: 24px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title { flex: 1 1 0; min-width: 0; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row > .tfcc-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row.tfcc-open .tfcc-row-t .tfcc-row-title a { white-space: normal; overflow: visible; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row.tfcc-open > .tfcc-note { white-space: normal; overflow: visible; }',
+      // #39, switched by the #41 setting (tfcc-clip): one line with an
+      // ellipsis until the row's drawer opens. The cut is visual only: the
+      // link's text, and so its accessible name, is whole, and the block keeps
+      // the full width and 24px height of the tap target.
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row-t .tfcc-row-title a {',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row.tfcc-open .tfcc-row-t .tfcc-row-title a { white-space: normal; overflow: visible; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-pinned { padding-top: 3px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 { display: flex; gap: 6px; align-items: flex-start; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 .tfcc-meta { flex: 1 1 0; min-width: 0; margin-top: 0;',
-      '  padding-top: 2px; gap: var(--tfcc-gap-sm);',
+      '  padding-top: 2px; gap: var(--tfcc-gap-sm); }',
       // #39: the meta is one line too, status first so a live status is the
       // last thing cut. A block, not a flex row, so the ellipsis can show.
+      // Narrow only, and only with the #41 setting on: off, it wraps as a flex
+      // row again, as before #39.
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row-l2 .tfcc-meta {',
       '  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 .tfcc-meta > * { margin-right: var(--tfcc-gap-sm); }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta { white-space: normal; overflow: visible; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row-l2 .tfcc-meta > * { margin-right: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta { white-space: normal; overflow: visible; }',
+      // PR #42 review: the parts have no space between them, so inline they
+      // join into unbreakable runs that pushed the last part out of the meta
+      // column, under the row's buttons, at 280px. Open, each part is atomic:
+      // the line breaks between parts, and a part wider than the column
+      // wraps inside itself. Closed, they stay inline so the ellipsis cuts.
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta > * { display: inline-block;',
+      '  max-width: 100%; overflow-wrap: anywhere; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns { flex: none; display: inline-flex; gap: 6px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns button { display: inline-flex; align-items: center;',
       '  justify-content: center; min-width: 44px; min-height: 44px; padding: 0 6px; }',
@@ -4719,6 +4745,9 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-emo { display: block; font-size: 16px; line-height: 1;',
       '  filter: grayscale(1) brightness(0) invert(1); }',
       '#' + PANEL_ID + '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }',
+      // #41: the archive icon, in the button's own text colour in both themes.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-archico { display: block; flex: none; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-archico path { fill: currentColor; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-step { display: flex; align-items: center; gap: 8px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-step span { flex: 1 1 auto; text-align: center; color: var(--tm-meta); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-vh { font-size: var(--tfcc-text); margin: 2px 0 6px 0; }',
@@ -4961,6 +4990,8 @@
       collapsed: s.collapsed,
       takeover: s.takeover,
       narrow: state.narrow === true,
+      // #41: clip row titles and summaries to one line (the tfcc-clip class).
+      clipLines: s.clipLines !== false,
       renderedIds: renderedIds,
       openRowId: state.openRowId,
       filtersOpen: state.filtersOpen,
@@ -5025,6 +5056,7 @@
         hideTornBox: s.hideTornBox,
         authorOnly: s.authorOnly,
         autoHideOnOpen: s.autoHideOnOpen,
+        clipLines: s.clipLines !== false,
         deepSearchPages: s.deepSearchPages,
         rowsShown: s.rowsShown,
       },
@@ -5247,7 +5279,12 @@
     var out = ['<div class="tfcc-row" data-id="' + escapeHtml(row.id) + '">'];
     out.push('<div class="tfcc-row-main">');
     if (row.pinned) out.push('<span class="tfcc-pinned" title="Pinned">*</span>');
-    out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '"'
+    // #41: with clipping on, the full title is a hover tooltip, since a wide
+    // row has no drawer to open. On the span, not the link, so the link's
+    // name stays its text, the full title.
+    var clip = model.clipLines === true;
+    out.push('<span class="tfcc-row-title"' + (clip ? ' title="' + escapeHtml(row.title) + '"' : '')
+      + '><a href="' + escapeHtml(threadUrl(row)) + '"'
       + threadLinkAttr(row.id) + '>'
       + escapeHtml(row.title) + '</a></span>');
     // Priority sits beside the title (#30), not in the action row, where two
@@ -5260,7 +5297,10 @@
 
     out.push('<div class="tfcc-meta">' + rowMetaHtml(row, model) + '</div>');
 
-    if (row.note) out.push('<div class="tfcc-note">' + escapeHtml(row.note) + '</div>');
+    if (row.note) {
+      out.push('<div class="tfcc-note"' + (clip ? ' title="' + escapeHtml(row.note) + '"' : '') + '>'
+        + escapeHtml(row.note) + '</div>');
+    }
 
     // #33: an uncommitted edit is shown wherever its field renders.
     var edit = model.drawerEdit && model.drawerEdit.id === String(row.id) ? model.drawerEdit : null;
@@ -5297,21 +5337,46 @@
 
   // The drawer's emoji (#39, the owner's choice), as escapes so the source
   // stays ASCII. Drawn monochrome by the .tfcc-emo filter rules, like the
-  // thumbs. The wastebasket means Archive, which is reversible: the button's
-  // name and hint say Archive (or Unarchive), never Delete.
+  // thumbs.
   var DRAWER_EMOJI = Object.freeze({
     pin: '\uD83D\uDCCC',
     draft: '\u270F\uFE0F',
-    archive: '\uD83D\uDDD1\uFE0F',
   });
 
-  // A compact drawer button (#39): the emoji is decoration (aria-hidden); the
+  function emojiIcon(emoji) {
+    return '<span class="tfcc-emo" aria-hidden="true">' + emoji + '</span>';
+  }
+
+  // #41: Archive draws the "archive files" icon from UXWing, so the button
+  // reads as archive, not delete (it replaced the wastebasket emoji). Archive
+  // is reversible: the name and hint say Archive (or Unarchive), never Delete.
+  // Source: uxwing.com/archive-files-icon/ (path data unchanged;
+  // xmlns, rendering hints and clip-rule dropped). Licence, from
+  // uxwing.com/license/ (read 2026-10-09): "All files on this site can
+  // be used in personal, commercial, and client projects." "Attribution and
+  // credit are NOT required; however, any credit will be much appreciated."
+  // The icon page itself: "All icons on this site can be used for personal,
+  // commercial, and client projects without attribution." Credit is given
+  // anyway, here and in the README. No id and no xmlns (see LOGO_SVG); the
+  // fill is currentColor, so it follows the theme with no filter, and the
+  // .tfcc-archico rules repeat it so a host "svg * { fill }" cannot win.
+  var ARCHIVE_SVG = '<svg class="tfcc-archico" viewBox="0 0 512 441.48" width="18" height="18" aria-hidden="true"'
+    + ' focusable="false"><path fill="currentColor" fill-rule="evenodd" d="'
+    + 'm439.55 3.74 67.81 78.75c2.5 1.95 4.11 5 4.11 8.42 0 1.02-.14 2-.41 2.94l.94 336.97c0 5.86-4.76 '
+    + '10.62-10.62 10.62v.04H10.66C4.77 441.48 0 436.7 0 430.82V90.91c0-3 1.24-5.71 3.23-7.65L72.6 '
+    + '3.66c2.1-2.39 5.04-3.62 8-3.62V0h350.84c3.25 0 6.16 1.45 8.11 3.74zM34.05 80.25h443.24l-50.73-58.93H85.4'
+    + 'L34.05 80.25zm316.63 169.79c6.9.3 11.81 2.57 14.64 6.88 7.68 11.51-1.96 23.76-10.09 30.9l-90.69 '
+    + '79.63c-7.72 8.53-18.71 8.53-26.42 0-10.53-12.29-63.8-59.72-83.42-81.81-6.8-7.65-15.21-18.1-8.13-28.72 '
+    + '2.84-4.31 7.74-6.58 14.65-6.88h44.43v-76.57c0-4.81 3.93-8.74 8.74-8.74h83.23c4.81 0 8.75 3.94 8.75 '
+    + '8.74v76.57h44.31z"/></svg>';
+
+  // A compact drawer button (#39): the icon is decoration (aria-hidden); the
   // name and the hint are the words. tfcc-on marks a set state (pinned, a
   // draft saved, archived), so the state never rests on the name alone.
-  function emojiButton(action, label, emoji, on, rowId) {
+  function emojiButton(action, label, icon, on, rowId) {
     return '<button type="button" class="tfcc-emobtn' + (on ? ' tfcc-on' : '') + '" data-act="' + escapeHtml(action)
       + '" data-id="' + escapeHtml(rowId) + '" aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '">'
-      + '<span class="tfcc-emo" aria-hidden="true">' + emoji + '</span></button>';
+      + icon + '</button>';
   }
 
   // The drawer's controls (spec 4.4): the same data-act values as the wide
@@ -5325,10 +5390,10 @@
     // #39: Pin, Draft and Archive are compact emoji buttons on one row, with
     // Mark read beside them outside Catch up.
     out.push('<div class="tfcc-drawer-btns tfcc-wide">');
-    out.push(emojiButton('pin', row.pinned ? 'Unpin' : 'Pin', DRAWER_EMOJI.pin, row.pinned, row.id));
+    out.push(emojiButton('pin', row.pinned ? 'Unpin' : 'Pin', emojiIcon(DRAWER_EMOJI.pin), row.pinned, row.id));
     if (!inCatchUp) out.push(readButton(row));
-    out.push(emojiButton('draft', row.hasDraft ? 'Edit draft' : 'Draft', DRAWER_EMOJI.draft, row.hasDraft, row.id));
-    out.push(emojiButton('archive', row.archived ? 'Unarchive' : 'Archive', DRAWER_EMOJI.archive, row.archived, row.id));
+    out.push(emojiButton('draft', row.hasDraft ? 'Edit draft' : 'Draft', emojiIcon(DRAWER_EMOJI.draft), row.hasDraft, row.id));
+    out.push(emojiButton('archive', row.archived ? 'Unarchive' : 'Archive', ARCHIVE_SVG, row.archived, row.id));
     out.push('</div>');
     out.push('<div class="tfcc-step tfcc-wide">'
       + btn('prio-down', '-', id + ' aria-label="Lower priority"')
@@ -5569,7 +5634,10 @@
     // Narrow, the info button is grouped with the control it explains, and the
     // three share one line (#39): fitCatchUp picks the label set that fits.
     if (model.narrow) out.push('<span class="tfcc-infogroup">');
-    out.push(model.narrow ? cuButton('catchup-done', 'Set catch-up point to now', 'Catch-\u2191 2 \u2193')
+    // The short label is the owner's "Caught up" (#41), replacing an arrow
+    // label that confused: "All read" marks threads read, "Caught up" moves
+    // the catch-up point to now.
+    out.push(model.narrow ? cuButton('catchup-done', 'Set catch-up point to now', 'Caught up')
       : btn('catchup-done', 'Set catch-up point to now'));
     out.push(renderInfoButton('catchup', model.openInfoId));
     if (model.narrow) out.push('</span>');
@@ -5900,6 +5968,14 @@
     out.push(renderInfoText('settings-autohide', model.openInfoId, 'Only thread links in this panel do this, '
       + 'and only a plain click. Opening a link in a new tab, or following links on the Torn page itself, '
       + 'leaves the panel as it is. Press Show to bring it back.'));
+    // #41: on by default. A class on the panel switches the CSS (tfcc-clip).
+    out.push('<div class="tfcc-kv"><label for="tfcc-clip">Clip titles and summaries that wrap</label>'
+      + '<input id="tfcc-clip" type="checkbox" data-act="clip-lines"'
+      + (model.settings.clipLines ? ' checked' : '') + '>'
+      + renderInfoButton('settings-clip', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-clip', model.openInfoId, 'Each row\'s title and summary stay on one line, '
+      + 'ending in ... when they would wrap. On a phone, open a row\'s actions to read it whole; on a wider '
+      + 'screen, hover over it. Turn this off to let them wrap.'));
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><div class="tfcc-infobar"><h4>Folders</h4>'
@@ -6251,6 +6327,7 @@
 
   // #33: the class the narrow stylesheet hangs off. On our own element only.
   var NARROW_CLASS = 'tfcc-narrow';
+  var CLIP_CLASS = 'tfcc-clip';
 
   // The panel's border-box width, or 0 when it cannot be read. Reads only this
   // script's #tfcc-panel (the owner's ADR 0001 ruling, spec section 5).
@@ -6521,6 +6598,9 @@
       model.openRowId = null; model.filtersOpen = false; model.openInfoId = null;
     }
     if (panel.classList) panel.classList.toggle(NARROW_CLASS, state.narrow === true);
+    // #41: the clip setting is one class; the loading and error models carry
+    // no rows, so they keep whatever the setting says.
+    if (panel.classList) panel.classList.toggle(CLIP_CLASS, !state.settings || state.settings.clipLines !== false);
 
     var html = panelHtml(model);
 
@@ -7325,6 +7405,10 @@
         }
         if (act === 'auto-hide') {
           state.settings.autoHideOnOpen = !!el.checked;
+          persist('settings'); redraw(); return;
+        }
+        if (act === 'clip-lines') {
+          state.settings.clipLines = !!el.checked;
           persist('settings'); redraw(); return;
         }
         if (act === 'badges-toggle') {

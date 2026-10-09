@@ -15,6 +15,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   every API call site, so a new endpoint fails the suite until its selection is
   added. The link format is unverified, and release is gated on the QA
   checklist comparing it with a link generated on torn.com/api.html.
+- Settings, Appearance: **Clip titles and summaries that wrap**, on by default
+  (#41). On, each thread row's title and note end in an ellipsis on one line
+  instead of wrapping, at every width; on a phone the meta line does too, and
+  opening a row's actions shows all three in full; on a desktop, hovering a
+  clipped title or note shows the full text. Off, they wrap, on a phone too.
+  Saved settings from before keep working and start with it on.
 - Settings, Appearance: **Hide the panel when I open a thread**, on by
   default (#30). A plain click on a thread link in the panel (Threads, Catch up,
   Search, Drafts, and My posts) collapses the panel and leaves Expand, then the
@@ -70,10 +76,14 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Changed
 
+- The narrow drawer's Archive button shows an archive box (UXWing's "archive
+  files" icon, inline and in the theme's text colour) instead of the
+  wastebasket, so it reads as archive, not delete. (#41)
 - Narrow view polish (#39). In the narrow layout only:
   - Catch up's "Mark all read", "Set catch-up point to now" and its info
     button share one line. Where the full labels would wrap they shorten to
-    "All read" and "Catch-" up arrow "2" down arrow, measured on the panel's
+    "All read" and "Caught up" (#41; it replaced an arrow label, "Catch-" up
+    arrow "2" down arrow, that confused), measured on the panel's
     own nodes; screen readers keep the full names. At very large text the
     labels wrap inside their buttons instead of the row wrapping.
   - Each row's title, meta line and note are one line with an ellipsis until

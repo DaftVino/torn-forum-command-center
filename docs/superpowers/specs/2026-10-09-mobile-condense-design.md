@@ -1185,6 +1185,7 @@ how they were applied:
   survives each `innerHTML` rewrite.
 - **Short labels:** "All read" and the owner's "Catch-", up arrow, "2", down
   arrow (U+2191 and U+2193, written as JS escapes so the source stays ASCII).
+  Since #41 the second is "Caught up"; see below.
   The accessible names stay "Mark all read" and "Set catch-up point to now"
   (`aria-label`; the short label span is `aria-hidden`).
 - **Measured in the previews:** at 14px text the full labels need about 340px
@@ -1203,6 +1204,21 @@ how they were applied:
   accessible name "Set catch-up point to now" (WCAG 2.5.3, label in name, level
   A). The owner asked for the full names; a voice-control user saying the
   visible label may not reach it. "All read" is contained in "Mark all read".
+- **Trade-off accepted (#41, owner decision).** The owner accepts the WCAG
+  2.5.3 label-in-name trade-off for the short catch-up label, because voice
+  control is not used in Torn PDA, where the narrow layout runs. The
+  accessible name stays "Set catch-up point to now".
+- **"Caught up" replaces the arrow label (#41, owner decision).** The owner
+  replaced "Catch-", up arrow, "2", down arrow, because it was confusing. The
+  short pair now reads "All read" (marks threads read) and "Caught up" (moves
+  the catch-up point to now). Only the short label changed: the full label,
+  the accessible name, the info button and desktop are as before. Re-measured
+  in the previews at 14px text: "All read" 65px, "Caught up" 83px, the info
+  button 44px, so the short row needs about 204px (218px with the arrows) and
+  all three phone widths still use it. At 200% text, 375px now fits the short
+  labels (113 / 147 / 44) where the arrow label needed the wrap fallback;
+  320px still takes the fallback with an equal split (107 / 107 / 44). 280px
+  at 200% is unsupported, as before (spec 4.7).
 
 ### 14b. One-line row text
 
@@ -1248,7 +1264,8 @@ how they were applied:
 ### 14d. The compact drawer
 
 - Pin, Draft and Archive are the owner's emoji (pin U+1F4CC, pencil U+270F
-  U+FE0F, wastebasket U+1F5D1 U+FE0F, written as escapes) in `aria-hidden`
+  U+FE0F, wastebasket U+1F5D1 U+FE0F, written as escapes; the wastebasket was
+  replaced in #41, below) in `aria-hidden`
   spans, drawn monochrome with the thumbs' filters: `grayscale(1)
   brightness(0) invert(1)` on dark, `grayscale(1) brightness(0)` on light.
   They sit on one row (`.tfcc-drawer-btns`, nowrap) with the check-mark Mark
@@ -1263,3 +1280,75 @@ how they were applied:
   reversible, not a delete, so the name and the hint say "Archive" (or
   "Unarchive"), never "Delete"; the mutation check fails if the name changes.
   Whether the hint should add "(can be undone)" is left to the owner.
+- **#41: the archive icon replaces the wastebasket.** The owner asked for a
+  glyph that reads as archive, not delete: UXWing's "archive files" icon (a
+  box with a down arrow), inlined as one ASCII SVG path (`ARCHIVE_SVG`,
+  class `tfcc-archico`, 18 x 18 by its attributes, `aria-hidden`, no id, no
+  xmlns). It is filled with `currentColor`, the button's text colour, so it
+  is monochrome in both themes without the emoji filter, and the contrast
+  audit measures its fill against the button at 3:1 or better. UXWing's
+  licence allows commercial use without attribution; it is quoted beside the
+  icon and credited in the README. Pin and Draft keep their emoji.
+
+### 14e. Clip titles and summaries that wrap (#41)
+
+The owner made 14b's one-line cut a setting, and carried it to desktop.
+
+- **The setting:** `settings.clipLines`, on by default. A stored blob with no
+  field (every install before #41) normalises to on; an explicit `false` is
+  kept; a present value that is not a boolean takes the default. A blob saved
+  before #41 is not reported as damaged: `isRecoveredValue` fills the missing
+  top-level field from the normalised value before comparing
+  (`tests/clip-lines.test.js` loads main's own blob).
+- **Settings:** Appearance, right after "Hide the panel when I open a thread":
+  a checkbox "Clip titles and summaries that wrap" (`data-act="clip-lines"`)
+  and an info button, `settings-clip`, "About clipping" (the 13d pattern),
+  whose text says how to read a clipped row at each width.
+- **One switch:** the runtime puts `tfcc-clip` on the panel while the setting
+  is on, beside `tfcc-narrow`, on every render. Every clipping rule hangs off
+  it: off, nothing clips at any width.
+- **On, every width:** a thread row's title and note (its summary) are one
+  line with an ellipsis. Narrow, this is 14b unchanged, and the open row
+  (`tfcc-open`) shows them whole. Wide, `.tfcc-row-main .tfcc-row-title`
+  clips (its flex item already has `min-width: 0`), and `.tfcc-row >
+  .tfcc-note` clips, one rule for both widths.
+- **The meta line (decision):** it follows the setting on narrow only, as 14b
+  collapsed it: on, one line, with the drawer showing it whole; off, the
+  pre-#39 flex row that wraps. Wide never clips the meta. A wide row has no
+  drawer, its meta spans carry tooltips of their own (the time's source, the
+  author-only reason), and one tooltip cannot stand in for a line of separate
+  facts; at desktop widths the meta rarely wraps anyway.
+- **Wide tooltips:** with the setting on, the wide row's title span and note
+  carry `title` with the full text, so hovering shows it. The tooltip is on
+  the span, not the link: the link's accessible name stays its own text, the
+  full title, with no duplicate description. Narrow rows carry no tooltip;
+  the drawer is their expand.
+- **Desktop parity:** the golden (`tests/fixtures/wide-golden.json`) is
+  compared with the setting off, where every wide row and nav is main's byte
+  for byte. The one other wide markup change, the new Settings checkbox, is a
+  listed literal replacement (`tests/wide-41-diffs.js`), like 13d's. A
+  separate test pins what "on" adds: exactly the title attributes on each
+  row's title span and note, and the checkbox ticked; the stylesheet text is
+  the same either way, and its three new wide selectors are listed and all
+  start `#tfcc-panel.tfcc-clip`. The golden was not regenerated.
+- **Measured in the previews** (`clip-on-*`, `clip-off-*`,
+  `narrow-threads-clipoff-*`, `narrow-threads-drawer-long-*`): on, the long
+  title and summary are cut to one line at 720px wide and at 375, 320 and
+  280px; off, they wrap; an open long row is whole. The contrast audit fails
+  a page whose setting does not do this.
+- **Resolved (PR #42 review):** in the open narrow row at 280px the meta
+  line's last part sat past the meta's column, under the row's buttons, so
+  opening the drawer did not reliably show the whole meta. It predated #41
+  (#39's open meta). The cause: the parts are rendered with no space between
+  them, so in the block meta adjacent parts joined into unbreakable runs
+  ("draft" + "reference"). The fix is the least invasive one: in the open
+  row each meta part is `display: inline-block; max-width: 100%;
+  overflow-wrap: anywhere`, so the line breaks between parts and a part
+  wider than the column wraps inside itself. Closed rows keep inline parts,
+  so the ellipsis still cuts inside one; the layout of the row is unchanged.
+  The contrast audit now checks containment and overlap, not only hidden
+  overflow: in an open row, and in every row with clipping off, each meta
+  part must sit inside the row's content box and its meta column and clear
+  of every row button. Before the fix it failed four previews (Threads and
+  Catch up drawers at 280px, both themes); after it, every preview passes at
+  375, 320 and 280px with clipping on and off.
