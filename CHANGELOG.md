@@ -4,6 +4,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-09
+
 ### Added
 
 - A folder can claim more than one forum (#47). Settings shows each claimed
@@ -347,5 +349,6 @@ First release. Blocked on the signed-in QA gate in `docs/qa-checklist.md`.
 - Every value that reaches the panel is HTML-escaped, and forum HTML is reduced
   to text without ever constructing a DOM node.
 
-[Unreleased]: https://github.com/DaftVino/torn-forum-command-center/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/DaftVino/torn-forum-command-center/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/DaftVino/torn-forum-command-center/compare/v0.1.0-rc6...v0.2.0
 [0.1.0]: https://github.com/DaftVino/torn-forum-command-center/releases/tag/v0.1.0
