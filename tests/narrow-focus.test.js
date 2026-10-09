@@ -234,3 +234,17 @@ test('a deferred redraw that removes a row leaves the focus bookkeeping on the r
   click(env, '[data-act="row-more"][data-id="2"]');
   assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['row-more', '3']);
 });
+
+test('a select keeps focus after its change, which redraws at once', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, [{ id: 1 }, { id: 2 }]);
+  api.state.settings.view = 'threads';
+  redraw(env);
+  click(env, '[data-act="row-more"][data-id="1"]');
+  const panel = panelOf(env);
+  const sel = panel.querySelector('[data-act="folder"][data-id="1"]');
+  sel.value = 'guides';
+  panel.dispatchEvent({ type: 'change', target: sel });
+  assert.strictEqual(api.state.organizer.threads['1'].folderId, 'guides');
+  assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['folder', '1']);
+});

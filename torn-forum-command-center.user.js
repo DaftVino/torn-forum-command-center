@@ -5880,11 +5880,7 @@
   // The narrow header (spec 4.1, 13a, 13b): logo, chip and, when collapsed, a
   // bare unread count, then Refresh, Expand/Shrink and Hide as icon buttons
   // that fitHeader sizes. Collapsed, the third button is the visible word Show.
-  // withControls false is the loading and error header: logo and chip only.
-  function renderHeadNarrow(model, withControls) {
-    if (withControls === false) {
-      return '<div class="tfcc-head"><div class="tfcc-head-id">' + LOGO_SVG + renderBadgeChip(model) + '</div></div>';
-    }
+  function renderHeadNarrow(model) {
     var count = '';
     if (model.collapsed && model.totals && model.totals.unread > 0) {
       var n = formatCount(model.totals.unread);
@@ -5991,9 +5987,11 @@
   }
 
   function panelHtml(model) {
-    // #33: a narrow loading or error state gets the narrow header (scaled
-    // logo, the chip's 44px box), with no controls, as on main.
-    var bareHead = model.narrow ? renderHeadNarrow(model, false) : '<div class="tfcc-head">' + renderHeadId(model) + '</div>';
+    // #33: in a narrow panel this already is the narrow loading and error
+    // header: renderBadgeChip draws the chip's narrow box from model.narrow and
+    // .tfcc-narrow scales the logo. There are no controls to add; main's loading
+    // and fatal headers have none, and fatal keeps its own Try again.
+    var bareHead = '<div class="tfcc-head">' + renderHeadId(model) + '</div>';
     if (model.loading) {
       return bareHead
         + '<div class="tfcc-empty">Loading your subscribed threads...</div>';
@@ -6790,7 +6788,7 @@
         if (next === state.settings) return;
         // The shelf renders in the collapsed header too; hiding the panel closes it.
         state.badgeShelfOpen = false;
-        applyTransient({ type: 'auto-hide' });
+        // replaceSettings closes the disclosures: the panel collapses (spec 6).
         replaceSettings(next);
         persist('settings');
         // Deferred: redrawing now would replace the anchor while its click is

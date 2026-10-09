@@ -5397,6 +5397,8 @@ Notes for whoever runs this:
 - The `13d item 16` entry matches the source text, where the apostrophe is written `\'` inside a single-quoted string; in the `.mjs` file that is `\\'` inside a double-quoted string, as above.
 - If any entry reports `WEAK`, tighten the test it names, not the mutation.
 
+> Amended during implementation, after the first full run: (1) main already had 168 entries (the "125" came from a grep that missed generated ones), so the total is 222, not 179. (2) The pre-existing "the Threads cap runs before the sort" entry was re-indented to the new `capped` block. (3) "auto-hide leaves the drawer open" now removes `replaceSettings`' collapse branch: the explicit `applyTransient({ type: 'auto-hide' })` in `onThreadLink` duplicated it and was removed. (4) "a forced redraw drops what was typed" now targets the drawer's note field (the first match was the wide row's). (5) "a text field's change brings its own focus plan" could not fail, because the commit's deferred redraw always plans from the active element; it is replaced by "a select's change brings no focus plan", with a new test that a select keeps focus. (6) The loading/fatal `bareHead` branch was a no-op (in a narrow panel `renderHeadId` already yields the narrow chip), so it was removed with `renderHeadNarrow`'s `withControls` flag, and its mutation now targets the chip's narrow box.
+
 - [ ] **Step 2: Run the mutation check, redirected to a file**
 
 Run: `node tests/mutation-check.mjs > "$TMPDIR/mutation.txt" 2>&1; echo exit=$?` then read `$TMPDIR/mutation.txt` with `Read`. **Never** pipe it into `head`.
