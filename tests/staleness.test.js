@@ -297,3 +297,38 @@ test('a reset while My posts is loading drops the late answer', async () => {
   const stored = env.gmStore.get('tfcc:mine');
   assert.ok(!stored || JSON.parse(stored).threads.length === 0, 'and wrote it back to storage');
 });
+
+// The success path drops a stale answer; the error path must too (#24). The
+// chain reaches its catch only through a throw, so the test makes one: the
+// first read of the subscribed list after both lists land clears the key
+// (which invalidates the run) and then throws, as a bug in a stale run would.
+test('clearing the key while My posts is loading drops a late error too', async () => {
+  const table = Object.assign({}, TABLE, {
+    'user/forumthreads': forumThreadsPayload([{ id: 10, replies: 3 }]),
+    'user/forumposts': forumPostsPayload([{ id: 1, threadId: 20 }]),
+  });
+  const t = gatedOn(table, 'none');
+  const env = loadUserscript({ location: forums(), now: NOW, gmStore: [['tfcc:key', KEY]], fetch: t.fetch });
+  const api = env.exports;
+  await settle(env);                       // init's Threads refresh completes
+  const handlers = api.makeHandlers(env.doc, env.win);
+  const feed = api.state.feed;
+  const subs = feed.subscribed;
+  let fired = false;
+  Object.defineProperty(feed, 'subscribed', {
+    configurable: true,
+    get() {
+      if (fired) return subs;
+      fired = true;
+      handlers.onAction('key-clear', { getAttribute: () => null });
+      throw new Error('boom after the key was cleared');
+    },
+  });
+
+  const p = api.refreshMine(NOW);
+  await settle(env);
+  const res = await p;
+  assert.ok(fired, 'the throw was reached');
+  assert.strictEqual(api.state.mineError, null, 'a stale run wrote its error after the key was cleared');
+  assert.strictEqual(res.reason, 'stale');
+});

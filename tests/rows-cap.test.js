@@ -282,6 +282,24 @@ test('Catch up caps its list but the nav count keeps counting everything', () =>
   assert.match(html, /data-act="rows-toggle" data-view="catchup"/);
 });
 
+// The cap hides rows from view, never from Mark all read (#24): the button says
+// "all", and a capped row the user cannot see is still unread if it is skipped.
+test('Mark all read in Catch up marks the rows the cap hides too', () => {
+  const { env, api } = boot();
+  seed(api, [
+    { id: 1, title: 'A', unread: 1 }, { id: 2, title: 'B', unread: 1 }, { id: 3, title: 'C', unread: 1 },
+    { id: 4, title: 'D', unread: 1 }, { id: 5, title: 'E', unread: 1 },
+  ]);
+  api.state.settings.view = 'catchup';
+  api.state.settings.rowsShown = 3;
+  assert.strictEqual(rowCount(api.panelHtml(api.buildPanelModel(NOW))), 3, 'two rows are hidden by the cap');
+  api.makeHandlers(env.doc, env.win).onAction('markall', { getAttribute: () => null });
+  assert.strictEqual(api.state.rows.length, 5);
+  const unread = api.state.rows.filter((r) => r.unread > 0).map((r) => r.id).join();
+  assert.strictEqual(unread, '', 'rows hidden by the cap were left unread');
+  assert.strictEqual(api.buildPanelModel(NOW).catchUp.length, 0);
+});
+
 test('Catch up caps the flat list, then groups, and headings count what they show', () => {
   const { api } = boot();
   seed(api, [

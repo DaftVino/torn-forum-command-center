@@ -95,6 +95,15 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Upgrading no longer reports "Folders and tags were damaged" because a
   release added a per-thread field. A present field that is wrong, an unknown
   field and a dropped entry are still reported. (#4)
+- A My posts fetch that fails after Reset everything or Clear key no longer
+  shows its error; a late failure is dropped like a late answer. (#24)
+- My posts now says "Slowing down to stay inside Torn's API limit." when its
+  lookups stop at the rate limiter, as the spec asked. The rows not reached
+  still say `not checked yet`, and the next run that is not throttled clears
+  the notice. (#24)
+- The debug report now counts the My posts rows the last run dropped because
+  Torn sent them without an id, per list, as the spec asked. Counts only: no
+  title, no content, no key. (#24)
 
 ## [0.1.0] - 2026-08-07
 

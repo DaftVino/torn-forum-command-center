@@ -3200,6 +3200,12 @@
     mine: freshMine(),
     refreshingMine: false,
     mineError: null,
+    // The last My posts run stopped its lookups at a throttle (#24). Runtime
+    // only: a reload starts without the notice, and the next run decides again.
+    mineThrottled: false,
+    // Rows the last My posts run dropped for a missing id, per list (#24).
+    // Counts only, for the debug report; runtime only, like mineThrottled.
+    mineDropped: { threads: 0, posts: 0 },
     rows: [],
     loading: false,
     refreshing: false,
@@ -3675,6 +3681,7 @@
     var budget = clamp(toInt(state.settings.enrichBudget, DEFAULT_ENRICH_BUDGET), 0, MAX_ENRICH_BUDGET);
     var params = { limit: MINE_PAGE_LIMIT };
     var started = null;
+    var throttled = false;
 
     function stale() { return generation !== state.generation; }
     function fail(res, fallback) {
@@ -3689,6 +3696,7 @@
         var list = pickList(res.data, ['forumThreads', 'forum_threads', 'threads']);
         if (!list) return fail({ reason: 'parse', detail: MINE_SHAPE_THREADS });
         started = list.map(mineThreadFromApi).filter(Boolean);
+        state.mineDropped = { threads: list.length - started.length, posts: 0 };
         return tornApiGet('user/forumposts', params, options).then(function (pres) {
           if (stale()) return { ok: false, reason: 'stale' };
           var complete = false;
@@ -3705,6 +3713,7 @@
               outcome = fail({ reason: 'parse', detail: MINE_SHAPE_POSTS });
             } else {
               posts = plist.map(minePostFromApi).filter(Boolean);
+              state.mineDropped.posts = plist.length - posts.length;
               postRows = plist;
               complete = true;
               state.mineError = null;
@@ -3724,10 +3733,14 @@
             .then(function () {
               if (stale()) return outcome;
               return enrichMine(ids, now, options, generation).then(function (er) {
-                if (stale() || (er && er.stoppedEarly)) return outcome;
+                if (er && er.stoppedEarly) throttled = true;
+                if (stale() || throttled) return outcome;
                 var rn = Math.min(REACTION_LOOKUPS_PER_RUN, budget);
                 var rids = reactionLookupTargets(state.mine, now, TOPIC_TTL_MS, rn);
-                return enrichReactions(rids, now, options, generation).then(function () { return outcome; });
+                return enrichReactions(rids, now, options, generation).then(function (rr) {
+                  if (rr && rr.stoppedEarly) throttled = true;
+                  return outcome;
+                });
               });
             });
         });
@@ -3736,12 +3749,15 @@
         // A stale answer writes nothing: the user reset, cleared the key, or
         // left the page while it was in flight.
         if (!stale()) {
+          state.mineThrottled = throttled;
           persist('mine');
           recompute(now);
         }
         return res;
       })
       .catch(function (e) {
+        // A stale run's error is dropped like its answer (#24).
+        if (stale()) return { ok: false, reason: 'stale' };
         return fail({ reason: 'network', detail: e && e.message }, 'My posts could not be loaded.');
       });
 
@@ -4489,6 +4505,7 @@
         fetchedAt: state.mine.fetchedAt,
         refreshing: state.refreshingMine,
         error: state.mineError,
+        throttled: state.mineThrottled === true,
       },
       lastCatchUpAt: state.organizer.lastCatchUpAt,
       drafts: draftList(state.drafts),
@@ -4723,6 +4740,11 @@
     if (m.fetchedAt) line += ' Updated ' + formatRelativeTime(m.fetchedAt, model.now) + '.';
     if (m.unchecked) line += ' ' + m.unchecked + ' not checked yet.';
     out.push('<p class="tfcc-note">' + escapeHtml(line) + '</p>');
+    // The spec's Throttled row (#24): lookups stopped at the limiter, and the
+    // rows they did not reach keep saying "not checked yet".
+    if (m.throttled) {
+      out.push('<p class="tfcc-note">' + escapeHtml('Slowing down to stay inside Torn\'s API limit.') + '</p>');
+    }
 
     if (m.error) {
       out.push('<div class="tfcc-error">' + escapeHtml(m.error.detail) + '</div>');
@@ -5484,6 +5506,9 @@
         mineStarted: state.mine.threads.filter(function (t) { return t.started; }).length,
         minePosted: state.mine.threads.filter(function (t) { return t.posted; }).length,
         mineUnchecked: state.mine.threads.filter(function (t) { return !t.totalKnown; }).length,
+        // Rows the last run dropped for a missing id (#24): counts, never a row.
+        mineDroppedThreads: toInt(state.mineDropped.threads, 0),
+        mineDroppedPosts: toInt(state.mineDropped.posts, 0),
         // Issue #4: rows Torn cannot answer (too many new) apart from rows
         // simply not reached yet. Counts only, never an author.
         authorUnchecked: state.rows.filter(function (r) { return r.authorState === 'unchecked'; }).length,
@@ -5542,6 +5567,7 @@
       'my posts started: ' + c.counts.mineStarted,
       'my posts posted in: ' + c.counts.minePosted,
       'my posts unchecked: ' + c.counts.mineUnchecked,
+      'my posts dropped rows: threads ' + c.counts.mineDroppedThreads + ', posts ' + c.counts.mineDroppedPosts,
       'my posts thumbs checked: ' + c.counts.mineThumbsChecked,
       'my posts thumbs found: ' + c.counts.mineThumbsFound,
       'my posts fetched: ' + (c.mineFetchedAt ? 'set' : 'never'),
@@ -5892,7 +5918,8 @@
           invalidateInFlight();
           state.settings = freshSettings(); state.organizer = freshOrganizer(now); state.showAll = {};
           state.drafts = freshDrafts(); state.feed = freshFeed(); state.postCache = freshPostCache();
-          state.mine = freshMine(); state.mineError = null;
+          state.mine = freshMine(); state.mineError = null; state.mineThrottled = false;
+          state.mineDropped = { threads: 0, posts: 0 };
           // A real reset: no backfill, nothing re-awarded until a new event earns it.
           state.badges = freshBadges(); state.badgeShelfOpen = false; state.badgeCatalogueOpen = false;
           state.badgeToast = null; state.dwell = freshDwell();

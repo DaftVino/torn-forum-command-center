@@ -266,3 +266,65 @@ test('loading the page with My posts open does not fetch My posts', async () => 
   await settle(env);
   assert.ok(!env.router.seen.includes('user/forumthreads'));
 });
+
+// A limiter that grants the first `allow` slots and refuses the rest, the way
+// the real one refuses the 41st request in a rolling minute.
+function limiterAllowing(allow) {
+  let n = 0;
+  return { reserve() { n += 1; return n <= allow ? { ok: true, waitMs: 0 } : { ok: false, retryAfterMs: 1000 }; } };
+}
+
+const THROTTLE_NOTICE = 'Slowing down to stay inside Torn&#39;s API limit.';
+
+test('lookups stopped by a throttle say so, and the rows not reached stay not checked yet (#24)', async () => {
+  const env = await bootAndClear(mineTable());
+  env.exports.state.settings.view = 'mine';
+  // Two lists and the first lookup; the second lookup is refused.
+  env.exports.refreshMine(NOW, { limiter: limiterAllowing(3) });
+  await settle(env);
+  assert.deepStrictEqual(mineCalls(env), ['user/forumthreads', 'user/forumposts', 'forum/20/thread']);
+  assert.strictEqual(env.exports.state.rows.find((r) => r.id === '21').unreadSource, 'unchecked');
+  const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  assert.ok(html.includes(THROTTLE_NOTICE), 'the throttle notice is missing');
+  assert.match(html, /1 not checked yet/);
+
+  // The next run that is not throttled clears the notice.
+  env.exports.refreshMine(NOW + 60000);
+  await settle(env);
+  const after = env.exports.panelHtml(env.exports.buildPanelModel(NOW + 60000));
+  assert.ok(!after.includes(THROTTLE_NOTICE), 'the notice outlived the throttle');
+});
+
+test('rows Torn sent without an id are dropped and counted in the debug report, counts only (#24)', async () => {
+  const env = await bootAndClear(mineTable({
+    'user/forumthreads': forumThreadsPayload([{ id: 10, replies: 3 }, { id: 0, title: 'NO ID THREAD' }, { id: -4 }]),
+    'user/forumposts': forumPostsPayload([
+      { id: 1, threadId: 20, at: 1600000200 }, { id: 2, threadId: 21, at: 1600000100 },
+      { id: 3, threadId: 0, content: 'DROPPED POST BODY' },
+    ]),
+  }));
+  env.exports.refreshMine(NOW);
+  await settle(env);
+  assert.strictEqual(env.exports.state.mine.threads.length, 3, 'the dropped rows are not stored');
+  const report = env.exports.buildDebugReport();
+  assert.match(report, /my posts dropped rows: threads 2, posts 1/);
+  for (const needle of [KEY, 'NO ID THREAD', 'DROPPED POST BODY']) {
+    assert.strictEqual(report.indexOf(needle), -1, 'the report leaked ' + needle);
+  }
+});
+
+test('a clean My posts run reports no dropped rows', async () => {
+  const env = await bootAndClear(mineTable());
+  assert.match(env.exports.buildDebugReport(), /my posts dropped rows: threads 0, posts 0/, 'before any run');
+  env.exports.refreshMine(NOW);
+  await settle(env);
+  assert.match(env.exports.buildDebugReport(), /my posts dropped rows: threads 0, posts 0/);
+});
+
+test('a run that is not throttled shows no throttle notice', async () => {
+  const env = await bootAndClear(mineTable());
+  env.exports.state.settings.view = 'mine';
+  env.exports.refreshMine(NOW);
+  await settle(env);
+  assert.ok(!env.exports.panelHtml(env.exports.buildPanelModel(NOW)).includes(THROTTLE_NOTICE));
+});
