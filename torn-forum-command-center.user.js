@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Forum Command Center
 // @namespace    https://github.com/DaftVino/torn-forum-command-center
-// @version      0.1.0
+// @version      0.2.0
 // @description  TORN PDA COMPATIBLE. Replaces Torn's small subscribed-threads box with a full forum workspace: folders, tags, pins, read/unread tracking, catch-up since your last visit, local reply drafts, and author-aware search across the threads you follow.
 // @author       DaftVino
 // @license      MIT
@@ -38,7 +38,7 @@
 (function () {
   'use strict';
 
-  var SCRIPT_VERSION = '0.1.0';
+  var SCRIPT_VERSION = '0.2.0';
 
   var PANEL_ID = 'tfcc-panel';
   var FALLBACK_ID = 'tfcc-fallback-mount';
@@ -134,7 +134,7 @@
   var PDA_KEY_SLOT = '###PDA-APIKEY###';
   var PDA_KEY_SENTINEL = ['###', 'PDA-APIKEY', '###'].join('');
 
-  var GREASY_FORK_URL = 'https://greasyfork.org/en/scripts/torn-forum-command-center';
+  var GREASY_FORK_URL = 'https://greasyfork.org/en/scripts/599453-torn-forum-command-center';
 
   // ---- ENGINE START ----------------------------------------------------
   // Pure functions only. No DOM, no network, no GM_*, no ambient clock: any

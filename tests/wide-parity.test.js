@@ -47,6 +47,9 @@ const D45 = require('./wide-45-diffs');
 // the chip rules), applied after #45 (tests/wide-47-diffs.js). The tighter
 // narrow Settings adds nothing here: it is narrow-only.
 const D47 = require('./wide-47-diffs');
+// Releases: the Settings footer's version, which follows @version
+// (tests/wide-release-diffs.js), applied last.
+const DREL = require('./wide-release-diffs');
 
 function expectedView(view, before43) {
   let html = golden.views[view];
@@ -61,7 +64,7 @@ function expectedView(view, before43) {
     html = d.apply(html);
     assert.deepStrictEqual(d.changed(before, html), d.hits[view] || [], 'item ' + d.item + ' in ' + view);
   }
-  for (const d of D45.literals.concat(D47.literals).filter((x) => x.view === view)) {
+  for (const d of D45.literals.concat(D47.literals, DREL.literals).filter((x) => x.view === view)) {
     const n = html.split(d.from).length - 1;
     assert.strictEqual(n, 1, 'item ' + d.item + ': its "from" occurs ' + n + ' times in ' + view);
     html = html.replace(d.from, () => d.to);
