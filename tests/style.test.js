@@ -84,10 +84,13 @@ test('the owned fallback is constrained to the viewport in both directions', () 
 });
 
 test('there is a narrow-width rule, because Torn PDA is the primary target', () => {
+  // #33: the viewport query keeps only the fixed fallback mount, which really
+  // is viewport-relative; the panel's own narrow rules hang off .tfcc-narrow.
   assert.match(css, /@media \(max-width: 600px\)/);
-  const mq = css.slice(css.indexOf('@media (max-width: 600px)'));
+  const mq = css.slice(css.indexOf('@media (max-width: 600px)'), css.indexOf('}\n', css.indexOf('@media (max-width: 600px)') + 30) + 2);
   assert.match(mq, /#tfcc-fallback-mount/);
-  assert.match(mq, /flex-basis:\s*100%/, 'label and control should stack rather than clip');
+  assert.doesNotMatch(mq, /#tfcc-panel /, 'panel rules moved under .tfcc-narrow');
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-kv label'), /flex-basis:\s*100%/, 'label and control stack rather than clip');
 });
 
 test('long content wraps instead of forcing the page sideways', () => {
@@ -165,10 +168,9 @@ test('a long title shrinks beside the pin marker instead of wrapping below it', 
   assert.match(block, /overflow-wrap:\s*anywhere/);
 });
 
-test('row controls are tightened on a phone, where the same nine appear per row', () => {
-  const mq = css.slice(css.indexOf('@media (max-width: 600px)'));
-  assert.match(mq, /\.tfcc-actions button \{ padding: 1px 5px; \}/);
-  assert.match(mq, /max-width:\s*46%/, 'a full-width input per row makes the list endless');
+test('narrow rows put their nine controls in a drawer, not a per-row strip (#33)', () => {
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-drawer'), /grid-template-columns: repeat\(auto-fit, minmax\(7\.5em, 1fr\)\)/,
+    'auto-fit, so 200% text reflows to one column');
 });
 
 test('every anchor is coloured, in every state', () => {
@@ -588,4 +590,50 @@ test('the numeral takes its colour from the cell and has no outline (#33)', () =
   assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-navgrid button[aria-pressed="true"] .tfcc-navnum'),
     /opacity: var\(--tfcc-navnum-opacity-selected\)/);
   assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-navlab'), /white-space: nowrap/, 'a label never wraps');
+});
+
+// Every narrow rule, as [selector, body].
+function narrowRules() {
+  const out = [];
+  const re = /(#tfcc-panel\.tfcc-narrow[^{]*)\{([^}]*)\}/g;
+  let m;
+  while ((m = re.exec(css))) out.push([m[1].trim(), m[2]]);
+  return out;
+}
+
+test('every narrow control outside the header has a real 44px box (#33, spec principle 4)', () => {
+  for (const sel of ['#tfcc-panel.tfcc-narrow button', '#tfcc-panel.tfcc-narrow select',
+    '#tfcc-panel.tfcc-narrow .tfcc-linkbtn', '#tfcc-panel.tfcc-narrow input:not([type="checkbox"])']) {
+    assert.match(blockFor(sel), /min-height: 44px; min-width: 44px;/, sel);
+  }
+  const headerOrTitle = /tfcc-hbtn|tfcc-hshow|tfcc-chip|tfcc-row-title a/;
+  for (const [sel, body] of narrowRules()) {
+    if (!/button|select|input|tfcc-linkbtn/.test(sel) || headerOrTitle.test(sel)) continue;
+    for (const prop of ['min-height', 'min-width']) {
+      const m = new RegExp(prop + ':\\s*([0-9.]+)px').exec(body);
+      if (m) assert.ok(Number(m[1]) >= 44, sel + ' sets ' + prop + ' ' + m[1] + 'px');
+    }
+  }
+});
+
+test('the header buttons use the scaled size, and only they go below 44px', () => {
+  for (const [sel, body] of narrowRules()) {
+    if (/tfcc-hbtn|tfcc-hshow/.test(sel) && /min-height/.test(body)) assert.match(body, /min-height: var\(--tfcc-hb\)/, sel);
+  }
+});
+
+test('narrow rules use min sizes, no fixed heights, no pseudo-element targets, no motion (#33)', () => {
+  for (const [sel, body] of narrowRules()) {
+    // .tfcc-sr is the visually-hidden pattern (1px by design), not a control.
+    if (!/\.tfcc-sr$/.test(sel)) assert.doesNotMatch(body, /(^|[^-])height:\s*\d/, sel + ' sets a fixed height');
+    assert.doesNotMatch(sel, /::?(after|before)/, sel + ' is a pseudo-element hit area');
+    assert.doesNotMatch(body, /transition|animation/, sel + ' animates');
+  }
+});
+
+test('narrow text fields are 16px or more, so iOS does not zoom (#33)', () => {
+  for (const sel of ['#tfcc-panel.tfcc-narrow input:not([type="checkbox"])', '#tfcc-panel.tfcc-narrow select',
+    '#tfcc-panel.tfcc-narrow textarea']) {
+    assert.match(blockFor(sel), /font-size: max\(16px, 1em\);/, sel);
+  }
 });

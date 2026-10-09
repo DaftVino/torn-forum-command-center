@@ -4875,7 +4875,8 @@ test('the header buttons use the scaled size, and only they go below 44px', () =
 
 test('narrow rules use min sizes, no fixed heights, no pseudo-element targets, no motion (#33)', () => {
   for (const [sel, body] of narrowRules()) {
-    assert.doesNotMatch(body, /(^|[^-])height:\s*\d/, sel + ' sets a fixed height');
+    // .tfcc-sr is the visually-hidden pattern (1px by design), not a control.
+    if (!/\.tfcc-sr$/.test(sel)) assert.doesNotMatch(body, /(^|[^-])height:\s*\d/, sel + ' sets a fixed height');
     assert.doesNotMatch(sel, /::?(after|before)/, sel + ' is a pseudo-element hit area');
     assert.doesNotMatch(body, /transition|animation/, sel + ' animates');
   }
@@ -4893,6 +4894,8 @@ test('narrow text fields are 16px or more, so iOS does not zoom (#33)', () => {
 
 Run: `node --test tests/style.test.js`
 Expected: FAIL: no generic rule; the media block still has panel rules.
+
+> Amended during implementation: the no-fixed-height gate exempts `.tfcc-narrow .tfcc-sr`, the 1px visually-hidden pattern, which is not a control.
 
 - [ ] **Step 3: Implement**
 

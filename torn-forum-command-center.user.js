@@ -4563,6 +4563,23 @@
       // ---- #33 narrow layout. Every rule below hangs off .tfcc-narrow, so a
       // wide panel never sees one. ----
       '#' + PANEL_ID + '.tfcc-narrow { padding: 8px; }',
+      // Every narrow control is a real box of at least 44 x 44 (spec principle
+      // 4). The header buttons override this with --tfcc-hb (spec 13b) at a
+      // higher specificity. Text fields are 16px or more, or iOS zooms the page
+      // when one takes focus. One selector per rule, so each is easy to find.
+      '#' + PANEL_ID + '.tfcc-narrow button { min-height: 44px; min-width: 44px; }',
+      '#' + PANEL_ID + '.tfcc-narrow select { min-height: 44px; min-width: 44px; font-size: max(16px, 1em); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-linkbtn { min-height: 44px; min-width: 44px; display: inline-flex;',
+      '  align-items: center; }',
+      '#' + PANEL_ID + '.tfcc-narrow input:not([type="checkbox"]) { min-height: 44px; min-width: 44px;',
+      '  font-size: max(16px, 1em); }',
+      '#' + PANEL_ID + '.tfcc-narrow textarea { font-size: max(16px, 1em); }',
+      // A checkbox is reached through its 44px label.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-kv label { min-width: 0; flex-basis: 100%; min-height: 44px;',
+      '  display: flex; align-items: center; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-grow { flex-basis: 100%; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-actions { gap: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-cap button { min-height: 44px; }',
       // The header: one line. These gaps add up to HB_GAPS (20): logo-chip 6,
       // group 6, and 2 x 4 between the buttons.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-head { gap: 6px; flex-wrap: nowrap; margin-bottom: 6px; }',
@@ -4655,18 +4672,12 @@
       // element rule of Torn's is most likely to reach in.
       '  color: var(--tm-text); background: transparent; }',
       '#' + PANEL_ID + ' .tfcc-tos th { color: var(--tm-meta); font-weight: normal; white-space: nowrap; }',
-      // Narrow screens are the primary target: this runs inside Torn PDA.
+      // Narrow screens are the primary target: this runs inside Torn PDA. The
+      // fallback mount is fixed to the viewport, so its offsets stay a viewport
+      // query; everything inside the panel follows the panel's own width
+      // through .tfcc-narrow (#33).
       '@media (max-width: 600px) {',
       '  #' + FALLBACK_ID + ' { right: 4px; bottom: 4px; width: calc(100vw - 8px); }',
-      '  #' + PANEL_ID + ' { padding: 8px; }',
-      '  #' + PANEL_ID + ' .tfcc-kv label { min-width: 0; flex-basis: 100%; }',
-      '  #' + PANEL_ID + ' .tfcc-grow { flex-basis: 100%; }',
-      '  #' + PANEL_ID + ' .tfcc-row { padding: var(--tfcc-gap-xs) var(--tfcc-gap-sm); }',
-      '  #' + PANEL_ID + ' .tfcc-actions { gap: 3px; }',
-      '  #' + PANEL_ID + ' .tfcc-actions button { padding: 1px 5px; }',
-      '  #' + PANEL_ID + ' .tfcc-actions input, #' + PANEL_ID + ' .tfcc-actions select {',
-      '    padding: 1px 4px; font-size: var(--tfcc-text-sm); max-width: 46%; }',
-      '  #' + PANEL_ID + ' .tfcc-meta { gap: var(--tfcc-gap-sm); }',
       '}',
     ].join('\n');
   }
