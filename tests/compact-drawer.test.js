@@ -224,6 +224,59 @@ test('Enter in the tag field adds the tag, as the inline field did, and focus re
   assert.match(panel.innerHTML, /<span class="tfcc-tag">later<\/span>/, 'the tag shows as a chip, where tags always show');
 });
 
+// PR #44 review: Save in the tag popup adds only. A tag the thread already
+// has (after the same normalising: trimmed, lower case) is left alone and
+// announced, never toggled off.
+test('Tag Save adds only: an existing tag is kept and announced as already tagged (#43)', () => {
+  const { env, api, panel } = openDrawer();
+  api.state.organizer = api.toggleTag(api.state.organizer, '1', 'later');
+  api.recompute(NOW);
+  const input = openEditor(env, 'tag');
+  input.value = '  Later ';
+  panel.dispatchEvent({ type: 'input', target: input });
+  click(env, '[data-act="editor-save"][data-id="1"]');
+  assert.deepStrictEqual(Array.from(api.state.organizer.threads['1'].tags), ['later'], 'still tagged');
+  assert.strictEqual(api.state.liveMessage.text, 'Already tagged');
+  assert.strictEqual(api.state.openEditor, null, 'the popup closed');
+  assert.strictEqual(api.state.drawerEdit, null);
+  // A new tag is still added beside it.
+  const again = openEditor(env, 'tag');
+  again.value = 'guide';
+  panel.dispatchEvent({ type: 'input', target: again });
+  click(env, '[data-act="editor-save"][data-id="1"]');
+  assert.deepStrictEqual(Array.from(api.state.organizer.threads['1'].tags), ['later', 'guide']);
+});
+
+test('addTag adds once and never removes; toggleTag still toggles (#43)', () => {
+  const { api } = bootNarrow();
+  let org = api.addTag(api.freshOrganizer(NOW), '1', ' Ref ');
+  assert.deepStrictEqual(Array.from(org.threads['1'].tags), ['ref']);
+  assert.strictEqual(api.addTag(org, '1', 'REF'), org, 'already there: unchanged');
+  assert.ok(api.hasTag(org, '1', ' ref'));
+  assert.ok(!api.hasTag(org, '2', 'ref'));
+  org = api.toggleTag(org, '1', 'ref');
+  assert.deepStrictEqual(Array.from(org.threads['1'].tags), [], 'the toggle still removes, for the inline field');
+});
+
+// PR #44 review: on a touch keyboard Enter often accepts an IME candidate.
+test('Enter and Escape during IME composition neither save nor cancel (#43)', () => {
+  for (const ime of [{ isComposing: true }, { keyCode: 229 }]) {
+    for (const key of ['Enter', 'Escape']) {
+      const { env, api, panel } = openDrawer();
+      const input = openEditor(env, 'tag');
+      input.value = 'kanji';
+      panel.dispatchEvent({ type: 'input', target: input });
+      let prevented = 0;
+      panel.dispatchEvent(Object.assign({ type: 'keydown', key, target: input, preventDefault() { prevented += 1; } }, ime));
+      const label = key + ' ' + JSON.stringify(ime);
+      assert.deepStrictEqual(env.transform(api.state.openEditor), { id: '1', field: 'tag' }, label + ': still open');
+      assert.ok(!api.state.organizer.threads['1'] || api.state.organizer.threads['1'].tags.length === 0, label + ': nothing saved');
+      assert.strictEqual(api.state.drawerEdit.value, 'kanji', label + ': the text is kept');
+      assert.strictEqual(prevented, 0, label + ': the keyboard keeps its key');
+    }
+  }
+});
+
 test('Save on the note popup writes the note field; the Note button then reads Edit note and shows a set state (#43)', () => {
   const { env, api, panel } = openDrawer();
   const input = openEditor(env, 'note');

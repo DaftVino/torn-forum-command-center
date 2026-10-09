@@ -2422,6 +2422,21 @@
     return next;
   }
 
+  // #43 (PR #44 review): the drawer popup's Save adds a tag, never removes
+  // one. Normalised exactly as toggleTag does. A tag already there leaves the
+  // organizer as it was (the same object), so the caller can say so.
+  function hasTag(org, threadId, tag) {
+    var clean = safeString(tag, 48).trim().toLowerCase();
+    var e = org && org.threads ? org.threads[String(threadId)] : null;
+    return !!(clean && e && Array.isArray(e.tags) && e.tags.indexOf(clean) !== -1);
+  }
+
+  function addTag(org, threadId, tag) {
+    var clean = safeString(tag, 48).trim().toLowerCase();
+    if (!clean || hasTag(org, threadId, clean)) return org;
+    return toggleTag(org, threadId, clean);
+  }
+
   function setPriority(org, threadId, value) {
     var next = cloneOrganizer(org);
     entryOf(next, threadId).priority = clamp(toInt(value, 0), PRIORITY_MIN, PRIORITY_MAX);
@@ -6854,6 +6869,9 @@
         var t = ev && ev.target;
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
         if (act !== 'editor-input' && act !== 'editor-save' && act !== 'editor-cancel') return;
+        // PR #44 review: during IME composition Enter accepts a candidate and
+        // Escape dismisses it; neither is meant for the popup.
+        if (ev.isComposing === true || ev.keyCode === 229) return;
         var key = ev.key;
         if (key !== 'Escape' && key !== 'Esc' && !(key === 'Enter' && act === 'editor-input')) return;
         if (typeof handlers.onAction !== 'function') return;
@@ -7397,7 +7415,8 @@
               entryOf(nNext, id).note = safeString(typed, 2000);
               state.organizer = nNext;
             } else if (typed.trim()) {
-              state.organizer = toggleTag(state.organizer, id, typed.trim());
+              if (hasTag(state.organizer, id, typed)) announce('Already tagged');
+              else state.organizer = addTag(state.organizer, id, typed);
             }
             persist('organizer'); recompute(now);
           }

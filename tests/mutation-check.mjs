@@ -1472,6 +1472,16 @@ const MUTATIONS = [
   ...[
     ['a tap elsewhere in the drawer leaves the popup open', (s) => s.replace(
       'if (state.openEditor && !insideOpenEditor(panel, t)) {', 'if (false) {')],
+    ['Tag Save toggles an existing tag off again (PR #44 review)', (s) => s.replace(
+      "              if (hasTag(state.organizer, id, typed)) announce('Already tagged');\n              else state.organizer = addTag(state.organizer, id, typed);",
+      "              state.organizer = toggleTag(state.organizer, id, typed.trim());")],
+    ['addTag removes a tag that is already there', (s) => s.replace(
+      '    if (!clean || hasTag(org, threadId, clean)) return org;\n    return toggleTag(org, threadId, clean);',
+      '    if (!clean) return org;\n    return toggleTag(org, threadId, clean);')],
+    ['Enter saves during IME composition (PR #44 review)', (s) => s.replace(
+      '        if (ev.isComposing === true || ev.keyCode === 229) return;\n', '')],
+    ['only isComposing counts as composition, not keyCode 229', (s) => s.replace(
+      'if (ev.isComposing === true || ev.keyCode === 229) return;', 'if (ev.isComposing === true) return;')],
     ['Escape no longer cancels the popup', (s) => s.replace("if (key !== 'Escape' && key !== 'Esc' && ", "if (key !== 'Esc' && ")],
     ['Enter no longer saves the popup', (s) => s.replace("!(key === 'Enter' && act === 'editor-input')", 'true')],
     ['opening the popup leaves focus on its button', (s) => s.replace(
