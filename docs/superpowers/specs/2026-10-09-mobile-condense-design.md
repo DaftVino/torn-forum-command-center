@@ -1185,6 +1185,7 @@ how they were applied:
   survives each `innerHTML` rewrite.
 - **Short labels:** "All read" and the owner's "Catch-", up arrow, "2", down
   arrow (U+2191 and U+2193, written as JS escapes so the source stays ASCII).
+  Since #41 the second is "Caught up"; see below.
   The accessible names stay "Mark all read" and "Set catch-up point to now"
   (`aria-label`; the short label span is `aria-hidden`).
 - **Measured in the previews:** at 14px text the full labels need about 340px
@@ -1203,6 +1204,21 @@ how they were applied:
   accessible name "Set catch-up point to now" (WCAG 2.5.3, label in name, level
   A). The owner asked for the full names; a voice-control user saying the
   visible label may not reach it. "All read" is contained in "Mark all read".
+- **Trade-off accepted (#41, owner decision).** The owner accepts the WCAG
+  2.5.3 label-in-name trade-off for the short catch-up label, because voice
+  control is not used in Torn PDA, where the narrow layout runs. The
+  accessible name stays "Set catch-up point to now".
+- **"Caught up" replaces the arrow label (#41, owner decision).** The owner
+  replaced "Catch-", up arrow, "2", down arrow, because it was confusing. The
+  short pair now reads "All read" (marks threads read) and "Caught up" (moves
+  the catch-up point to now). Only the short label changed: the full label,
+  the accessible name, the info button and desktop are as before. Re-measured
+  in the previews at 14px text: "All read" 65px, "Caught up" 83px, the info
+  button 44px, so the short row needs about 204px (218px with the arrows) and
+  all three phone widths still use it. At 200% text, 375px now fits the short
+  labels (113 / 147 / 44) where the arrow label needed the wrap fallback;
+  320px still takes the fallback with an equal split (107 / 107 / 44). 280px
+  at 200% is unsupported, as before (spec 4.7).
 
 ### 14b. One-line row text
 
