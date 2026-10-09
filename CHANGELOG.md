@@ -6,6 +6,21 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 
+- Folder order (#45). Settings lists your folders and a built-in **Unfiled**
+  with up and down arrows; the order sets the order of the Catch up groups and
+  of every folder menu. Unfiled can be moved but not deleted or renamed. A
+  saved workspace from before keeps working, with Unfiled last (Catch up used
+  to sort its groups by name). Exports carry the order. The Threads view
+  stays a flat list with its folder filter.
+- Collapsible Catch up groups (#45). Each folder group's heading, Unfiled's
+  too, is a toggle that hides or shows its rows; the choice is remembered on
+  this device and is not exported. Mark all read still covers hidden rows.
+- The Settings folder note now explains what folders are (they organise
+  only threads you subscribe to, or file by hand, and never add other threads
+  from a forum), how to use them and why they help (#45).
+- Settings, author-only mode: its explanation now leads with what it does (a
+  thread is flagged new only when its author posts, so other people's replies
+  do not mark it new), and the checkbox has a hover summary (#45).
 - A "Create a custom key on Torn" button in the Settings key section (#17). It
   opens Torn's own key page in a new tab, pre-filled with the name "Forum
   Command Center" and exactly the selections the script requests: `user`
@@ -13,8 +28,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   The user confirms the key on Torn and pastes it back. It is a plain link: the
   script makes no request for it and no key is ever placed in it. A test scans
   every API call site, so a new endpoint fails the suite until its selection is
-  added. The link format is unverified, and release is gated on the QA
-  checklist comparing it with a link generated on torn.com/api.html.
+  added. The link format was verified by the owner on 2026-10-09 (#45): the
+  link Torn generated matched it exactly, and a test now pins that string.
 - Settings, Appearance: **Clip titles and summaries that wrap**, on by default
   (#41). On, each thread row's title and note end in an ellipsis on one line
   instead of wrapping, at every width; on a phone the meta line does too, and
@@ -76,6 +91,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Changed
 
+- The priority number on a thread row has its own blue, at every width, so it
+  reads apart from the green "N new" beside it (#45). It is the logo's muted
+  blue tuned per theme for text: #8db3d9 on dark (6.91:1 on the row) and
+  #2e5680 on light (6.21:1 on the row).
 - Expand shows every row in Threads, Catch up and My posts, with no
   "Showing N of M" line; Shrink brings the Rows shown cap back. A view you set
   to Show all stays that way. (#43)

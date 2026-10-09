@@ -612,6 +612,21 @@ test('settings states the author-only option and the real request cost', () => {
   assert.match(env.exports.renderSettingsView(env.exports.buildPanelModel(NOW)), /at most 7 requests a refresh/);
 });
 
+// #45 (owner): the explanation leads with what the setting does for the user,
+// and the checkbox has a one-line hover summary; its name stays its label.
+test('author-only leads with what it does, and its checkbox has a hover summary', () => {
+  const env = loadUserscript({ location: forums() });
+  const html = env.exports.renderSettingsView(env.exports.buildPanelModel(NOW));
+  const info = /<p class="tfcc-note tfcc-infotext" id="tfcc-info-settings-author" hidden>([^<]*)<\/p>/.exec(html)[1];
+  assert.ok(info.startsWith('With this on, a thread in Threads and Catch up is flagged new only when its author posts, '
+    + 'so replies and comments from other people do not mark it new. This suits threads where you follow the '
+    + 'author\'s updates, such as guides, scripts and announcements.'), info);
+  for (const kept of ['so the cost does not change', 'show "not checked"', 'My posts ignores this setting']) {
+    assert.ok(info.includes(kept), kept);
+  }
+  assert.match(html, /<label for="tfcc-author">Only flag new posts by the thread author<\/label><input id="tfcc-author" type="checkbox" data-act="author-only" title="Only show new when the thread&#39;s author posts, not other people&#39;s replies">/);
+});
+
 // -- thread reactions (#10) --------------------------------------------------
 
 const KEY_STORE = [['tfcc:key', 'abcdefghij123456']];

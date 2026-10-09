@@ -62,8 +62,9 @@ Limited or a Custom key and never name Minimal. A Custom key restricted to
 
 ## Still open
 
-- Whether `rating` is net or likes-only. This needs a topic post with
-  dislikes.
+- Rating net vs likes-only still needs a topic post with at least one
+  dislike: the owner's thread checked on 2026-10-08 had none (7 up, 0 down),
+  so it cannot tell the two apart (#45).
 - What `type` means on `user/forumfeed` rows. Not probed.
 - How deleted threads, private forums and `f=0` thread links behave. Not
   probed.
@@ -74,3 +75,5 @@ Limited or a Custom key and never name Minimal. A Custom key restricted to
 |---|---|---|---|
 | Thumbs on the topic post of thread 16589908 | 7 up, 0 down | 7 up, 0 down | **Yes** (owner, 2026-10-08) |
 | Karma on the owner's profile | 26 (all three sources) | 26 | **Yes** (owner, 2026-10-08) |
+| A Minimal Access key runs the script | Minimal Access key | The script works with it | **Yes** (owner, 2026-10-09) |
+| The custom key link | `buildCustomKeyUrl()` | The link Torn generated on torn.com | **Yes**, an exact match (owner, 2026-10-09) |

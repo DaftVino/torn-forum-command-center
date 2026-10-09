@@ -256,6 +256,21 @@
     Object.freeze({ id: 'faction', name: 'Faction', order: 2, forumIds: Object.freeze([]) }),
   ]);
 
+  // #45: the keys of the folder order and of the collapsed set. A folder's
+  // key is FOLDER_KEY_PREFIX + its id; built-in Unfiled's is UNFILED_KEY,
+  // which has no prefix, so no folder id can ever produce it. Before #45 a
+  // folder named "Unfiled" got the id "unfiled" (PR #46 review): its key is
+  // "folder:unfiled", a group of its own, and no data is migrated.
+  var UNFILED_KEY = 'unfiled';
+  var FOLDER_KEY_PREFIX = 'folder:';
+
+  function folderKey(id) { return FOLDER_KEY_PREFIX + id; }
+
+  // The folder id a key names, or null for Unfiled or anything else.
+  function folderIdOfKey(key) {
+    return typeof key === 'string' && key.indexOf(FOLDER_KEY_PREFIX) === 0 ? key.slice(FOLDER_KEY_PREFIX.length) : null;
+  }
+
   // Torn's acceptable usage terms are explicit: "Multiple requests using invalid
   // keys may result in a temporary IP ban - you must account for this by
   // removing disabled or invalid keys upon error." These are the codes that mean
@@ -563,6 +578,11 @@
       }),
       threads: {},
       lastCatchUpAt: toInt(now, 0),
+      // #45: where Unfiled sits among the folders (an index into the folder
+      // list, 0 to folders.length; folders.length means last), and the groups
+      // collapsed on this device (folder keys and UNFILED_KEY).
+      unfiledAt: DEFAULT_FOLDERS.length,
+      collapsedFolders: [],
     };
   }
 
@@ -678,11 +698,26 @@
       }
     }
 
+    folders.sort(function (a, b) { return a.order - b.order; });
+    // #45: both fields are new. Absent (every organizer saved before #45),
+    // Unfiled is last and nothing is collapsed; isRecoveredValue fills absent
+    // top-level fields, so that is not reported as damage.
+    var collapsed = [];
+    if (Array.isArray(raw.collapsedFolders)) {
+      for (var c = 0; c < raw.collapsedFolders.length && collapsed.length <= folders.length; c += 1) {
+        var key = raw.collapsedFolders[c];
+        if (typeof key !== 'string' || collapsed.indexOf(key) !== -1) continue;
+        var cid = folderIdOfKey(key);
+        if (key === UNFILED_KEY || (cid !== null && Object.prototype.hasOwnProperty.call(seenFolder, cid))) collapsed.push(key);
+      }
+    }
     return {
       v: SCHEMA_VERSION,
-      folders: folders.sort(function (a, b) { return a.order - b.order; }),
+      folders: folders,
       threads: threads,
       lastCatchUpAt: Math.max(0, toInt(raw.lastCatchUpAt, 0)),
+      unfiledAt: clamp(toInt(raw.unfiledAt, folders.length), 0, folders.length),
+      collapsedFolders: collapsed,
     };
   }
 
@@ -2257,12 +2292,10 @@
 
   var CUSTOM_KEY_TITLE = 'Forum Command Center';
 
-  // UNVERIFIED. Torn's api.html builds its custom key link in api.js, which
-  // the saved docs/reference copy does not include; the page says only that
-  // the link "will open your settings page in a new tab". This is the format
-  // other Torn tools use. Release is gated on docs/qa-checklist.md comparing it
-  // with a link generated on torn.com/api.html. If Torn's differs, change it
-  // here and nowhere else.
+  // Verified (#45): on 2026-10-09 the owner generated a custom key link on
+  // torn.com and it matched buildCustomKeyUrl() exactly, character for
+  // character. tests/custom-key.test.js pins that string. If Torn ever
+  // changes its format, change it here and nowhere else.
   var CUSTOM_KEY_LINK_BASE = 'https://www.torn.com/preferences.php#tab=api?step=addNewKey';
 
   // A pure function of constants. The user clicks the result and confirms the
@@ -2384,7 +2417,74 @@
         return acc;
       }, {}),
       lastCatchUpAt: org.lastCatchUpAt,
+      unfiledAt: unfiledIndex(org),
+      collapsedFolders: Array.isArray(org.collapsedFolders) ? org.collapsedFolders.slice() : [],
     };
+  }
+
+  // #45: where Unfiled sits, clamped to the folder list. An organizer built
+  // without the field (a caller's literal) has Unfiled last.
+  function unfiledIndex(org) {
+    var n = org && Array.isArray(org.folders) ? org.folders.length : 0;
+    return clamp(toInt(org ? org.unfiledAt : n, n), 0, n);
+  }
+
+  // #45: the one order the user controls: every folder's key, with
+  // UNFILED_KEY at its place among them. Settings lists it; Catch up groups
+  // by it.
+  function folderOrderKeys(org) {
+    var keys = org.folders.map(function (f) { return folderKey(f.id); });
+    keys.splice(unfiledIndex(org), 0, UNFILED_KEY);
+    return keys;
+  }
+
+  // A new organizer whose folders follow keys (a permutation of
+  // folderOrderKeys), renumbered 0..n-1, with Unfiled where keys put it.
+  function withFolderOrder(org, keys) {
+    var next = cloneOrganizer(org);
+    var byId = {};
+    next.folders.forEach(function (f) { byId[f.id] = f; });
+    var folders = [];
+    for (var i = 0; i < keys.length; i += 1) {
+      if (keys[i] === UNFILED_KEY) { next.unfiledAt = folders.length; continue; }
+      var id = folderIdOfKey(keys[i]);
+      if (id === null || !Object.prototype.hasOwnProperty.call(byId, id)) continue;
+      var f = byId[id];
+      delete byId[id];
+      f.order = folders.length;
+      folders.push(f);
+    }
+    next.folders = folders;
+    next.unfiledAt = clamp(next.unfiledAt, 0, folders.length);
+    return next;
+  }
+
+  // Moves a folder, or Unfiled, one place up (delta -1) or down (+1). At
+  // either end, or for a key that is not in the order, the organizer is
+  // returned as it was (the same object), so the caller can tell.
+  function moveFolder(org, key, delta) {
+    var keys = folderOrderKeys(org);
+    var i = keys.indexOf(key);
+    var j = i + (delta < 0 ? -1 : 1);
+    if (i === -1 || j < 0 || j >= keys.length) return org;
+    keys[i] = keys[j];
+    keys[j] = key;
+    return withFolderOrder(org, keys);
+  }
+
+  function isFolderCollapsed(org, key) {
+    return Array.isArray(org.collapsedFolders) && org.collapsedFolders.indexOf(key) !== -1;
+  }
+
+  // Collapsing only hides a group's rows on this device; it changes nothing
+  // about the threads. An unknown key changes nothing.
+  function toggleFolderCollapsed(org, key) {
+    if (folderOrderKeys(org).indexOf(key) === -1) return org;
+    var next = cloneOrganizer(org);
+    var at = next.collapsedFolders.indexOf(key);
+    if (at === -1) next.collapsedFolders.push(key);
+    else next.collapsedFolders.splice(at, 1);
+    return next;
   }
 
   function entryOf(org, threadId) {
@@ -2490,9 +2590,15 @@
     if (!f) return org;
     var next = cloneOrganizer(org);
     var i = next.folders.findIndex(function (x) { return x.id === f.id; });
+    // #45: Unfiled keeps its neighbours. Last stays last, so a new folder
+    // lands above it; otherwise it stays just above the folder it preceded.
+    var at = unfiledIndex(org);
+    var after = at < org.folders.length ? org.folders[at].id : null;
     if (i === -1) next.folders.push(f);
     else next.folders[i] = f;
     next.folders.sort(function (a, b) { return a.order - b.order; });
+    var j = after === null ? -1 : next.folders.findIndex(function (x) { return x.id === after; });
+    next.unfiledAt = j === -1 ? next.folders.length : j;
     return next;
   }
 
@@ -2501,6 +2607,10 @@
   // folder was only a label.
   function deleteFolder(org, folderId) {
     var next = cloneOrganizer(org);
+    // #45: Unfiled keeps its place among the folders that remain.
+    var gone = org.folders.findIndex(function (f) { return f.id === folderId; });
+    if (gone !== -1 && gone < next.unfiledAt) next.unfiledAt -= 1;
+    next.collapsedFolders = next.collapsedFolders.filter(function (k) { return k !== folderKey(folderId); });
     next.folders = next.folders.filter(function (f) { return f.id !== folderId; });
     var ids = Object.keys(next.threads);
     for (var i = 0; i < ids.length; i += 1) {
@@ -2594,6 +2704,9 @@
       folders: organizer.folders.map(function (f) {
         return { id: f.id, name: f.name, order: f.order, forumIds: f.forumIds.slice() };
       }),
+      // #45: where Unfiled sits in the order. Which groups are collapsed is
+      // this device's view, so it is not exported.
+      unfiledAt: unfiledIndex(organizer),
       threads: {},
       drafts: {},
     };
@@ -2652,6 +2765,29 @@
     return { ok: true, payload: payload };
   }
 
+  // #45: an import carries the export's folder order. The folders it names
+  // take its order, with Unfiled where it put it (last for an export made
+  // before #45); folders only this device has keep their relative order and
+  // join above Unfiled when it is last, else at the end.
+  function importedOrder(org, payload) {
+    var mine = folderOrderKeys(org).filter(function (k) { return k !== UNFILED_KEY; });
+    var theirs = [];
+    var listed = payload.folders.map(function (raw, i) { return normaliseFolder(raw, i); })
+      .filter(function (x) { return !!x; })
+      .sort(function (a, b) { return a.order - b.order; });
+    for (var i = 0; i < listed.length; i += 1) {
+      var lk = folderKey(listed[i].id);
+      if (mine.indexOf(lk) !== -1 && theirs.indexOf(lk) === -1) theirs.push(lk);
+    }
+    var at = clamp(toInt(payload.unfiledAt, theirs.length), 0, theirs.length);
+    var keys = theirs.slice();
+    keys.splice(at, 0, UNFILED_KEY);
+    var rest = mine.filter(function (k) { return theirs.indexOf(k) === -1; });
+    if (at === theirs.length) keys.splice.apply(keys, [at, 0].concat(rest));
+    else keys = keys.concat(rest);
+    return keys;
+  }
+
   // Import is additive and reports its effect before it is applied. Nothing is
   // written on a rejection, so a partially valid export cannot half-land.
   function importState(organizer, drafts, text, atobFn, badges) {
@@ -2674,6 +2810,7 @@
         }
       }
       org.folders.sort(function (a, b) { return a.order - b.order; });
+      org = withFolderOrder(org, importedOrder(org, payload));
     }
 
     var known = {};
@@ -4484,6 +4621,10 @@
       '  --tfcc-tier-legend: #c9a2ff; --tfcc-locked: #8a8a8a;',
       // "started" in My posts (#30): 6.2:1 on the row, 7.8:1 on the tag fill.
       '  --tfcc-started: #ff8080;',
+      // #45 (owner): the priority number, the logo's muted blue (#5C768F)
+      // lightened for dark: 6.91:1 on the row, 7.52:1 on the panel. The logo
+      // blue itself is 3.49:1 here, too low for 12px text.
+      '  --tfcc-prio: #8db3d9;',
       // #43 (owner): the "See-through background" setting's two base layers,
       // --tm-bg and --tm-bg-2 with alpha: the panel's own background at 50%
       // and the thread row card at 75%. Dedicated tokens, so no other fill
@@ -4507,6 +4648,9 @@
       '  --tfcc-tier-legend: #6a2fb5; --tfcc-locked: #6e6e6e;',
       // "started" (#30): 6.5:1 on the row, 8.0:1 on the tag fill.
       '  --tfcc-started: #a11414;',
+      // #45: the logo blue darkened for light: 6.21:1 on the row, 6.80:1 on
+      // the panel (the logo blue is 4.22:1 here).
+      '  --tfcc-prio: #2e5680;',
       '  --tfcc-base-bg: rgba(242, 242, 242, 0.5); --tfcc-row-bg: rgba(232, 232, 232, 0.75);',
       '}',
       '#' + FALLBACK_ID + ' { position: fixed; right: 12px; bottom: 12px; z-index: 2147483000;',
@@ -4660,7 +4804,7 @@
       // Inline priority (#30): a number and two small buttons after the title.
       // (1,1,1) beats the generic button rule; flex: none keeps the three on
       // the title's line beside the zero-basis title.
-      '#' + PANEL_ID + ' .tfcc-prio { flex: none; color: var(--tm-meta); font-size: var(--tfcc-text-sm);',
+      '#' + PANEL_ID + ' .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: var(--tfcc-text-sm);',
       '  font-variant-numeric: tabular-nums; }',
       '#' + PANEL_ID + ' button.tfcc-prio-btn { flex: none; font-size: var(--tfcc-text-sm); line-height: 1.2;',
       '  padding: 0 6px; min-width: 22px; }',
@@ -4730,6 +4874,9 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-grow { flex-basis: 100%; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-actions { gap: 6px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-cap button { min-height: 44px; }',
+      // #45: the group toggle and the order arrows keep the 44px target.
+      '#' + PANEL_ID + '.tfcc-narrow button.tfcc-grp { min-height: 44px; }',
+      '#' + PANEL_ID + '.tfcc-narrow button.tfcc-move { min-width: 44px; min-height: 44px; }',
       // The header: one line. These gaps add up to HB_GAPS (20): logo-chip 6,
       // group 6, and 2 x 4 between the buttons.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-head { gap: 6px; flex-wrap: nowrap; margin-bottom: 6px; }',
@@ -4891,6 +5038,19 @@
       '#' + PANEL_ID + ' .tfcc-section { border: 1px solid var(--tm-border); border-radius: 4px;',
       '  padding: var(--tfcc-gap); margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-section h4 { margin: 0 0 var(--tfcc-gap-sm) 0; font-size: var(--tfcc-text); }',
+      // #45: a folder group's heading is a toggle that looks like the heading.
+      // Its rows sit under it while open; collapsed, only the heading shows.
+      '#' + PANEL_ID + ' .tfcc-section h4.tfcc-grphead { margin: 0; }',
+      '#' + PANEL_ID + ' .tfcc-grphead + .tfcc-rows { margin-top: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' button.tfcc-grp { display: flex; align-items: center; gap: var(--tfcc-gap-xs); width: 100%;',
+      '  min-height: 24px; padding: 0; border: 0; background: transparent; color: var(--tm-text);',
+      '  font: inherit; font-weight: bold; text-align: left; cursor: pointer; }',
+      '#' + PANEL_ID + ' button.tfcc-grp:hover .tfcc-grpname { text-decoration: underline; }',
+      // #45: the folder order arrows in Settings. A disabled one (the first
+      // up, the last down) is dimmed; WCAG exempts an inactive control.
+      '#' + PANEL_ID + ' button.tfcc-move { display: inline-flex; align-items: center; justify-content: center;',
+      '  min-width: 24px; min-height: 24px; padding: 0 2px; }',
+      '#' + PANEL_ID + ' button.tfcc-move:disabled { opacity: 0.45; cursor: default; }',
       '#' + PANEL_ID + ' .tfcc-draft { width: 100%; min-height: 90px; resize: vertical; }',
       '#' + PANEL_ID + ' .tfcc-hit { border-left: 3px solid var(--tm-accent-text); padding-left: 8px;',
       '  margin-bottom: var(--tfcc-gap-sm); }',
@@ -5029,24 +5189,36 @@
   // Search lists at most this many thread rows.
   var SEARCH_ROWS_MAX = 50;
 
-  // Catch up groups its shown rows by folder name, sorted. One helper, so the
-  // focus order (renderedRowIds) is always the order the view renders.
-  function groupCatchUp(rows) {
-    var byFolder = {};
+  // Catch up groups its shown rows by folder, in the user's folder order with
+  // Unfiled where they put it (#45; before #45, by name). One helper, so the
+  // focus order (renderedRowIds) is always the order the view renders. org is
+  // the organizer, or any object with its folders, unfiledAt and
+  // collapsedFolders. A collapsed group keeps its rows here; the view renders
+  // only its heading.
+  function groupCatchUp(rows, org) {
+    var names = {};
+    org.folders.forEach(function (f) { names[f.id] = f.name; });
+    var byKey = {};
     for (var i = 0; i < rows.length; i += 1) {
-      var k = rows[i].folderName || 'Unfiled';
-      (byFolder[k] = byFolder[k] || []).push(rows[i]);
+      var fid = rows[i].folderId;
+      var k = fid && Object.prototype.hasOwnProperty.call(names, fid) ? folderKey(fid) : UNFILED_KEY;
+      (byKey[k] = byKey[k] || []).push(rows[i]);
     }
-    return Object.keys(byFolder).sort().map(function (name) { return { name: name, rows: byFolder[name] }; });
+    return folderOrderKeys(org).filter(function (k) { return Object.prototype.hasOwnProperty.call(byKey, k); })
+      .map(function (k) {
+        return { key: k, name: k === UNFILED_KEY ? 'Unfiled' : names[folderIdOfKey(k)], rows: byKey[k],
+          collapsed: isFolderCollapsed(org, k) };
+      });
   }
 
   // The thread rows the current view renders, as string ids in DOM order.
-  function renderedRowIds(view, capped, unchecked, rows) {
+  function renderedRowIds(view, capped, unchecked, rows, org) {
     var list = [];
     if (view === 'threads') list = capped.threads.rows;
     else if (view === 'mine') list = capped.mine.rows;
     else if (view === 'catchup') {
-      groupCatchUp(capped.catchup.rows).forEach(function (g) { list = list.concat(g.rows); });
+      // #45: a collapsed group renders no rows, so an open drawer in it closes.
+      groupCatchUp(capped.catchup.rows, org).forEach(function (g) { if (!g.collapsed) list = list.concat(g.rows); });
       list = list.concat(unchecked || []);
     } else if (view === 'search') list = rows.slice(0, SEARCH_ROWS_MAX);
     return list.map(function (r) { return String(r.id); });
@@ -5088,7 +5260,7 @@
     };
     // #33, spec section 6: after every model build, an open row or info that
     // this view does not render closes, and stays closed.
-    var renderedIds = renderedRowIds(s.view, capped, unchecked, sorted);
+    var renderedIds = renderedRowIds(s.view, capped, unchecked, sorted, state.organizer);
     setTransient(reconcileTransient(currentTransient(), renderedIds, INFO_KEYS_BY_VIEW[s.view] || []));
     state.openEditor = reconcileEditor(state.openEditor, state.openRowId);
 
@@ -5120,6 +5292,9 @@
       lastError: state.lastError,
       notices: state.notices.slice(),
       folders: state.organizer.folders.slice(),
+      // #45: the rest of the folder order, for Settings and Catch up.
+      unfiledAt: unfiledIndex(state.organizer),
+      collapsedFolders: state.organizer.collapsedFolders.slice(),
       tags: allTags(state.organizer),
       categories: state.feed.categories.slice(),
       // Whole on purpose: Search lists these and deep search fetches them.
@@ -5215,6 +5390,8 @@
     shrink: 'M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5',
     up: 'M6 15l6-6 6 6',
     down: 'M6 9l6 6 6-6',
+    // #45: a collapsed folder group's chevron (an open one uses down).
+    right: 'M9 6l6 6-6 6',
     funnel: 'M4 5h16l-6 7v6l-4 2v-8z',
     more: 'M5.5 12h1M11.5 12h1M17.5 12h1',
     check: 'M5 12.5l4.5 4.5L19 7.5',
@@ -5778,6 +5955,27 @@
       + '<span class="tfcc-lshort" aria-hidden="true">' + escapeHtml(short) + '</span></button>';
   }
 
+  // #45: a folder group's rows container id. Folder ids are slugs, but an
+  // imported one may hold anything. Letters, digits and "-" pass; every other
+  // character, "_" included, becomes "_" and four hex digits, so two keys
+  // never share an id (PR #46 review: "ops/a" and "ops?a" did).
+  function groupDomId(key) {
+    return 'tfcc-grp-' + String(key).replace(/[^A-Za-z0-9-]/g, function (c) {
+      return '_' + ('000' + c.charCodeAt(0).toString(16)).slice(-4);
+    });
+  }
+
+  // #45: a folder group's heading is a toggle. Its name (and visible text)
+  // is the group's name and count; aria-expanded says whether its rows show.
+  function renderGroupHead(g) {
+    var open = !g.collapsed;
+    return '<div class="tfcc-section"><h4 class="tfcc-grphead"><button type="button" class="tfcc-grp" data-act="group-toggle"'
+      + ' data-id="' + escapeHtml(g.key) + '" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="'
+      + groupDomId(g.key) + '" title="' + escapeHtml((open ? 'Collapse ' : 'Expand ') + g.name) + '">'
+      + glyph(open ? 'down' : 'right') + '<span class="tfcc-grpname">' + escapeHtml(g.name) + ' (' + g.rows.length
+      + ')</span></button></h4>';
+  }
+
   function renderCatchUpView(model) {
     var out = [];
     out.push(model.narrow ? '<div class="tfcc-bar tfcc-cubar">' : '<div class="tfcc-bar">');
@@ -5818,10 +6016,18 @@
     }
     // Cap the flat, activity-sorted list first, then group what is shown.
     // Capping per folder would show up to N rows times the folder count.
-    var groups = groupCatchUp(model.capped.catchup.rows);
+    var groups = groupCatchUp(model.capped.catchup.rows, {
+      folders: model.folders, unfiledAt: model.unfiledAt, collapsedFolders: model.collapsedFolders,
+    });
     for (var n = 0; n < groups.length; n += 1) {
-      out.push('<div class="tfcc-section"><h4>' + escapeHtml(groups[n].name)
-        + ' (' + groups[n].rows.length + ')</h4><div class="tfcc-rows">');
+      out.push(renderGroupHead(groups[n]));
+      // #45: a collapsed group renders its heading only. The rows' container
+      // stays, empty and hidden, so aria-controls names a real element.
+      if (groups[n].collapsed) {
+        out.push('<div class="tfcc-rows" id="' + groupDomId(groups[n].key) + '" hidden></div></div>');
+        continue;
+      }
+      out.push('<div class="tfcc-rows" id="' + groupDomId(groups[n].key) + '">');
       for (var j = 0; j < groups[n].rows.length; j += 1) {
         out.push(rowHtml(groups[n].rows[j], model));
       }
@@ -5993,6 +6199,15 @@
     return out.join('');
   }
 
+  // #45: a folder's (or Unfiled's) up or down arrow in Settings. Disabled at
+  // the end it cannot pass.
+  function moveButton(key, label, dir, disabled) {
+    var name = 'Move ' + label + ' ' + dir;
+    return '<button type="button" class="tfcc-move" data-act="folder-' + dir + '" data-id="' + escapeHtml(key)
+      + '" aria-label="' + escapeHtml(name) + '" title="' + escapeHtml(name) + '"' + (disabled ? ' disabled' : '') + '>'
+      + glyph(dir) + '</button>';
+  }
+
   function renderSettingsView(model) {
     var out = [];
     out.push('<div class="tfcc-section"><h4>Torn API key</h4>');
@@ -6067,11 +6282,17 @@
       + renderInfoButton('settings-budget', model.openInfoId) + '</div>');
     out.push(renderInfoText('settings-budget', model.openInfoId, budgetText));
     out.push('<div class="tfcc-kv"><label for="tfcc-author">Only flag new posts by the thread author</label>'
-      + '<input id="tfcc-author" type="checkbox" data-act="author-only"'
+      // #45 (owner): a one-line hover summary. The checkbox's name stays its
+      // label; the title is only its description.
+      + '<input id="tfcc-author" type="checkbox" data-act="author-only" title="'
+      + escapeHtml('Only show new when the thread\'s author posts, not other people\'s replies') + '"'
       + (model.settings.authorOnly ? ' checked' : '') + '></div>');
     // Shown whether the setting is on or off, so the limits are read first.
-    var authorText = 'With this on, a thread in Threads and Catch up counts as new only when its '
-      + 'author has posted since you last looked. Each activity lookup then reads the thread\'s posts since '
+    // #45 (owner): it leads with what the setting does for the user.
+    var authorText = 'With this on, a thread in Threads and Catch up is flagged new only when its author posts, '
+      + 'so replies and comments from other people do not mark it new. This suits threads where you follow the '
+      + 'author\'s updates, such as guides, scripts and announcements. It counts the author\'s posts since you '
+      + 'last looked. Each activity lookup then reads the thread\'s posts since '
       + 'you last looked, ' + POSTS_PER_PAGE + ' at a time, newest first, instead of its last-post time. '
       + 'Each page is one lookup from the same allowance, so the cost does not change: with your setting of '
       + model.settings.enrichBudget + ', a Threads refresh is at most ' + (3 + model.settings.enrichBudget)
@@ -6144,11 +6365,34 @@
 
     out.push('<div class="tfcc-section"><div class="tfcc-infobar"><h4>Folders</h4>'
       + renderInfoButton('settings-folders', model.openInfoId) + '</div>');
-    out.push(renderInfoText('settings-folders', model.openInfoId, 'A folder can claim a forum, and new '
-      + 'subscriptions from that forum file themselves into it. Filing a thread by hand always wins over a rule.'));
-    for (var i = 0; i < model.folders.length; i += 1) {
-      var f = model.folders[i];
-      out.push('<div class="tfcc-kv"><label>' + escapeHtml(f.name) + '</label>');
+    // #45 (owner): what a folder is, how to use one, and why it helps. Each
+    // claim is the code's: applyAutoAssign files a subscription with no folder
+    // into the folder claiming its forum, a hand filing is never moved, Catch
+    // up groups by folder in the order (groupCatchUp), the Threads folder
+    // filter, encodeState, and the First folder badge (ownFoldersFilled).
+    out.push(renderInfoText('settings-folders', model.openInfoId, ''
+      + 'Folders organise only threads you subscribe to (and ones you file by hand); they never add other threads '
+      + 'from a forum. To use them: add a folder below; optionally claim a forum, so new subscriptions from that '
+      + 'forum file themselves into it; or file a thread from the folder menu on its row. Filing by hand always '
+      + 'wins over a claim. The arrows set the order, Unfiled included. This helps because Catch up groups threads '
+      + 'with new posts by folder, in that order, so the ones you care about most come first, and a group you do '
+      + 'not need right now collapses out of the way; Threads can also be filtered to one folder. Folders stay on '
+      + 'this device and travel in the export. With badges on, filing a thread in a folder of your own earns the '
+      + 'First folder badge.'));
+    // #45: one list in the user's order, Unfiled included. Unfiled moves but
+    // is built in: no delete, no rename, no forum claim.
+    var orderKeys = folderOrderKeys({ folders: model.folders, unfiledAt: model.unfiledAt });
+    var byId = {};
+    model.folders.forEach(function (x) { byId[x.id] = x; });
+    for (var i = 0; i < orderKeys.length; i += 1) {
+      var unf = orderKeys[i] === UNFILED_KEY;
+      var f = unf ? { id: UNFILED_KEY, name: 'Unfiled' } : byId[folderIdOfKey(orderKeys[i])];
+      out.push('<div class="tfcc-kv tfcc-forder"><label>' + escapeHtml(f.name) + '</label>');
+      out.push(moveButton(orderKeys[i], f.name, 'up', i === 0) + moveButton(orderKeys[i], f.name, 'down', i === orderKeys.length - 1));
+      if (unf) {
+        out.push('<span class="tfcc-note">Threads in no folder</span></div>');
+        continue;
+      }
       out.push('<select data-act="folder-forum" data-id="' + escapeHtml(f.id) + '">');
       out.push('<option value="">Claim a forum...</option>');
       for (var c = 0; c < model.categories.length; c += 1) {
@@ -7557,6 +7801,25 @@
             persist('organizer'); recompute(now);
             recordBadgeEvent({ type: 'tick' }, now);
           }
+          redraw(); return;
+        }
+        if ((act === 'folder-up' || act === 'folder-down') && id) {
+          var moved = moveFolder(state.organizer, id, act === 'folder-up' ? -1 : 1);
+          if (moved !== state.organizer) { state.organizer = moved; persist('organizer'); }
+          // Focus stays on the arrow, or on the other one when this one is
+          // now disabled at an end.
+          var mKeys = folderOrderKeys(state.organizer);
+          var mAt = mKeys.indexOf(id);
+          var atEnd = act === 'folder-up' ? mAt === 0 : mAt === mKeys.length - 1;
+          var mAct = atEnd ? (act === 'folder-up' ? 'folder-down' : 'folder-up') : act;
+          state.focusIntent = [attrSel('data-act', mAct) + attrSel('data-id', id)];
+          if (mAt !== -1) announce('Moved to ' + (mAt + 1) + ' of ' + mKeys.length + '.');
+          redraw(); return;
+        }
+        if (act === 'group-toggle' && id) {
+          // #45: hides or shows a folder group's rows on this device. Nothing
+          // about the threads changes, so nothing is recomputed.
+          state.organizer = toggleFolderCollapsed(state.organizer, id); persist('organizer');
           redraw(); return;
         }
         if (act === 'folder-delete' && id) {

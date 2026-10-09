@@ -95,6 +95,8 @@ const EXPORT_NAMES = [
   'DEFAULT_FOLDERS', 'PRIORITY_MIN', 'PRIORITY_MAX',
   'folderFor', 'applyAutoAssign', 'toggleTag', 'addTag', 'hasTag', 'setPriority', 'setFolder',
   'togglePin', 'markRead', 'deleteFolder', 'upsertFolder', 'allTags',
+  // #45: folder order and collapsing
+  'UNFILED_KEY', 'folderOrderKeys', 'moveFolder', 'toggleFolderCollapsed', 'isFolderCollapsed',
   // engine: drafts
   'DRAFT_MAX_CHARS', 'saveDraft', 'draftFor', 'deleteDraft', 'draftList',
   // engine: my posts

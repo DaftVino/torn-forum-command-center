@@ -40,6 +40,9 @@ const D41 = require('./wide-41-diffs');
 // markup entry states how many places it changes; each CSS entry replaces
 // one line of main's stylesheet, required exactly once.
 const D43 = require('./wide-43-diffs');
+// #45: the priority colour, the reorderable folder list and the collapsible
+// Catch up groups, applied after #43 (tests/wide-45-diffs.js).
+const D45 = require('./wide-45-diffs');
 
 function expectedView(view, before43) {
   let html = golden.views[view];
@@ -54,13 +57,18 @@ function expectedView(view, before43) {
     html = d.apply(html);
     assert.deepStrictEqual(d.changed(before, html), d.hits[view] || [], 'item ' + d.item + ' in ' + view);
   }
+  for (const d of D45.literals.filter((x) => x.view === view)) {
+    const n = html.split(d.from).length - 1;
+    assert.strictEqual(n, 1, 'item ' + d.item + ': its "from" occurs ' + n + ' times in ' + view);
+    html = html.replace(d.from, () => d.to);
+  }
   return html;
 }
 
 // Main's stylesheet with the #43 line replacements applied.
 function expectedCss() {
   let out = golden.css.slice();
-  for (const d of D43.css) {
+  for (const d of D43.css.concat(D45.css)) {
     const n = out.filter((line) => line === d.from).length;
     assert.strictEqual(n, d.times || 1, 'item ' + d.item + ': its "from" occurs ' + n + ' times in the main stylesheet');
     out = out.flatMap((line) => (line === d.from ? d.to : [line]));
@@ -95,6 +103,13 @@ test('every complete wide view is main\'s, byte for byte, apart from the listed 
   for (const view of views) assert.strictEqual(now.views[view], expectedView(view), view);
 });
 
+// #45: Threads stays flat (owner decision), so its wide markup is untouched;
+// only Catch up's group heading and Settings' folder list change.
+test('the #45 list touches only Catch up and Settings', () => {
+  assert.ok(D45.literals.length > 0);
+  for (const d of D45.literals) assert.ok(['catchup', 'settings'].includes(d.view), d.item);
+});
+
 test('the 13d list touches only the views the owner changed', () => {
   for (const d of D13) assert.ok(['catchup', 'mine', 'search', 'drafts', 'settings'].includes(d.view), d.item);
 });
@@ -122,43 +137,107 @@ test('no stylesheet line from main was removed or edited, apart from the rules t
   assert.deepStrictEqual(missing, [], 'wide CSS lines removed, edited or reordered');
 });
 
-// The only new rules a wide panel may see: the 13d info button, its text, the
-// glyph it draws and the hidden attribute (spec 13d, every size). Everything
-// else #33 adds hangs off .tfcc-narrow.
-const WIDE_13D_SELECTORS = new Set([
-  '#tfcc-panel [hidden]',
-  '#tfcc-panel .tfcc-gl',
-  '#tfcc-panel .tfcc-gl path',
-  '#tfcc-panel .tfcc-infobar',
-  '#tfcc-panel .tfcc-infobar h4',
+// Every stylesheet line a wide panel may see that is not main's (PR #46
+// review: listing selectors let any body through under an approved selector,
+// and token lines through unchecked). Each list names complete lines; the
+// test compares the multiset exactly, so an extra line, an edited body or a
+// second copy fails even under an approved selector. A line is wide-visible
+// unless every selector of the rule it sits in hangs off .tfcc-narrow.
+//
+// 13d (every size): the hidden attribute, the glyph, the info bar, the info
+// button (its body as #43 made it a bare icon) and its explanation.
+const WIDE_13D_LINES = [
+  '#tfcc-panel [hidden] { display: none !important; }',
+  '#tfcc-panel .tfcc-gl { display: block; flex: none; }',
+  '#tfcc-panel .tfcc-gl path { fill: none; stroke: currentColor; stroke-width: 2;',
+  '  stroke-linecap: round; stroke-linejoin: round; }',
+  '#tfcc-panel .tfcc-infobar { display: flex; align-items: center; gap: var(--tfcc-gap-sm);',
+  '  flex-wrap: nowrap; margin-bottom: var(--tfcc-gap-sm); }',
   // PR #38 review: the note in an info bar wraps inside itself.
-  '#tfcc-panel .tfcc-infobar > .tfcc-note',
-  '#tfcc-panel button.tfcc-info',
-  '#tfcc-panel button.tfcc-info[aria-expanded="true"]',
-  '#tfcc-panel .tfcc-infotext',
-]);
+  '#tfcc-panel .tfcc-infobar > .tfcc-note { flex: 0 1 auto; min-width: 0; }',
+  '#tfcc-panel .tfcc-infobar h4 { margin: 0; }',
+  '#tfcc-panel button.tfcc-info { display: inline-flex; align-items: center; justify-content: center;',
+  '  flex: none; min-width: 44px; min-height: 44px; padding: 0; border-color: transparent; background: transparent; }',
+  '#tfcc-panel button.tfcc-info[aria-expanded="true"] { background: transparent; color: var(--tm-accent-text); }',
+  '#tfcc-panel .tfcc-infotext { border-left: 3px solid var(--tm-accent-text);',
+  '  padding: 2px 0 2px 8px; margin: 0 0 var(--tfcc-gap-sm) 0; }',
+];
 
-// #41: the clip setting's rules, which a wide panel sees only while it carries
-// tfcc-clip (the setting on). Each hangs off .tfcc-clip.
-const WIDE_41_SELECTORS = new Set([
-  '#tfcc-panel.tfcc-clip .tfcc-row-main .tfcc-row-title',
-  '#tfcc-panel.tfcc-clip .tfcc-row > .tfcc-note',
-  '#tfcc-panel.tfcc-clip .tfcc-row.tfcc-open > .tfcc-note',
-]);
+// #33: the narrow header size and the nav numeral tokens, declared in the
+// base block (a token alone changes nothing a wide panel paints).
+const WIDE_33_TOKENS = [
+  '  --tfcc-hb: 44px;',
+  '  --tfcc-navnum-opacity: 0.14; --tfcc-navnum-opacity-selected: 0.09;',
+  '  --tfcc-navlab-opacity: 0.9; --tfcc-navlab-opacity-selected: 0.96; --tfcc-navnum-size: 40px;',
+];
 
-test('every new stylesheet rule is scoped to .tfcc-narrow or is a listed 13d or #41 rule', () => {
-  const old = new Set(expectedCss());
-  const stray = captureWide(loadUserscript, FORUMS_LOCATION).css
-    .filter((line) => !old.has(line) && line.indexOf('{') !== -1)
-    .map((line) => line.slice(0, line.indexOf('{')).trim())
-    .filter((sel) => sel.indexOf('.tfcc-narrow') === -1 && !WIDE_13D_SELECTORS.has(sel) && !WIDE_41_SELECTORS.has(sel)
-      && !D43.selectors.has(sel));
-  assert.deepStrictEqual(stray, [], 'a new rule a wide panel would see');
-  for (const sel of WIDE_41_SELECTORS) assert.ok(sel.startsWith('#tfcc-panel.tfcc-clip '), sel);
-  // #43: every see-through rule hangs off its setting's class.
-  for (const sel of D43.selectors) {
-    if (sel.indexOf('tfcc-seethrough') !== -1) assert.ok(/^#tfcc-panel\.tfcc-seethrough(\.| |$)/.test(sel), sel);
+// #41: the clip setting's rules, which a wide panel sees only while it
+// carries tfcc-clip (the setting on).
+const WIDE_41_LINES = [
+  '#tfcc-panel.tfcc-clip .tfcc-row-main .tfcc-row-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+  '#tfcc-panel.tfcc-clip .tfcc-row > .tfcc-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+  '#tfcc-panel.tfcc-clip .tfcc-row.tfcc-open > .tfcc-note { white-space: normal; overflow: visible; }',
+];
+
+// Each stylesheet line with the selector of the innermost rule it sits in.
+function withContext(lines) {
+  const stack = [];
+  return lines.map((line) => {
+    let ctx = stack.length ? stack[stack.length - 1] : null;
+    const open = line.indexOf('{');
+    if (open !== -1) { ctx = line.slice(0, open).trim(); stack.push(ctx); }
+    const closes = (line.match(/\}/g) || []).length;
+    for (let i = 0; i < closes; i += 1) stack.pop();
+    return { line, ctx };
+  });
+}
+
+const narrowOnly = (ctx) => !!ctx && !ctx.startsWith('@')
+  && ctx.split(',').every((part) => part.indexOf('.tfcc-narrow') !== -1);
+
+// The lines of the stylesheet that are not main's (after the listed CSS
+// replacements) and that a wide panel can see, in order.
+function wideInsertedLines(css) {
+  const expected = expectedCss();
+  const mains = new Array(css.length).fill(false);
+  let at = 0;
+  for (const line of expected) {
+    const found = css.indexOf(line, at);
+    if (found !== -1) { mains[found] = true; at = found + 1; }
   }
+  return withContext(css).filter((x, i) => !mains[i] && !narrowOnly(x.ctx)).map((x) => x.line);
+}
+
+test('every stylesheet line a wide panel sees beyond main\'s is listed, exactly and with its count', () => {
+  const approved = WIDE_13D_LINES.concat(WIDE_33_TOKENS, WIDE_41_LINES, D43.inserted, D45.inserted);
+  const now = wideInsertedLines(captureWide(loadUserscript, FORUMS_LOCATION).css);
+  assert.deepStrictEqual(now.slice().sort(), approved.slice().sort(), 'wide CSS beyond the listed lines');
+  for (const line of WIDE_41_LINES) assert.ok(line.startsWith('#tfcc-panel.tfcc-clip '), line);
+  // #43: every see-through rule hangs off its setting's class.
+  for (const line of D43.inserted) {
+    if (line.indexOf('tfcc-seethrough') !== -1 && line.indexOf('{') !== -1) {
+      assert.ok(/^#tfcc-panel\.tfcc-seethrough(\.| |\{)/.test(line), line);
+    }
+  }
+});
+
+test('the wide CSS check rejects an extra body line or a second rule under an approved selector', () => {
+  // The two holes the PR #46 review named, planted on a copy of the stylesheet.
+  const css = captureWide(loadUserscript, FORUMS_LOCATION).css;
+  const approved = WIDE_13D_LINES.concat(WIDE_33_TOKENS, WIDE_41_LINES, D43.inserted, D45.inserted).sort();
+  const grp = css.indexOf('  font: inherit; font-weight: bold; text-align: left; cursor: pointer; }');
+  assert.ok(grp !== -1);
+  const italic = css.slice();
+  italic.splice(grp, 0, '  font-style: italic;');
+  assert.notDeepStrictEqual(wideInsertedLines(italic).sort(), approved, 'an extra body line');
+  const twice = css.concat(['#tfcc-panel .tfcc-prio { color: red; }']);
+  assert.notDeepStrictEqual(wideInsertedLines(twice).sort(), approved, 'a second rule for an approved selector');
+  const token = css.concat(['#tfcc-panel {', '  --tfcc-prio: #ff0000;', '}']);
+  assert.notDeepStrictEqual(wideInsertedLines(token).sort(), approved, 'a third token declaration');
+  const narrow = css.concat(['#tfcc-panel.tfcc-narrow .x, #tfcc-panel .x { color: red; }']);
+  assert.notDeepStrictEqual(wideInsertedLines(narrow).sort(), approved, 'a selector list only half narrow');
+  assert.deepStrictEqual(wideInsertedLines(css.concat(['#tfcc-panel.tfcc-narrow .x { color: red; }'])).sort(), approved,
+    'a narrow-only rule is not a wide change');
 });
 
 // #41: with the clip setting ON, the wide output is the OFF output plus

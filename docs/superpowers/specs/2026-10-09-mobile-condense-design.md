@@ -1471,3 +1471,97 @@ change desktop too, deliberately, each as a listed replacement in
   (the pure `rowLimitFor` returns All in takeover). `state.showAll` is never
   written, so Shrink restores the cap, and a view set to Show all stays so.
   The nav counts are unchanged.
+
+### 14g. Priority colour, folder order, collapsible groups (#45)
+
+The owner's feedback after #43. Every change applies at every width; the wide
+changes are listed replacements in `tests/wide-45-diffs.js` (the golden was
+not regenerated).
+
+- **Priority colour.** The priority number (`.tfcc-prio`: the wide row's
+  title line, the narrow meta line and the drawer) has its own token,
+  `--tfcc-prio`, instead of the meta grey. It starts from the logo's muted
+  blue `#5C768F`, which is 3.49:1 on the dark panel and 4.22:1 on the light
+  one, too low for 12px text. Tuned: dark `#8db3d9` (6.91:1 on the row, 7.52:1
+  on the panel, 8.62:1 on the field fill); light `#2e5680` (6.21:1, 6.80:1,
+  7.61:1). Over the see-through underlays (report only) the worst is 4.71:1
+  (dark over white) and 4.75:1 (light over black), so it holds AA there too.
+  It must stay a blue (blue the strongest channel, red the weakest) at a CIE76
+  distance of 20 or more from the "new" green and the meta grey
+  (`tests/style.test.js`).
+- **Which views group by folder.** Only Catch up. Threads, My posts and
+  Search are flat lists; Threads has a folder filter. **Owner decision:**
+  Threads stays flat and its folder filter stays as it is. The order and the
+  collapsible groups apply to Catch up; the folder menus (each row's folder
+  select and the Threads folder filter) follow the order.
+- **Storage (decision).** `organizer.folders` was already an ordered list with
+  an `order` field; reordering renumbers it 0..n-1. Unfiled's place is
+  `organizer.unfiledAt`, an index into the folder list (0 to
+  `folders.length`; `folders.length` is last). Chosen over a sentinel entry in
+  `folders`, because a sentinel would reach every reader of `folders` (the
+  export, the folder menus, auto-filing, badges) as a fake folder, and an
+  older script would load it as a real one. Absent (every organizer saved
+  before #45), Unfiled is **last**. Before #45 Catch up sorted its groups by
+  name, so Unfiled sat alphabetically; no index reproduces a name sort once
+  the user can reorder, and last is the stable default. A new folder lands
+  above Unfiled when Unfiled is last, else at the end; deleting a folder keeps
+  Unfiled among the folders that remain.
+- **Keys (PR #46 review).** The order and the collapsed set use keys, not
+  bare ids: a folder's key is `"folder:" + id`, built-in Unfiled's is
+  `"unfiled"`. Before #45 a folder named "Unfiled" got the id `"unfiled"`;
+  its key is `"folder:unfiled"`, so it can never collide with the built-in
+  group, and no data is migrated (threads keep `folderId: "unfiled"`). The
+  Settings arrows and the group toggles carry the key as `data-id`.
+- **Collapsed groups:** `organizer.collapsedFolders`, keys as above.
+  Remembered on this device; never exported. A key naming no folder (or a
+  bare folder id) is dropped by the normaliser.
+- **Group DOM ids** (`aria-controls`) encode the key injectively: letters,
+  digits and `-` pass, every other character becomes `_` and four hex digits
+  (PR #46 review: `ops/a` and `ops?a` used to share one id).
+- **Upgrade.** Both fields are top-level, so `isRecoveredValue` fills them
+  when absent: main's organizer loads with no "Folders and tags were damaged"
+  notice. A present but wrong value (an index past the end, a key naming no
+  folder) is still damage.
+- **Export and import.** The export carries `unfiledAt` (folder `order` was
+  already there). Import adopts the export's order for the folders it names,
+  with Unfiled where it put it (last for an export made before #45); folders
+  only this device has keep their relative order, above Unfiled when it is
+  last, else at the end.
+- **Settings.** The Folders list is the whole order: each folder, and
+  Unfiled, with up and down arrows (`data-act="folder-up"` /
+  `"folder-down"`, ASCII SVG chevrons, named and titled "Move <name> up" /
+  "Move <name> down"). The first up and the last down are `disabled`. Unfiled
+  has no forum claim, no delete and no rename; it reads "Threads in no
+  folder". Focus stays on the arrow pressed, or moves to the other arrow when
+  the move reaches an end. The folder note (owner rewrite) says what a folder
+  is, how to use one and why it helps: folders organise only threads you
+  subscribe to (and ones you file by hand) and never add others; add one,
+  optionally claim a forum (`applyAutoAssign`), or file from the row's folder
+  menu, a hand filing winning over a claim; the arrows set the order, Unfiled
+  included; Catch up groups by folder in that order and groups collapse;
+  Threads filters to one folder; folders stay on the device and travel in the
+  export; with badges on, a thread in a folder of your own earns First folder
+  (`ownFoldersFilled`). One paragraph, the 13d info pattern.
+- **Author-only (owner).** The "About author-only mode" text leads with what
+  the setting does: a thread is flagged new only when its author posts, so
+  other people's replies do not mark it new; it suits guides, scripts and
+  announcements. The cost, "not checked" and My posts details follow as
+  before. The checkbox gains `title="Only show new when the thread's author
+  posts, not other people's replies"`; its accessible name stays its label.
+- **Folder menus.** The folders follow the order. "Unfiled" stays the first
+  option of a row's folder select, as the "no folder" choice (and so every
+  wide row is still main's byte for byte).
+- **Catch up groups.** The heading is a `<button>` (`data-act="group-toggle"`)
+  inside the `h4`, with `aria-expanded`, `aria-controls` naming the group's
+  rows, an ASCII SVG chevron (down open, right collapsed), a title ("Collapse
+  Guides" / "Expand Guides") and the count ("Guides (1)"). Collapsed, the
+  group renders its heading and an empty hidden rows container only. Narrow
+  the toggle is 44px tall; wide at least 24px. Decided interactions:
+  - **Mark all read** covers every row, collapsed or not: collapsing only
+    hides.
+  - **Rows cap:** the cap still applies to the flat list first; collapsing
+    does not change which rows are in it, its "Showing N of M" line, or the
+    heading's count.
+  - **An open drawer** in a group that collapses closes: its row is no longer
+    rendered, so the section 6 reconcile closes it, and it does not reopen.
+  - **Focus** stays on the toggle (the same `data-act` and `data-id`).

@@ -198,7 +198,7 @@ test('the export is built from folders, drafts and badges only, so the My posts 
   const { organizer, drafts } = populated();
   const badges = Object.assign(api.freshBadges(), { mine: { posts: [1] }, visits: 3 });
   const payload = api.decodeState(api.encodeState(organizer, drafts, btoaFn, badges), atobFn).payload;
-  assert.deepStrictEqual(Object.keys(payload).sort(), ['badges', 'drafts', 'folders', 'threads', 'v']);
+  assert.deepStrictEqual(Object.keys(payload).sort(), ['badges', 'drafts', 'folders', 'threads', 'unfiledAt', 'v']);
   assert.strictEqual(payload.badges.mine, undefined, 'only whitelisted badge fields are exported');
 });
 
@@ -207,6 +207,7 @@ test('an export carries no settings, so no rows shown either', () => {
   // and rowsShown has to be included deliberately, not by accident.
   const { organizer, drafts } = populated();
   const decoded = api.decodeState(api.encodeState(organizer, drafts, btoaFn), atobFn);
-  assert.deepStrictEqual(Object.keys(decoded.payload).sort(), ['drafts', 'folders', 'threads', 'v']);
+  // #45: unfiledAt is part of the folder order, not a setting.
+  assert.deepStrictEqual(Object.keys(decoded.payload).sort(), ['drafts', 'folders', 'threads', 'unfiledAt', 'v']);
   assert.strictEqual(JSON.stringify(decoded.payload).indexOf('rowsShown'), -1);
 });

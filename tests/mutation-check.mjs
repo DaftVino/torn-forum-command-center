@@ -1540,6 +1540,108 @@ const MUTATIONS = [
     ['a saved note does not show on the Note button', (s) => s.replace(
       "opener('note', 'Note', row.note ? 'Edit note' : 'Add note', !!row.note)", "opener('note', 'Note', 'Add note', false)")],
   ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/compact-drawer.test.js', apply })),
+  // #45 item 1: the priority number's own blue.
+  ...[
+    ['the priority number falls back to the meta grey', (s) => s.replace(
+      "' .tfcc-prio { flex: none; color: var(--tfcc-prio);", "' .tfcc-prio { flex: none; color: var(--tm-meta);")],
+    ['the dark priority blue is the raw logo blue, under AA', (s) => s.replace(
+      "'  --tfcc-prio: #8db3d9;',", "'  --tfcc-prio: #5c768f;',")],
+    ['the light priority blue is the raw logo blue, under AA', (s) => s.replace(
+      "'  --tfcc-prio: #2e5680;',", "'  --tfcc-prio: #5c768f;',")],
+  ].map(([name, apply]) => ({ name: '#45: ' + name, suite: 'tests/style.test.js', apply })),
+  // #45 item 2: folder order, Unfiled, collapsible groups.
+  ...[
+    ['an organizer saved before #45 is reported as damaged', (s) => s.replace(
+      '      unfiledAt: clamp(toInt(raw.unfiledAt, folders.length), 0, folders.length),',
+      '      unfiledAt: clamp(toInt(raw.unfiledAt, 0), 0, folders.length),')],
+    ['Unfiled defaults to the top instead of last', (s) => s.replace(
+      '      unfiledAt: DEFAULT_FOLDERS.length,', '      unfiledAt: 0,')],
+    ['moving does not swap', (s) => s.replace('    keys[i] = keys[j];\n    keys[j] = key;\n', '')],
+    ['moving past an end wraps around instead of stopping', (s) => s.replace(
+      '    if (i === -1 || j < 0 || j >= keys.length) return org;', '    if (i === -1) return org;\n    j = (j + keys.length) % keys.length;')],
+    ['Catch up groups by name again, ignoring the order', (s) => s.replace(
+      '    return folderOrderKeys(org).filter(function (k) {', '    return folderOrderKeys(org).sort().filter(function (k) {')],
+    ['a collapsed group still renders its rows', (s) => s.replace(
+      '      if (groups[n].collapsed) {', '      if (false) {')],
+    ['a collapsed group still counts in the rendered rows, so its drawer stays open', (s) => s.replace(
+      '{ if (!g.collapsed) list = list.concat(g.rows); }', '{ list = list.concat(g.rows); }')],
+    ['collapsing is not saved', (s) => s.replace(
+      "          state.organizer = toggleFolderCollapsed(state.organizer, id); persist('organizer');",
+      '          state.organizer = toggleFolderCollapsed(state.organizer, id);')],
+    ['a reorder is not saved', (s) => s.replace(
+      "          if (moved !== state.organizer) { state.organizer = moved; persist('organizer'); }",
+      '          if (moved !== state.organizer) { state.organizer = moved; }')],
+    ['a new folder lands below Unfiled', (s) => s.replace(
+      '    next.unfiledAt = j === -1 ? next.folders.length : j;', '    next.unfiledAt = j === -1 ? org.folders.length : j;')],
+    ['deleting a folder above Unfiled moves Unfiled down a place', (s) => s.replace(
+      '    if (gone !== -1 && gone < next.unfiledAt) next.unfiledAt -= 1;\n', '')],
+    ['an import ignores the export\'s order', (s) => s.replace(
+      '      org = withFolderOrder(org, importedOrder(org, payload));\n', '')],
+    ['the first folder\'s up arrow is not disabled', (s) => s.replace(
+      "      out.push(moveButton(orderKeys[i], f.name, 'up', i === 0)", "      out.push(moveButton(orderKeys[i], f.name, 'up', false)")],
+    ['Unfiled can be deleted', (s) => s.replace(
+      "      if (unf) {\n        out.push('<span class=\"tfcc-note\">Threads in no folder</span></div>');\n        continue;\n      }\n", '')],
+    ['focus is lost when an arrow reaches its end', (s) => s.replace(
+      "          var mAct = atEnd ? (act === 'folder-up' ? 'folder-down' : 'folder-up') : act;", '          var mAct = act;')],
+    ['a real folder with id "unfiled" collides with built-in Unfiled (PR #46 review)', (s) => s.replace(
+      '  function folderKey(id) { return FOLDER_KEY_PREFIX + id; }', '  function folderKey(id) { return id; }')],
+    ['a collapsed bare folder id loads as if it were a key', (s) => s.replace(
+      '        var cid = folderIdOfKey(key);', '        var cid = folderIdOfKey(key) || key;')],
+    ['group DOM ids collide again (PR #46 review)', (s) => s.replace(
+      "return '_' + ('000' + c.charCodeAt(0).toString(16)).slice(-4);", "return '_';")],
+    ['the folder note drops the subscribed-only sentence', (s) => s.replace(
+      "      + 'Folders organise only threads you subscribe to (and ones you file by hand); they never add other threads '\n      + 'from a forum. ",
+      "      + '")],
+    ['the narrow group toggle drops below 44px', (s) => s.replace(
+      "'.tfcc-narrow button.tfcc-grp { min-height: 44px; }'", "'.tfcc-narrow button.tfcc-grp { min-height: 32px; }'")],
+  ].map(([name, apply]) => ({ name: '#45: ' + name, suite: 'tests/folders.test.js', apply })),
+  {
+    name: '#45: the group heading markup drifts from its listed wide replacement',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("+ groupDomId(g.key) + '\" title=\"' + escapeHtml((open ? 'Collapse ' : 'Expand ') + g.name)",
+      "+ groupDomId(g.key) + '\" title=\"' + escapeHtml((open ? 'Hide ' : 'Show ') + g.name)"),
+  },
+  // #45 (owner): the folder and author-only explanations.
+  {
+    name: '#45: the folder note stops explaining the order arrows',
+    suite: 'tests/folders.test.js',
+    apply: (s) => s.replace("wins over a claim. The arrows set the order, Unfiled included. This helps", "wins over a claim. This helps"),
+  },
+  {
+    name: '#45: the author-only explanation no longer leads with what it does',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace("'With this on, a thread in Threads and Catch up is flagged new only when its author posts, '",
+      "'With this on, a thread in Threads and Catch up counts as new only when its author posts, '"),
+  },
+  {
+    name: '#45: the author-only checkbox loses its hover summary',
+    suite: 'tests/panel.test.js',
+    apply: (s) => s.replace(`type="checkbox" data-act="author-only" title="'`, `type="checkbox" data-act="author-only" data-x="'`),
+  },
+  // PR #46 review: the wide CSS list pins complete lines, not selectors.
+  {
+    name: '#45: an unlisted declaration joins an approved wide rule',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("      '  font: inherit; font-weight: bold; text-align: left; cursor: pointer; }',",
+      "      '  font: inherit; font-weight: bold; font-style: italic; text-align: left; cursor: pointer; }',"),
+  },
+  {
+    name: '#45: a second wide rule for the priority number overrides its colour',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("      '#' + PANEL_ID + ' .tfcc-section h4.tfcc-grphead { margin: 0; }',",
+      "      '#' + PANEL_ID + ' .tfcc-section h4.tfcc-grphead { margin: 0; }',\n      '#' + PANEL_ID + ' .tfcc-prio { color: var(--tm-meta); }',"),
+  },
+  {
+    name: '#45: the light priority token changes outside its listed line',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("'  --tfcc-prio: #2e5680;',", "'  --tfcc-prio: #2e5681;',"),
+  },
+  {
+    name: '#45: the priority colour changes wide CSS outside its listed replacement',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("' .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: var(--tfcc-text-sm);'",
+      "' .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: 11px;'"),
+  },
 ];
 
 let failures = 0;

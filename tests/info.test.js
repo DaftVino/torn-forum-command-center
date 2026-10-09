@@ -51,12 +51,12 @@ const OWNER_13D = {
     },
     hidden: [
       'A refresh of Threads makes two requests',
-      'With this on, a thread in Threads and Catch up counts as new only when',
+      'With this on, a thread in Threads and Catch up is flagged new only when its author posts',
       'Search and Drafts always show everything.',
       'Only thread links in this panel do this, and only a plain click.',
       'Each row\'s title and summary stay on one line',
       'The panel shows Torn\'s page through it.',
-      'A folder can claim a forum',
+      'Folders organise only threads you subscribe to',
       'Earned from what you do here',
     ],
     visible: [
