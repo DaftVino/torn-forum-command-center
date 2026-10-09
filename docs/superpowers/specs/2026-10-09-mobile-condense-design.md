@@ -1,6 +1,6 @@
 # Condense the narrow mobile view (#33)
 
-**Status:** Proposal, revised after the Codex adversarial review (section 11). The owner picks a direction before anything is built.
+**Status:** Approved by the owner on 2026-10-09, with the changes in section 13. It was revised after the Codex adversarial review (section 11).
 **Issue:** #33, part of #20.
 **Scope:** The panel at 320-375px, inline and in Expand (takeover). The desktop
 layout does not change.
@@ -114,9 +114,11 @@ and CSS only", was wrong and has been replaced.
    thread, every view (including Search), Refresh, Hide/Show, Unread only, the
    filter field, and Mark read in Catch up, which is a triage view. Sort, the
    folder and tag filters and rare per-row edits are two taps away.
-4. **Real 44 x 44 boxes.** Every control in the narrow layout has a box at least
-   44px wide and 44px tall (`min-width` / `min-height`, never a fixed height).
-   No pseudo-element hit areas, and no box overlaps another.
+4. **Real boxes, no pseudo targets.** Every control in the narrow layout has a
+   box at least 44px wide and 44px tall (`min-width` / `min-height`, never a
+   fixed height). No pseudo-element hit areas, and no box overlaps another.
+   The one owner-approved exception is the header: its buttons scale from
+   44px down to a 24px floor to keep the header on one line (section 13b).
 5. **No gestures, no hover, no floating layers.** Every disclosure is an inline
    region under its button. Nothing depends on swipe or long-press. Visible
    text, not `title`, carries the meaning of every control a sighted user needs.
@@ -296,49 +298,70 @@ Search and Show lost their visible labels, the breakpoint watched the wrong
 width, and the redraw and focus cases were not specified. Section 4 is the
 answer to that review. Section 11 records each finding and what became of it.
 
-## 4. Recommendation: task-first A
+## 4. Recommendation: task-first A (owner-approved, as amended)
+
+The owner approved this design on 2026-10-09, with the changes recorded in
+section 13. This section is the approved design with those changes folded in.
 
 Mockups: `revised-375.html` / `.png` and `revised-320.html` / `.png`. Each
-shows dark and light, Threads, Catch up with a one-tap Read and one open
-drawer, filters open, the badge shelf open, My posts with the reaction
-totals, and the collapsed header. The 320px file adds a 200% text frame.
+shows, in dark and light:
+- Threads at rest;
+- Catch up with a one-tap Read, with its info closed, then with info open and
+  one drawer open;
+- filters open and the badge shelf open;
+- a drawer open in Threads;
+- My posts with the reaction totals, info closed and open;
+- the collapsed header.
+
+The 320px file adds a 200% text frame and four frames at 280px.
 
 ```
 375px (325px of content)                 320px (270px of content)
 +------------------------------------+   +-------------------------------+
-| FCC (cup 4 flame 5)  [ref][exp][^] |   | FCC (cup 4 flame 5)           |  44
-|------------------------------------|   |              [ref][exp][^]    |  44
-| [Threads 16 new][Catch up 3][Search]|  |-------------------------------|
-| [Drafts 1 ][Settings  ][My posts 1]|   | [Threads][Catch up][Search ]  |  2 x 44
-|------------------------------------|   | [Drafts ][Settings][My posts] |
+| FCC (cup 4 flame 5)  [ref][exp][^] |   | FCC (cup 4 5)    [ref][exp][^]|  one line; buttons
+|------------------------------------|   |-------------------------------|  44px at 375, 41 at 320
+| [Threads 16][Catch up 3][ Search ] |   | [Threads 16][Catch up 3][Srch]|  2 x 44
+| [Drafts 1 ][Settings  ][My posts 1]|   | [Drafts 1][Settings][My posts]|
+|------------------------------------|   |-------------------------------|
 | [filter threads......][Unread][Y 1]|   | [filter.......][Unread][Y 1]  |  44
 |------------------------------------|   |-------------------------------|
 | * A practical education guide and  |   | * A practical education       |
 |   script companion                 |   |   guide and script companion  |
 | 3 new 12m Tutorials and ...  [...] |   | 3 new 12m Tutorials  [...]    |  >= 44
 |------------------------------------|   |-------------------------------|
-  Catch up rows:
+  Catch up:
+| Catch up  since 7 Aug 12:00        |
+| [Mark all read] [Set catch-up point to now] [i] |
 | SideWinder - Advanced Sidebar for  |
 | 12 new +2 1h Tools ... [v Read][...]|
 ```
 
-### 4.1 Header
+### 4.1 Header: one line, buttons that scale
 
-- **Real 44 x 44 boxes.** Refresh, Expand/Shrink and Hide are 44 x 44 buttons
-  with 6px gaps, kept together in `.tfcc-head-btns` (the existing nowrap unit).
-- **The chip is a 44px button.** It has no border or fill of its own. The
-  28px pill you see is a child `<span>`, so the chip looks the same, but its
-  box is 44px tall and overlaps nothing.
-- **One line at 375, two at 320, and that is honest.** At 375 the logo (57),
-  chip (80) and trio (144) plus gaps are 293px of 325, so they fit on one
-  line. At 320 they would need 293px of 270, so the trio wraps whole onto a
-  second line, right-aligned, by the existing wrap rule. The header is 44px at
-  375 and 94px at 320.
-- **Collapsed, Show is text.** When the panel is collapsed, the third button
-  reads "Show" next to a chevron, about 75px wide. The "16 new" badge sits
-  beside the trio, so the collapsed header still says why it is worth
-  opening. Expanded, Hide is a chevron-up icon with the accessible name "Hide
-  the panel".
+- **Icon buttons that never wrap.** Refresh, Expand/Shrink and Hide are icon
+  buttons: inline ASCII SVG, an `aria-label`, and the existing `data-act`
+  values. They stay together in `.tfcc-head-btns`, with 4px gaps.
+- **Their size is `--tfcc-hb`:** 44px at most, 24px at least. It shrinks
+  continuously as the panel narrows, so the header stays on **one line**.
+  Section 13b gives the mechanism and the maths, measured on the mockups:
+
+  | Panel content width | Button size |
+  |---|---|
+  | 375px (325px) | 44px |
+  | 320px (270px) | 41px |
+  | 280px (230px) | 35px |
+
+- **The chip is a button as tall as the header buttons.** It has no border or
+  fill of its own. The pill you see is a child `<span>`, at most 28px tall, so
+  nothing overlaps. Below a 36px button size the pill drops to compact padding,
+  4px instead of 8px, but its 12px text never shrinks.
+- **The logo scales with the buttons:** height `clamp(16px, 0.545 x size,
+  24px)`.
+- **Collapsed, Show is text.** The third button reads "Show" beside a chevron.
+  The collapsed header keeps **"16 new"** with the word (section 13a) as a text
+  badge in the logo-and-chip group. That badge is what wraps beneath the logo
+  when space runs out, never a button. Expanded, Hide is a chevron-up icon
+  named "Hide the panel".
 
 ### 4.2 Nav: all six views, no More
 
@@ -346,18 +369,17 @@ totals, and the collapsed header. The 320px file adds a 200% text frame.
   Search on top, then Drafts, Settings and My posts below. Search is visible.
   My posts stays last and right with its #30 light-grey style, which keeps
   the QA checklist's "My posts is last and reachable" true.
-- **Counts are badges inside the cells:** Threads "16 new", Catch up "3",
-  Drafts "1", My posts "1". Each cell's accessible name includes its count
-  ("Threads, 16 new, 6 subscribed").
+- **Counts are numbers only, as badges inside the cells:** Threads "16", Catch
+  up "3", Drafts "1", My posts "1" (owner decision a). A cell wraps only when
+  the number is large. Each cell's accessible name still says what the number
+  counts ("Threads, 16 new, 6 subscribed"; "Catch up, 3").
 - **Why there is no More.** The review asked for a labelled More. Removing it
   is stronger: every view is visible, there is no menu state, and the review's
   More-focus finding cannot happen. It costs one 44px row compared with the
   first draft, which is the price of discoverability.
-- **Reaction totals** (thumbs and karma) on narrow screens show as the first
-  line of the My posts view, using the existing pill markup. That is the view
-  they describe, and one tap from anywhere. On desktop the pill stays in the
-  nav row. Open question 2 offers a slim line under the nav on every view
-  instead.
+- **Reaction totals** (thumbs and karma) appear **on My posts only, at every
+  screen size** (owner answer 2), as the first line of that view, using the
+  existing pill markup. The pill leaves the desktop nav row as well.
 
 ### 4.3 Filter line
 
@@ -367,6 +389,8 @@ totals, and the collapsed header. The 320px file adds a 200% text frame.
   filters. Its accessible name is dynamic ("Filters, 1 active"), with
   `aria-expanded` and `aria-controls="tfcc-filters"`.
 - Opening it shows Sort, Folder and Tag as 44px selects in an auto-fit grid.
+- At 280px the Filters button wraps under the field. That is allowed: only the
+  header must stay on one line.
 
 ### 4.4 Rows
 
@@ -395,79 +419,81 @@ totals, and the collapsed header. The 320px file adds a 200% text frame.
   up, where it is already visible), Draft/Edit draft and Archive. Below those
   are a priority stepper (- / value / +, each 44 x 44), Folder, Add tag and
   Note. Every control is at least 44px. It is an auto-fit grid, so it reflows
-  to one column at large text.
+  to one column at large text. Pin stays two taps (owner answer 1).
 - **Priority** shows in the meta as `+2` only when it is not zero. The
   inline #30 +/- stay on desktop.
 
 ### 4.5 Measured heights
 
 Measured on the mockups in gstack browse (`revised-*.html`). The current
-figures are from `threads-narrow.html` and the first draft from
-`recommended-320.html` / `concept-a-toolbar-drawer.html`. "First row" is the
-first thread row's offset from the panel's top. "Total" is the panel's height
-with Rows shown = 5 (Catch up has 3 sample rows). Every control in every
-revised frame measured at least 44 x 44. The title links are the one
-exception: they are 25px for a one-line title, which is over AA's 24px.
+figures are from `threads-narrow.html`, and the first draft from
+`recommended-320.html` / `concept-a-toolbar-drawer.html`.
+
+- "First row" is the first thread row's offset from the panel's top.
+- "Total" is the panel's height with Rows shown = 5. Catch up has 3 sample
+  rows.
+- Every control outside the header measured at least 44 x 44. The header
+  buttons follow section 13b, and the title links are at least 25px tall.
 
 | State | 375 first row | 375 total | 320 first row | 320 total |
 |---|---|---|---|---|
 | Today, Threads at rest | 319 | 1146 | 379 | 1432 |
 | First draft A, at rest | 165 | 728 | 165 | 808 |
-| **Revised, Threads at rest** | **209** | **802** | **259** | **940** |
-| Revised, filters open | 309 | 902 | 359 | 1040 |
-| Revised, badge shelf open | 323 | 916 | 394 | 1075 |
-| Revised, one drawer open (row 1) | 209 | 1061 | 259 | 1199 |
-| Revised, Catch up at rest (3 rows) | 330 | 835 | 430 | 983 |
-| Revised, Catch up, one drawer open | 330 | 1094 | 430 | 1242 |
-| Revised, My posts (pill line shown) | 283 | - | 351 | - |
-| Revised, collapsed | - | 118 | - | 118 |
+| Review revision (two-line header at 320) | 209 | 802 | 259 | 940 |
+| **Approved, Threads at rest** | **209** | **802** | **206** | **887** |
+| Approved, filters open | 309 | 902 | 306 | 987 |
+| Approved, badge shelf open | 323 | 916 | 341 | 1022 |
+| Approved, one drawer open (row 1) | 209 | 1061 | 206 | 1146 |
+| Approved, Catch up, info closed (3 rows) | 320 | 825 | 317 | 870 |
+| Approved, Catch up, info open and one drawer open | 384 | 1148 | 381 | 1193 |
+| Approved, My posts, info closed / open | 309 / 373 | - | 306 / 370 | - |
+| Approved, collapsed | - | 92 | - | 110 |
+| Approved, 320 at 200% text | - | - | 378 | 2309 |
+| Approved, 280px: Threads at rest / collapsed | - | - | 250 / - | 998 / 72 |
 | More open | n/a: there is no More | | | |
-| Revised, 320 at 200% text | - | - | 430 | 2361 |
 
 What the numbers say:
-- At rest, the first row comes up by 110px at 375 and 120px at 320. Five rows
-  take 495px instead of 731 at 375, and 583px instead of 957 at 320.
-- An open drawer adds 259px, nearly all of it 44px controls. That is the
-  honest cost of real touch targets. It is paid only for the one row being
-  edited, and closing it is one tap on the same button.
-- Catch up's first row is lower because of its two buttons and its
-  explanatory paragraph, which are unchanged from today. Open question 5 asks
-  whether to shorten that paragraph on narrow screens.
+- At rest, the first row comes up by 110px at 375 and 173px at 320. The
+  one-line header saves 53px at 320 compared with the review revision.
+- An open drawer adds 259px, nearly all of it 44px controls. It is paid only
+  for the one row being edited, and closing it is one tap on the same button.
+- Catch up's first row moved up 10px at 375 and 113px at 320 once the
+  explanatory paragraph went behind the info button. The explanation costs
+  64px only while it is open.
 
 ### 4.6 Tap counts
 
-| Task | Today | First draft | Revised |
+| Task | Today | First draft | Approved |
 |---|---|---|---|
 | Open a thread | 1 (title text) | 1 | 1 (whole title band) |
 | Mark read in Catch up | 1 | 2 | **1** |
 | Mark read elsewhere | 1 | 2 | 2 |
-| Pin a thread | 1 | 2 | 2 |
+| Pin a thread | 1 | 2 | 2 (owner: accepted) |
 | Change priority by 1 | 1 (22 x 16 target) | 2 | 2 (44 x 44 target) |
 | Open Search | 1 | 2 | **1** |
 | Open Drafts or Settings | 1 | 2 | **1** |
 | See reaction totals | 0 (in nav) | 1 (More) | 1 (My posts) |
+| Read an explanation (Catch up, Settings ...) | 0 (always shown) | 0 | 1 (info button) |
 | Show after auto-hide | 1 ("Show") | 1 (icon) | 1 ("Show", text) |
 | Filter by folder | 1 | 2 | 2 |
-
-The rare edits (pin, priority, folder, tag, note, draft, archive) cost one more
-tap. In exchange, every target goes from 22px to at least 44px and the
-first screen shows threads. Nothing frequent got slower.
 
 ### 4.7 At 200% text
 
 An Android WebView can apply the system font scale through `textZoom`, which
-scales px text as well. Measured by doubling `--tfcc-text` and `--tfcc-text-sm` at
-320px (the last frame of `revised-320.png`):
+scales px text as well. Measured by doubling `--tfcc-text` and
+`--tfcc-text-sm` at 320px (the 200% frame of `revised-320.png`):
 
-- No horizontal overflow, and every control is still at least 44 x 44.
-- The trio wraps whole onto its own line, as today.
+- No horizontal overflow. Every control outside the header is still at least
+  44 x 44.
+- The header stays on one line. The wider chip (86px) brings the buttons down
+  to 38px.
 - Nav labels wrap inside their cells ("Catch up" over "3"), which grow
   because they use `min-height`.
 - Titles wrap to 4-7 lines, and the meta wraps under the buttons.
-- The first row is at 430px, and five rows are about 1760px. That is long but
+- The first row is at 378px, and the panel is 2309px. That is long but
   usable. Nothing clips and nothing is unreachable.
 
-Supported: 320px wide at 100% and 200% text, and 375px at 100%. Rotation to
+Supported: 280-375px wide at 100% text, and 320px at 200%. Rotation to
 landscape crosses into the wide layout once the panel is over 616px wide
 (section 5).
 
@@ -477,8 +503,10 @@ The review is right that the viewport is the wrong measure. The inline panel
 sits in Torn's content column, and Expand changes its width without changing
 the viewport.
 
-**Decision: a `ResizeObserver` on the panel element, which toggles a
-`tfcc-narrow` class on it.**
+**Decision: a `ResizeObserver` on the panel element.** It toggles a
+`tfcc-narrow` class on the panel and sets the header button size
+`--tfcc-hb` (section 13b). Both live on the panel element, so they survive
+each `innerHTML` render.
 
 - **What is observed:** `#tfcc-panel`, the `<div>` this script creates and
   inserts. `draw()` already writes `classList` on it (`tfcc-takeover`, the
@@ -496,17 +524,22 @@ the viewport.
   with no script, but the script never learns that the layout changed, and the
   state machine (section 6) needs that event: crossing the breakpoint must
   close the drawer and the filters. Container size queries need Chrome/Android
-  WebView 105+ and iOS 16+ WKWebView. That is very likely on today's devices,
-  but it is unverified for Torn PDA's user base (open question 3).
+  WebView 105+ and iOS 16+ WKWebView. Torn PDA's minimum iOS version is
+  unknown. Look it up only if a pure-CSS container query is ever needed.
   `ResizeObserver` needs Chrome 64+ and iOS 13.4+.
-- **ADR 0001.** The ADR confines DOM access to Torn's markup in two places
-  (choosing a mount container, finding the reply textarea) and forbids any
-  data path through Torn's markup. Observing the script's own element reads no
-  Torn node and no Torn data. Its width is a layout fact the browser computes,
-  like the `getBoundingClientRect` the fallback already relies on. This is
-  therefore not a third access. CLAUDE.md treats a third access as an
-  architectural change, so open question 4 asks the owner to confirm this
-  reading. If the owner disagrees, the work needs ADR 0002 first.
+- **ADR 0001: the owner's ruling (2026-10-09).** A `ResizeObserver` on the
+  script's own `#tfcc-panel` stays within ADR 0001. It is not a third DOM
+  access.
+  - The ADR confines access to Torn's markup to two places (choosing a mount
+    container, finding the reply textarea). This observer reads no Torn node
+    and no Torn data.
+  - The same holds for measuring the chip and the Show button inside the
+    panel, which `fitHeader` does (section 13b).
+  - No ADR change is needed. repo-standards section 6.3 says an accepted ADR is
+    never edited and only a reversal gets a new ADR. This ruling interprets
+    ADR 0001 and does not reverse it.
+  - The implementation PR should promote the ruling to `docs/architecture.md`
+    ("Mount and navigation"), where lasting knowledge lives.
 - **The existing `@media (max-width: 600px)` block stays** for the fixed
   fallback mount's viewport offsets (`#tfcc-fallback`), which really are
   viewport-relative. The panel-internal narrow rules move under
@@ -523,7 +556,19 @@ reset on reload:
 - `filtersOpen`: boolean.
 - `drawerEdit`: `{ id, field, value, selStart, selEnd }` or null. It mirrors a
   drawer text input on every `input` event, without a redraw.
+- `openInfoId`: which explanation is open, for example `catchup`,
+  `settings-budget` or `mine`, or null (section 13d). One is open at
+  a time.
 - `navMoreOpen`: removed. There is no More menu.
+
+`openInfoId` follows the drawer's rules, except that it is not tied to a row:
+- **Toggles:** a tap on an info button toggles it, and focus stays on that
+  button.
+- **Unchanged by:** refresh, filter, cap and row actions.
+- **Closes (null) on:** a view change, Hide, auto-hide, crossing the
+  breakpoint, and page reload. After Show it stays null.
+- **If its button is not rendered** in the current view, it is reconciled to
+  null.
 
 **Reconciliation.** After every model build, if `openRowId` is not among the
 rows rendered in the current view (after filters, sort and the cap), set it
@@ -590,8 +635,10 @@ contract:
 - Every `data-act` name, value and handler, plus storage, the model and the
   request budget (13 per refresh, 40 per minute). Nothing here makes a
   request.
-- Wide panels (no `tfcc-narrow`): today's layout, including #30's inline
-  priority and the reactions pill in the nav row.
+- Wide panels (no `tfcc-narrow`) keep today's layout, including #30's inline
+  priority, with two changes the owner chose for every size:
+  - the reactions pill moves from the nav row to the top of My posts;
+  - standing explanations go behind info buttons (section 13d).
 - The thread anchor (`data-tfcc-thread`) and #8's plain-click rule. Only the
   anchor's display changes, to a block.
 - The badge chip's content and aria-label, the shelf, the toast and the
@@ -606,9 +653,13 @@ contract:
 
 ## 8. Accessibility
 
-- **Targets:** at least 44 x 44 for every control in the narrow layout, measured
-  in both themes and at 200% text. Gaps are 6px. The title band is the full
-  row width and at least 24px tall.
+- **Targets:**
+  - Every control outside the header is at least 44 x 44, measured in both
+    themes and at 200% text, with 6px gaps.
+  - The header buttons are 44px down to a 24px floor (section 13b).
+    That meets WCAG 2.2 SC 2.5.8 (AA, 24px) but not 2.5.5 (AAA, 44px) on
+    panels under about 330px wide. The owner chose this.
+  - The title band is the full row width and at least 24px tall.
 - **Names:** the icon buttons have `aria-label`s ("Refresh", "Expand", "Hide
   the panel"). The SVGs are `aria-hidden`. Show is visible text. Read is
   visible text with a per-row label. Filters is "Filters, N active".
@@ -634,12 +685,12 @@ contract:
 |---|---|
 | #8 auto-hide: only plain clicks on a thread link collapse | Read, Actions and the drawer controls are siblings of the title span, never inside the anchor. `threadLinkOf` returns null for them. Tests: `row-more` and `read` do not collapse. |
 | Expand / takeover | The same `data-act="takeover"` with `aria-pressed`. If Expand crosses the breakpoint, section 6 applies. |
-| Badge chip and shelf | The same chip content in a 44px box. The shelf opens under the header (measured above). |
-| Reactions pill opens My posts | Unchanged on wide panels. On narrow panels it is the first line of My posts, where tapping it is harmless. |
+| Badge chip and shelf | The same chip content, in a box as tall as the header buttons. The pill is compact below a 36px button size. The shelf opens under the header (measured above). |
+| Reactions pill opens My posts | Owner answer 2: the pill shows only as the first line of My posts, at every size. The "opens My posts" behaviour is therefore retired: the pill is a summary inside the view it used to open. If it stays a button there, tapping it is harmless. The implementation may render it as plain text with the same label. |
 | Rows cap and Show all | The cap applies before rendering. `openRowId` is reconciled against the capped rows. |
 | Drafts and search | Drafts and Search are direct nav cells. Draft/Edit draft is in the drawer with the same `data-act`. |
-| 320px header wrap rule | The trio is one nowrap unit, and at 320 it wraps whole onto line 2 (measured). |
-| Collapsed panel | Header only, with "16 new" and a text "Show". |
+| 320px header wrap rule | Superseded by owner decision b. Refresh, Expand and Hide stay one nowrap unit, in order. Instead of wrapping, they shrink, so the header is one line at 280-375px (measured). |
+| Collapsed panel | Header only, with "16 new" and a text "Show". The badge may wrap under the logo; the buttons never wrap. |
 | Redraws under the caret | The existing `pendingRedraw` guard, plus section 6's press-aware flush and the `drawerEdit` mirror. |
 
 ## 10. Constraints, scope and tests
@@ -665,8 +716,18 @@ contract:
     action, one redraw);
   - Read rendered only in Catch up, and only when narrow;
   - auto-hide not firing for `row-more` and `read`;
-  - a style test that every narrow control rule sets `min-height` and
-    `min-width` of at least 44px.
+  - a style test that every narrow control rule outside the header sets
+    `min-height` and `min-width` of at least 44px;
+  - `fitHeader`: the size it computes at the section 13b widths (44 / 41 / 35),
+    the 24px floor, the 44px ceiling, the compact chip below 36px, and one
+    line at each width in `render-preview`;
+  - info buttons: `aria-expanded` and `aria-controls` match a real element,
+    the explanation carries `hidden` when closed, and `openInfoId` follows the
+    section 6 rules;
+  - the tests that pin explanatory text keep passing, because the text stays
+    in the markup. These are `auto-hide.test.js` ("Only thread links in this
+    panel..."), `rows-cap.test.js` ("Applies to Threads, Catch up and My
+    posts.") and `panel.test.js` ("Threads you started or posted in").
 
   The mutation check gains entries that remove the Catch up Read button,
   break reconciliation, and break the focus fallback.
@@ -680,12 +741,12 @@ given.
 
 | # | Finding | Resolution | Reason / where |
 |---|---|---|---|
-| A1 | 44px claim false (40 x 44, chip pseudo-target) | Accepted | Real 44 x 44 boxes. The chip is a 44px button around the pill. The header is honestly two lines at 320. Sections 4.1, 4.5. |
+| A1 | 44px claim false (40 x 44, chip pseudo-target) | Accepted, then amended by the owner | The review revision used real 44 x 44 boxes and an honest two-line header at 320. The owner then chose one line with header buttons scaling from 44px down to a 24px floor (section 13b). The claim is now stated exactly: 44px outside the header, and 24-44px in it. There is still no pseudo-element target. |
 | A2 | Catch up Mark read regresses to two taps | Accepted | A visible 44px Read on Catch up rows. Section 4.4. |
 | A3 | Focus lost when an action removes its row | Accepted | Same control, then next row, previous row, view heading. The successor is captured before mutation. Section 6. |
 | A4 | Stale `openRowId` | Accepted | Reconciled after every model build. Section 6. |
 | A5 | Dirty editor destroyed by redraw | Modified | Corrected diagnosis: `change` already commits on blur, so the value survives. What gets lost is the tap that caused the blur. Fixed by a press-aware deferred flush, plus a `drawerEdit` mirror against forced redraws. Section 6. |
-| A6 | Search and reactions hidden in More | Modified | Stronger than asked: More is removed and all six views are visible. Reaction totals are visible at the top of My posts, not on every view, which saves 50px. Open question 2 offers the alternative. Section 4.2. |
+| A6 | Search and reactions hidden in More | Modified | Stronger than asked: More is removed and all six views are visible. Reaction totals are visible at the top of My posts, not on every view, which saves 50px. The owner confirmed this for every size (answer 2). Section 4.2. |
 | A7 | Focus hole after choosing a More view | Accepted | Removed at the source (no More). A view change focuses the pressed nav cell. Section 6. |
 | A8 | Breakpoint watches the viewport | Accepted | `ResizeObserver` on the panel's own element, with hysteresis. A container query was considered. Section 5. |
 | A9 | 320px only at default text size | Accepted | `min-height`/`min-width`, auto-fit grids, and 200% measured. Section 4.7. |
@@ -704,21 +765,188 @@ given.
 | C3 | Bulk partial-failure semantics | Modified | Corrected premise: Mark read, Pin, Folder, Tag and Archive are local organizer writes (`markRead`, `togglePin` and so on), not API requests. There is no request budget or network failure to model, and Catch up already has "Mark all read". Bulk remains out of scope. |
 | C4 | 36px select box | Accepted | Moot for the recommendation. Any future selection control is 44 x 44. |
 
-## 12. Open questions for the owner
+## 12. Questions for the owner: answered
 
-1. **Is two taps acceptable for Pin outside Catch up?** Pin is the next most
-   frequent row action. A visible star button beside Actions would make it
-   one tap. The cost is about 50px of width on line 2 of every row.
-2. **Reaction totals: My posts only, or on every view?** The recommendation
-   shows them on My posts. The alternative is a 44px pill line under the nav
-   on every view, which costs about 50px of first-screen height.
-3. **Container queries in Torn PDA's WebViews.** Chrome 105+ / iOS 16+. Is
-   there a known minimum iOS for Torn PDA? This only matters if section 5's
-   choice is revisited in favour of pure CSS.
-4. **ADR 0001 reading.** Do you agree that a `ResizeObserver` on the script's
-   own `#tfcc-panel` is not a third DOM access? If not, ADR 0002 comes first.
-5. **Catch up's explanatory paragraph** costs about 50px at 375 and 70px at
-   320. Shorten it on narrow panels ("Read here hides a thread from this list;
-   Torn's own counter clears when you open it.")?
-6. **Concept B's dock** in takeover only, and **a Catch up selection mode**:
-   are either worth their own issue later?
+All six are closed by the owner's decisions of 2026-10-09 (section 13):
+
+1. **Pin outside Catch up:** stays at two taps.
+2. **Reaction totals:** on My posts only, at every screen size.
+3. **Container queries:** Torn PDA's minimum iOS version is unknown. Look it up
+   only if a pure-CSS container query is ever needed.
+4. **ADR 0001:** a `ResizeObserver` on the script's own `#tfcc-panel` stays
+   within ADR 0001 (the owner's ruling, recorded in section 5).
+5. **Catch up's paragraph:** removed at every size and put behind an info
+   button. The same rule is applied across every view (section 13d).
+6. **Concept B's dock (takeover only) and a Catch up selection mode:** filed
+   for later. The owner files those issues.
+
+Nothing is left open. One fact for the implementer: the collapsed header at a
+280px viewport reaches the 24px floor (section 13b).
+
+## 13. Owner decisions, 2026-10-09
+
+The owner approved the revised design with these changes. The body of this
+spec has been amended to match. Where an earlier passage and this section
+disagree, this section wins.
+
+### 13a. Nav counts are numbers only
+
+- Narrow nav cells show the number alone: "Threads 16", "Catch up 3",
+  "Drafts 1", "My posts 1". A cell wraps only when the number is large.
+- The accessible name still says what the number counts ("Threads, 16 new,
+  6 subscribed").
+- On wide panels the nav keeps today's "Catch up (3)" text form. That is
+  outside this issue.
+- **The collapsed header keeps "16 new"**, word included. A collapsed panel has
+  no nav, so a bare "16" beside the logo would not say what it counts, and
+  "new" is the reason to press Show. It is a text badge, and it is the part of
+  the header that wraps under the logo when space runs out.
+
+### 13b. Header buttons are icons that scale to the width
+
+**The owner chose sub-44px targets on very narrow panels.** The two-line 320px
+header is gone. Refresh, Expand/Shrink and Hide are icon buttons (inline
+ASCII SVG, an `aria-label`, and the existing `data-act` values). They never
+wrap, and they shrink so the header stays on one line.
+
+**Mechanism.**
+- **One custom property.** `fitHeader(panel)` sets `--tfcc-hb`, the header
+  button size, on the panel element. The CSS reads it:
+  - buttons: `width: var(--tfcc-hb); min-height: var(--tfcc-hb)`;
+  - icons: `clamp(14px, 0.45 x hb, 20px)`;
+  - logo height: `clamp(16px, 0.545 x hb, 24px)`;
+  - chip box: `min-height: var(--tfcc-hb)`, with a pill of
+    `min(28px, var(--tfcc-hb))`.
+- **When it runs:** from the section 5 `ResizeObserver` callback, and after each
+  `draw()`. A draw is needed because the chip's width changes with its counts
+  and the Show label replaces the Hide icon.
+- **What it reads:** only the panel's own nodes: the panel's content width
+  (`clientWidth` minus padding), the chip's width, and the Show button's width.
+  That is within the owner's ADR 0001 ruling.
+- **How it solves:** it takes the largest `s` in [24, 44] that fits, stepping
+  down by 0.5px:
+
+  ```
+  logoW(s) + chipW + n*s + showW + 20 <= C
+  logoW(s) = 2.356 * clamp(16, 0.545*s, 24)   (logo viewBox is 106 x 45)
+  n = 3 icon buttons (expanded), or 2 plus the Show button (collapsed)
+  20 = gaps: logo-chip 6 + group 6 + 2 x 4 between buttons
+  ```
+
+- **Compact chip:** if `s` comes out under 36px, the chip switches to compact
+  padding (4px and 1px gaps instead of 8px and 3px), and the solve runs again
+  with the narrower chip. The chip's 12px text never shrinks.
+- **Why script and not pure CSS.** `clamp()` over `100cqi` could size the
+  buttons, but the chip's width depends on its counts, which CSS cannot
+  subtract. The observer already exists for the breakpoint.
+- **Last resort.** If even 24px does not fit, the header still does not wrap
+  its buttons. The logo-and-chip group (`flex: 0 1 auto; flex-wrap: wrap`)
+  wraps inside its own box instead. Nothing ever goes below 24px.
+
+**The maths.** C is the panel's content width: the panel minus 2 x 8px padding
+and 2 x 1px border. The mockups put the panel inside a 16px page gutter, as
+`render-preview` does. The expanded chip ("cup 4, flame 5") measures 72px
+normal and 58px compact.
+
+| Viewport | C | Solve | Check (expanded) | Measured on mockup |
+|---|---|---|---|---|
+| 375 | 325 | s = 44 (ceiling) | 56.5 + 72 + 132 + 20 = 280.5 <= 325 | 44px buttons, header 44px tall |
+| 320 | 270 | (270 - 72 - 20) / (3 + 1.284) = 41.5, and the 0.5 step gives about 41 | 2.356 x 22.3 + 72 + 123 + 20 = 267.6 <= 270 | 41px buttons, header 41px, one line |
+| about 280 | 230 | normal chip: (230 - 92) / 4.284 = 32.2, under 36, so compact; then (230 - 58 - 20) / 4.284 = 35.5, so 35 | 2.356 x 19.1 + 58 + 105 + 20 = 228 <= 230 | 35px buttons, header 35px, one line |
+| floor | 188 | s = 24 | 2.356 x 16 + 58 + 72 + 20 = 187.7 | fits down to C = 188 (a 206px panel) |
+
+- **Collapsed** (two icons plus "Show"): one line at 320 with s = 36.5. At
+  280 it reaches the 24px floor: 37.7 + 58 + 48 + 65 + 20 = 228.7 <= 230.
+- **200% text at 320:** the chip widens to 86px, so s = 38, still one line.
+- 1.284 is 2.356 x 0.545, the logo's width per pixel of button size while the
+  logo is between its clamps (button sizes of 29.4-44px).
+
+Below 44px the header buttons are under the platform guidance. At 24px they
+still meet WCAG 2.2 SC 2.5.8 (AA). That is the floor the owner set.
+
+### 13c. Answers to the open questions
+
+These are recorded in section 12, and the body is amended: section 4.2 for
+the reaction totals, section 5 for the ADR ruling and the iOS note, and
+section 4.4 for Pin.
+
+### 13d. Standing explanations go behind info buttons, at every size
+
+**The pattern.**
+- **The button:** an info button (an "i" in a circle, inline ASCII SVG)
+  with `data-act="info"`, `data-info="<key>"`, `aria-expanded`,
+  `aria-controls="tfcc-info-<key>"` and an `aria-label` ("About Catch up"). It
+  is 44 x 44. It follows the 13b scaling only if it ever sits in the header
+  row, and none does today.
+- **The text:** the explanation is always in the markup, as
+  `<p class="tfcc-infotext" id="tfcc-info-<key>" hidden>`. `hidden` is removed
+  while it is open. This keeps `aria-controls` pointing at a real element and
+  keeps the tests that pin this text passing. A
+  `#tfcc-panel [hidden] { display: none !important }` rule stops a host
+  stylesheet from revealing it.
+- **The state:** `state.openInfoId`, never persisted, one at a time, closed by
+  the section 6 transitions (view change, Hide, auto-hide, crossing the
+  breakpoint).
+
+**Catch up.** The "Marking read here hides a thread..." paragraph is removed
+at every size. An info button follows "Set catch-up point to now" and
+discloses the full text inline beneath the button row (mockups: Catch up,
+info closed and open).
+
+**Audit of every view and Settings.** Read from `renderCatchUpView`,
+`renderMineView`, `renderSearchView`, `renderDraftsView`, `renderSettingsView`,
+`renderBadgeCatalogue`, `renderRow` and `panelHtml`.
+- "Keep" means a live status, an error, data, or a disclosure that the rules
+  require at the point of action.
+- "Info" means the text moves behind an info button placed after the named
+  control.
+- "Shorten" means it stays visible in fewer words.
+
+| # | Where | Text (abridged) | Decision | Why |
+|---|---|---|---|---|
+| 1 | Catch up | "Since <date>" | Keep | Live data, now in the view heading |
+| 2 | Catch up | "Marking read here hides a thread... Torn's own new-post counter..." | **Info**, after "Set catch-up point to now" | Owner decision |
+| 3 | Catch up | "Not yet checked for author posts (N)" section | Keep | Live status |
+| 4 | My posts | "Threads you started or posted in. Updated X. N not checked yet." | **Shorten + info**: "Updated X. N not checked yet." stays; the first sentence and the 15-minute refresh rule go behind info | Live status stays; the standing description moves |
+| 5 | My posts | "Slowing down to stay inside Torn's API limit." | Keep | Live status |
+| 6 | My posts | Error, plus "Showing the saved list from <time>" | Keep | Error and status |
+| 7 | My posts | Reactions pill | Keep | Data (owner answer 2) |
+| 8 | Search | "Filtering searches titles, authors... Search on Torn hands the same query..." | **Info**, after "Search on Torn" | Standing explanation |
+| 9 | Search | "Fetching N of M threads." | Keep | Live progress |
+| 10 | Search | "Cached posts: N across M threads, about X." | Keep | Live data, one line |
+| 11 | Drafts | "No reply box was found on this page, so Insert is unavailable. Copy puts the draft on your clipboard instead." | **Shorten**: "No reply box here, so Copy replaces Insert." | A live condition that explains a missing button |
+| 12 | Drafts | "Open a thread to write a draft for it." | Keep | Empty-state guidance |
+| 13 | Settings, key | "This script needs a key... Minimal Access... Limited... Public Only does not." | **Shorten**: "Create a Minimal Access key on Torn (Settings, API Key)." | The ToS table beside it already states the access levels |
+| 14 | Settings, key | ToS table (who sees data, use, storage, access level, requests) | **Keep, never behind info** | Torn's API terms require it "clearly and visibly" where the key is entered (`docs/rules-compliance.md`, `read-only.test.js`) |
+| 15 | Settings, key | "A key is saved." / "No key saved yet." | Keep | Live status |
+| 16 | Settings, key | "This opens Torn's key page in a new tab with only the selections this script uses..." | **Shorten**: "Opens Torn in a new tab with only this script's selections." | Disclosure at the point of action (rules-compliance, custom key link) |
+| 17 | Settings, refreshing | The request-budget paragraph | **Shorten + info**: a visible line computed from the constants ("A refresh is at most 13 requests; never more than 40 a minute."), with the full breakdown behind info | CLAUDE.md constraint 7: the budget is a promise the panel makes, so its headline stays visible and is still computed |
+| 18 | Settings, refreshing | The author-only paragraph (lookups, N+ counts, "not checked") | **Shorten + info**: "Costs no extra requests. Some threads may show 'not checked'." visible, the rest behind info | The code comment wanted the limits read before enabling; the visible line keeps the key limit |
+| 19 | Settings, appearance | "Applies to Threads, Catch up and My posts. Search and Drafts always show everything..." | **Shorten + info**: the first sentence stays (pinned by `rows-cap.test.js`), the rest behind info | The first sentence is the fact a user needs |
+| 20 | Settings, appearance | Auto-hide: "Only thread links in this panel do this, and only a plain click..." | **Info**, after the checkbox | Standing explanation; the text stays in the markup for `auto-hide.test.js` |
+| 21 | Settings, folders | "A folder can claim a forum..." | **Info**, after the Folders heading | Standing explanation |
+| 22 | Settings, folders | "Forum names load on the first successful refresh." | Keep | Conditional status |
+| 23 | Settings, backup | "An export carries folders, tags... It never carries your API key or the post cache." | **Shorten**: "Never includes your API key or the post cache." | Privacy disclosure at the point of action (CLAUDE.md constraint 6) |
+| 24 | Settings, storage | "Post cache: N posts, X." | Keep | Live data |
+| 25 | Settings, storage | "A debug report carries... never carries your key, drafts, notes or post text." | **Shorten**: "Never includes your key, drafts, notes or post text." | Privacy disclosure at the point of action |
+| 26 | Settings, badges | "Earned from what you do here... Nothing is sent anywhere... a streak does not survive days with it off." | **Shorten + info**: "Recorded on this device only. No request is made." visible, the rest behind info | The privacy part stays visible; the rules move |
+| 27 | Badge catalogue | "Focused thread visits: N. Forums explored..." | Keep | Live data, shown only when the list is open |
+| 28 | Badge catalogue | Each badge's rule line | Keep | The content the user opened the list for |
+| 29 | Settings, footer | "Torn Forum Command Center vX. Reads only..." | Keep | Version and read-only disclosure, one line |
+| 30 | Rows | "local count", "not checked yet", "not subscribed", "locked", "author: not checked" | Keep | Live per-row status |
+| 31 | Panel | "No API key yet. Add one in Settings..." | Keep | Warning |
+| 32 | Panel | "Updated 4m ago." footer, cap line "Showing 5 of 6" | Keep | Live status |
+| 33 | Header | "N not checked" (author-only) | Keep | Live status |
+
+Totals:
+
+| Decision | Count | Items |
+|---|---|---|
+| Info only | 4 | 2, 8, 20, 21 |
+| Shorten plus info | 5 | 4, 17, 18, 19, 26 |
+| Shorten only | 5 | 11, 13, 16, 23, 25 |
+| Keep | 19 | everything else |
+
+No error, live status or required disclosure is hidden. Every hidden
+explanation is one tap away, where the thing it explains happens. That keeps
+the rules-compliance principle "stated where it happens".
