@@ -256,14 +256,18 @@ test('an uncommitted edit outlives its drawer, and its commit clears it', () => 
   seedRows(api, SIX);
   redraw(env);
   click(env, '[data-act="row-more"][data-id="2"]');
+  // #43: the note is a popup in the drawer.
+  click(env, '[data-act="editor"][data-id="2"][data-field="note"]');
   api.state.drawerEdit = { id: '2', field: 'note-input', value: 'unsaved', selStart: 7, selEnd: 7 };
   click(env, '[data-act="row-more"][data-id="2"]');
   assert.strictEqual(api.state.drawerEdit.value, 'unsaved', 'closed without a commit: still held');
+  assert.strictEqual(api.state.openEditor, null, 'the popup closed with its drawer');
   click(env, '[data-act="row-more"][data-id="2"]');
-  assert.match(env.doc.getElementById('tfcc-panel').innerHTML, /data-act="note-input" data-id="2" value="unsaved"/,
-    'reopened, the field shows what was typed');
-  api.makeHandlers(env.doc, env.win).onChange('note-input',
-    { getAttribute: (k) => (k === 'data-id' ? '2' : 'note-input'), value: 'unsaved' });
+  click(env, '[data-act="editor"][data-id="2"][data-field="note"]');
+  assert.match(env.doc.getElementById('tfcc-panel').innerHTML,
+    /data-act="editor-input" data-id="2" data-field="note-input" value="unsaved"/,
+    'reopened, the popup shows what was typed');
+  click(env, '[data-act="editor-save"][data-id="2"]');
   assert.strictEqual(api.state.drawerEdit, null);
   assert.strictEqual(api.state.organizer.threads['2'].note, 'unsaved');
 });

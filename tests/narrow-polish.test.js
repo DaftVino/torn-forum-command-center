@@ -172,8 +172,8 @@ test('dismiss closes the drawer and nothing else', () => {
 test('the toggle shows a close X while open, named Close actions, and the more glyph while closed', () => {
   const { panel } = openRow();
   const html = panel.innerHTML;
-  assert.match(html, new RegExp('<button type="button" data-act="row-more" data-id="1" aria-expanded="true" aria-controls="tfcc-act-1" aria-label="Close actions"><svg class="tfcc-gl"[^>]*><path d="M6 6l12 12M18 6L6 18"/></svg></button>'));
-  assert.match(html, /data-act="row-more" data-id="2" aria-expanded="false" aria-controls="tfcc-act-2" aria-label="Actions for Two"><svg class="tfcc-gl"[^>]*><path d="M5.5 12h1M11.5 12h1M17.5 12h1"\/>/);
+  assert.match(html, new RegExp('<button type="button" data-act="row-more" data-id="1" aria-expanded="true" aria-controls="tfcc-act-1" aria-label="Close actions" title="Close actions"><svg class="tfcc-gl"[^>]*><path d="M6 6l12 12M18 6L6 18"/></svg></button>'));
+  assert.match(html, /data-act="row-more" data-id="2" aria-expanded="false" aria-controls="tfcc-act-2" aria-label="Actions for Two" title="Actions"><svg class="tfcc-gl"[^>]*><path d="M5.5 12h1M11.5 12h1M17.5 12h1"\/>/);
 });
 
 test('tapping the X closes the drawer and keeps focus on the toggle', () => {
@@ -196,9 +196,9 @@ test('a control inside the open drawer keeps it open', () => {
   panel.contains = () => true;
   click(env, '[data-act="pin"][data-id="1"]');
   assert.strictEqual(api.state.openRowId, '1', 'Pin acts and the drawer stays');
-  // The drawer's own blank space, and its stepper label, are inside it too.
+  // The drawer's own blank space, and its priority number, are inside it too.
   click(env, '[id="tfcc-act-1"]');
-  click(env, '.tfcc-step');
+  click(env, '.tfcc-prio');
   assert.strictEqual(api.state.openRowId, '1');
 });
 
@@ -255,10 +255,40 @@ test('tapping the folder filter select with a drawer open: the select survives t
   assert.doesNotMatch(panel.innerHTML, /aria-label="Close actions"/);
 });
 
-test('a dirty drawer field, then a tap on the sort select: commit, close, and the select survives its click', () => {
+// #43: the drawer's note is a popup that saves on Save only. Typed text and a
+// tap elsewhere: the drawer and the popup close, nothing is saved, and the
+// text waits in the mirror for the popup to open again.
+test('a dirty note popup, then a tap on the sort select: close, keep the text, and the select survives its click', () => {
   const { env, api, panel } = openRow();
   api.state.filtersOpen = true;
   redraw(env);
+  click(env, '[data-act="editor"][data-id="1"][data-field="note"]');
+  const note = panel.querySelector('[data-act="editor-input"][data-id="1"]');
+  note.value = 'typed note';
+  panel.dispatchEvent({ type: 'input', target: note });
+  const select = panel.querySelector('[data-act="sort"]');
+  const before = panel.renderCount;
+  panel.dispatchEvent({ type: 'pointerdown', target: select });
+  panel.dispatchEvent({ type: 'change', target: note });
+  panel.dispatchEvent({ type: 'pointerup', target: select });
+  click(env, '[data-act="sort"]');
+  assert.strictEqual(panel.renderCount, before, 'nothing redraws inside the select\'s click');
+  env.advanceTimersBy(0);
+  assert.strictEqual(panel.renderCount, before + 1, 'then one redraw for the close');
+  assert.ok(!api.state.organizer.threads['1'] || api.state.organizer.threads['1'].note === '', 'nothing saved without Save');
+  assert.strictEqual(api.state.drawerEdit.value, 'typed note', 'the text is kept');
+  assert.strictEqual(api.state.openRowId, null);
+  assert.strictEqual(api.state.openEditor, null);
+  assert.strictEqual(api.state.pressActive, false);
+});
+
+// #43: the narrow drawer's fields became a popup that saves on Save, so the
+// held commit is proved on the wide row's inline note field.
+test('a dirty text field, then a tap on the sort select: the held commit waits until after the select\'s click', () => {
+  const { env, api } = bootNarrow({ width: 900 });
+  seedRows(api, [{ id: 1, title: 'One' }, { id: 2, title: 'Two' }]);
+  redraw(env);
+  const panel = panelOf(env);
   const note = panel.querySelector('[data-act="note-input"][data-id="1"]');
   note.value = 'typed note';
   const select = panel.querySelector('[data-act="sort"]');
@@ -269,9 +299,8 @@ test('a dirty drawer field, then a tap on the sort select: commit, close, and th
   click(env, '[data-act="sort"]');
   assert.strictEqual(panel.renderCount, before, 'the held commit is not flushed inside the select\'s click');
   env.advanceTimersBy(0);
-  assert.strictEqual(panel.renderCount, before + 1, 'then one redraw for the commit and the close');
+  assert.strictEqual(panel.renderCount, before + 1, 'then one redraw for the commit');
   assert.strictEqual(api.state.organizer.threads['1'].note, 'typed note');
-  assert.strictEqual(api.state.openRowId, null);
   assert.strictEqual(api.state.pressActive, false);
 });
 
@@ -327,10 +356,12 @@ test('a thread link elsewhere closes the drawer after the click, never during it
   assert.doesNotMatch(panel.innerHTML, /aria-label="Close actions"/);
 });
 
-test('a dirty drawer field, then a tap elsewhere: commit, close and act in one redraw', () => {
+test('a dirty note popup, then a tap elsewhere: close and act in one redraw, the text kept', () => {
   const { env, api, panel } = openRow();
-  const note = panel.querySelector('[data-act="note-input"][data-id="1"]');
+  click(env, '[data-act="editor"][data-id="1"][data-field="note"]');
+  const note = panel.querySelector('[data-act="editor-input"][data-id="1"]');
   note.value = 'typed note';
+  panel.dispatchEvent({ type: 'input', target: note });
   const before = panel.renderCount;
   const cell = panel.querySelector('[data-act="view"][data-view="drafts"]');
   panel.dispatchEvent({ type: 'pointerdown', target: cell });
@@ -343,7 +374,9 @@ test('a dirty drawer field, then a tap elsewhere: commit, close and act in one r
   assert.strictEqual(panel.renderCount, before + 1, 'one visible redraw');
   assert.strictEqual(api.state.openRowId, null);
   assert.strictEqual(api.state.settings.view, 'drafts');
-  assert.strictEqual(api.state.organizer.threads['1'].note, 'typed note');
+  assert.strictEqual(api.state.openEditor, null);
+  assert.ok(!api.state.organizer.threads['1'] || api.state.organizer.threads['1'].note === '', 'nothing saved without Save');
+  assert.strictEqual(api.state.drawerEdit.value, 'typed note', 'the text is kept');
 });
 
 test('a click outside the panel closes the drawer, without touching the event', () => {
@@ -412,8 +445,8 @@ test('Pin and Draft are emoji buttons and Archive an icon button, on one row, na
   assert.ok(btns[1].includes('<button type="button" class="tfcc-emobtn" data-act="archive" data-id="7" aria-label="Archive"'
     + ' title="Archive">' + ARCHIVE_SVG_HEAD), 'the archive icon, named Archive');
   assert.ok(!btns[1].includes(BIN), 'no wastebasket');
-  assert.match(btns[1], /data-act="read" data-id="7" aria-label="Mark read"/, 'Mark read shares the row outside Catch up');
-  assert.deepStrictEqual(Array.from(btns[1].matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]), ['pin', 'read', 'draft', 'archive']);
+  assert.match(btns[1], /data-act="read" data-id="7" aria-label="Mark read" title="Mark read"/, 'Mark read shares the row outside Catch up');
+  assert.deepStrictEqual(Array.from(btns[1].matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]), ['pin', 'read', 'draft', 'archive', 'info', 'prio-up', 'prio-down']);
 });
 
 test('the archive icon is a clean inline ASCII SVG drawn in currentColor (#41)', () => {
@@ -481,7 +514,11 @@ test('drawer controls are 32px, never under the 24px floor, 8px apart, and the t
   assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer input:not([type="checkbox"])'), /min-height: 32px;/);
   assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer'), /gap: 8px;/);
   const row = cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer-btns');
-  assert.match(row, /display: flex; flex-wrap: nowrap; gap: 8px;/);
+  assert.match(row, /display: flex; flex-wrap: nowrap;/);
+  // #43: 8px down to a 236px row, closing to 4px at 216px (Threads at 280px).
+  assert.match(row, /gap: clamp\(4px, calc\(4px \+ \(100% - 216px\) \* 0\.2\), 8px\);/);
+  // #43: the row buttons start at 32px and shrink only toward the 24px floor.
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer-btns button'), /flex: 0 1 32px;[\s\S]*min-width: 24px; padding: 0;/);
   // Shorter by padding, never by font: iOS zooms into a field under 16px.
   for (const sel of ['select', 'input:not([type="checkbox"])']) {
     const body = cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer ' + sel);

@@ -224,16 +224,22 @@
     'settings-rows': 'About Rows shown',
     'settings-autohide': 'About hiding the panel',
     'settings-clip': 'About clipping',
+    'settings-seethrough': 'About see-through',
     'settings-folders': 'About folders',
     'settings-badges': 'About badges',
+    // #43: in the open narrow row's drawer, before the priority number.
+    priority: 'About priority',
   });
+  // #43: info keys that live in the open row's drawer. One shared key: only
+  // the open drawer renders it, and it closes whenever that drawer does.
+  var DRAWER_INFO_KEYS = Object.freeze(['priority']);
   var INFO_KEYS_BY_VIEW = Object.freeze({
-    threads: Object.freeze([]),
-    catchup: Object.freeze(['catchup']),
+    threads: Object.freeze(['priority']),
+    catchup: Object.freeze(['catchup', 'priority']),
     search: Object.freeze(['search']),
     drafts: Object.freeze([]),
     settings: Object.freeze(['settings-budget', 'settings-author', 'settings-rows', 'settings-autohide',
-      'settings-clip', 'settings-folders', 'settings-badges']),
+      'settings-clip', 'settings-seethrough', 'settings-folders', 'settings-badges']),
     mine: Object.freeze(['mine']),
   });
   // The events that close every disclosure (spec section 6 table).
@@ -466,6 +472,9 @@
       // #41: clip a row's title and summary to one line, at every width. On
       // by default; a stored false is kept.
       clipLines: true,
+      // #43 (owner): the panel base and row cards are translucent. On by
+      // default; a stored false is kept.
+      seeThrough: true,
     };
   }
 
@@ -494,6 +503,9 @@
     // takes the default (on): clipping is presentation only, so a corrupt
     // value costs nothing worse than the default look.
     out.clipLines = typeof raw.clipLines === 'boolean' ? raw.clipLines : d.clipLines;
+    // #43: the same rule. Presentation only, so a junk value is not damage
+    // either (isRecoveredSettings).
+    out.seeThrough = typeof raw.seeThrough === 'boolean' ? raw.seeThrough : d.seeThrough;
     out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1
       ? 0 : toInt(raw.keyRejected, 0);
     out.folderFilter = typeof raw.folderFilter === 'string' ? safeString(raw.folderFilter, 64) : null;
@@ -672,6 +684,17 @@
       threads: threads,
       lastCatchUpAt: Math.max(0, toInt(raw.lastCatchUpAt, 0)),
     };
+  }
+
+  // #43: a present see-through value that is not a boolean takes the default
+  // without a "Settings were damaged" notice: it only changes how the panel
+  // looks. Any other difference is still damage.
+  function isRecoveredSettings(raw, value) {
+    if (isPlainObject(raw) && Object.prototype.hasOwnProperty.call(raw, 'seeThrough') && typeof raw.seeThrough !== 'boolean') {
+      raw = Object.assign({}, raw);
+      delete raw.seeThrough;
+    }
+    return isRecoveredValue(raw, value);
   }
 
   // An upgrade adds per-thread fields (issue #4). They are nested inside the
@@ -1898,6 +1921,13 @@
     };
   }
 
+  // #43: the row limit a capped view uses. Expand (takeover) shows every row,
+  // with no "Showing N of M" line: All (0) while it lasts. The caller never
+  // writes showAll, so Shrink brings back exactly the cap the user had.
+  function rowLimitFor(rowsShown, takeover) {
+    return takeover === true ? 0 : rowsShown;
+  }
+
   // True when the panel should use the narrow layout. An unknown width (0,
   // NaN, a failed measurement) keeps whatever layout is current.
   function narrowFor(width, wasNarrow) {
@@ -1988,13 +2018,17 @@
     if (TRANSIENT_RESET_EVENTS.indexOf(type) !== -1) {
       return { openRowId: null, filtersOpen: false, openInfoId: null, drawerEdit: out.drawerEdit };
     }
+    // #43: an explanation inside the drawer closes with it, and when another
+    // row's drawer opens instead.
+    var drawerInfo = DRAWER_INFO_KEYS.indexOf(out.openInfoId) !== -1;
     if (type === 'row-more' && typeof ev.id === 'string' && ev.id) {
       out.openRowId = out.openRowId === ev.id ? null : ev.id;
+      if (drawerInfo) out.openInfoId = null;
       return out;
     }
     if (type === 'filters') { out.filtersOpen = !out.filtersOpen; return out; }
     // #39: a tap anywhere but the open drawer and its toggle closes the drawer.
-    if (type === 'dismiss') { out.openRowId = null; return out; }
+    if (type === 'dismiss') { out.openRowId = null; if (drawerInfo) out.openInfoId = null; return out; }
     if (type === 'info' && Object.prototype.hasOwnProperty.call(INFO_KEYS, ev.key)) {
       out.openInfoId = out.openInfoId === ev.key ? null : ev.key;
       return out;
@@ -2012,7 +2046,33 @@
     var keys = Array.isArray(infoKeys) ? infoKeys : [];
     if (out.openRowId !== null && ids.indexOf(out.openRowId) === -1) out.openRowId = null;
     if (out.openInfoId !== null && keys.indexOf(out.openInfoId) === -1) out.openInfoId = null;
+    if (out.openRowId === null && DRAWER_INFO_KEYS.indexOf(out.openInfoId) !== -1) out.openInfoId = null;
     return out;
+  }
+
+  // #43: the drawer's tag and note popup. { id, field } names the open one;
+  // it is runtime state only, never saved. Opening the one already open
+  // closes it; any other event closes it.
+  var EDITOR_FIELDS = Object.freeze(['tag', 'note']);
+
+  function nextEditor(editor, ev) {
+    var cur = isPlainObject(editor) && typeof editor.id === 'string' && editor.id
+      && EDITOR_FIELDS.indexOf(editor.field) !== -1 ? { id: editor.id, field: editor.field } : null;
+    var e = isPlainObject(ev) ? ev : {};
+    if (e.type === 'open' && typeof e.id === 'string' && e.id && EDITOR_FIELDS.indexOf(e.field) !== -1) {
+      return cur && cur.id === e.id && cur.field === e.field ? null : { id: e.id, field: e.field };
+    }
+    if (e.type === 'close') return null;
+    return cur;
+  }
+
+  // The popup lives inside its row's drawer, so it closes whenever that
+  // drawer is not the open one: a view change, collapse, auto-hide, a
+  // breakpoint cross, the row leaving the list, or a tap away all close the
+  // drawer, and with it the popup.
+  function reconcileEditor(editor, openRowId) {
+    var cur = nextEditor(editor, null);
+    return cur && cur.id === openRowId ? cur : null;
   }
 
   // An attribute-equals selector part. Quotes and backslashes are dropped, not
@@ -2378,6 +2438,21 @@
       e.tags.splice(i, 1);
     }
     return next;
+  }
+
+  // #43 (PR #44 review): the drawer popup's Save adds a tag, never removes
+  // one. Normalised exactly as toggleTag does. A tag already there leaves the
+  // organizer as it was (the same object), so the caller can say so.
+  function hasTag(org, threadId, tag) {
+    var clean = safeString(tag, 48).trim().toLowerCase();
+    var e = org && org.threads ? org.threads[String(threadId)] : null;
+    return !!(clean && e && Array.isArray(e.tags) && e.tags.indexOf(clean) !== -1);
+  }
+
+  function addTag(org, threadId, tag) {
+    var clean = safeString(tag, 48).trim().toLowerCase();
+    if (!clean || hasTag(org, threadId, clean)) return org;
+    return toggleTag(org, threadId, clean);
   }
 
   function setPriority(org, threadId, value) {
@@ -3476,6 +3551,8 @@
     filtersOpen: false,
     openInfoId: null,
     drawerEdit: null,
+    // #43: the drawer's open tag or note popup, { id, field }. Never saved.
+    openEditor: null,
     focusIntent: null,
     pressActive: false,
     deferCommit: false,
@@ -3547,7 +3624,7 @@
   }
 
   function loadAll(now) {
-    var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now);
+    var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now, isRecoveredSettings);
     var o = loadKey(STORAGE_KEYS.organizer, normaliseOrganizer, now, isRecoveredOrganizer);
     var d = loadKey(STORAGE_KEYS.drafts, normaliseDrafts, now);
     var f = loadKey(STORAGE_KEYS.feed, normaliseFeed, now);
@@ -4405,10 +4482,14 @@
       '  --tfcc-focus-ring: 2px solid var(--tm-good-text);',
       '  --tfcc-tier-bronze: #d6955b; --tfcc-tier-silver: #c3ccd6; --tfcc-tier-gold: #e8c06a;',
       '  --tfcc-tier-legend: #c9a2ff; --tfcc-locked: #8a8a8a;',
-      '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
-      '  --tfcc-mine-text: #141414; --tfcc-mine-border: #d9d9d9;',
       // "started" in My posts (#30): 6.2:1 on the row, 7.8:1 on the tag fill.
       '  --tfcc-started: #ff8080;',
+      // #43 (owner): the "See-through background" setting's two base layers,
+      // --tm-bg and --tm-bg-2 with alpha: the panel's own background at 50%
+      // and the thread row card at 75%. Dedicated tokens, so no other fill
+      // (controls, pills, the shelf and toast, popups) changes. They are
+      // painted only under #tfcc-panel.tfcc-seethrough.
+      '  --tfcc-base-bg: rgba(31, 31, 31, 0.5); --tfcc-row-bg: rgba(38, 38, 38, 0.75);',
       // #33: the narrow header button size; fitHeader overrides it inline.
       '  --tfcc-hb: 44px;',
       // #33 nav numerals, v1 tint (spec 13f). The same in both themes, because
@@ -4424,12 +4505,9 @@
       '  --tm-warn-text: #7a5600; --tm-accent-text: #14507d;',
       '  --tfcc-tier-bronze: #8c4e17; --tfcc-tier-silver: #4f5966; --tfcc-tier-gold: #7a5600;',
       '  --tfcc-tier-legend: #6a2fb5; --tfcc-locked: #6e6e6e;',
-      // Same fill and text as dark; only the border differs, because a light
-      // grey fill on the light panel is not itself a visible boundary.
-      '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
-      '  --tfcc-mine-text: #141414; --tfcc-mine-border: #5c5c5c;',
       // "started" (#30): 6.5:1 on the row, 8.0:1 on the tag fill.
       '  --tfcc-started: #a11414;',
+      '  --tfcc-base-bg: rgba(242, 242, 242, 0.5); --tfcc-row-bg: rgba(232, 232, 232, 0.75);',
       '}',
       '#' + FALLBACK_ID + ' { position: fixed; right: 12px; bottom: 12px; z-index: 2147483000;',
       '  box-sizing: border-box; width: min(960px, calc(100vw - 24px)); max-width: calc(100vw - 24px);',
@@ -4453,6 +4531,18 @@
       '#' + PANEL_ID + '.tfcc-takeover { position: fixed; inset: 0; margin: 0; border-radius: 0;',
       '  z-index: 2147483000; height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh;',
       '  overflow-y: auto; overflow-x: hidden; padding: 12px; }',
+      // #43 (owner): "See-through background", one class on the panel. Only
+      // the panel's base and the row cards go translucent; text and every
+      // control stay opaque (alpha on the colour, never opacity). The blur is
+      // a readability aid for a busy page under it; it cannot help a plain
+      // one, so contrast was measured without it, and a browser without it
+      // simply shows the page. Expand covers the page, so it stays solid.
+      '#' + PANEL_ID + '.tfcc-seethrough { background: var(--tfcc-base-bg);',
+      '  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',
+      '#' + PANEL_ID + '.tfcc-seethrough .tfcc-row { background: var(--tfcc-row-bg); }',
+      '#' + PANEL_ID + '.tfcc-seethrough.tfcc-takeover { background: var(--tm-bg);',
+      '  -webkit-backdrop-filter: none; backdrop-filter: none; }',
+      '#' + PANEL_ID + '.tfcc-seethrough.tfcc-takeover .tfcc-row { background: var(--tm-bg-2); }',
       '#' + PANEL_ID + ' .tfcc-head { display: flex; align-items: center; gap: var(--tfcc-gap);',
       '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap); }',
       // The logo (#30) stands where the bold title text stood: as tall as the
@@ -4545,19 +4635,11 @@
       '  color: var(--tm-text); }',
       '#' + PANEL_ID + ' .tfcc-nav { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
       '  margin-bottom: var(--tfcc-gap); }',
-      // My posts stands apart from the other five: last, pushed right, and
-      // light grey with dark text in every theme. Each rule names the button
-      // element so it is (1,1,1) or more and beats the generic button,
-      // :hover and aria-pressed rules above. Pressed is shown by an underline
-      // bar as well as the fill, so it never depends on colour alone.
-      // Measured: text on fill 13.05, on hover 11.01, on pressed 8.49; fill
-      // on the dark panel 11.68; light border on the light panel 5.97.
-      '#' + PANEL_ID + ' button.tfcc-nav-mine { margin-left: auto; background: var(--tfcc-mine-bg);',
-      '  color: var(--tfcc-mine-text); border-color: var(--tfcc-mine-border); font-weight: bold; }',
-      '#' + PANEL_ID + ' button.tfcc-nav-mine:hover { background: var(--tfcc-mine-hover);',
-      '  color: var(--tfcc-mine-text); }',
-      '#' + PANEL_ID + ' button.tfcc-nav-mine[aria-pressed="true"] { background: var(--tfcc-mine-pressed);',
-      '  color: var(--tfcc-mine-text); box-shadow: inset 0 -3px 0 var(--tfcc-mine-text); }',
+      // My posts stands apart from the other five by place only: last, and
+      // pushed right. Its colours are every nav button's (#43, owner): the
+      // normal fill, and the selected fill only while it is the current view.
+      // Its old light-grey fill read as selected.
+      '#' + PANEL_ID + ' button.tfcc-nav-mine { margin-left: auto; }',
       '#' + PANEL_ID + ' .tfcc-bar { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
       '  align-items: center; margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-grow { flex: 1 1 180px; min-width: 0; }',
@@ -4614,9 +4696,14 @@
       '  flex-wrap: nowrap; margin-bottom: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + ' .tfcc-infobar > .tfcc-note { flex: 0 1 auto; min-width: 0; }',
       '#' + PANEL_ID + ' .tfcc-infobar h4 { margin: 0; }',
+      // #43 (owner): an info button is a bare icon, at every width. It keeps
+      // its 44px target and a transparent border (so its box does not move);
+      // only the fill and the outline go. Hover and open tint the icon in the
+      // accent colour instead of filling a box; focus keeps the panel ring.
       '#' + PANEL_ID + ' button.tfcc-info { display: inline-flex; align-items: center; justify-content: center;',
-      '  flex: none; min-width: 44px; min-height: 44px; padding: 0; border-color: var(--tm-border); }',
-      '#' + PANEL_ID + ' button.tfcc-info[aria-expanded="true"] { background: var(--tm-hover); }',
+      '  flex: none; min-width: 44px; min-height: 44px; padding: 0; border-color: transparent; background: transparent; }',
+      '#' + PANEL_ID + ' button.tfcc-info:hover { background: transparent; color: var(--tm-accent-text); }',
+      '#' + PANEL_ID + ' button.tfcc-info[aria-expanded="true"] { background: transparent; color: var(--tm-accent-text); }',
       '#' + PANEL_ID + ' .tfcc-infotext { border-left: 3px solid var(--tm-accent-text);',
       '  padding: 2px 0 2px 8px; margin: 0 0 var(--tfcc-gap-sm) 0; }',
       // Narrow only: the collapsed count's name, the view heading and the live
@@ -4737,9 +4824,32 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer select { min-height: 32px; min-width: 32px; padding: 4px 8px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer input:not([type="checkbox"]) { min-height: 32px; min-width: 32px;',
       '  padding: 4px 8px; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-btns { display: flex; flex-wrap: nowrap; gap: 8px; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-btns button { display: inline-flex; flex: none; align-items: center;',
-      '  justify-content: center; }',
+      // #43: the row also holds priority, so it is the drawer's widest line.
+      // It never wraps: each target starts at 32px and shrinks toward the
+      // 24px floor only when the row would not fit (about 27px with Mark read
+      // at 320); the gaps are 8px down to a 236px row and close toward 4px
+      // below it (280px), so even there every target keeps 24 x 32.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-btns { display: flex; flex-wrap: nowrap; align-items: center;',
+      '  gap: clamp(4px, calc(4px + (100% - 216px) * 0.2), 8px); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-btns button { display: inline-flex; flex: 0 1 32px; align-items: center;',
+      '  justify-content: center; min-width: 24px; padding: 0; }',
+      // The priority group joins the row as its own items, pushed right.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-dprio { display: contents; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-dprio > :first-child { margin-left: auto; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-dprio .tfcc-prio { flex: none; }',
+      // #43: the priority explanation spans the drawer, under the icon row.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer > .tfcc-infotext { grid-column: 1 / -1; margin: 0; }',
+      // #43: folder, Tag and Note on one row; the select takes what is left.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-org { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-org select { flex: 1 1 0; min-width: 32px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-org button { flex: none; padding: 0 10px; }',
+      // The tag or note popup: an opaque raised box in the drawer, the field
+      // on its own line, Save and Cancel under it on the right.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-editor { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px;',
+      '  border: 1px solid var(--tm-border-2); border-radius: 4px; background: var(--tm-bg-3);',
+      '  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-editor input { flex: 1 1 100%; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-editor .tfcc-edsave { margin-left: auto; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer button.tfcc-on { box-shadow: inset 0 -3px 0 currentColor; }',
       // Monochrome, exactly as the thumbs (#30): white on dark, black on light.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-emo { display: block; font-size: 16px; line-height: 1;',
@@ -4748,8 +4858,6 @@
       // #41: the archive icon, in the button's own text colour in both themes.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-archico { display: block; flex: none; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-archico path { fill: currentColor; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-step { display: flex; align-items: center; gap: 8px; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-step span { flex: 1 1 auto; text-align: center; color: var(--tm-meta); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-vh { font-size: var(--tfcc-text); margin: 2px 0 6px 0; }',
       // A narrow info button and the control it explains share one line; at
       // 280px the control's label wraps inside it rather than strand the button.
@@ -4972,15 +5080,17 @@
     var catchUp = catchUpRowsNow();
     var unchecked = catchUpUncheckedNow();
     var showAll = state.showAll || {};
+    var limit = rowLimitFor(s.rowsShown, s.takeover);
     var capped = {
-      threads: capRows(threadsSorted, s.rowsShown, showAll.threads === true),
-      catchup: capRows(catchUp, s.rowsShown, showAll.catchup === true),
-      mine: capRows(mineSorted, s.rowsShown, showAll.mine === true),
+      threads: capRows(threadsSorted, limit, showAll.threads === true),
+      catchup: capRows(catchUp, limit, showAll.catchup === true),
+      mine: capRows(mineSorted, limit, showAll.mine === true),
     };
     // #33, spec section 6: after every model build, an open row or info that
     // this view does not render closes, and stays closed.
     var renderedIds = renderedRowIds(s.view, capped, unchecked, sorted);
     setTransient(reconcileTransient(currentTransient(), renderedIds, INFO_KEYS_BY_VIEW[s.view] || []));
+    state.openEditor = reconcileEditor(state.openEditor, state.openRowId);
 
     return {
       loading: false,
@@ -4997,6 +5107,7 @@
       filtersOpen: state.filtersOpen,
       openInfoId: state.openInfoId,
       drawerEdit: state.drawerEdit,
+      openEditor: state.openEditor,
       activeFilters: activeFilterCount(s),
       live: state.liveMessage && !state.liveMessage.announced ? state.liveMessage.text : null,
       sort: s.sort,
@@ -5057,6 +5168,7 @@
         authorOnly: s.authorOnly,
         autoHideOnOpen: s.autoHideOnOpen,
         clipLines: s.clipLines !== false,
+        seeThrough: s.seeThrough !== false,
         deepSearchPages: s.deepSearchPages,
         rowsShown: s.rowsShown,
       },
@@ -5122,7 +5234,8 @@
     var open = openKey === key;
     return '<button type="button" class="tfcc-info" data-act="info" data-info="' + escapeHtml(key)
       + '" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="tfcc-info-' + escapeHtml(key)
-      + '" aria-label="' + escapeHtml(INFO_KEYS[key]) + '">' + glyph('info') + '</button>';
+      + '" aria-label="' + escapeHtml(INFO_KEYS[key]) + '" title="' + escapeHtml(INFO_KEYS[key]) + '">'
+      + glyph('info') + '</button>';
   }
 
   // html is this script's own text, already escaped where it carries data.
@@ -5331,7 +5444,7 @@
   // the row's title so a screen reader hears which thread.
   function readButton(row) {
     var id = escapeHtml(row.id);
-    return '<button type="button" class="tfcc-read" data-act="read" data-id="' + id + '" aria-label="Mark read"'
+    return '<button type="button" class="tfcc-read" data-act="read" data-id="' + id + '" aria-label="Mark read" title="Mark read"'
       + ' aria-describedby="tfcc-title-' + id + '">' + glyph('check') + '</button>';
   }
 
@@ -5370,6 +5483,13 @@
     + '2.84-4.31 7.74-6.58 14.65-6.88h44.43v-76.57c0-4.81 3.93-8.74 8.74-8.74h83.23c4.81 0 8.75 3.94 8.75 '
     + '8.74v76.57h44.31z"/></svg>';
 
+  // #43: what priority does, from the code: setPriority clamps it to
+  // PRIORITY_MIN..PRIORITY_MAX, sortThreads uses it only for the My priority
+  // sort (higher first, after pinned threads), and it is kept in the
+  // organizer in this script's storage.
+  var PRIORITY_INFO_TEXT = 'Your own ranking for this thread, from -2 to +2, saved only on this device. '
+    + 'The My priority sort lists higher numbers first, after pinned threads.';
+
   // A compact drawer button (#39): the icon is decoration (aria-hidden); the
   // name and the hint are the words. tfcc-on marks a set state (pinned, a
   // draft saved, archived), so the state never rests on the name alone.
@@ -5385,7 +5505,6 @@
   function renderDrawer(row, model, inCatchUp) {
     var id = ' data-id="' + escapeHtml(row.id) + '"';
     var edit = model.drawerEdit && model.drawerEdit.id === String(row.id) ? model.drawerEdit : null;
-    var p = toInt(row.priority, 0);
     var out = [];
     // #39: Pin, Draft and Archive are compact emoji buttons on one row, with
     // Mark read beside them outside Catch up.
@@ -5394,17 +5513,52 @@
     if (!inCatchUp) out.push(readButton(row));
     out.push(emojiButton('draft', row.hasDraft ? 'Edit draft' : 'Draft', emojiIcon(DRAWER_EMOJI.draft), row.hasDraft, row.id));
     out.push(emojiButton('archive', row.archived ? 'Unarchive' : 'Archive', ARCHIVE_SVG, row.archived, row.id));
+    // #43: priority in the desktop style (the number, then + and -), right-
+    // aligned on the same row: the wide row's own renderPriority markup.
+    // #43: an info button first, so the number is explained where it shows.
+    out.push('<span class="tfcc-dprio">' + renderInfoButton('priority', model.openInfoId) + renderPriority(row) + '</span>');
     out.push('</div>');
-    out.push('<div class="tfcc-step tfcc-wide">'
-      + btn('prio-down', '-', id + ' aria-label="Lower priority"')
-      + '<span>Priority ' + escapeHtml((p > 0 ? '+' : '') + p) + '</span>'
-      + btn('prio-up', '+', id + ' aria-label="Raise priority"') + '</div>');
-    out.push(folderSelectHtml(row, model, ' class="tfcc-wide" aria-label="Folder"'));
-    out.push('<input type="text" data-act="tag-input"' + id + ' value="'
-      + escapeHtml(edit && edit.field === 'tag-input' ? edit.value : '') + '" placeholder="add tag" aria-label="Add tag">');
-    out.push('<input type="text" data-act="note-input"' + id + ' value="'
-      + escapeHtml(edit && edit.field === 'note-input' ? edit.value : row.note) + '" placeholder="note" aria-label="Note">');
+    // Under the icon row, so opening it never makes that row wider.
+    out.push(renderInfoText('priority', model.openInfoId, PRIORITY_INFO_TEXT));
+    // #43: folder, Tag and Note share one row. Tag and Note open a small
+    // popup in the drawer instead of holding inline fields.
+    var ed = model.openEditor && model.openEditor.id === String(row.id) ? model.openEditor.field : null;
+    var edId = 'tfcc-ed-' + escapeHtml(row.id);
+    var opener = function (field, label, name, on) {
+      return '<button type="button" class="tfcc-edbtn' + (on ? ' tfcc-on' : '') + '" data-act="editor"' + id
+        + ' data-field="' + field + '" aria-haspopup="dialog" aria-expanded="' + (ed === field ? 'true' : 'false')
+        + '" aria-controls="' + edId + '" aria-label="' + escapeHtml(name) + '" title="' + escapeHtml(name) + '">'
+        + label + '</button>';
+    };
+    out.push('<div class="tfcc-drawer-org tfcc-wide">');
+    out.push(folderSelectHtml(row, model, ' aria-label="Folder"'));
+    out.push(opener('tag', 'Tag', 'Add tag', false));
+    // A saved note shows as the set-state bar and the name "Edit note"; the
+    // note itself is the row's own line, shown whole while the drawer is open.
+    out.push(opener('note', 'Note', row.note ? 'Edit note' : 'Add note', !!row.note));
+    out.push('</div>');
+    out.push(renderEditor(row, ed, edit, edId));
     return out.join('');
+  }
+
+  // #43: the tag or note popup, inside the drawer under the folder row. It is
+  // always in the open drawer's markup, so aria-controls names a real
+  // element; hidden while closed. Its field mirrors into drawerEdit like the
+  // inline fields did, so typed text survives a redraw. Enter saves (the
+  // keydown listener), Escape cancels, and so do the two buttons.
+  function renderEditor(row, field, edit, edId) {
+    var id = ' data-id="' + escapeHtml(row.id) + '"';
+    if (!field) return '<div class="tfcc-editor tfcc-wide" id="' + edId + '" hidden></div>';
+    var mirror = field + '-input';
+    var value = edit && edit.field === mirror ? edit.value : (field === 'note' ? row.note : '');
+    var name = field === 'note' ? 'Note' : 'New tag';
+    return '<div class="tfcc-editor tfcc-wide" id="' + edId + '" role="dialog" aria-label="'
+      + (field === 'note' ? 'Edit the note' : 'Add a tag') + '">'
+      + '<input type="text" data-act="editor-input"' + id + ' data-field="' + mirror + '" value="' + escapeHtml(value)
+      + '" placeholder="' + (field === 'note' ? 'note' : 'tag') + '" aria-label="' + name + '">'
+      + '<button type="button" class="tfcc-edsave" data-act="editor-save"' + id + ' data-field="' + field + '">Save</button>'
+      + '<button type="button" data-act="editor-cancel"' + id + ' data-field="' + field + '">Cancel</button>'
+      + '</div>';
   }
 
   // The narrow row (spec 4.4): the title as a full-width block link, then the
@@ -5430,7 +5584,8 @@
     out.push('<button type="button" data-act="row-more" data-id="' + id + '" aria-expanded="'
       + (open ? 'true' : 'false') + '" aria-controls="tfcc-act-' + id + '" aria-label="'
       // #39: while open the toggle is a close X; the same button closes it.
-      + (open ? 'Close actions' : escapeHtml('Actions for ' + row.title)) + '">'
+      + (open ? 'Close actions' : escapeHtml('Actions for ' + row.title)) + '" title="'
+      + (open ? 'Close actions' : 'Actions') + '">'
       + glyph(open ? 'close' : 'more') + '</button>');
     out.push('</span></div>');
     if (row.note) out.push('<div class="tfcc-note">' + escapeHtml(row.note) + '</div>');
@@ -5512,7 +5667,7 @@
     out.push('<button type="button" data-act="unread-only" aria-pressed="'
       + (model.unreadOnly ? 'true' : 'false') + '">Unread</button>');
     out.push('<button type="button" data-act="filters" aria-expanded="' + (model.filtersOpen ? 'true' : 'false')
-      + '" aria-controls="tfcc-filters" aria-label="' + escapeHtml('Filters, ' + active + ' active') + '">'
+      + '" aria-controls="tfcc-filters" aria-label="' + escapeHtml('Filters, ' + active + ' active') + '" title="Filters">'
       + glyph('funnel') + (active ? '<span>' + active + '</span>' : '') + '</button>');
     out.push('</div>');
     out.push('<div class="tfcc-filtergrid" id="tfcc-filters"' + (model.filtersOpen ? '' : ' hidden') + '>'
@@ -5976,6 +6131,15 @@
     out.push(renderInfoText('settings-clip', model.openInfoId, 'Each row\'s title and summary stay on one line, '
       + 'ending in ... when they would wrap. On a phone, open a row\'s actions to read it whole; on a wider '
       + 'screen, hover over it. Turn this off to let them wrap.'));
+    // #43 (owner): on by default. A class on the panel switches the CSS
+    // (tfcc-seethrough).
+    out.push('<div class="tfcc-kv"><label for="tfcc-seethrough">See-through background</label>'
+      + '<input id="tfcc-seethrough" type="checkbox" data-act="see-through"'
+      + (model.settings.seeThrough ? ' checked' : '') + '>'
+      + renderInfoButton('settings-seethrough', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-seethrough', model.openInfoId, 'The panel shows Torn\'s page through it. '
+      + 'Text can be harder to read over a busy page, or one much lighter or darker than the panel. '
+      + 'Turn this off to make the panel solid.'));
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><div class="tfcc-infobar"><h4>Folders</h4>'
@@ -6114,14 +6278,16 @@
     out.push('<div class="tfcc-head-id">' + LOGO_SVG + renderBadgeChip(model) + count + '</div>');
     out.push('<div class="tfcc-head-ctl"><span class="tfcc-head-btns">');
     out.push('<button type="button" class="tfcc-hbtn" data-act="refresh" aria-label="'
-      + (model.refreshing ? 'Refreshing" aria-busy="true"' : 'Refresh"') + '>' + glyph('refresh') + '</button>');
+      + (model.refreshing ? 'Refreshing" title="Refreshing" aria-busy="true"' : 'Refresh" title="Refresh"') + '>'
+      + glyph('refresh') + '</button>');
     out.push('<button type="button" class="tfcc-hbtn" data-act="takeover" aria-pressed="'
-      + (model.takeover ? 'true' : 'false') + '" aria-label="' + (model.takeover ? 'Shrink' : 'Expand') + '">'
+      + (model.takeover ? 'true' : 'false') + '" aria-label="' + (model.takeover ? 'Shrink' : 'Expand')
+      + '" title="' + (model.takeover ? 'Shrink' : 'Expand') + '">'
       + glyph(model.takeover ? 'shrink' : 'expand') + '</button>');
     if (model.collapsed) {
       out.push('<button type="button" class="tfcc-hshow" data-act="collapse">' + glyph('down') + '<span>Show</span></button>');
     } else {
-      out.push('<button type="button" class="tfcc-hbtn" data-act="collapse" aria-label="Hide the panel">'
+      out.push('<button type="button" class="tfcc-hbtn" data-act="collapse" aria-label="Hide the panel" title="Hide the panel">'
         + glyph('up') + '</button>');
     }
     out.push('</span></div></div>');
@@ -6328,6 +6494,7 @@
   // #33: the class the narrow stylesheet hangs off. On our own element only.
   var NARROW_CLASS = 'tfcc-narrow';
   var CLIP_CLASS = 'tfcc-clip';
+  var SEETHROUGH_CLASS = 'tfcc-seethrough';
 
   // The panel's border-box width, or 0 when it cannot be read. Reads only this
   // script's #tfcc-panel (the owner's ADR 0001 ruling, spec section 5).
@@ -6552,6 +6719,36 @@
     }
   }
 
+  // #43: true when a click on t keeps the open popup open: t is inside the
+  // popup or is the button that opened it. Our own nodes only.
+  function insideOpenEditor(panel, t) {
+    var ed = state.openEditor;
+    if (!ed || !t) return false;
+    try {
+      var get = function (k) { return typeof t.getAttribute === 'function' ? t.getAttribute(k) : null; };
+      if (get('data-act') === 'editor' && get('data-id') === ed.id && get('data-field') === ed.field) return true;
+      var sel = attrSel('id', 'tfcc-ed-' + ed.id);
+      var box = panel.querySelector(sel);
+      return !!(box && typeof box.contains === 'function' && box.contains(t));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // The popup's Save or Cancel for a key pressed in it, or a stand-in that
+  // carries the same row and field when the button cannot be found.
+  function editorButtonFor(panel, t, save) {
+    var get = function (k) { return t && typeof t.getAttribute === 'function' ? t.getAttribute(k) : null; };
+    var id = get('data-id');
+    var field = get('data-field');
+    if (field && /-input$/.test(field)) field = field.slice(0, -6);
+    var b = null;
+    var sel = attrSel('data-act', save ? 'editor-save' : 'editor-cancel') + attrSel('data-id', id);
+    try { b = panel.querySelector(sel); } catch (e) { b = null; }
+    if (b) return b;
+    return { getAttribute: function (k) { return k === 'data-id' ? id : (k === 'data-field' ? field : null); } };
+  }
+
   var clickAwayBound = false;
   var clickAwayCtx = null;
 
@@ -6601,6 +6798,8 @@
     // #41: the clip setting is one class; the loading and error models carry
     // no rows, so they keep whatever the setting says.
     if (panel.classList) panel.classList.toggle(CLIP_CLASS, !state.settings || state.settings.clipLines !== false);
+    // #43: the see-through setting is one class too.
+    if (panel.classList) panel.classList.toggle(SEETHROUGH_CLASS, !state.settings || state.settings.seeThrough !== false);
 
     var html = panelHtml(model);
 
@@ -6640,6 +6839,13 @@
         // (PR #40 review).
         if (state.openRowId && !insideOpenDrawer(panel, t)) {
           applyTransient({ type: 'dismiss' });
+          setTimeout(function () { draw(doc, win, handlers); }, 0);
+        }
+        // #43: a tap outside the open tag or note popup (and its own button)
+        // closes it, the same way and with the same deferred redraw. What was
+        // typed stays in the mirror for when it is opened again.
+        if (state.openEditor && !insideOpenEditor(panel, t)) {
+          state.openEditor = nextEditor(state.openEditor, { type: 'close' });
           setTimeout(function () { draw(doc, win, handlers); }, 0);
         }
         // A thread link the panel rendered. The browser follows it; this only
@@ -6691,6 +6897,20 @@
         if (!text) state.focusIntent = focusPlan(focusTargetOf(t), lastRender);
         state.deferCommit = text;
         try { handlers.onChange(act, t); } finally { state.focusIntent = null; state.deferCommit = false; }
+      });
+      // #43: in the tag or note popup, Enter saves and Escape cancels.
+      panel.addEventListener('keydown', function (ev) {
+        var t = ev && ev.target;
+        var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+        if (act !== 'editor-input' && act !== 'editor-save' && act !== 'editor-cancel') return;
+        // PR #44 review: during IME composition Enter accepts a candidate and
+        // Escape dismisses it; neither is meant for the popup.
+        if (ev.isComposing === true || ev.keyCode === 229) return;
+        var key = ev.key;
+        if (key !== 'Escape' && key !== 'Esc' && !(key === 'Enter' && act === 'editor-input')) return;
+        if (typeof handlers.onAction !== 'function') return;
+        if (typeof ev.preventDefault === 'function') ev.preventDefault();
+        handlers.onAction(key === 'Enter' ? 'editor-save' : 'editor-cancel', editorButtonFor(panel, t, key === 'Enter'));
       });
       panel.addEventListener('input', function (ev) {
         var t = ev && ev.target;
@@ -7017,7 +7237,9 @@
   function restoreSelection(el) {
     var d = state.drawerEdit;
     if (!d || typeof el.setSelectionRange !== 'function' || typeof el.getAttribute !== 'function') return;
-    if (el.getAttribute('data-act') !== d.field || el.getAttribute('data-id') !== d.id) return;
+    // #43: the popup's field names its mirror in data-field.
+    var f = el.getAttribute('data-act') === 'editor-input' ? el.getAttribute('data-field') : el.getAttribute('data-act');
+    if (f !== d.field || el.getAttribute('data-id') !== d.id) return;
     if (d.selStart === null || d.selEnd === null) return;
     try { el.setSelectionRange(d.selStart, d.selEnd); } catch (e) { /* not a text field */ }
   }
@@ -7123,6 +7345,20 @@
       return el && el.value !== undefined ? String(el.value) : '';
     }
 
+    // #43: the popup's typed text: the field on screen, else the mirror. A
+    // read of this script's own panel, never of the document.
+    function valueOfEditor(id, field) {
+      var el = null;
+      try {
+        var panel = doc.getElementById(PANEL_ID);
+        var sel = attrSel('data-act', 'editor-input') + attrSel('data-id', id) + attrSel('data-field', field + '-input');
+        el = panel && typeof panel.querySelector === 'function' ? panel.querySelector(sel) : null;
+      } catch (e) { el = null; }
+      if (el && el.value !== undefined) return String(el.value);
+      var d = state.drawerEdit;
+      return d && d.id === id && d.field === field + '-input' ? String(d.value) : '';
+    }
+
     // Every way the view changes goes through here, so the disclosures close
     // with it (spec section 6). Tapping the current view changes nothing.
     function setView(v) {
@@ -7193,6 +7429,36 @@
         if (act === 'filters') { applyTransient({ type: 'filters' }); redraw(); return; }
 
         if (act === 'row-more' && id) { applyTransient({ type: 'row-more', id: id }); redraw(); return; }
+        // #43: the drawer's Tag and Note popup. Opening moves focus into its
+        // field; Save and Cancel return it to the button that opened it.
+        if (act === 'editor' && id) {
+          var edField = el.getAttribute('data-field');
+          state.openEditor = nextEditor(state.openEditor, { type: 'open', id: id, field: edField });
+          state.focusIntent = state.openEditor
+            ? [attrSel('data-act', 'editor-input') + attrSel('data-id', id)]
+            : [attrSel('data-act', 'editor') + attrSel('data-id', id) + attrSel('data-field', edField)];
+          redraw(); return;
+        }
+        if ((act === 'editor-save' || act === 'editor-cancel') && id) {
+          var sField = el.getAttribute('data-field');
+          if (EDITOR_FIELDS.indexOf(sField) === -1) return;
+          if (act === 'editor-save') {
+            var typed = valueOfEditor(id, sField);
+            if (sField === 'note') {
+              var nNext = cloneOrganizer(state.organizer);
+              entryOf(nNext, id).note = safeString(typed, 2000);
+              state.organizer = nNext;
+            } else if (typed.trim()) {
+              if (hasTag(state.organizer, id, typed)) announce('Already tagged');
+              else state.organizer = addTag(state.organizer, id, typed);
+            }
+            persist('organizer'); recompute(now);
+          }
+          if (state.drawerEdit && state.drawerEdit.id === id && state.drawerEdit.field === sField + '-input') state.drawerEdit = null;
+          state.openEditor = nextEditor(state.openEditor, { type: 'close' });
+          state.focusIntent = [attrSel('data-act', 'editor') + attrSel('data-id', id) + attrSel('data-field', sField)];
+          redraw(); return;
+        }
         if (act === 'pin' && id) { state.organizer = togglePin(state.organizer, id); persist('organizer'); recompute(now); redraw(); return; }
         if (act === 'read' && id) {
           var row = state.rows.filter(function (r) { return r.id === id; })[0];
@@ -7407,6 +7673,10 @@
           state.settings.autoHideOnOpen = !!el.checked;
           persist('settings'); redraw(); return;
         }
+        if (act === 'see-through') {
+          state.settings.seeThrough = !!el.checked;
+          persist('settings'); redraw(); return;
+        }
         if (act === 'clip-lines') {
           state.settings.clipLines = !!el.checked;
           persist('settings'); redraw(); return;
@@ -7435,6 +7705,8 @@
       // forced redraw before the commit renders what was typed and restores
       // the caret (spec section 6, dirty inputs rule 3).
       onInput: function (act, el) {
+        // #43: the popup's field mirrors under the inline field's name.
+        if (act === 'editor-input') act = el && el.getAttribute ? el.getAttribute('data-field') : null;
         if (act !== 'note-input' && act !== 'tag-input') return;
         var id = idOf(el);
         if (!id) return;

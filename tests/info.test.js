@@ -44,6 +44,8 @@ const OWNER_13D = {
       'settings-autohide': 'About hiding the panel',
       // #41: the clip setting's explanation, 13d pattern.
       'settings-clip': 'About clipping',
+      // #43 (owner): the see-through setting's note.
+      'settings-seethrough': 'About see-through',
       'settings-folders': 'About folders',
       'settings-badges': 'About badges',
     },
@@ -53,6 +55,7 @@ const OWNER_13D = {
       'Search and Drafts always show everything.',
       'Only thread links in this panel do this, and only a plain click.',
       'Each row\'s title and summary stay on one line',
+      'The panel shows Torn\'s page through it.',
       'A folder can claim a forum',
       'Earned from what you do here',
     ],
@@ -203,4 +206,120 @@ test('every glyph is ASCII path data, drawn in currentColor and hidden from assi
     const svg = api.glyph(name);
     assert.match(svg, /^<svg class="tfcc-gl" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">/);
   }
+});
+
+// ---- #43: the priority explanation in the open row's drawer ------------------
+
+// The owner's item, written out here like OWNER_13D: one shared key, rendered
+// only by the open narrow drawer in Threads and Catch up.
+const OWNER_DRAWER = {
+  info: { priority: 'About priority' },
+  hidden: ['Your own ranking for this thread, from -2 to +2, saved only on this device. '
+    + 'The My priority sort lists higher numbers first, after pinned threads.'],
+};
+
+function drawerOpen(view, id) {
+  const { env, api } = bootNarrow();
+  seedRows(api, [{ id: 1, title: 'One', unread: 1 }, { id: 2, title: 'Two', unread: 1 }]);
+  api.state.settings.view = view;
+  api.state.settings.sort = 'title';
+  env.exports.draw(env.doc, env.win, api.makeHandlers(env.doc, env.win), true);
+  click(env, '[data-act="row-more"][data-id="' + (id || '1') + '"]');
+  return { env, api, html: () => env.doc.getElementById('tfcc-panel').innerHTML };
+}
+
+test('the open drawer, and only it, renders the priority info button and its hidden text (#43)', () => {
+  for (const view of ['threads', 'catchup']) {
+    const { html } = drawerOpen(view);
+    const h = html();
+    const keys = Array.from(h.matchAll(/data-act="info" data-info="([a-z-]+)"/g), (m) => m[1]).filter((k) => k !== 'catchup');
+    assert.deepStrictEqual(keys, Object.keys(OWNER_DRAWER.info), view + ': one, in the open drawer');
+    assert.match(h, /data-info="priority" aria-expanded="false" aria-controls="tfcc-info-priority" aria-label="About priority" title="About priority"/);
+    const drawer = h.slice(h.indexOf('id="tfcc-act-1"'));
+    assert.ok(drawer.indexOf('data-info="priority"') !== -1, view + ': inside the open drawer');
+    assert.strictEqual((h.match(/id="tfcc-info-priority"/g) || []).length, 1, view + ': aria-controls names one real element');
+    for (const s of OWNER_DRAWER.hidden) {
+      assert.ok(h.includes(s), view + ': in the markup');
+      assert.ok(!visible(h).includes(s), view + ': not shown until asked');
+    }
+  }
+  // Closed drawers and the wide row render none.
+  for (const width of [343, 900]) {
+    const { api } = bootNarrow({ width });
+    seedRows(api, [{ id: 1, unread: 1 }]);
+    assert.doesNotMatch(htmlFor(api, 'threads'), /data-info="priority"|tfcc-info-priority/, String(width));
+  }
+});
+
+test('the priority info sits first in the group: info, number, +, -, and its text renders under the icon row (#43)', () => {
+  const { html } = drawerOpen('threads');
+  const h = html();
+  const group = /<span class="tfcc-dprio">([\s\S]*?)<\/span><\/div>/.exec(h)[1];
+  assert.deepStrictEqual(Array.from(group.matchAll(/data-act="([a-z-]+)"|class="(tfcc-prio)"/g), (m) => m[1] || m[2]),
+    ['info', 'tfcc-prio', 'prio-up', 'prio-down']);
+  const rowEnd = h.indexOf('</span></div>', h.indexOf('tfcc-dprio'));
+  const text = h.indexOf('id="tfcc-info-priority"');
+  const org = h.indexOf('tfcc-drawer-org');
+  assert.ok(rowEnd < text && text < org, 'after the icon row, before the folder row');
+});
+
+test('tapping it opens the text; tapping again closes it; one info is open at a time (#43)', () => {
+  const { env, api, html } = drawerOpen('catchup');
+  click(env, '[data-act="info"][data-info="priority"]');
+  assert.strictEqual(api.state.openInfoId, 'priority');
+  assert.strictEqual(api.state.openRowId, '1', 'the drawer stays open');
+  assert.match(html(), /data-info="priority" aria-expanded="true"/);
+  assert.ok(visible(html()).includes(OWNER_DRAWER.hidden[0]), 'shown');
+  click(env, '[data-act="info"][data-info="catchup"]');
+  assert.strictEqual(api.state.openInfoId, 'catchup', 'opening another closes it');
+  assert.strictEqual(api.state.openRowId, null, 'and that tap was outside the drawer, so the drawer closed');
+  env.advanceTimersBy(0);
+  click(env, '[data-act="row-more"][data-id="1"]');
+  click(env, '[data-act="info"][data-info="priority"]');
+  assert.strictEqual(api.state.openInfoId, 'priority', 'opening it closes Catch up\'s');
+  click(env, '[data-act="info"][data-info="priority"]');
+  assert.strictEqual(api.state.openInfoId, null);
+});
+
+test('the priority text closes with its drawer: the toggle, another row, a tap away, a view change (#43)', () => {
+  const cases = {
+    toggle: (env) => click(env, '[data-act="row-more"][data-id="1"]'),
+    'another row': (env) => click(env, '[data-act="row-more"][data-id="2"]'),
+    'tap away': (env) => { click(env, '[data-act="unread-only"]'); env.advanceTimersBy(0); },
+    view: (env) => click(env, '[data-act="view"][data-view="drafts"]'),
+  };
+  for (const [name, act] of Object.entries(cases)) {
+    const { env, api, html } = drawerOpen('threads');
+    click(env, '[data-act="info"][data-info="priority"]');
+    assert.strictEqual(api.state.openInfoId, 'priority', name + ': precondition');
+    act(env);
+    assert.strictEqual(api.state.openInfoId, null, name);
+    if (name === 'another row') {
+      assert.match(html(), /data-info="priority" aria-expanded="false" aria-controls="tfcc-info-priority"/, 'the new drawer starts closed');
+    }
+  }
+  // The engine rules on their own: another row's drawer opening closes it
+  // (whatever path the tap took), and no open drawer means no drawer info.
+  const { api } = bootNarrow();
+  assert.strictEqual(api.nextTransient({ openRowId: '1', filtersOpen: false, openInfoId: 'priority', drawerEdit: null },
+    { type: 'row-more', id: '2' }).openInfoId, null);
+  assert.strictEqual(api.nextTransient({ openRowId: '1', filtersOpen: false, openInfoId: 'catchup', drawerEdit: null },
+    { type: 'row-more', id: '2' }).openInfoId, 'catchup', 'a view info is not the drawer\'s');
+  assert.strictEqual(api.reconcileTransient({ openRowId: null, filtersOpen: false, openInfoId: 'priority', drawerEdit: null },
+    [], ['priority']).openInfoId, null);
+});
+
+test('the priority text says what the code does (#43)', () => {
+  // A literal for each claim, checked against the code that makes it true.
+  const { api } = bootNarrow();
+  assert.strictEqual(api.PRIORITY_MIN, -2);
+  assert.strictEqual(api.PRIORITY_MAX, 2);
+  let org = api.setPriority(api.freshOrganizer(NOW), '1', 9);
+  assert.strictEqual(org.threads['1'].priority, 2, 'from -2 to +2');
+  org = api.setPriority(org, '1', -9);
+  assert.strictEqual(org.threads['1'].priority, -2);
+  assert.strictEqual(api.SORT_LABELS.priority, 'My priority');
+  const rows = [{ id: 'a', pinned: false, priority: 1 }, { id: 'b', pinned: false, priority: 2 }, { id: 'c', pinned: true, priority: -2 }]
+    .map((r) => Object.assign({ title: r.id, lastActivity: 0, unread: 0, authorName: '', forumName: '', firstSeenAt: 0 }, r));
+  assert.deepStrictEqual(api.sortThreads(rows, 'priority').map((r) => r.id), ['c', 'b', 'a'], 'higher first, after pinned');
 });

@@ -529,9 +529,27 @@ const MUTATIONS = [
     apply: (s) => s.replace(' button.tfcc-nav-mine { margin-left: auto; ', ' button.tfcc-nav-mine { '),
   },
   {
-    name: 'the My posts pressed rule loses to the generic one',
+    // #43: the pressed-rule mutation it replaces guarded a rule the owner removed.
+    name: '#43: My posts gets a fill of its own again, and looks selected',
     suite: 'tests/style.test.js',
-    apply: (s) => s.replace(' button.tfcc-nav-mine[aria-pressed="true"] {', ' .tfcc-nav-mine-x[aria-pressed="true"] {'),
+    apply: (s) => s.replace("' button.tfcc-nav-mine { margin-left: auto; }',",
+      "' button.tfcc-nav-mine { margin-left: auto; background: #d9d9d9; color: #141414; }',"),
+  },
+  {
+    name: '#43: My posts is bold where the other nav buttons are not (PR #44 review)',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace("' button.tfcc-nav-mine { margin-left: auto; }',", "' button.tfcc-nav-mine { margin-left: auto; font-weight: bold; }',"),
+  },
+  {
+    name: '#43: a wide info button misses its listed hover note (PR #44 review)',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("+ '\" title=\"' + escapeHtml(INFO_KEYS[key]) + '\">'", "+ '\" title=\"' + escapeHtml(key) + '\">'"),
+  },
+  {
+    name: '#43: the wide My posts colour leaves the listed replacement',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("' button.tfcc-nav-mine { margin-left: auto; }',",
+      "' button.tfcc-nav-mine { margin-left: auto; font-weight: bold; }',"),
   },
   {
     name: 'Unread only is ignored in My posts',
@@ -601,7 +619,7 @@ const MUTATIONS = [
   {
     name: 'the Threads cap runs before the sort',
     suite: 'tests/rows-cap.test.js',
-    apply: (s) => s.replace('      threads: capRows(threadsSorted, s.rowsShown,', '      threads: capRows(visible, s.rowsShown,'),
+    apply: (s) => s.replace('      threads: capRows(threadsSorted, limit,', '      threads: capRows(visible, limit,'),
   },
   {
     name: 'the My posts cap runs before the sort',
@@ -1105,10 +1123,17 @@ const MUTATIONS = [
     apply: (s) => s.replace('if (state.pressActive) { state.pendingRedraw = true; return; }', ''),
   },
   {
-    name: 'a forced redraw drops what was typed in a drawer',
+    // #43: the inline note field is the wide row's; the drawer's is a popup.
+    name: 'a forced redraw drops what was typed in a note field',
     suite: 'tests/dirty-input.test.js',
-    apply: (s) => s.replace("escapeHtml(edit && edit.field === 'note-input' ? edit.value : row.note) + '\" placeholder=\"note\" aria-label=\"Note\">');",
-      "escapeHtml(row.note) + '\" placeholder=\"note\" aria-label=\"Note\">');"),
+    apply: (s) => s.replace("escapeHtml(edit && edit.field === 'note-input' ? edit.value : row.note) + '\" placeholder=\"note\" size=\"14\">');",
+      "escapeHtml(row.note) + '\" placeholder=\"note\" size=\"14\">');"),
+  },
+  {
+    name: '#43: a forced redraw drops what was typed in the drawer popup',
+    suite: 'tests/compact-drawer.test.js',
+    apply: (s) => s.replace("var value = edit && edit.field === mirror ? edit.value : (field === 'note' ? row.note : '');",
+      "var value = field === 'note' ? row.note : '';"),
   },
   {
     name: 'the live region never renders',
@@ -1291,7 +1316,7 @@ const MUTATIONS = [
     // 3. The close toggle and click-away.
     ['the open toggle keeps the more glyph', (s) => s.replace("glyph(open ? 'close' : 'more')", "glyph('more')")],
     ['the open toggle is not named Close actions', (s) => s.replace("(open ? 'Close actions' :", "(open ? 'Actions' :")],
-    ['dismiss no longer closes the drawer', (s) => s.replace("if (type === 'dismiss') { out.openRowId = null; return out; }", '')],
+    ['dismiss no longer closes the drawer', (s) => s.replace("if (type === 'dismiss') { out.openRowId = null; if (drawerInfo) out.openInfoId = null; return out; }", '')],
     ['a tap elsewhere in the panel leaves the drawer open', (s) => s.replace('if (state.openRowId && !insideOpenDrawer(panel, t)) {', 'if (false) {')],
     ['a tap inside the drawer closes it', (s) => s.replace("return !!(drawer && typeof drawer.contains === 'function' && drawer.contains(t));", 'return false;')],
     // PR #40 review, finding 1: the closing redraw, and the press flush, run
@@ -1322,7 +1347,7 @@ const MUTATIONS = [
     ['the drawer emoji stay in colour on dark', (s) => s.replace("      '  filter: grayscale(1) brightness(0) invert(1); }',", "      '  filter: none; }',")],
     ['the drawer emoji stay in colour on light', (s) => s.replace('.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }', '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: none; }')],
     ['drawer buttons go under the 24px floor', (s) => s.replace('.tfcc-drawer button { min-height: 32px; min-width: 32px;', '.tfcc-drawer button { min-height: 20px; min-width: 20px;')],
-    ['the drawer buttons may wrap, 4px apart', (s) => s.replace('.tfcc-drawer-btns { display: flex; flex-wrap: nowrap; gap: 8px; }', '.tfcc-drawer-btns { display: flex; flex-wrap: wrap; gap: 4px; }')],
+    ['the drawer buttons may wrap', (s) => s.replace('.tfcc-drawer-btns { display: flex; flex-wrap: nowrap; align-items: center;', '.tfcc-drawer-btns { display: flex; flex-wrap: wrap; align-items: center;')],
     ['a drawer field is shortened by its font', (s) => s.replace("      '  padding: 4px 8px; }',", "      '  padding: 4px 8px; font-size: 12px; }',")],
   ].map(([name, apply]) => ({ name: '#39: ' + name, suite: 'tests/narrow-polish.test.js', apply })),
   ...[
@@ -1387,8 +1412,9 @@ const MUTATIONS = [
   {
     name: '#41: the Settings checkbox moves out of Appearance',
     suite: 'tests/wide-parity.test.js',
-    apply: (s) => s.replace("      + 'screen, hover over it. Turn this off to let them wrap.'));\n    out.push('</div>');",
-      "      + 'screen, hover over it. Turn this off to let them wrap.'));\n    out.push('</div><div>');"),
+    // #43: the see-through setting now follows it inside Appearance.
+    apply: (s) => s.replace("      + 'screen, hover over it. Turn this off to let them wrap.'));\n    // #43 (owner)",
+      "      + 'screen, hover over it. Turn this off to let them wrap.'));\n    out.push('</div><div>');\n    // #43 (owner)"),
   },
   {
     name: '#39: the wide Catch up bar takes the narrow two-label buttons',
@@ -1396,6 +1422,124 @@ const MUTATIONS = [
     apply: (s) => s.replace("model.narrow ? cuButton('markall', 'Mark all read', 'All read') : btn('markall', 'Mark all read')",
       "cuButton('markall', 'Mark all read', 'All read')"),
   },
+  {
+    name: '#43: Expand no longer shows every row',
+    suite: 'tests/rows-cap.test.js',
+    apply: (s) => s.replace('return takeover === true ? 0 : rowsShown;', 'return rowsShown;'),
+  },
+  {
+    name: '#43: the model ignores takeover when it caps',
+    suite: 'tests/rows-cap.test.js',
+    apply: (s) => s.replace('var limit = rowLimitFor(s.rowsShown, s.takeover);', 'var limit = s.rowsShown;'),
+  },
+  ...[
+    ['the check mark loses its hover note', (s) => s.replace('aria-label="Mark read" title="Mark read"', 'aria-label="Mark read"')],
+    ['the info buttons lose their hover note', (s) => s.replace(
+      "+ '\" title=\"' + escapeHtml(INFO_KEYS[key]) + '\">'", "+ '\">'")],
+    ['the narrow Hide button loses its hover note', (s) => s.replace(
+      'aria-label="Hide the panel" title="Hide the panel">', 'aria-label="Hide the panel">')],
+    ['the Filters button loses its hover note', (s) => s.replace(
+      "' active') + '\" title=\"Filters\">'", "' active') + '\">'")],
+    ['the drawer loses its inline priority', (s) => s.replace(
+      "    out.push('<span class=\"tfcc-dprio\">' + renderInfoButton('priority', model.openInfoId) + renderPriority(row) + '</span>');\n", '')],
+    ['the drawer priority is not pushed right', (s) => s.replace(
+      ".tfcc-dprio > :first-child { margin-left: auto; }',", ".tfcc-dprio > :first-child { }',")],
+    ['the drawer row targets shrink below the 24px floor', (s) => s.replace(
+      "  justify-content: center; min-width: 24px; padding: 0; }',", "  justify-content: center; min-width: 0; padding: 0; }',")],
+    ['an info button gets its filled box back', (s) => s.replace(
+      "padding: 0; border-color: transparent; background: transparent; }',", "padding: 0; border-color: var(--tm-border); }',")],
+    ['an open info button fills its box again', (s) => s.replace(
+      "button.tfcc-info[aria-expanded=\"true\"] { background: transparent; color: var(--tm-accent-text); }',",
+      "button.tfcc-info[aria-expanded=\"true\"] { background: var(--tm-hover); }',")],
+    ['an info button loses its tap target', (s) => s.replace(
+      "  flex: none; min-width: 44px; min-height: 44px; padding: 0; border-color: transparent;",
+      "  flex: none; padding: 0; border-color: transparent;")],
+    ['the popup outlives its drawer', (s) => s.replace(
+      '    state.openEditor = reconcileEditor(state.openEditor, state.openRowId);\n', '')],
+  ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/compact-drawer.test.js', apply })),
+  ...[
+    ['the drawer loses its priority info button', (s) => s.replace(
+      "'<span class=\"tfcc-dprio\">' + renderInfoButton('priority', model.openInfoId) + renderPriority(row)",
+      "'<span class=\"tfcc-dprio\">' + renderPriority(row)")],
+    ['the priority info stays open when another row opens', (s) => s.replace(
+      '      out.openRowId = out.openRowId === ev.id ? null : ev.id;\n      if (drawerInfo) out.openInfoId = null;\n',
+      '      out.openRowId = out.openRowId === ev.id ? null : ev.id;\n')],
+    ['the priority info outlives a closed drawer', (s) => s.replace(
+      "    if (out.openRowId === null && DRAWER_INFO_KEYS.indexOf(out.openInfoId) !== -1) out.openInfoId = null;\n", '')],
+    ['the priority text drops the range', (s) => s.replace('from -2 to +2, saved only on this device.', 'saved only on this device.')],
+    ['the priority key is not registered', (s) => s.replace("    priority: 'About priority',\n", '')],
+  ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/info.test.js', apply })),
+  ...[
+    ['the see-through panel is solid', (s) => s.replace(".tfcc-seethrough { background: var(--tfcc-base-bg);',", ".tfcc-seethrough { background: var(--tm-bg);',")],
+    ['the see-through rows are solid', (s) => s.replace(".tfcc-seethrough .tfcc-row { background: var(--tfcc-row-bg); }',", ".tfcc-seethrough .tfcc-row { background: var(--tm-bg-2); }',")],
+    ['the panel is 60% opaque, not the owner\'s 50%', (s) => s.replace('--tfcc-base-bg: rgba(31, 31, 31, 0.5);', '--tfcc-base-bg: rgba(31, 31, 31, 0.6);')],
+    ['the light row is 70% opaque, not the owner\'s 75%', (s) => s.replace('--tfcc-row-bg: rgba(232, 232, 232, 0.75);', '--tfcc-row-bg: rgba(232, 232, 232, 0.7);')],
+    ['takeover lets the page show through', (s) => s.replace(".tfcc-seethrough.tfcc-takeover { background: var(--tm-bg);',", ".tfcc-seethrough.tfcc-takeover {',")],
+    ['takeover rows let the page show through', (s) => s.replace(".tfcc-seethrough.tfcc-takeover .tfcc-row { background: var(--tm-bg-2); }',", ".tfcc-seethrough.tfcc-takeover .tfcc-row { }',")],
+    ['the shelf and toast go see-through too (owner: base layers only)', (s) => s.replace(
+      "'  background: var(--tm-bg-2); }',", "'  background: var(--tfcc-row-bg); }',")],
+    ['the row token fills every row, setting or not', (s) => s.replace(
+      "'  background: var(--tm-bg-2); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }',",
+      "'  background: var(--tfcc-row-bg); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }',")],
+    ['transparency by opacity, which fades the text', (s) => s.replace(
+      "'  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',",
+      "'  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); opacity: 0.5; }',")],
+    ['the blur outlives the setting', (s) => s.replace(
+      "'#' + PANEL_ID + '.tfcc-seethrough { background: var(--tfcc-base-bg);',\n      '  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',",
+      "'#' + PANEL_ID + '.tfcc-seethrough { background: var(--tfcc-base-bg); }',\n      '#' + PANEL_ID + ' { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',")],
+    ['see-through defaults off', (s) => s.replace('      seeThrough: true,\n    };', '      seeThrough: false,\n    };')],
+    ['a junk see-through value is reported as damage', (s) => s.replace(
+      "    var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now, isRecoveredSettings);",
+      "    var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now);")],
+    ['a stored see-through off is not kept', (s) => s.replace(
+      "out.seeThrough = typeof raw.seeThrough === 'boolean' ? raw.seeThrough : d.seeThrough;", 'out.seeThrough = d.seeThrough;')],
+    ['unticking see-through is not saved', (s) => s.replace(
+      "          state.settings.seeThrough = !!el.checked;\n          persist('settings'); redraw(); return;",
+      "          state.settings.seeThrough = !!el.checked;\n          redraw(); return;")],
+    ['the panel class ignores the setting', (s) => s.replace(
+      "panel.classList.toggle(SEETHROUGH_CLASS, !state.settings || state.settings.seeThrough !== false);",
+      'panel.classList.toggle(SEETHROUGH_CLASS, true);')],
+    ['the see-through note is not written', (s) => s.replace("'Turn this off to make the panel solid.'", "''")],
+  ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/transparency.test.js', apply })),
+  {
+    name: '#43: a see-through rule escapes its switch onto every wide panel',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("'#' + PANEL_ID + '.tfcc-seethrough .tfcc-row { background: var(--tfcc-row-bg); }',",
+      "'#' + PANEL_ID + ' .tfcc-row-x { background: var(--tfcc-row-bg); }',"),
+  },
+  {
+    name: '#43: the see-through checkbox renders ticked with the setting off',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("+ (model.settings.seeThrough ? ' checked' : '') + '>'", "+ ' checked>'"),
+  },
+  ...[
+    ['a tap elsewhere in the drawer leaves the popup open', (s) => s.replace(
+      'if (state.openEditor && !insideOpenEditor(panel, t)) {', 'if (false) {')],
+    ['Tag Save toggles an existing tag off again (PR #44 review)', (s) => s.replace(
+      "              if (hasTag(state.organizer, id, typed)) announce('Already tagged');\n              else state.organizer = addTag(state.organizer, id, typed);",
+      "              state.organizer = toggleTag(state.organizer, id, typed.trim());")],
+    ['addTag removes a tag that is already there', (s) => s.replace(
+      '    if (!clean || hasTag(org, threadId, clean)) return org;\n    return toggleTag(org, threadId, clean);',
+      '    if (!clean) return org;\n    return toggleTag(org, threadId, clean);')],
+    ['Enter saves during IME composition (PR #44 review)', (s) => s.replace(
+      '        if (ev.isComposing === true || ev.keyCode === 229) return;\n', '')],
+    ['only isComposing counts as composition, not keyCode 229', (s) => s.replace(
+      'if (ev.isComposing === true || ev.keyCode === 229) return;', 'if (ev.isComposing === true) return;')],
+    ['Escape no longer cancels the popup', (s) => s.replace("if (key !== 'Escape' && key !== 'Esc' && ", "if (key !== 'Esc' && ")],
+    ['Enter no longer saves the popup', (s) => s.replace("!(key === 'Enter' && act === 'editor-input')", 'true')],
+    ['opening the popup leaves focus on its button', (s) => s.replace(
+      "            ? [attrSel('data-act', 'editor-input') + attrSel('data-id', id)]", '            ? null')],
+    ['the popup field stops mirroring what is typed', (s) => s.replace(
+      "        if (act === 'editor-input') act = el && el.getAttribute ? el.getAttribute('data-field') : null;\n", '')],
+    ['Save on the note popup writes nothing', (s) => s.replace(
+      '              entryOf(nNext, id).note = safeString(typed, 2000);\n', '')],
+    ['Cancel keeps what was typed', (s) => s.replace(
+      "          if (state.drawerEdit && state.drawerEdit.id === id && state.drawerEdit.field === sField + '-input') state.drawerEdit = null;\n", '')],
+    ['the popup is not named', (s) => s.replace(
+      "+ (field === 'note' ? 'Edit the note' : 'Add a tag') + '\">'", "+ '\">'")],
+    ['a saved note does not show on the Note button', (s) => s.replace(
+      "opener('note', 'Note', row.note ? 'Edit note' : 'Add note', !!row.note)", "opener('note', 'Note', 'Add note', false)")],
+  ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/compact-drawer.test.js', apply })),
 ];
 
 let failures = 0;

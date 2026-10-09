@@ -363,3 +363,75 @@ test('Show all is per view', () => {
   assert.strictEqual(m.capped.threads.rows.length, 6);
   assert.strictEqual(m.capped.catchup.rows.length, 3, 'expanding Threads leaves Catch up capped');
 });
+
+// #43: Expand (takeover) shows every row in each capped view and drops the
+// "Showing N of M" line; Shrink brings the cap back. state.showAll is never
+// written, so a view the user set to Show all is still Show all after Shrink.
+test('rowLimitFor lifts the cap only in takeover, and leaves the limit alone otherwise', () => {
+  const { exports: api } = loadUserscript();
+  assert.strictEqual(api.rowLimitFor(3, true), 0);
+  assert.strictEqual(api.rowLimitFor(3, false), 3);
+  assert.strictEqual(api.rowLimitFor(10, undefined), 10);
+  assert.strictEqual(api.rowLimitFor(10, 'yes'), 10, 'only a real true expands');
+});
+
+function seedCapAll(api) {
+  seed(api, SIX.map((r) => Object.assign({ unread: 1 }, r)));
+  seedMine(api, SIX);
+}
+
+test('Expand shows every row in Threads, Catch up and My posts, with no cap line (#43)', () => {
+  const { api } = boot();
+  seedCapAll(api);
+  api.state.settings.rowsShown = 3;
+  api.state.settings.takeover = true;
+  for (const view of ['threads', 'catchup', 'mine']) {
+    api.state.settings.view = view;
+    const model = api.buildPanelModel(NOW);
+    assert.strictEqual(model.capped[view].rows.length, 6, view + ': every row');
+    assert.strictEqual(model.capped[view].hidden, 0, view);
+    const html = api.panelHtml(model);
+    assert.strictEqual(rowCount(html), 6, view + ': every row renders');
+    assert.doesNotMatch(html, /Showing/, view + ': no cap line');
+    assert.doesNotMatch(html, /data-act="rows-toggle"/, view + ': no Show all');
+  }
+});
+
+test('Shrink restores the cap, and a manual Show all survives the round trip (#43)', () => {
+  const { api } = boot();
+  seedCapAll(api);
+  api.state.settings.rowsShown = 3;
+  api.state.showAll.mine = true;
+  const before = JSON.stringify(api.state.showAll);
+  for (const takeover of [false, true, false]) {
+    api.state.settings.takeover = takeover;
+    for (const view of ['threads', 'catchup']) {
+      api.state.settings.view = view;
+      const html = api.panelHtml(api.buildPanelModel(NOW));
+      assert.strictEqual(rowCount(html), takeover ? 6 : 3, view + ' takeover=' + takeover);
+      if (takeover) assert.doesNotMatch(html, /Showing/); else assert.match(html, /Showing 3 of 6/);
+    }
+    api.state.settings.view = 'mine';
+    const mine = api.panelHtml(api.buildPanelModel(NOW));
+    assert.strictEqual(rowCount(mine), 6, 'My posts was set to Show all');
+    if (takeover) assert.doesNotMatch(mine, /Showing/); else assert.match(mine, /Showing all 6/);
+  }
+  assert.strictEqual(JSON.stringify(api.state.showAll), before, 'Expand never writes showAll');
+});
+
+test('Expand leaves the nav counts as they were (#43)', () => {
+  const { api } = boot();
+  seedCapAll(api);
+  api.state.settings.rowsShown = 3;
+  api.state.settings.view = 'catchup';
+  const navOf = (html) => {
+    const at = html.indexOf('<div class="tfcc-nav');
+    return html.slice(at, html.indexOf('</div>', at));
+  };
+  const capped = navOf(api.panelHtml(api.buildPanelModel(NOW)));
+  api.state.settings.takeover = true;
+  const open = navOf(api.panelHtml(api.buildPanelModel(NOW)));
+  assert.match(capped, /Catch up \(6\)/);
+  assert.match(capped, /My posts/);
+  assert.strictEqual(open, capped);
+});

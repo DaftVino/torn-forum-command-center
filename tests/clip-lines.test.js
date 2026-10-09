@@ -65,7 +65,7 @@ test('Settings, Appearance: the checkbox follows auto-hide, with an info button 
   const box = '<div class="tfcc-kv"><label for="tfcc-clip">Clip titles and summaries that wrap</label>'
     + '<input id="tfcc-clip" type="checkbox" data-act="clip-lines" checked>'
     + '<button type="button" class="tfcc-info" data-act="info" data-info="settings-clip" aria-expanded="false"'
-    + ' aria-controls="tfcc-info-settings-clip" aria-label="About clipping">';
+    + ' aria-controls="tfcc-info-settings-clip" aria-label="About clipping" title="About clipping">';
   assert.ok(html.includes(box), 'the checkbox, ticked by default, and its info button');
   assert.match(html, /<p class="tfcc-note tfcc-infotext" id="tfcc-info-settings-clip" hidden>Each row's title and summary stay on one line/);
   const autoHideText = html.indexOf('id="tfcc-info-settings-autohide"');

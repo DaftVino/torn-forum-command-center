@@ -1352,3 +1352,122 @@ The owner made 14b's one-line cut a setting, and carried it to desktop.
   of every row button. Before the fix it failed four previews (Threads and
   Catch up drawers at 280px, both themes); after it, every preview passes at
   375, 320 and 280px with clipping on and off.
+
+### 14f. The compact drawer, My posts, bare info icons, transparency (#43)
+
+The owner's feedback from using the narrow view on a phone. Items 1 to 3 and
+the priority info are narrow only; My posts, the info icons and transparency
+change desktop too, deliberately, each as a listed replacement in
+`tests/wide-43-diffs.js` (the golden was not regenerated).
+
+- **Inline priority.** The drawer's full-width stepper is gone. Priority is
+  the wide row's own `renderPriority` markup (the number, then + and -, with
+  their names and hints) at the right of the Pin / Mark read / Draft /
+  Archive row, after an info button. The row never wraps: each target starts
+  at 32 x 32 and shrinks toward the 24px floor only when the row would not
+  fit; the gaps are 8px on a row of 236px or more and close toward 4px below
+  it. Measured in the previews (Threads, with Mark read): 375px, seven 32 x 32
+  targets, 8px gaps; 320px, 27 x 32, 8px; 280px, 25 x 32, 4px. Catch up has
+  one target fewer.
+- **The priority explanation** (an info item, 13d pattern). One shared key,
+  `priority`, "About priority", rendered only by the open drawer (Threads and
+  Catch up), so `aria-controls` names one real element. Its text, from the
+  code (`setPriority`, `sortThreads`): "Your own ranking for this thread, from
+  -2 to +2, saved only on this device. The My priority sort lists higher
+  numbers first, after pinned threads." It renders under the icon row,
+  spanning the drawer, so the row does not grow, and closes with the drawer
+  (its toggle, another row, a tap away, a view change), as well as by the
+  section 6 transitions. 13d audit table, added:
+
+  | # | Where | Text (abridged) | Decision | Why |
+  |---|---|---|---|---|
+  | 34 | Drawer (Threads, Catch up) | "Your own ranking for this thread, from -2 to +2..." | **Info**, before the priority number | Owner decision: explains the number where it shows |
+
+- **Hover notes.** Every icon-only button has a `title` matching its name:
+  the drawer's and the Catch up row's check mark ("Mark read"), every info
+  button, the narrow header buttons, the Actions toggle ("Actions" / "Close
+  actions") and Filters. A test renders every view both ways and fails an
+  icon-only button with no title.
+- **Folder, Tag and Note on one row.** Tag and Note are buttons
+  (`data-act="editor"`, `aria-haspopup="dialog"`, `aria-expanded`,
+  `aria-controls="tfcc-ed-<id>"`) that open a small in-panel popup in the
+  drawer: a field, Save and Cancel, `role="dialog"` with a name ("Add a tag",
+  "Edit the note"). Opening moves focus into the field; Enter saves, Escape
+  cancels, and Save or Cancel returns focus to the opener. Keys pressed during
+  IME composition (`isComposing`, or `keyCode` 229) are left to the keyboard
+  (PR #44 review). Save writes the note field as the inline field did; for a
+  tag it adds only (`addTag`): a tag the thread already has, after the same
+  normalising, is kept and announced "Already tagged", never toggled off (PR
+  #44 review). The wide inline tag field keeps `toggleTag`. A saved note shows as
+  the set-state bar under Note and the name "Edit note"; the note itself is
+  the row's line, whole while the drawer is open. Tags stay as chips in the
+  meta. No browser dialog is used.
+- **Popup state.** `state.openEditor = { id, field }`, never saved. The pure
+  `nextEditor` (open toggles, anything else closes) and `reconcileEditor` (the
+  popup lives only in the open drawer) run after every model build, so it
+  closes whenever the drawer does: view change, collapse, auto-hide,
+  breakpoint, the row leaving the list, a tap outside the panel. A tap
+  elsewhere in the drawer closes the popup too, with the drawer's deferred
+  redraw. Typed text mirrors into `drawerEdit` under the inline field's name,
+  so it survives redraws with its caret, and a tap away keeps it for the next
+  open; only Save and Cancel clear it. Wide rows keep their inline fields,
+  which keep the commit-on-change press-hold rules (`tests/dirty-input.test.js`
+  now proves those on the wide row).
+- **My posts colour.** It uses every nav button's colours at every width: the
+  normal fill, and the selected fill only while it is the view. Its rule keeps
+  only its placement; its hover and pressed rules and its five tokens are
+  gone. Its weight is the other nav buttons' (PR #44 review): normal on wide,
+  where it used to be bold alone, and bold on narrow, where every grid cell
+  shares one rule. The contrast audit checks the weights are equal.
+- **Bare info icons.** Every info button keeps its 44px target (32px inside
+  the drawer), its focus ring and every attribute, with a transparent fill and
+  border. Hover and open tint the icon in the accent colour. The audit
+  measures the icon and the tint at 3:1 or better against what they sit on.
+- **See-through background (owner decision, after the first PR review).** A
+  setting, Settings > Appearance, after the clip setting: "See-through
+  background", on by default (`settings.seeThrough`: absent is on, an explicit
+  false is kept, anything else takes the default without a "Settings were
+  damaged" notice, through `isRecoveredSettings`). Its info note, "About
+  see-through": "The panel shows Torn's page through it. Text can be harder to
+  read over a busy page, or one much lighter or darker than the panel. Turn
+  this off to make the panel solid." The runtime puts `tfcc-seethrough` on the
+  panel while it is on, and every see-through rule hangs off that class:
+  - **Base layers only.** The panel's own background (behind the nav
+    buttons) is `--tfcc-base-bg`, `--tm-bg` at 50%, and the thread row card
+    (Threads, Catch up, My posts, and Search's matching threads, which are the
+    same row) is `--tfcc-row-bg`, `--tm-bg-2` at 75%. They are dedicated
+    tokens, so every other fill is main's exactly: buttons, nav cells, fields
+    and selects, the search bar, pills, chips, tags, the badge chip, shelf and
+    toast, the tag and note popup, info panels. The shelf and toast share
+    `--tm-bg-2` with the rows, which is why the row has its own token. A test
+    checks every background line of main's stylesheet is still there.
+  - Alpha on the colour, never `opacity`, so text and controls stay opaque.
+  - A 6px backdrop blur (prefixed for WebKit) rides the same class. It evens
+    out a busy page but cannot help a plain one, so contrast is measured
+    without it.
+  - Expand stays solid either way (`.tfcc-seethrough.tfcc-takeover` rules).
+  - Off, the panel is exactly main's: main's own background lines were never
+    edited. Text layering is unchanged: bare text stays on the panel, by the
+    owner's choice; the setting is the trade-off.
+  - **Parity.** The wide golden is compared with the setting off, as #41 did
+    for clip. The only markup change is the new Settings checkbox, a listed
+    literal; a separate test pins what on adds (the checkbox ticked; the
+    stylesheet text is the same), and every new rule is listed and starts
+    `#tfcc-panel.tfcc-seethrough`.
+- **Readability over Torn's page (measured, report only).** We cannot read
+  the page (ADR 0001), so the audit composites the panel over pure black,
+  pure white and a busy mid-grey stripe (worst stripe) in both themes. Over a
+  page of its own lightness the panel passes (dark over black, light over
+  white). Over the opposite, text sitting straight on the 50% panel falls far
+  below 4.5:1 (dark over white: 1.20 at worst; light over black: 1.95), while
+  text on the 75% rows mostly holds (dark over white 5.21, light over black
+  4.15). The owner kept 50/75 and accepted the trade-off through the setting.
+  Re-measured with the base-only scope, the table is unchanged (the shelf and
+  toast were never in the measured views); it is in the #43 pull request and
+  printed by `tests/contrast-audit.mjs`. With the setting off, and in Expand,
+  the same views are solid and pass AA.
+- **Expand shows every row.** While the panel is expanded, the capped views
+  (Threads, Catch up, My posts) show every row and no "Showing N of M" line
+  (the pure `rowLimitFor` returns All in takeover). `state.showAll` is never
+  written, so Shrink restores the cap, and a view set to Show all stays so.
+  The nav counts are unchanged.

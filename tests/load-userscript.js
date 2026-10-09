@@ -66,11 +66,11 @@ const EXPORT_NAMES = [
   // engine: merge, unread, sort
   'ACTIVITY_SOURCES', 'resolveLastActivity', 'unreadFor', 'mergeThreads',
   'SORT_MODES', 'SORT_LABELS', 'sortThreads', 'catchUpList', 'catchUpUnchecked', 'checkAuthorPosts',
-  'ROWS_SHOWN_OPTIONS', 'CAPPED_VIEWS', 'UNCAPPED_VIEWS', 'VIEW_LABELS', 'capRows', 'renderCapLine',
+  'ROWS_SHOWN_OPTIONS', 'CAPPED_VIEWS', 'UNCAPPED_VIEWS', 'VIEW_LABELS', 'capRows', 'rowLimitFor', 'renderCapLine',
   // #33: narrow layout
   'PRESS_FLUSH_MS',
   'restoreFocus', 'renderLive', 'focusTargetOf',
-  'rowHtml', 'renderRowNarrow', 'renderViewHeading',
+  'rowHtml', 'renderRowNarrow', 'renderViewHeading', 'renderPriority', 'nextEditor', 'reconcileEditor',
   'renderListBarNarrow',
   'renderNavNarrow', 'navNumeral',
   'renderHeadNarrow', 'fitHeader',
@@ -93,7 +93,7 @@ const EXPORT_NAMES = [
   'postCacheAdd', 'postCacheEvict', 'postCacheSize', 'postCachePostsFor',
   // engine: organizer
   'DEFAULT_FOLDERS', 'PRIORITY_MIN', 'PRIORITY_MAX',
-  'folderFor', 'applyAutoAssign', 'toggleTag', 'setPriority', 'setFolder',
+  'folderFor', 'applyAutoAssign', 'toggleTag', 'addTag', 'hasTag', 'setPriority', 'setFolder',
   'togglePin', 'markRead', 'deleteFolder', 'upsertFolder', 'allTags',
   // engine: drafts
   'DRAFT_MAX_CHARS', 'saveDraft', 'draftFor', 'deleteDraft', 'draftList',

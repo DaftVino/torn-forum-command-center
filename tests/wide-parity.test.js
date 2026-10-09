@@ -35,16 +35,58 @@ const D13 = require('./wide-13d-diffs');
 // golden is compared with the setting OFF (tests/wide-seed.js), where every
 // wide row is main's; the test "what clip on adds" below pins the rest.
 const D41 = require('./wide-41-diffs');
+// #43: the owner's wide changes (info hover notes, the My posts colour, the
+// semi-transparent backgrounds, the bare info icon), applied last. Each
+// markup entry states how many places it changes; each CSS entry replaces
+// one line of main's stylesheet, required exactly once.
+const D43 = require('./wide-43-diffs');
 
-function expectedView(view) {
+function expectedView(view, before43) {
   let html = golden.views[view];
-  for (const d of D13.concat(D41).filter((x) => x.view === view)) {
+  for (const d of D13.concat(D41, D43.literals).filter((x) => x.view === view)) {
     const n = html.split(d.from).length - 1;
     assert.strictEqual(n, 1, 'item ' + d.item + ': its "from" occurs ' + n + ' times in main\'s ' + view);
     html = html.replace(d.from, () => d.to);
   }
+  if (before43) return html;
+  for (const d of D43.markup) {
+    const before = html;
+    html = d.apply(html);
+    assert.deepStrictEqual(d.changed(before, html), d.hits[view] || [], 'item ' + d.item + ' in ' + view);
+  }
   return html;
 }
+
+// Main's stylesheet with the #43 line replacements applied.
+function expectedCss() {
+  let out = golden.css.slice();
+  for (const d of D43.css) {
+    const n = out.filter((line) => line === d.from).length;
+    assert.strictEqual(n, d.times || 1, 'item ' + d.item + ': its "from" occurs ' + n + ' times in the main stylesheet');
+    out = out.flatMap((line) => (line === d.from ? d.to : [line]));
+  }
+  return out;
+}
+
+test('every #43 markup entry changes exactly the controls it names, and nothing else', () => {
+  const titles = (h) => (h.match(/ title="/g) || []).length;
+  for (const d of D43.markup) {
+    for (const view of Object.keys(golden.views)) {
+      const before = expectedView(view, true);
+      const after = d.apply(before);
+      const want = d.hits[view] || [];
+      assert.deepStrictEqual(d.changed(before, after), want, d.item + ' in ' + view + ': which controls');
+      assert.strictEqual(titles(after) - titles(before), want.length, d.item + ' in ' + view + ': how many');
+      // Outside the named buttons' opening tags the view is untouched.
+      const strip = (h) => h.replace(/<button type="button" class="tfcc-info"[^>]*>/g, '<INFO>');
+      assert.strictEqual(strip(after), strip(before), d.item + ' in ' + view + ': nothing else');
+    }
+    assert.strictEqual(Object.values(d.hits).flat().length, 10, d.item + ': ten info buttons in all');
+  }
+  // An unrelated element naming an info id is left alone.
+  const stray = '<p aria-controls="tfcc-info-catchup" aria-label="About Catch up">x</p>';
+  assert.strictEqual(D43.markup[0].apply(stray), stray);
+});
 
 test('every complete wide view is main\'s, byte for byte, apart from the listed 13d items', () => {
   const now = captureWide(loadUserscript, FORUMS_LOCATION);
@@ -72,7 +114,7 @@ test('no stylesheet line from main was removed or edited, apart from the rules t
   const now = captureWide(loadUserscript, FORUMS_LOCATION).css;
   let at = 0;
   const missing = [];
-  for (const line of golden.css) {
+  for (const line of expectedCss()) {
     if (MOVED_OUT_OF_MEDIA.has(line)) continue;
     const found = now.indexOf(line, at);
     if (found === -1) missing.push(line); else at = found + 1;
@@ -105,13 +147,18 @@ const WIDE_41_SELECTORS = new Set([
 ]);
 
 test('every new stylesheet rule is scoped to .tfcc-narrow or is a listed 13d or #41 rule', () => {
-  const old = new Set(golden.css);
+  const old = new Set(expectedCss());
   const stray = captureWide(loadUserscript, FORUMS_LOCATION).css
     .filter((line) => !old.has(line) && line.indexOf('{') !== -1)
     .map((line) => line.slice(0, line.indexOf('{')).trim())
-    .filter((sel) => sel.indexOf('.tfcc-narrow') === -1 && !WIDE_13D_SELECTORS.has(sel) && !WIDE_41_SELECTORS.has(sel));
+    .filter((sel) => sel.indexOf('.tfcc-narrow') === -1 && !WIDE_13D_SELECTORS.has(sel) && !WIDE_41_SELECTORS.has(sel)
+      && !D43.selectors.has(sel));
   assert.deepStrictEqual(stray, [], 'a new rule a wide panel would see');
   for (const sel of WIDE_41_SELECTORS) assert.ok(sel.startsWith('#tfcc-panel.tfcc-clip '), sel);
+  // #43: every see-through rule hangs off its setting's class.
+  for (const sel of D43.selectors) {
+    if (sel.indexOf('tfcc-seethrough') !== -1) assert.ok(/^#tfcc-panel\.tfcc-seethrough(\.| |$)/.test(sel), sel);
+  }
 });
 
 // #41: with the clip setting ON, the wide output is the OFF output plus
@@ -146,4 +193,25 @@ test('what clip on adds to the wide output, and nothing more (#41)', () => {
   assert.ok(noted.length > 0, 'the seed has a note');
   assert.ok(on.rows.threads.some((r) => r.includes('<div class="tfcc-note" title="The one to link people to.">')));
   assert.deepStrictEqual(on.nav, off.nav);
+});
+
+// #43 (owner): with "See-through background" ON, the wide markup is the OFF
+// markup plus exactly the Settings checkbox ticked. The see-through itself is
+// the tfcc-seethrough class the runtime puts on the panel (not markup), and
+// every rule it switches on is listed in wide-43-diffs.js; the stylesheet is
+// the same text either way.
+test('what see-through on adds to the wide output, and nothing more (#43)', () => {
+  const off = captureWide(loadUserscript, FORUMS_LOCATION, false, false);
+  const on = captureWide(loadUserscript, FORUMS_LOCATION, false, true);
+  assert.deepStrictEqual(on.css, off.css);
+  for (const view of Object.keys(off.views)) {
+    let want = off.views[view];
+    if (view === 'settings') {
+      assert.ok(want.includes('data-act="see-through">'), 'the checkbox is there, unticked, with it off');
+      want = want.replace('data-act="see-through">', 'data-act="see-through" checked>');
+    }
+    assert.strictEqual(on.views[view], want, view);
+  }
+  assert.deepStrictEqual(on.nav, off.nav);
+  assert.deepStrictEqual(on.rows, off.rows);
 });

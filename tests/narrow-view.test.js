@@ -17,9 +17,9 @@ test('the narrow header is three named icon buttons, in order, on the existing a
   const head = headOf(api.panelHtml(api.buildPanelModel(NOW)));
   const acts = Array.from(head.matchAll(/<button[^>]*data-act="([a-z-]+)"/g), (m) => m[1]);
   assert.deepStrictEqual(acts.slice(-3), ['refresh', 'takeover', 'collapse']);
-  assert.match(head, /class="tfcc-hbtn" data-act="refresh" aria-label="Refresh"/);
-  assert.match(head, /data-act="takeover" aria-pressed="false" aria-label="Expand"/);
-  assert.match(head, /data-act="collapse" aria-label="Hide the panel"/);
+  assert.match(head, /class="tfcc-hbtn" data-act="refresh" aria-label="Refresh" title="Refresh"/);
+  assert.match(head, /data-act="takeover" aria-pressed="false" aria-label="Expand" title="Expand"/);
+  assert.match(head, /data-act="collapse" aria-label="Hide the panel" title="Hide the panel"/);
   assert.doesNotMatch(head, /subscribed/, '"6 subscribed" moves to the Threads cell\'s name');
   assert.doesNotMatch(head, /16 new/, 'the unread count is the Threads numeral while expanded');
   assert.doesNotMatch(head, />Refresh</, 'icons, not text');
@@ -47,8 +47,8 @@ test('Expand reads Shrink, pressed, in takeover; Refresh says when it is busy', 
   api.state.settings.takeover = true;
   api.state.refreshing = true;
   const head = headOf(api.panelHtml(api.buildPanelModel(NOW)));
-  assert.match(head, /data-act="takeover" aria-pressed="true" aria-label="Shrink"/);
-  assert.match(head, /data-act="refresh" aria-label="Refreshing" aria-busy="true"/);
+  assert.match(head, /data-act="takeover" aria-pressed="true" aria-label="Shrink" title="Shrink"/);
+  assert.match(head, /data-act="refresh" aria-label="Refreshing" title="Refreshing" aria-busy="true"/);
 });
 
 test('the loading and error states use the narrow header, without controls', () => {
@@ -122,7 +122,7 @@ test('the narrow filter line is the field, Unread and a named Filters button', (
   const html = api.panelHtml(api.buildPanelModel(NOW));
   assert.match(html, /<div class="tfcc-bar tfcc-filterline"><input class="tfcc-grow" type="search" data-act="filter"/);
   assert.match(html, /data-act="unread-only" aria-pressed="false">Unread<\/button>/);
-  assert.match(html, /data-act="filters" aria-expanded="false" aria-controls="tfcc-filters" aria-label="Filters, 0 active">/);
+  assert.match(html, /data-act="filters" aria-expanded="false" aria-controls="tfcc-filters" aria-label="Filters, 0 active" title="Filters">/);
   assert.match(html, /<div class="tfcc-filtergrid" id="tfcc-filters" hidden><select data-act="sort" aria-label="Sort">/);
   assert.match(html, /<select data-act="folder-filter" aria-label="Folder filter">/);
 });
@@ -135,7 +135,7 @@ test('the Filters button counts and shows the active filters', () => {
   api.state.settings.folderFilter = 'guides';
   api.state.settings.tagFilter = 'x';
   const html = api.panelHtml(api.buildPanelModel(NOW));
-  assert.match(html, /aria-label="Filters, 2 active">.*<span>2<\/span><\/button>/);
+  assert.match(html, /aria-label="Filters, 2 active" title="Filters">.*<span>2<\/span><\/button>/);
 });
 
 test('open, the filter grid is visible and Filters says so', () => {
@@ -183,7 +183,7 @@ test('Catch up rows carry a one-tap Read: a check mark named Mark read, describe
   seedRows(api, [{ id: 7, unread: 3 }]);
   api.state.settings.view = 'catchup';
   const row = rowOf(api.panelHtml(api.buildPanelModel(NOW)), '7');
-  assert.match(row, /<button type="button" class="tfcc-read" data-act="read" data-id="7" aria-label="Mark read" aria-describedby="tfcc-title-7"><svg class="tfcc-gl"[^>]*><path d="[^"]+"\/><\/svg><\/button>/,
+  assert.match(row, /<button type="button" class="tfcc-read" data-act="read" data-id="7" aria-label="Mark read" title="Mark read" aria-describedby="tfcc-title-7"><svg class="tfcc-gl"[^>]*><path d="[^"]+"\/><\/svg><\/button>/,
     'the check mark alone, no text');
   assert.ok(row.indexOf('data-act="read"') < row.indexOf('data-act="row-more"'), 'DOM order: Read, then Actions');
 });
@@ -202,7 +202,7 @@ test('every narrow row has an Actions button that controls an always-present, em
   const { api } = bootNarrow();
   seedRows(api, [{ id: 7, title: 'Seven', unread: 1 }]);
   const row = rowOf(api.panelHtml(api.buildPanelModel(NOW)), '7');
-  assert.match(row, /data-act="row-more" data-id="7" aria-expanded="false" aria-controls="tfcc-act-7" aria-label="Actions for Seven">/);
+  assert.match(row, /data-act="row-more" data-id="7" aria-expanded="false" aria-controls="tfcc-act-7" aria-label="Actions for Seven" title="Actions">/);
   assert.match(row, /<div class="tfcc-drawer" id="tfcc-act-7" hidden><\/div>/);
 });
 
@@ -213,7 +213,7 @@ test('an open drawer holds every row action at 44px, in the spec order', () => {
   const row = rowOf(api.panelHtml(api.buildPanelModel(NOW)), '7');
   assert.match(row, /data-act="row-more" data-id="7" aria-expanded="true"/);
   const acts = Array.from(row.slice(row.indexOf('tfcc-drawer')).matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]);
-  assert.deepStrictEqual(acts, ['pin', 'read', 'draft', 'archive', 'prio-down', 'prio-up', 'folder', 'tag-input', 'note-input']);
+  assert.deepStrictEqual(acts, ['pin', 'read', 'draft', 'archive', 'info', 'prio-up', 'prio-down', 'folder', 'editor', 'editor']);
 });
 
 test('in Catch up the drawer leaves out Mark read, which is already on the row', () => {
@@ -250,7 +250,9 @@ test('a drawer edit mirror renders the typed value instead of the stored one', (
   seedRows(api, [{ id: 7, unread: 1 }]);
   api.state.openRowId = '7';
   api.state.drawerEdit = { id: '7', field: 'note-input', value: 'half typed', selStart: 4, selEnd: 4 };
-  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /data-act="note-input" data-id="7" value="half typed"/);
+  // #43: in the note popup.
+  api.state.openEditor = { id: '7', field: 'note' };
+  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /data-act="editor-input" data-id="7" data-field="note-input" value="half typed"/);
 });
 
 // ---- an info button stays on the line of the control it follows -----------
