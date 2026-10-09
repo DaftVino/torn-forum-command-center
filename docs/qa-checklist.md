@@ -119,6 +119,8 @@ time **END**.
       as the panel says.
 - [ ] A thread you unsubscribe from on Torn keeps its notes and tags and shows
       as not subscribed after the next refresh.
+- [ ] Fresh install: Settings, Rows shown reads 5 (the default since #30), and
+      a list longer than five says "Showing 5 of N".
 - [ ] Settings, Rows shown, 3. Threads shows three rows and "Showing 3 of N"
       with Show all. Show all lists every row. Show 3 only caps the list again.
 - [ ] With Rows shown at 3, pin four threads. Threads shows three pinned rows.

@@ -625,9 +625,20 @@ const MUTATIONS = [
     name: 'an off-menu rows shown is stored instead of falling back to All',
     suite: 'tests/storage.test.js',
     apply: (s) => s.replace(
-      "    out.rowsShown = typeof raw.rowsShown === 'number' && ROWS_SHOWN_OPTIONS.indexOf(raw.rowsShown) !== -1",
-      "    out.rowsShown = typeof raw.rowsShown === 'number' && raw.rowsShown >= 0",
+      "      out.rowsShown = typeof raw.rowsShown === 'number' && ROWS_SHOWN_OPTIONS.indexOf(raw.rowsShown) !== -1",
+      "      out.rowsShown = typeof raw.rowsShown === 'number' && raw.rowsShown >= 0",
     ),
+  },
+  {
+    name: 'rows shown defaults to All again (#30)',
+    suite: 'tests/storage.test.js',
+    apply: (s) => s.replace('      rowsShown: 5,', '      rowsShown: 0,'),
+  },
+  {
+    name: 'an absent rows shown becomes All instead of the default (#30)',
+    suite: 'tests/storage.test.js',
+    apply: (s) => s.replace("    if (Object.prototype.hasOwnProperty.call(raw, 'rowsShown')) {",
+      "    if (true) {"),
   },
   {
     name: 'an upgrade from a blob without rowsShown is reported as damaged',

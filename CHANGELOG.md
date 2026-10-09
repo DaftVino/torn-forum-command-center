@@ -85,6 +85,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - **Hide the panel when I open a thread** is now on by default. A settings
   blob saved without the field turns it on; one that stored it off keeps it
   off, and neither reports "Settings were damaged". (#30)
+- Rows shown defaults to 5 (was All). A stored choice, All included, is kept;
+  a settings blob without the field gets 5, and the Settings note names the
+  default. (#30)
 
 ### Fixed
 

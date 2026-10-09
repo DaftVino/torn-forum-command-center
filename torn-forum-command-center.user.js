@@ -383,8 +383,8 @@
       // which is the exact pattern the IP ban exists for.
       keyRejected: 0,
       deepSearchPages: DEEP_SEARCH_MAX_PAGES,
-      // 0 is All. See ROWS_SHOWN_OPTIONS.
-      rowsShown: 0,
+      // 0 is All. See ROWS_SHOWN_OPTIONS. 5 since #30; a stored value is kept.
+      rowsShown: 5,
       // Issue #9. On by default; Settings has the off switch.
       badges: true,
     };
@@ -420,9 +420,12 @@
     out.enrichBudget = clamp(toInt(raw.enrichBudget, DEFAULT_ENRICH_BUDGET), 0, MAX_ENRICH_BUDGET);
     out.deepSearchPages = clamp(toInt(raw.deepSearchPages, DEEP_SEARCH_MAX_PAGES), 1, DEEP_SEARCH_MAX_PAGES);
     // Strict on type: toInt would floor 10.5 to 10 and accept "10", and the
-    // menu wrote neither. Anything off the menu is All, never an error.
-    out.rowsShown = typeof raw.rowsShown === 'number' && ROWS_SHOWN_OPTIONS.indexOf(raw.rowsShown) !== -1
-      ? raw.rowsShown : 0;
+    // menu wrote neither. Absent takes the default (#30); anything present but
+    // off the menu is All, so a corrupt value never hides rows.
+    if (Object.prototype.hasOwnProperty.call(raw, 'rowsShown')) {
+      out.rowsShown = typeof raw.rowsShown === 'number' && ROWS_SHOWN_OPTIONS.indexOf(raw.rowsShown) !== -1
+        ? raw.rowsShown : 0;
+    }
     return out;
   }
 
@@ -5094,7 +5097,7 @@
         ? cappedNames.slice(0, -1).join(', ') + ' and ' + cappedNames[cappedNames.length - 1]
         : cappedNames.join(''))
       + '. Search and Drafts always show everything. A capped list says how many it is hiding, '
-      + 'and Show all lifts the cap for that list until the page reloads.</p>');
+      + 'and Show all lifts the cap for that list until the page reloads. The default is 5.</p>');
     out.push('<div class="tfcc-kv"><label for="tfcc-hide">Hide Torn\'s own subscribed box</label>'
       + '<input id="tfcc-hide" type="checkbox" data-act="hide-torn-box"'
       + (model.settings.hideTornBox ? ' checked' : '') + '></div>');
