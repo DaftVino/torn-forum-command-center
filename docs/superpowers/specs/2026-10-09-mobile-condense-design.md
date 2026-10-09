@@ -1393,8 +1393,12 @@ change desktop too, deliberately, each as a listed replacement in
   `aria-controls="tfcc-ed-<id>"`) that open a small in-panel popup in the
   drawer: a field, Save and Cancel, `role="dialog"` with a name ("Add a tag",
   "Edit the note"). Opening moves focus into the field; Enter saves, Escape
-  cancels, and Save or Cancel returns focus to the opener. Save writes what
-  the inline fields wrote (`toggleTag`, the note field). A saved note shows as
+  cancels, and Save or Cancel returns focus to the opener. Keys pressed during
+  IME composition (`isComposing`, or `keyCode` 229) are left to the keyboard
+  (PR #44 review). Save writes the note field as the inline field did; for a
+  tag it adds only (`addTag`): a tag the thread already has, after the same
+  normalising, is kept and announced "Already tagged", never toggled off (PR
+  #44 review). The wide inline tag field keeps `toggleTag`. A saved note shows as
   the set-state bar under Note and the name "Edit note"; the note itself is
   the row's line, whole while the drawer is open. Tags stay as chips in the
   meta. No browser dialog is used.
@@ -1412,7 +1416,9 @@ change desktop too, deliberately, each as a listed replacement in
 - **My posts colour.** It uses every nav button's colours at every width: the
   normal fill, and the selected fill only while it is the view. Its rule keeps
   only its placement; its hover and pressed rules and its five tokens are
-  gone.
+  gone. Its weight is the other nav buttons' (PR #44 review): normal on wide,
+  where it used to be bold alone, and bold on narrow, where every grid cell
+  shares one rule. The contrast audit checks the weights are equal.
 - **Bare info icons.** Every info button keeps its 44px target (32px inside
   the drawer), its focus ring and every attribute, with a transparent fill and
   border. Hover and open tint the icon in the accent colour. The audit

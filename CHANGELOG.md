@@ -86,11 +86,14 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   the number then small + and - buttons, right-aligned on the same row as Pin,
   Mark read, Draft and Archive. The folder menu, a Tag button and a Note
   button share the next row; Tag and Note open a small box in the panel with
-  a field, Save and Cancel (Enter saves, Escape cancels). A saved note shows
+  a field, Save and Cancel (Enter saves, Escape cancels, except while a
+  keyboard is composing). Save adds a tag and never removes one: a tag the
+  thread already has is kept, with "Already tagged". A saved note shows
   as a bar under the Note button. Desktop rows keep their inline fields.
 - The My posts nav button uses the same colours as the other nav buttons, at
   every width: the normal fill, and the selected fill only while My posts is
-  the current view. Its light-grey fill made it look selected. (#43)
+  the current view, and the same weight (no longer bold alone on desktop).
+  Its light-grey fill made it look selected. (#43)
 - Every info button is drawn as a bare "i" icon, with no button fill or
   border, at every width. It keeps its tap target and focus ring; hovering it
   or opening it tints the icon instead of filling a box. (#43)
