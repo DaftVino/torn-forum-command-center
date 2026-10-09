@@ -596,7 +596,7 @@ function rHead(o) {
   // Collapsed keeps the word: with no nav on screen, a bare "16" says nothing.
   // The badge is text in the id group, so it is what wraps, never a button.
   return '<div class="r-head"><div class="r-id">' + LOGO + rChip()
-    + (collapsed ? '<span class="tfcc-badge">16 new</span>' : '') + '</div>'
+    + (collapsed ? '<span class="tfcc-badge"><span aria-hidden="true">16</span><span class="m-sr">16 new</span></span>' : '') + '</div>'
     + '<span class="r-ctl tfcc-head-btns">'
     + '<button type="button" class="r-ico" data-act="refresh" aria-label="Refresh">' + ico('refresh') + '</button>'
     + '<button type="button" class="r-ico" data-act="takeover" aria-pressed="false" aria-label="Expand">' + ico('expand') + '</button>'
@@ -938,6 +938,24 @@ const NV_SCRIPT = `<script>
 })();
 </script>`;
 
+// ---- The four nav variants inside a full panel (quick comparison) --------------
+function nvInPanel(variant, theme) {
+  const nav = '<div class="nv-nav" style="margin-bottom:6px">'
+    + nvCell('threads', 'Threads', 16, true) + nvCell('catchup', 'Catch up', 3, false) + nvCell('search', 'Search', null, false)
+    + nvCell('drafts', 'Drafts', 0, false) + nvCell('settings', 'Settings', null, false)
+    + nvCell('mine', 'My posts', 128, false, 'tfcc-nav-mine') + '</div>';
+  const rows = ROWS.slice(0, 4).map((r) => rRow(r, {})).join('');
+  const body = rHead({}) + nav + rFilter(false) + '<div class="tfcc-rows">' + rows + '</div>';
+  return '<div class="phone" style="width:375px"><p class="cap" style="font-weight:bold">' + esc(NV_LABELS[variant]) + '</p>'
+    + '<div class="screen ' + theme + '" style="width:375px">'
+    + '<div id="tfcc-panel" class="tfcc-theme-' + theme + ' tfcc-narrow nv-' + variant + '">' + body + '</div></div></div>';
+}
+function nvInPanelPage() {
+  const row = (theme) => '<div style="display:flex;gap:24px;align-items:flex-start;margin-bottom:24px">'
+    + ['v1', 'v2', 'v3', 'v4'].map((v) => nvInPanel(v, theme)).join('') + '</div>';
+  return '<div style="display:block">' + row('dark') + row('light') + '</div>' + FIT_SCRIPT;
+}
+
 // ---- write -----------------------------------------------------------------------
 const FOLD = 560;
 const FOLD_LABEL = 'about one screen of PDA web view';
@@ -980,6 +998,9 @@ const files = {
   'nav-count-variants.html': page('Nav count variants',
     'Issue #33 nav cells with the count as a numeral behind the label: three contrast treatments, dark and light, 375/320/280px.',
     [nvPage()], REVISED_CSS + NAV_CSS),
+  'nav-variants-in-panel.html': page('Nav variants in the panel',
+    'Issue #33 quick comparison: the four nav-count variants in a full revised panel at 375px, dark and light.',
+    [nvInPanelPage()], REVISED_CSS + NAV_CSS),
 };
 
 for (const [name, html] of Object.entries(files)) {
