@@ -21,6 +21,7 @@ FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or auto
   <img src="docs/images/readme-mobile-threads.png" alt="Narrow layout on a phone: scaling icon header, nav counts and one-line rows" width="20%">
   <img src="docs/images/readme-mobile-drawer.png" alt="Narrow layout: a row's actions drawer with pin, read, draft, archive and priority" width="20%">
   <img src="docs/images/readme-mobile-catchup.png" alt="Narrow layout: Catch up with All read, Caught up and folder groups" width="20%">
+  <img src="docs/images/readme-mobile-myposts.png" alt="Narrow layout: My posts with the thumbs and karma pill" width="20%">
 </p>
 
 ## Features
