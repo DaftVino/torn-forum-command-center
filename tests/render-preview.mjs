@@ -278,7 +278,7 @@ api.state.settings.theme = 'dark';
 // tools), so its heading toggle shows both states.
 const baseOrg = api.state.organizer;
 api.state.settings.view = 'catchup';
-api.state.organizer = api.toggleFolderCollapsed(baseOrg, 'scripts');
+api.state.organizer = api.toggleFolderCollapsed(baseOrg, 'folder:scripts');
 for (const theme of ['dark', 'light']) {
   api.state.settings.theme = theme;
   const body = api.panelHtml(api.buildPanelModel(NOW));
@@ -334,7 +334,7 @@ const NARROW_STATES = [
     api.state.openInfoId = 'priority'; }],
   // #45: a folder group collapsed (Scripts and tools), heading only.
   ['catchup-collapsed', () => { api.state.settings.view = 'catchup';
-    api.state.organizer = api.toggleFolderCollapsed(baseOrg, 'scripts'); }],
+    api.state.organizer = api.toggleFolderCollapsed(baseOrg, 'folder:scripts'); }],
   ['catchup-drawer-note', () => { api.state.settings.view = 'catchup'; api.state.openRowId = '16474152';
     api.state.openEditor = { id: '16474152', field: 'note' }; }],
 ];
