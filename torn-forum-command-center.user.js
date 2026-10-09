@@ -457,7 +457,9 @@
   function settingsDefaults() {
     return {
       v: SCHEMA_VERSION,
-      theme: 'dark',
+      // Match Torn by default (owner, 2026-10-09): the panel follows the page.
+      // A saved choice, Dark included, is kept.
+      theme: 'match',
       sort: 'activity',
       view: 'threads',
       collapsed: false,

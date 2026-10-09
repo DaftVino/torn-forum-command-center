@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Changed
+
+- The theme defaults to Match Torn, so the panel follows Torn's light or
+  dark page. A saved choice, Dark included, is kept; only new installs and
+  settings without a theme get the new default.
+
 ## [0.2.1] - 2026-10-09
 
 ### Changed

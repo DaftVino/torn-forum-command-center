@@ -70,7 +70,7 @@
 <li>FCC can hide itself when you open one of its thread links, leaving a small header with Show.</li>
 <li>Long titles and summaries can be clipped to one line; opening row actions on a narrow panel reveals the full text.</li>
 <li>The optional see-through background lets Torn's page show through the panel and its thread rows. Expand remains solid.</li>
-<li>Choose Dark, Light or Match Torn.</li>
+<li>Match Torn is the default theme; Dark and Light are a tap away in Settings.</li>
 </ul>
 
 <p><span style="color:#5C768F"><strong>Made for narrow screens</strong></span></p>
@@ -109,7 +109,7 @@
 <li>FCC asks for <strong>Minimal Access</strong>. The key is stored on this device, masked in the panel, stripped from errors and debug reports, and never included in an export.</li>
 <li>Every network request is a GET to api.torn.com. FCC makes no non-API Torn request and sends no telemetry.</li>
 <li>A Threads refresh is at most 13 requests and My posts at most 17 at the default lookup setting; the limiter never allows more than 40 requests in a minute.</li>
-<li>FCC does not scrape Torn's page data. Route capture uses the address and title of the page you are viewing. Beyond that it reads only the reply box, solely to save or insert drafts, and, if you choose the Match Torn theme, the page's background colour.</li>
+<li>FCC does not scrape Torn's page data. Route capture uses the address and title of the page you are viewing. Beyond that it reads only the reply box, solely to save or insert drafts, and, for the default Match Torn theme, the page's background colour.</li>
 <li>FCC never automates gameplay. It does not post, reply, vote, subscribe, navigate on its own or submit a form. You remain the person who opens threads and presses Torn's Post button.</li>
 </ul>
 

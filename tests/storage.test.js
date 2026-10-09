@@ -134,13 +134,20 @@ test('normalisers are total: anything at all produces a valid object', () => {
   }
 });
 
+test('the theme defaults to Match Torn, and a saved Dark is kept', () => {
+  const { exports: api } = loadUserscript();
+  assert.strictEqual(api.normaliseSettings({ v: 1 }).theme, 'match', 'no saved theme means Match Torn');
+  assert.strictEqual(api.normaliseSettings({ v: 1, theme: 'dark' }).theme, 'dark', 'a saved Dark survives');
+  assert.strictEqual(api.normaliseSettings({ v: 1, theme: 'light' }).theme, 'light');
+});
+
 test('settings clamp to their allowed ranges', () => {
   const { exports: api } = loadUserscript();
   const s = api.normaliseSettings({
     v: 1, theme: 'neon', sort: 'chaos', view: 'nowhere',
     enrichBudget: 9999, deepSearchPages: 0, autoRefreshMs: 17,
   });
-  assert.strictEqual(s.theme, 'dark', 'an unknown theme falls back');
+  assert.strictEqual(s.theme, 'match', 'an unknown theme falls back to the default, Match Torn');
   assert.strictEqual(s.sort, 'activity');
   assert.strictEqual(s.view, 'threads');
   assert.strictEqual(s.enrichBudget, api.MAX_ENRICH_BUDGET);
