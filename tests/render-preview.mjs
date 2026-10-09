@@ -286,6 +286,16 @@ for (const theme of ['dark', 'light']) {
   fs.writeFileSync(path.join(outDir, name), page('catchup / one group collapsed / wide 720px / ' + theme, theme, body, 720));
   written.push(name);
 }
+// #47: Settings on a wide panel with a folder claiming two forums.
+api.state.settings.view = 'settings';
+api.state.organizer = api.claimForum(baseOrg, 'guides', 4);
+for (const theme of ['dark', 'light']) {
+  api.state.settings.theme = theme;
+  const body = api.panelHtml(api.buildPanelModel(NOW));
+  const name = 'settings-claims-wide-' + theme + '.html';
+  fs.writeFileSync(path.join(outDir, name), page('settings / two claimed forums / wide 720px / ' + theme, theme, body, 720));
+  written.push(name);
+}
 api.state.organizer = baseOrg;
 api.state.settings.view = 'threads';
 api.state.settings.theme = 'dark';
@@ -315,6 +325,9 @@ const NARROW_STATES = [
   // button sits on the line of the control it follows.
   ['search', () => { api.state.settings.view = 'search'; }],
   ['settings', () => { api.state.settings.view = 'settings'; }],
+  // #47: a folder claiming two forums, each a removable chip.
+  ['settings-claims', () => { api.state.settings.view = 'settings';
+    api.state.organizer = api.claimForum(baseOrg, 'guides', 4); }],
   // #39: the Catch up row and an open drawer at 200% text, and a pinned row's
   // drawer so the "on" state of an emoji button is measured too.
   ['catchup-200', () => { api.state.settings.view = 'catchup'; }, TEXT_200],

@@ -2504,6 +2504,31 @@
     return null;
   }
 
+  // #47: a folder claims any number of forums, and a forum is claimed by one
+  // folder at most, so auto-filing never has to choose. A claim another
+  // folder holds is refused (the same organizer comes back); it is never
+  // moved, because Settings only offers the forums nobody claims.
+  function claimForum(org, folderId, forumId) {
+    var f = toInt(forumId, 0);
+    if (f <= 0 || folderFor(org, f)) return org;
+    var i = org.folders.findIndex(function (x) { return x.id === folderId; });
+    if (i === -1 || org.folders[i].forumIds.length >= 40) return org;
+    var next = cloneOrganizer(org);
+    next.folders[i].forumIds.push(f);
+    return next;
+  }
+
+  // #47: removing a claim changes only future auto-filing. Threads already
+  // filed keep their folder, because by then the filing is theirs.
+  function unclaimForum(org, folderId, forumId) {
+    var f = toInt(forumId, 0);
+    var i = org.folders.findIndex(function (x) { return x.id === folderId; });
+    if (i === -1 || org.folders[i].forumIds.indexOf(f) === -1) return org;
+    var next = cloneOrganizer(org);
+    next.folders[i].forumIds = next.folders[i].forumIds.filter(function (x) { return x !== f; });
+    return next;
+  }
+
   // Only fills an empty slot. A thread the user filed by hand is never moved by
   // a rule, because the rule is a default and the hand placement is a decision.
   function applyAutoAssign(org, subscribedRows, now) {
@@ -2804,10 +2829,15 @@
       for (var i = 0; i < payload.folders.length && i < 40; i += 1) {
         var f = normaliseFolder(payload.folders[i], org.folders.length);
         if (!f) continue;
+        // #47: every claim travels. A forum this device already gave to a
+        // folder keeps that claimant, so no forum ends up with two.
+        var wanted = f.forumIds;
         if (!org.folders.some(function (x) { return x.id === f.id; })) {
+          f.forumIds = [];
           org.folders.push(f);
           addedFolders += 1;
         }
+        for (var w = 0; w < wanted.length; w += 1) org = claimForum(org, f.id, wanted[w]);
       }
       org.folders.sort(function (a, b) { return a.order - b.order; });
       org = withFolderOrder(org, importedOrder(org, payload));
@@ -4877,6 +4907,7 @@
       // #45: the group toggle and the order arrows keep the 44px target.
       '#' + PANEL_ID + '.tfcc-narrow button.tfcc-grp { min-height: 44px; }',
       '#' + PANEL_ID + '.tfcc-narrow button.tfcc-move { min-width: 44px; min-height: 44px; }',
+      '#' + PANEL_ID + '.tfcc-narrow button.tfcc-unclaim { min-width: 44px; min-height: 44px; border-radius: 22px; }',
       // The header: one line. These gaps add up to HB_GAPS (20): logo-chip 6,
       // group 6, and 2 x 4 between the buttons.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-head { gap: 6px; flex-wrap: nowrap; margin-bottom: 6px; }',
@@ -5051,6 +5082,13 @@
       '#' + PANEL_ID + ' button.tfcc-move { display: inline-flex; align-items: center; justify-content: center;',
       '  min-width: 24px; min-height: 24px; padding: 0 2px; }',
       '#' + PANEL_ID + ' button.tfcc-move:disabled { opacity: 0.45; cursor: default; }',
+      // #47: a folder's claimed forums, each a chip with its remove button.
+      '#' + PANEL_ID + ' .tfcc-claims { display: inline-flex; flex-wrap: wrap; gap: var(--tfcc-gap-xs); }',
+      '#' + PANEL_ID + ' .tfcc-claim { display: inline-flex; align-items: center; gap: 2px; padding-left: 8px;',
+      '  border: 1px solid var(--tm-border); border-radius: 12px; color: var(--tm-text); }',
+      '#' + PANEL_ID + ' button.tfcc-unclaim { display: inline-flex; align-items: center; justify-content: center;',
+      '  min-width: 24px; min-height: 24px; padding: 0; border: 0; border-radius: 12px; background: transparent;',
+      '  color: inherit; }',
       '#' + PANEL_ID + ' .tfcc-draft { width: 100%; min-height: 90px; resize: vertical; }',
       '#' + PANEL_ID + ' .tfcc-hit { border-left: 3px solid var(--tm-accent-text); padding-left: 8px;',
       '  margin-bottom: var(--tfcc-gap-sm); }',
@@ -6372,8 +6410,10 @@
     // filter, encodeState, and the First folder badge (ownFoldersFilled).
     out.push(renderInfoText('settings-folders', model.openInfoId, ''
       + 'Folders organise only threads you subscribe to (and ones you file by hand); they never add other threads '
-      + 'from a forum. To use them: add a folder below; optionally claim a forum, so new subscriptions from that '
-      + 'forum file themselves into it; or file a thread from the folder menu on its row. Filing by hand always '
+      + 'from a forum. To use them: add a folder below; optionally claim one or more forums, so new subscriptions '
+      + 'from them file themselves into it; a forum belongs to one folder at a time, and removing a claim leaves '
+      + 'the threads already filed where they are; or file a thread from the folder menu on its row. Filing by '
+      + 'hand always '
       + 'wins over a claim. The arrows set the order, Unfiled included. This helps because Catch up groups threads '
       + 'with new posts by folder, in that order, so the ones you care about most come first, and a group you do '
       + 'not need right now collapses out of the way; Threads can also be filtered to one folder. Folders stay on '
@@ -6383,7 +6423,13 @@
     // is built in: no delete, no rename, no forum claim.
     var orderKeys = folderOrderKeys({ folders: model.folders, unfiledAt: model.unfiledAt });
     var byId = {};
-    model.folders.forEach(function (x) { byId[x.id] = x; });
+    var claimed = {};
+    model.folders.forEach(function (x) {
+      byId[x.id] = x;
+      x.forumIds.forEach(function (n) { claimed[n] = true; });
+    });
+    var forumTitles = {};
+    model.categories.forEach(function (cat) { forumTitles[cat.id] = cat.title; });
     for (var i = 0; i < orderKeys.length; i += 1) {
       var unf = orderKeys[i] === UNFILED_KEY;
       var f = unf ? { id: UNFILED_KEY, name: 'Unfiled' } : byId[folderIdOfKey(orderKeys[i])];
@@ -6393,12 +6439,27 @@
         out.push('<span class="tfcc-note">Threads in no folder</span></div>');
         continue;
       }
-      out.push('<select data-act="folder-forum" data-id="' + escapeHtml(f.id) + '">');
+      // #47: each claimed forum is a chip with its own remove button, and the
+      // menu adds one more claim. It offers only the forums no folder claims,
+      // because a forum belongs to one folder at a time (claimForum).
+      if (f.forumIds.length) {
+        out.push('<span class="tfcc-claims">');
+        for (var q = 0; q < f.forumIds.length; q += 1) {
+          var forumName = forumTitles[f.forumIds[q]] || ('Forum ' + f.forumIds[q]);
+          var rm = 'Remove ' + forumName;
+          out.push('<span class="tfcc-claim">' + escapeHtml(forumName) + '<button type="button" class="tfcc-unclaim"'
+            + ' data-act="folder-unclaim" data-id="' + escapeHtml(f.id) + '" data-forum="' + f.forumIds[q] + '"'
+            + ' aria-label="' + escapeHtml(rm) + '" title="' + escapeHtml(rm) + '">' + glyph('close') + '</button></span>');
+        }
+        out.push('</span>');
+      }
+      out.push('<select data-act="folder-forum" data-id="' + escapeHtml(f.id) + '" aria-label="'
+        + escapeHtml('Claim a forum for ' + f.name) + '">');
       out.push('<option value="">Claim a forum...</option>');
       for (var c = 0; c < model.categories.length; c += 1) {
         var cat = model.categories[c];
-        out.push('<option value="' + cat.id + '"'
-          + (f.forumIds.indexOf(cat.id) !== -1 ? ' selected' : '') + '>' + escapeHtml(cat.title) + '</option>');
+        if (claimed[cat.id]) continue;
+        out.push('<option value="' + cat.id + '">' + escapeHtml(cat.title) + '</option>');
       }
       out.push('</select>');
       out.push(btn('folder-delete', 'Delete', ' data-id="' + escapeHtml(f.id) + '" class="tfcc-danger"'));
@@ -7508,6 +7569,14 @@
 
   function announce(text) { state.liveMessage = { text: text, announced: false }; }
 
+  // #47: "Guides now claims API Development." and its opposite, by name.
+  function claimAnnouncement(folderId, forumId, verb) {
+    var n = toInt(forumId, 0);
+    var folder = state.organizer.folders.filter(function (f) { return f.id === folderId; })[0];
+    var cat = (state.feed.categories || []).filter(function (c) { return c.id === n; })[0];
+    return (folder ? folder.name : 'The folder') + verb + (cat ? cat.title : 'Forum ' + n) + '.';
+  }
+
   // One polite live region, rendered with the panel and announced once, the
   // way the badge toast's role="status" is (spec section 6, focus rule 5).
   // Narrow only, like the rest of the section 6 machinery: desktop markup
@@ -7822,6 +7891,18 @@
           state.organizer = toggleFolderCollapsed(state.organizer, id); persist('organizer');
           redraw(); return;
         }
+        if (act === 'folder-unclaim' && id) {
+          var forumId = el.getAttribute('data-forum');
+          var unclaimed = unclaimForum(state.organizer, id, forumId);
+          if (unclaimed !== state.organizer) {
+            state.organizer = unclaimed;
+            persist('organizer'); recompute(now);
+            announce(claimAnnouncement(id, forumId, ' no longer claims '));
+          }
+          // The chip is gone, so focus goes to the folder's claim menu.
+          state.focusIntent = [attrSel('data-act', 'folder-forum') + attrSel('data-id', id)];
+          redraw(); return;
+        }
         if (act === 'folder-delete' && id) {
           state.organizer = deleteFolder(state.organizer, id); persist('organizer'); recompute(now);
           recordBadgeEvent({ type: 'tick' }, now); redraw(); return;
@@ -7951,15 +8032,14 @@
           redraw(); return;
         }
         if (act === 'folder-forum' && id) {
-          var fid = toInt(value, 0);
-          var folder = state.organizer.folders.filter(function (f) { return f.id === id; })[0];
-          if (folder && fid > 0) {
-            var ids = folder.forumIds.slice();
-            var at = ids.indexOf(fid);
-            if (at === -1) ids.push(fid); else ids.splice(at, 1);
-            state.organizer = upsertFolder(state.organizer, Object.assign({}, folder, { forumIds: ids }));
+          // #47: the menu adds a claim; a chip's button removes one. A forum
+          // another folder claims is not offered, and claimForum refuses it.
+          var claimedOrg = claimForum(state.organizer, id, value);
+          if (claimedOrg !== state.organizer) {
+            state.organizer = claimedOrg;
             persist('organizer'); recompute(now);
             recordBadgeEvent({ type: 'tick' }, now);
+            announce(claimAnnouncement(id, value, ' now claims '));
           }
           redraw(); return;
         }

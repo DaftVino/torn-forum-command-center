@@ -93,7 +93,7 @@ const EXPORT_NAMES = [
   'postCacheAdd', 'postCacheEvict', 'postCacheSize', 'postCachePostsFor',
   // engine: organizer
   'DEFAULT_FOLDERS', 'PRIORITY_MIN', 'PRIORITY_MAX',
-  'folderFor', 'applyAutoAssign', 'toggleTag', 'addTag', 'hasTag', 'setPriority', 'setFolder',
+  'folderFor', 'claimForum', 'unclaimForum', 'applyAutoAssign', 'toggleTag', 'addTag', 'hasTag', 'setPriority', 'setFolder',
   'togglePin', 'markRead', 'deleteFolder', 'upsertFolder', 'allTags',
   // #45: folder order and collapsing
   'UNFILED_KEY', 'folderOrderKeys', 'moveFolder', 'toggleFolderCollapsed', 'isFolderCollapsed',

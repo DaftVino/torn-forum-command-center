@@ -43,6 +43,10 @@ const D43 = require('./wide-43-diffs');
 // #45: the priority colour, the reorderable folder list and the collapsible
 // Catch up groups, applied after #43 (tests/wide-45-diffs.js).
 const D45 = require('./wide-45-diffs');
+// #47: several forums per folder (the claim menu's name, the folder note,
+// the chip rules), applied after #45 (tests/wide-47-diffs.js). The tighter
+// narrow Settings adds nothing here: it is narrow-only.
+const D47 = require('./wide-47-diffs');
 
 function expectedView(view, before43) {
   let html = golden.views[view];
@@ -57,7 +61,7 @@ function expectedView(view, before43) {
     html = d.apply(html);
     assert.deepStrictEqual(d.changed(before, html), d.hits[view] || [], 'item ' + d.item + ' in ' + view);
   }
-  for (const d of D45.literals.filter((x) => x.view === view)) {
+  for (const d of D45.literals.concat(D47.literals).filter((x) => x.view === view)) {
     const n = html.split(d.from).length - 1;
     assert.strictEqual(n, 1, 'item ' + d.item + ': its "from" occurs ' + n + ' times in ' + view);
     html = html.replace(d.from, () => d.to);
@@ -108,6 +112,11 @@ test('every complete wide view is main\'s, byte for byte, apart from the listed 
 test('the #45 list touches only Catch up and Settings', () => {
   assert.ok(D45.literals.length > 0);
   for (const d of D45.literals) assert.ok(['catchup', 'settings'].includes(d.view), d.item);
+});
+
+test('the #47 list touches only Settings', () => {
+  assert.ok(D47.literals.length > 0);
+  for (const d of D47.literals) assert.strictEqual(d.view, 'settings', d.item);
 });
 
 test('the 13d list touches only the views the owner changed', () => {
@@ -209,7 +218,7 @@ function wideInsertedLines(css) {
 }
 
 test('every stylesheet line a wide panel sees beyond main\'s is listed, exactly and with its count', () => {
-  const approved = WIDE_13D_LINES.concat(WIDE_33_TOKENS, WIDE_41_LINES, D43.inserted, D45.inserted);
+  const approved = WIDE_13D_LINES.concat(WIDE_33_TOKENS, WIDE_41_LINES, D43.inserted, D45.inserted, D47.inserted);
   const now = wideInsertedLines(captureWide(loadUserscript, FORUMS_LOCATION).css);
   assert.deepStrictEqual(now.slice().sort(), approved.slice().sort(), 'wide CSS beyond the listed lines');
   for (const line of WIDE_41_LINES) assert.ok(line.startsWith('#tfcc-panel.tfcc-clip '), line);
@@ -224,7 +233,7 @@ test('every stylesheet line a wide panel sees beyond main\'s is listed, exactly 
 test('the wide CSS check rejects an extra body line or a second rule under an approved selector', () => {
   // The two holes the PR #46 review named, planted on a copy of the stylesheet.
   const css = captureWide(loadUserscript, FORUMS_LOCATION).css;
-  const approved = WIDE_13D_LINES.concat(WIDE_33_TOKENS, WIDE_41_LINES, D43.inserted, D45.inserted).sort();
+  const approved = WIDE_13D_LINES.concat(WIDE_33_TOKENS, WIDE_41_LINES, D43.inserted, D45.inserted, D47.inserted).sort();
   const grp = css.indexOf('  font: inherit; font-weight: bold; text-align: left; cursor: pointer; }');
   assert.ok(grp !== -1);
   const italic = css.slice();
