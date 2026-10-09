@@ -12,7 +12,8 @@
 // exactly `times` times in the golden, once unless stated) with the lines in
 // `to` (none removes it).
 //
-// selectors: the new rules a wide panel may now see.
+// inserted: the complete new lines a wide panel may now see (PR #46
+// review: exact lines, not selectors), each once unless listed twice.
 
 // 1. Every info button carries a hover note equal to its accessible name, so
 //    no icon-only button in the panel is without a title (#43 item 2). The
@@ -72,18 +73,24 @@ const css = [
 ];
 
 // 3. Every info button is a bare icon (#43, owner): its 13d rules (new since
-//    main, so not lines of the golden) now set a transparent fill and border,
-//    and one new rule tints the icon on hover instead of filling a box.
-const selectors = new Set([
-  '#tfcc-panel button.tfcc-info:hover',
-  // 4. See-through backgrounds: every rule hangs off the setting's class,
-  //    which the panel carries only while the setting is on, so a wide panel
-  //    with it off sees none of them (the golden is compared that way).
-  '#tfcc-panel.tfcc-seethrough',
-  '#tfcc-panel.tfcc-seethrough .tfcc-row',
-  '#tfcc-panel.tfcc-seethrough.tfcc-takeover',
-  '#tfcc-panel.tfcc-seethrough.tfcc-takeover .tfcc-row',
-]);
+//    main, so not lines of the golden, and listed with 13d in
+//    tests/wide-parity.test.js) now set a transparent fill and border, and one
+//    new rule tints the icon on hover instead of filling a box.
+const inserted = [
+  '#tfcc-panel button.tfcc-info:hover { background: transparent; color: var(--tm-accent-text); }',
+  // 4. See-through backgrounds: the two base-layer tokens in each theme
+  //    block, and rules that all hang off the setting's class, which the
+  //    panel carries only while the setting is on, so a wide panel with it
+  //    off sees none of them (the golden is compared that way).
+  '  --tfcc-base-bg: rgba(31, 31, 31, 0.5); --tfcc-row-bg: rgba(38, 38, 38, 0.75);',
+  '  --tfcc-base-bg: rgba(242, 242, 242, 0.5); --tfcc-row-bg: rgba(232, 232, 232, 0.75);',
+  '#tfcc-panel.tfcc-seethrough { background: var(--tfcc-base-bg);',
+  '  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',
+  '#tfcc-panel.tfcc-seethrough .tfcc-row { background: var(--tfcc-row-bg); }',
+  '#tfcc-panel.tfcc-seethrough.tfcc-takeover { background: var(--tm-bg);',
+  '  -webkit-backdrop-filter: none; backdrop-filter: none; }',
+  '#tfcc-panel.tfcc-seethrough.tfcc-takeover .tfcc-row { background: var(--tm-bg-2); }',
+];
 
 // 5. The Settings checkbox for see-through (#43, owner), with the setting off
 //    (the state the golden is compared in): one literal insertion after the
@@ -107,4 +114,4 @@ const literals = [
   },
 ];
 
-module.exports = { markup, css, selectors, literals };
+module.exports = { markup, css, inserted, literals };

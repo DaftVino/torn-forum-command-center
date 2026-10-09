@@ -1601,6 +1601,24 @@ const MUTATIONS = [
     apply: (s) => s.replace("+ groupDomId(g.key) + '\" title=\"' + escapeHtml((open ? 'Collapse ' : 'Expand ') + g.name)",
       "+ groupDomId(g.key) + '\" title=\"' + escapeHtml((open ? 'Hide ' : 'Show ') + g.name)"),
   },
+  // PR #46 review: the wide CSS list pins complete lines, not selectors.
+  {
+    name: '#45: an unlisted declaration joins an approved wide rule',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("      '  font: inherit; font-weight: bold; text-align: left; cursor: pointer; }',",
+      "      '  font: inherit; font-weight: bold; font-style: italic; text-align: left; cursor: pointer; }',"),
+  },
+  {
+    name: '#45: a second wide rule for the priority number overrides its colour',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("      '#' + PANEL_ID + ' .tfcc-section h4.tfcc-grphead { margin: 0; }',",
+      "      '#' + PANEL_ID + ' .tfcc-section h4.tfcc-grphead { margin: 0; }',\n      '#' + PANEL_ID + ' .tfcc-prio { color: var(--tm-meta); }',"),
+  },
+  {
+    name: '#45: the light priority token changes outside its listed line',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("'  --tfcc-prio: #2e5680;',", "'  --tfcc-prio: #2e5681;',"),
+  },
   {
     name: '#45: the priority colour changes wide CSS outside its listed replacement',
     suite: 'tests/wide-parity.test.js',

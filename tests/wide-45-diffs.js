@@ -8,8 +8,8 @@
 // exactly `times` times in the golden, once unless stated) with the lines in
 // `to` (none removes it).
 //
-// selectors: the rules a wide panel may now see that are not lines of main's
-// stylesheet (an edited rule counts as new).
+// inserted: the complete new lines a wide panel may now see, exactly (PR #46
+// review: listing selectors let any body or a second rule through).
 //
 // literals: each entry replaces `from` (required exactly once in the view
 // after every earlier list) with `to`, in the named view.
@@ -24,18 +24,23 @@ const css = [
     to: ['#tfcc-panel .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: var(--tfcc-text-sm);'] },
 ];
 
-const selectors = new Set([
-  '#tfcc-panel .tfcc-prio',
+const inserted = [
+  // 1. The two token declarations, one per theme block.
+  '  --tfcc-prio: #8db3d9;',
+  '  --tfcc-prio: #2e5680;',
   // 2. The Catch up group heading toggle (#45 item 2): the heading's own
   //    margin, the rows under it, the toggle that looks like the heading.
-  '#tfcc-panel .tfcc-section h4.tfcc-grphead',
-  '#tfcc-panel .tfcc-grphead + .tfcc-rows',
-  '#tfcc-panel button.tfcc-grp',
-  '#tfcc-panel button.tfcc-grp:hover .tfcc-grpname',
+  '#tfcc-panel .tfcc-section h4.tfcc-grphead { margin: 0; }',
+  '#tfcc-panel .tfcc-grphead + .tfcc-rows { margin-top: var(--tfcc-gap-sm); }',
+  '#tfcc-panel button.tfcc-grp { display: flex; align-items: center; gap: var(--tfcc-gap-xs); width: 100%;',
+  '  min-height: 24px; padding: 0; border: 0; background: transparent; color: var(--tm-text);',
+  '  font: inherit; font-weight: bold; text-align: left; cursor: pointer; }',
+  '#tfcc-panel button.tfcc-grp:hover .tfcc-grpname { text-decoration: underline; }',
   // 3. The Settings folder order arrows (#45 item 2).
-  '#tfcc-panel button.tfcc-move',
-  '#tfcc-panel button.tfcc-move:disabled',
-]);
+  '#tfcc-panel button.tfcc-move { display: inline-flex; align-items: center; justify-content: center;',
+  '  min-width: 24px; min-height: 24px; padding: 0 2px; }',
+  '#tfcc-panel button.tfcc-move:disabled { opacity: 0.45; cursor: default; }',
+];
 
 // The glyphs, exactly as glyph() draws them.
 const glyph = (d) => '<svg class="tfcc-gl" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">'
@@ -95,4 +100,4 @@ const literals = [
   },
 ];
 
-module.exports = { css, selectors, literals };
+module.exports = { css, inserted, literals };
