@@ -266,3 +266,39 @@ test('loading the page with My posts open does not fetch My posts', async () => 
   await settle(env);
   assert.ok(!env.router.seen.includes('user/forumthreads'));
 });
+
+// A limiter that grants the first `allow` slots and refuses the rest, the way
+// the real one refuses the 41st request in a rolling minute.
+function limiterAllowing(allow) {
+  let n = 0;
+  return { reserve() { n += 1; return n <= allow ? { ok: true, waitMs: 0 } : { ok: false, retryAfterMs: 1000 }; } };
+}
+
+const THROTTLE_NOTICE = 'Slowing down to stay inside Torn&#39;s API limit.';
+
+test('lookups stopped by a throttle say so, and the rows not reached stay not checked yet (#24)', async () => {
+  const env = await bootAndClear(mineTable());
+  env.exports.state.settings.view = 'mine';
+  // Two lists and the first lookup; the second lookup is refused.
+  env.exports.refreshMine(NOW, { limiter: limiterAllowing(3) });
+  await settle(env);
+  assert.deepStrictEqual(mineCalls(env), ['user/forumthreads', 'user/forumposts', 'forum/20/thread']);
+  assert.strictEqual(env.exports.state.rows.find((r) => r.id === '21').unreadSource, 'unchecked');
+  const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  assert.ok(html.includes(THROTTLE_NOTICE), 'the throttle notice is missing');
+  assert.match(html, /1 not checked yet/);
+
+  // The next run that is not throttled clears the notice.
+  env.exports.refreshMine(NOW + 60000);
+  await settle(env);
+  const after = env.exports.panelHtml(env.exports.buildPanelModel(NOW + 60000));
+  assert.ok(!after.includes(THROTTLE_NOTICE), 'the notice outlived the throttle');
+});
+
+test('a run that is not throttled shows no throttle notice', async () => {
+  const env = await bootAndClear(mineTable());
+  env.exports.state.settings.view = 'mine';
+  env.exports.refreshMine(NOW);
+  await settle(env);
+  assert.ok(!env.exports.panelHtml(env.exports.buildPanelModel(NOW)).includes(THROTTLE_NOTICE));
+});

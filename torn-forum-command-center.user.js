@@ -3200,6 +3200,9 @@
     mine: freshMine(),
     refreshingMine: false,
     mineError: null,
+    // The last My posts run stopped its lookups at a throttle (#24). Runtime
+    // only: a reload starts without the notice, and the next run decides again.
+    mineThrottled: false,
     rows: [],
     loading: false,
     refreshing: false,
@@ -3675,6 +3678,7 @@
     var budget = clamp(toInt(state.settings.enrichBudget, DEFAULT_ENRICH_BUDGET), 0, MAX_ENRICH_BUDGET);
     var params = { limit: MINE_PAGE_LIMIT };
     var started = null;
+    var throttled = false;
 
     function stale() { return generation !== state.generation; }
     function fail(res, fallback) {
@@ -3724,10 +3728,14 @@
             .then(function () {
               if (stale()) return outcome;
               return enrichMine(ids, now, options, generation).then(function (er) {
-                if (stale() || (er && er.stoppedEarly)) return outcome;
+                if (er && er.stoppedEarly) throttled = true;
+                if (stale() || throttled) return outcome;
                 var rn = Math.min(REACTION_LOOKUPS_PER_RUN, budget);
                 var rids = reactionLookupTargets(state.mine, now, TOPIC_TTL_MS, rn);
-                return enrichReactions(rids, now, options, generation).then(function () { return outcome; });
+                return enrichReactions(rids, now, options, generation).then(function (rr) {
+                  if (rr && rr.stoppedEarly) throttled = true;
+                  return outcome;
+                });
               });
             });
         });
@@ -3736,6 +3744,7 @@
         // A stale answer writes nothing: the user reset, cleared the key, or
         // left the page while it was in flight.
         if (!stale()) {
+          state.mineThrottled = throttled;
           persist('mine');
           recompute(now);
         }
@@ -4491,6 +4500,7 @@
         fetchedAt: state.mine.fetchedAt,
         refreshing: state.refreshingMine,
         error: state.mineError,
+        throttled: state.mineThrottled === true,
       },
       lastCatchUpAt: state.organizer.lastCatchUpAt,
       drafts: draftList(state.drafts),
@@ -4725,6 +4735,11 @@
     if (m.fetchedAt) line += ' Updated ' + formatRelativeTime(m.fetchedAt, model.now) + '.';
     if (m.unchecked) line += ' ' + m.unchecked + ' not checked yet.';
     out.push('<p class="tfcc-note">' + escapeHtml(line) + '</p>');
+    // The spec's Throttled row (#24): lookups stopped at the limiter, and the
+    // rows they did not reach keep saying "not checked yet".
+    if (m.throttled) {
+      out.push('<p class="tfcc-note">' + escapeHtml('Slowing down to stay inside Torn\'s API limit.') + '</p>');
+    }
 
     if (m.error) {
       out.push('<div class="tfcc-error">' + escapeHtml(m.error.detail) + '</div>');
@@ -5894,7 +5909,7 @@
           invalidateInFlight();
           state.settings = freshSettings(); state.organizer = freshOrganizer(now); state.showAll = {};
           state.drafts = freshDrafts(); state.feed = freshFeed(); state.postCache = freshPostCache();
-          state.mine = freshMine(); state.mineError = null;
+          state.mine = freshMine(); state.mineError = null; state.mineThrottled = false;
           // A real reset: no backfill, nothing re-awarded until a new event earns it.
           state.badges = freshBadges(); state.badgeShelfOpen = false; state.badgeCatalogueOpen = false;
           state.badgeToast = null; state.dwell = freshDwell();

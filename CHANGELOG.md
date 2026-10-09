@@ -97,6 +97,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   field and a dropped entry are still reported. (#4)
 - A My posts fetch that fails after Reset everything or Clear key no longer
   shows its error; a late failure is dropped like a late answer. (#24)
+- My posts now says "Slowing down to stay inside Torn's API limit." when its
+  lookups stop at the rate limiter, as the spec asked. The rows not reached
+  still say `not checked yet`, and the next run that is not throttled clears
+  the notice. (#24)
 
 ## [0.1.0] - 2026-08-07
 
