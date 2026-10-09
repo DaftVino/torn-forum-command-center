@@ -66,17 +66,49 @@ const SCRIPT = `
   // Walk up until something actually paints a background, the way a browser
   // composites it. An element with no background of its own is not the thing
   // its text sits on.
-  const effectiveBg = (el) => {
+  // #43: the panel and its rows are translucent, so a background is the
+  // composite of every layer down to the first opaque one, or down to the
+  // page. An underlay preview names what is under the page (data-underlay):
+  // a pattern lists each of its colours, and the worst for the text wins.
+  const underlays = (() => {
+    const u = document.body.getAttribute('data-underlay');
+    if (!u) return null;
+    return u.split(';').map((t) => { const c = t.split(',').map(Number); return { r: c[0], g: c[1], b: c[2], a: 1 }; });
+  })();
+  const over = (top, base) => ({ r: top.r * top.a + base.r * (1 - top.a), g: top.g * top.a + base.g * (1 - top.a),
+    b: top.b * top.a + base.b * (1 - top.a), a: 1 });
+  const effectiveBgs = (el) => {
+    const layers = [];
+    let base = null;
     let node = el;
     while (node) {
+      if (underlays && node === document.body) break;
       const bg = parse(getComputedStyle(node).backgroundColor);
-      if (bg && bg.a > 0.5) return bg;
+      if (bg && bg.a > 0) {
+        if (bg.a >= 0.999) { base = [bg]; break; }
+        layers.push(bg);
+      }
       node = node.parentElement;
     }
-    return { r: 255, g: 255, b: 255, a: 1 };
+    const bases = base || underlays || [{ r: 255, g: 255, b: 255, a: 1 }];
+    return bases.map((b) => layers.slice().reverse().reduce((acc, l) => over(l, acc), b));
+  };
+  // The background a mark sits on: for a foreground, the composite it has the
+  // least contrast with.
+  const effectiveBg = (el, fg) => {
+    const all = effectiveBgs(el);
+    if (!fg) return all[0];
+    return all.reduce((w, b) => (ratio(fg, b) < ratio(fg, w) ? b : w), all[0]);
   };
 
   const out = [];
+  // #43: the worst ratio seen for each kind of text, for the underlay report:
+  // nav labels, meta text (meta lines, notes, post text, explanations) and
+  // body text (everything else).
+  const cats = {};
+  const note = (cat, r, text) => {
+    if (!cats[cat] || r < cats[cat].r) cats[cat] = { r: Math.round(r * 100) / 100, text: String(text || '').trim().slice(0, 40) };
+  };
   panel.querySelectorAll('*').forEach((el) => {
     // Only elements that paint their own text, so a container is not blamed
     // for the contrast of a child that sets its own colour.
@@ -90,12 +122,16 @@ const SCRIPT = `
 
     const fg = parse(cs.color);
     if (!fg) return;
-    const bg = effectiveBg(el);
+    const bg = effectiveBg(el, fg);
     const size = parseFloat(cs.fontSize) || 14;
     const bold = (parseInt(cs.fontWeight, 10) || 400) >= 700;
     const large = size >= 24 || (bold && size >= 19);
     const r = ratio(fg, bg);
     const need = large ? ${MIN_LARGE} : ${MIN_NORMAL};
+    note(el.closest('.tfcc-nav') ? 'nav' : el.closest('.tfcc-meta, .tfcc-note, .tfcc-hit-text, .tfcc-infotext') ? 'meta' : 'body',
+      r, el.textContent);
+    // Text on a thread row sits on the 75% surface, not straight on the panel.
+    if (el.closest('.tfcc-row') && !el.closest('button, select, input')) note('row', r, el.textContent);
     if (r >= need) return;
 
     out.push({
@@ -116,7 +152,7 @@ const SCRIPT = `
     if (cs.display === 'none' || cs.visibility === 'hidden') return;
     const fg = parse(cs.color);
     if (!fg) return;
-    const bg = effectiveBg(el);
+    const bg = effectiveBg(el, fg);
     const r = ratio(fg, bg);
     if (r >= ${MIN_LARGE}) return;
     out.push({
@@ -146,12 +182,13 @@ const SCRIPT = `
     const glyph = b.querySelector('svg');
     if (!glyph) { infoBad.push('an info button has no icon'); return; }
     infoIcons += 1;
-    const bg = effectiveBg(b);
     const tints = [parse(getComputedStyle(glyph).color), parse(getComputedStyle(panel).getPropertyValue('--tm-accent-text').trim()
       .replace(/^#(..)(..)(..)$/, (m, r, g, bl) => 'rgb(' + parseInt(r, 16) + ', ' + parseInt(g, 16) + ', ' + parseInt(bl, 16) + ')'))];
     tints.forEach((fg, i) => {
       if (!fg) return;
+      const bg = effectiveBg(b, fg);
       const r = ratio(fg, bg);
+      note('icon', r, b.getAttribute('aria-label'));
       if (r < ${MIN_LARGE}) out.push({ tag: 'info', cls: 'tfcc-info (' + (i ? 'hover/open tint' : 'icon') + ')', color: 'rgb(' + fg.r + ', ' + fg.g + ', ' + fg.b + ')',
         bg: 'rgb(' + bg.r + ', ' + bg.g + ', ' + bg.b + ')', ratio: Math.round(r * 100) / 100, need: ${MIN_LARGE}, text: b.getAttribute('aria-label') });
     });
@@ -166,11 +203,12 @@ const SCRIPT = `
     const lab = cell.querySelector('.tfcc-navlab');
     if (!lab) return;
     const fg = parse(getComputedStyle(cell).color);
-    const bg = effectiveBg(cell);
+    const bg = effectiveBg(cell, fg);
     const numEl = cell.querySelector('.tfcc-navnum');
     const under = numEl ? mix(fg, bg, parseFloat(getComputedStyle(numEl).opacity)) : bg;
     const label = mix(fg, under, parseFloat(getComputedStyle(lab).opacity));
     const r = ratio(label, under);
+    note('nav', r, lab.textContent);
     if (r >= ${MIN_NORMAL}) return;
     out.push({ tag: 'nav', cls: 'tfcc-navlab', color: 'composited', bg: 'numeral', ratio: Math.round(r * 100) / 100,
       need: ${MIN_NORMAL}, text: lab.textContent });
@@ -380,7 +418,7 @@ const SCRIPT = `
     const want = light ? 'grayscale(1) brightness(0)' : 'grayscale(1) brightness(0) invert(1)';
     if (f !== want) { polishBad.push('emoji filter is "' + f + '", not "' + want + '"'); continue; }
     const ink = light ? { r: 0, g: 0, b: 0, a: 1 } : { r: 255, g: 255, b: 255, a: 1 };
-    const r = ratio(ink, effectiveBg(el));
+    const r = ratio(ink, effectiveBg(el, ink));
     if (r < ${MIN_LARGE}) out.push({ tag: 'emoji', cls: 'tfcc-emo', color: light ? 'black' : 'white', bg: 'button',
       ratio: Math.round(r * 100) / 100, need: ${MIN_LARGE}, text: el.parentElement.getAttribute('aria-label') });
   }
@@ -397,7 +435,7 @@ const SCRIPT = `
       polishBad.push('the archive icon is ' + getComputedStyle(path).fill + ', not its button\\'s colour');
       continue;
     }
-    const r = ratio(fill, effectiveBg(el));
+    const r = ratio(fill, effectiveBg(el, fill));
     if (r < ${MIN_LARGE}) out.push({ tag: 'icon', cls: 'tfcc-archico', color: getComputedStyle(path).fill, bg: 'button',
       ratio: Math.round(r * 100) / 100, need: ${MIN_LARGE}, text: el.parentElement.getAttribute('aria-label') });
     const box = el.getBoundingClientRect();
@@ -417,6 +455,7 @@ const SCRIPT = `
     drawerGeo: drawerGeo,
     editorSeen: editorSeen,
     infoIcons: infoIcons,
+    cats: cats,
     org: !!org,
     emos: emos.length,
     navcells: panel.querySelectorAll('.tfcc-navgrid button').length,
@@ -435,6 +474,13 @@ fs.writeFileSync(scriptFile, SCRIPT);
 
 const pages = fs.readdirSync(previews).filter((f) => f.endsWith('.html')).sort();
 let failures = 0;
+// #43: the translucent panel over black, white and a busy underlay. Report
+// only: we cannot know Torn's page (ADR 0001), so these say how bad it can
+// get rather than gate the build. The same views in takeover are solid and
+// are audited like every other page.
+const UNDERLAY_RE = /^underlay-(black|white|busy)-(.+)-(dark|light)\.html$/;
+const report = {};
+let reportBelow = 0;
 
 for (const page of pages) {
   spawnSync(BROWSE, ['load-html', path.join('preview', page)], { cwd: repo, encoding: 'utf8' });
@@ -456,6 +502,19 @@ for (const page of pages) {
   }
   const seen = rows.seen || {};
   rows = rows.rows;
+  const u = UNDERLAY_RE.exec(page);
+  if (u) {
+    const key = u[3] + ' / ' + u[1];
+    report[key] = report[key] || {};
+    for (const [cat, v] of Object.entries(seen.cats || {})) {
+      if (!report[key][cat] || v.r < report[key][cat].r) report[key][cat] = Object.assign({ page: u[2] }, v);
+    }
+    const line = ['body', 'meta', 'nav', 'icon'].filter((c) => seen.cats && seen.cats[c])
+      .map((c) => c + ' ' + seen.cats[c].r).join(', ');
+    console.log(`RR ${page}: worst ${line}; ${rows.length} below AA (report only)`);
+    if (rows.length) reportBelow += 1;
+    continue;
+  }
   // Every preview has the header logo (#30), and every My posts preview has a
   // started row whose red "started" (#30) must have been measured.
   const missing = [];
@@ -526,6 +585,18 @@ for (const page of pages) {
     console.log(`     ${r.tag}.${r.cls || '(none)'} ${r.color} on ${r.bg} = ${r.ratio}:1, needs ${r.need}:1`);
     console.log(`       "${r.text}"`);
   }
+}
+
+// #43: the transparency table, worst case per theme and underlay.
+if (Object.keys(report).length) {
+  console.log('\nTranslucent panel, worst contrast per theme and underlay (report only; AA is 4.5 for text, 3 for icons):');
+  console.log('| Theme / underlay | Body text | Meta text | Nav labels | Info icons | Any text on a row (75%) |');
+  console.log('|---|---|---|---|---|---|');
+  for (const key of Object.keys(report).sort()) {
+    const c = (k) => (report[key][k] ? report[key][k].r.toFixed(2) + ' (' + report[key][k].page + ')' : '-');
+    console.log('| ' + key + ' | ' + c('body') + ' | ' + c('meta') + ' | ' + c('nav') + ' | ' + c('icon') + ' | ' + c('row') + ' |');
+  }
+  console.log(reportBelow + ' underlay preview(s) have text below AA; these are reported, not failed.');
 }
 
 console.log(`\n${failures === 0 ? 'Every preview passes WCAG AA.' : failures + ' contrast problem(s) found.'}`);

@@ -1452,6 +1452,17 @@ const MUTATIONS = [
     ['the priority key is not registered', (s) => s.replace("    priority: 'About priority',\n", '')],
   ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/info.test.js', apply })),
   ...[
+    ['the panel is solid again', (s) => s.replace("'  background: var(--tfcc-panel-bg); color: var(--tm-text);", "'  background: var(--tm-bg); color: var(--tm-text);")],
+    ['the rows are solid again', (s) => s.replace("'  background: var(--tfcc-surface-bg); padding:", "'  background: var(--tm-bg-2); padding:")],
+    ['the panel is 60% opaque, not the owner\'s 50%', (s) => s.replace('--tfcc-panel-bg: rgba(31, 31, 31, 0.5);', '--tfcc-panel-bg: rgba(31, 31, 31, 0.6);')],
+    ['the light surface is 70% opaque, not the owner\'s 75%', (s) => s.replace('--tfcc-surface-bg: rgba(232, 232, 232, 0.75);', '--tfcc-surface-bg: rgba(232, 232, 232, 0.7);')],
+    ['takeover lets the page show through', (s) => s.replace(
+      "'.tfcc-takeover { --tfcc-panel-bg: var(--tm-bg); --tfcc-surface-bg: var(--tm-bg-2);',", "'.tfcc-takeover {',")],
+    ['transparency by opacity, which fades the text', (s) => s.replace(
+      "'  padding: 10px 12px; margin: 12px 0; font-size: var(--tfcc-text); line-height: 1.5; }',",
+      "'  padding: 10px 12px; margin: 12px 0; font-size: var(--tfcc-text); line-height: 1.5; opacity: 0.5; }',")],
+  ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/transparency.test.js', apply })),
+  ...[
     ['a tap elsewhere in the drawer leaves the popup open', (s) => s.replace(
       'if (state.openEditor && !insideOpenEditor(panel, t)) {', 'if (false) {')],
     ['Escape no longer cancels the popup', (s) => s.replace("if (key !== 'Escape' && key !== 'Esc' && ", "if (key !== 'Esc' && ")],

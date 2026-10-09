@@ -185,7 +185,18 @@ const FIT_HEADER_SHIM = [
 // doubled (an Android WebView's textZoom scales px text too).
 const TEXT_200 = '#tfcc-panel { --tfcc-text: 28px; --tfcc-text-sm: 24px; }';
 
-function page(title, theme, body, width, hostile, narrow, extraCss) {
+// #43: what shows through the translucent panel. We cannot read Torn's page
+// (ADR 0001), so the panel is judged over the extremes: pure black, pure
+// white, and a busy mid-grey stripe. colors are what the audit composites
+// over (each stripe colour in turn, so a pattern is judged by its worst).
+const UNDERLAYS = {
+  black: { css: '#000000', colors: '0,0,0' },
+  white: { css: '#ffffff', colors: '255,255,255' },
+  busy: { css: 'repeating-linear-gradient(45deg, #4a4a4a 0 10px, #c8c8c8 10px 20px, #6e6e6e 20px 30px, #a0a0a0 30px 40px)',
+    colors: '74,74,74;200,200,200;110,110,110;160,160,160' },
+};
+
+function page(title, theme, body, width, hostile, narrow, extraCss, underlay, takeover) {
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8">',
@@ -195,7 +206,7 @@ function page(title, theme, body, width, hostile, narrow, extraCss) {
     // A stand-in for Torn's own page, so the panel is judged against a
     // background it will actually sit on rather than against white.
     'body { margin: 0; padding: 16px; font-family: Arial, Helvetica, sans-serif; font-size: 13px;',
-    '  background: ' + (theme === 'light' ? '#e6e6e6' : '#0f0f0f') + '; }',
+    '  background: ' + (underlay ? underlay.css : (theme === 'light' ? '#e6e6e6' : '#0f0f0f')) + '; }',
     '.frame { max-width: ' + width + 'px; margin: 0 auto; }',
     '.label { color: ' + (theme === 'light' ? '#333' : '#888') + '; font-size: 12px;',
     '  margin: 0 0 8px; font-family: monospace; }',
@@ -204,10 +215,10 @@ function page(title, theme, body, width, hostile, narrow, extraCss) {
     hostile ? HOSTILE_HOST_CSS : '',
     css,
     extraCss || '',
-    '</style></head><body><div class="frame">',
+    '</style></head><body' + (underlay ? ' data-underlay="' + underlay.colors + '"' : '') + '><div class="frame">',
     '<p class="label">' + title + '</p>',
     // #41: the runtime puts tfcc-clip on the panel while the setting is on.
-    '<div id="tfcc-panel" class="tfcc-theme-' + theme + (narrow ? ' tfcc-narrow' : '')
+    '<div id="tfcc-panel" class="tfcc-theme-' + theme + (narrow ? ' tfcc-narrow' : '') + (takeover ? ' tfcc-takeover' : '')
       + (api.state.settings.clipLines !== false ? ' tfcc-clip' : '') + '">' + body + '</div>',
     // #33: the production fitHeader and headerButtonSize, verbatim, so the
     // preview's header is sized exactly as the script sizes it.
@@ -328,6 +339,43 @@ api.state.narrow = false;
 api.state.settings.clipLines = true;
 Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false, openEditor: null });
 api.state.settings.collapsed = false;
+
+// #43: the translucent panel over each underlay, in both themes: rows and a
+// drawer, Catch up's heading, and the views whose text sits straight on the
+// panel (Search's posts, Settings). Report-only in the audit unless they
+// pass. The same views in takeover must be solid, so those are audited.
+const UNDERLAY_STATES = [
+  ['narrow-threads-drawer', true, () => { api.state.settings.view = 'threads'; api.state.openRowId = '16474152'; }],
+  ['narrow-catchup', true, () => { api.state.settings.view = 'catchup'; }],
+  ['wide-threads', false, () => { api.state.settings.view = 'threads'; }],
+  ['wide-search', false, () => { api.state.settings.view = 'search'; api.state.searchQuery = 'by:DaftVino'; }],
+  ['wide-settings', false, () => { api.state.settings.view = 'settings'; }],
+];
+for (const [label, narrowState, setUp] of UNDERLAY_STATES) {
+  for (const [uname, underlay] of Object.entries(UNDERLAYS)) {
+    for (const theme of ['dark', 'light']) {
+      Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false, openEditor: null });
+      api.state.searchQuery = '';
+      api.state.narrow = narrowState;
+      api.state.settings.theme = theme;
+      setUp();
+      const body = api.panelHtml(api.buildPanelModel(NOW));
+      const width = narrowState ? 343 : 900;
+      for (const takeover of [false, true]) {
+        if (takeover && label !== 'wide-threads' && label !== 'narrow-threads-drawer') continue;
+        const name = (takeover ? 'takeover-' : '') + `underlay-${uname}-${label}-${theme}.html`;
+        fs.writeFileSync(path.join(outDir, name), page(`${label} over ${uname}${takeover ? ' / takeover' : ''} / ${theme}`,
+          theme, body, width, false, narrowState, '', underlay, takeover));
+        written.push(name);
+      }
+    }
+  }
+}
+api.state.narrow = false;
+api.state.searchQuery = '';
+Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false, openEditor: null });
+api.state.settings.theme = 'dark';
+api.state.settings.view = 'threads';
 
 // Badges (issue #9). Match Torn applies one of the two theme classes, so dark
 // and light cover it; both are rendered here under the hostile host too.

@@ -43,6 +43,15 @@ const css = [
   { item: MINE, from: '  color: var(--tfcc-mine-text); }', to: [] },
   { item: MINE, from: '#tfcc-panel button.tfcc-nav-mine[aria-pressed="true"] { background: var(--tfcc-mine-pressed);', to: [] },
   { item: MINE, from: '  color: var(--tfcc-mine-text); box-shadow: inset 0 -3px 0 var(--tfcc-mine-text); }', to: [] },
+  // 4. Semi-transparent backgrounds (#43 item 5, owner): the panel at 50%,
+  //    the surfaces on --tm-bg-2 (thread rows, the badge shelf and toast) at
+  //    75%, by alpha on two new tokens (inserted into the theme blocks, so not
+  //    replacements); solid again in takeover. Only these three lines change.
+  { item: '43 transparency', from: '  background: var(--tm-bg); color: var(--tm-text); border-radius: 6px;',
+    to: ['  background: var(--tfcc-panel-bg); color: var(--tm-text); border-radius: 6px;'] },
+  { item: '43 transparency', from: '  background: var(--tm-bg-2); }', to: ['  background: var(--tfcc-surface-bg); }'] },
+  { item: '43 transparency', from: '  background: var(--tm-bg-2); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }',
+    to: ['  background: var(--tfcc-surface-bg); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }'] },
 ];
 
 // 3. Every info button is a bare icon (#43, owner): its 13d rules (new since
@@ -50,6 +59,10 @@ const css = [
 //    and one new rule tints the icon on hover instead of filling a box.
 const selectors = new Set([
   '#tfcc-panel button.tfcc-info:hover',
+  // 4. Semi-transparent backgrounds (see the css entries above): the takeover
+  //    rules that make them solid again, and the panel's backdrop blur.
+  '#tfcc-panel.tfcc-takeover',
+  '#tfcc-panel',
 ]);
 
 module.exports = { markup, css, selectors };

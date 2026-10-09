@@ -4451,6 +4451,12 @@
       '  --tfcc-tier-legend: #c9a2ff; --tfcc-locked: #8a8a8a;',
       // "started" in My posts (#30): 6.2:1 on the row, 7.8:1 on the tag fill.
       '  --tfcc-started: #ff8080;',
+      // #43 (owner): Torn's page shows through. The panel's own background is
+      // 50% opaque and the surfaces on it (thread rows, the badge shelf and
+      // toast: everything on --tm-bg-2) 75%. Alpha on the background colour
+      // only, never opacity, so text and controls stay fully opaque. The
+      // values are --tm-bg and --tm-bg-2 with alpha; takeover restores them.
+      '  --tfcc-panel-bg: rgba(31, 31, 31, 0.5); --tfcc-surface-bg: rgba(38, 38, 38, 0.75);',
       // #33: the narrow header button size; fitHeader overrides it inline.
       '  --tfcc-hb: 44px;',
       // #33 nav numerals, v1 tint (spec 13f). The same in both themes, because
@@ -4468,13 +4474,18 @@
       '  --tfcc-tier-legend: #6a2fb5; --tfcc-locked: #6e6e6e;',
       // "started" (#30): 6.5:1 on the row, 8.0:1 on the tag fill.
       '  --tfcc-started: #a11414;',
+      '  --tfcc-panel-bg: rgba(242, 242, 242, 0.5); --tfcc-surface-bg: rgba(232, 232, 232, 0.75);',
       '}',
       '#' + FALLBACK_ID + ' { position: fixed; right: 12px; bottom: 12px; z-index: 2147483000;',
       '  box-sizing: border-box; width: min(960px, calc(100vw - 24px)); max-width: calc(100vw - 24px);',
       '  max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }',
       '#' + PANEL_ID + ' { box-sizing: border-box; width: 100%; border: 1px solid var(--tm-border-2);',
-      '  background: var(--tm-bg); color: var(--tm-text); border-radius: 6px;',
+      '  background: var(--tfcc-panel-bg); color: var(--tm-text); border-radius: 6px;',
       '  padding: 10px 12px; margin: 12px 0; font-size: var(--tfcc-text); line-height: 1.5; }',
+      // #43: a readability aid behind the translucent panel. A blur evens out
+      // a busy page under it (it cannot help a plain one, so the colours were
+      // measured without it). A browser without it simply shows the page.
+      '#' + PANEL_ID + ' { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',
       '#' + PANEL_ID + ' * { box-sizing: border-box; }',
       // Inheritance is the weakest source in CSS: a value is inherited only
       // when NO rule matches. Torn styles bare elements - td, h4, p, code - so
@@ -4491,6 +4502,11 @@
       '#' + PANEL_ID + '.tfcc-takeover { position: fixed; inset: 0; margin: 0; border-radius: 0;',
       '  z-index: 2147483000; height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh;',
       '  overflow-y: auto; overflow-x: hidden; padding: 12px; }',
+      // #43: Expand (takeover) covers the page, so nothing shows through: the
+      // solid tokens again, in either theme (this rule comes after both theme
+      // blocks), and no blur.
+      '#' + PANEL_ID + '.tfcc-takeover { --tfcc-panel-bg: var(--tm-bg); --tfcc-surface-bg: var(--tm-bg-2);',
+      '  -webkit-backdrop-filter: none; backdrop-filter: none; }',
       '#' + PANEL_ID + ' .tfcc-head { display: flex; align-items: center; gap: var(--tfcc-gap);',
       '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap); }',
       // The logo (#30) stands where the bold title text stood: as tall as the
@@ -4521,7 +4537,7 @@
       '#' + PANEL_ID + ' .tfcc-locked { color: var(--tfcc-locked); }',
       '#' + PANEL_ID + ' .tfcc-shelf, #' + PANEL_ID + ' .tfcc-toast { border: 1px solid var(--tm-border);',
       '  border-radius: 4px; padding: var(--tfcc-gap-sm) var(--tfcc-gap); margin-bottom: var(--tfcc-gap);',
-      '  background: var(--tm-bg-2); }',
+      '  background: var(--tfcc-surface-bg); }',
       '#' + PANEL_ID + ' .tfcc-badge-row { display: flex; gap: var(--tfcc-gap-sm); align-items: center;',
       '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap-xs); }',
       '#' + PANEL_ID + ' .tfcc-bar-track { display: inline-block; background: var(--tm-bg-3);',
@@ -4593,7 +4609,7 @@
       '#' + PANEL_ID + ' .tfcc-grow { flex: 1 1 180px; min-width: 0; }',
       '#' + PANEL_ID + ' .tfcc-rows { display: flex; flex-direction: column; gap: var(--tfcc-gap-xs); }',
       '#' + PANEL_ID + ' .tfcc-row { border: 1px solid var(--tm-border); border-radius: 4px;',
-      '  background: var(--tm-bg-2); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }',
+      '  background: var(--tfcc-surface-bg); padding: var(--tfcc-gap-sm) var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-row-main { display: flex; align-items: baseline; gap: var(--tfcc-gap-sm);',
       '  flex-wrap: wrap; }',
       '#' + PANEL_ID + ' .tfcc-row-title { font-weight: bold; overflow-wrap: anywhere;',
