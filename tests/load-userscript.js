@@ -66,7 +66,7 @@ const EXPORT_NAMES = [
   // engine: merge, unread, sort
   'ACTIVITY_SOURCES', 'resolveLastActivity', 'unreadFor', 'mergeThreads',
   'SORT_MODES', 'SORT_LABELS', 'sortThreads', 'catchUpList', 'catchUpUnchecked', 'checkAuthorPosts',
-  'ROWS_SHOWN_OPTIONS', 'CAPPED_VIEWS', 'UNCAPPED_VIEWS', 'VIEW_LABELS', 'capRows', 'renderCapLine',
+  'ROWS_SHOWN_OPTIONS', 'CAPPED_VIEWS', 'UNCAPPED_VIEWS', 'VIEW_LABELS', 'capRows', 'rowLimitFor', 'renderCapLine',
   // #33: narrow layout
   'PRESS_FLUSH_MS',
   'restoreFocus', 'renderLive', 'focusTargetOf',

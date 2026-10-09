@@ -1898,6 +1898,13 @@
     };
   }
 
+  // #43: the row limit a capped view uses. Expand (takeover) shows every row,
+  // with no "Showing N of M" line: All (0) while it lasts. The caller never
+  // writes showAll, so Shrink brings back exactly the cap the user had.
+  function rowLimitFor(rowsShown, takeover) {
+    return takeover === true ? 0 : rowsShown;
+  }
+
   // True when the panel should use the narrow layout. An unknown width (0,
   // NaN, a failed measurement) keeps whatever layout is current.
   function narrowFor(width, wasNarrow) {
@@ -4972,10 +4979,11 @@
     var catchUp = catchUpRowsNow();
     var unchecked = catchUpUncheckedNow();
     var showAll = state.showAll || {};
+    var limit = rowLimitFor(s.rowsShown, s.takeover);
     var capped = {
-      threads: capRows(threadsSorted, s.rowsShown, showAll.threads === true),
-      catchup: capRows(catchUp, s.rowsShown, showAll.catchup === true),
-      mine: capRows(mineSorted, s.rowsShown, showAll.mine === true),
+      threads: capRows(threadsSorted, limit, showAll.threads === true),
+      catchup: capRows(catchUp, limit, showAll.catchup === true),
+      mine: capRows(mineSorted, limit, showAll.mine === true),
     };
     // #33, spec section 6: after every model build, an open row or info that
     // this view does not render closes, and stays closed.

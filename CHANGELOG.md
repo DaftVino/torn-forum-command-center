@@ -76,6 +76,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Changed
 
+- Expand shows every row in Threads, Catch up and My posts, with no
+  "Showing N of M" line; Shrink brings the Rows shown cap back. A view you set
+  to Show all stays that way. (#43)
 - The narrow drawer's Archive button shows an archive box (UXWing's "archive
   files" icon, inline and in the theme's text colour) instead of the
   wastebasket, so it reads as archive, not delete. (#41)

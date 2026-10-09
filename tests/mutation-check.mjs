@@ -1396,6 +1396,16 @@ const MUTATIONS = [
     apply: (s) => s.replace("model.narrow ? cuButton('markall', 'Mark all read', 'All read') : btn('markall', 'Mark all read')",
       "cuButton('markall', 'Mark all read', 'All read')"),
   },
+  {
+    name: '#43: Expand no longer shows every row',
+    suite: 'tests/rows-cap.test.js',
+    apply: (s) => s.replace('return takeover === true ? 0 : rowsShown;', 'return rowsShown;'),
+  },
+  {
+    name: '#43: the model ignores takeover when it caps',
+    suite: 'tests/rows-cap.test.js',
+    apply: (s) => s.replace('var limit = rowLimitFor(s.rowsShown, s.takeover);', 'var limit = s.rowsShown;'),
+  },
 ];
 
 let failures = 0;
