@@ -4608,6 +4608,26 @@
       '  justify-content: center; gap: 4px; min-width: 44px; min-height: 44px; padding: 0 8px; white-space: nowrap; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-filtergrid { display: grid;',
       '  grid-template-columns: repeat(auto-fit, minmax(8em, 1fr)); gap: 6px; margin: 0 0 6px 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row { padding: var(--tfcc-gap-xs) var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t { display: flex; gap: 4px; align-items: flex-start; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title { line-height: 1.35; }',
+      // The whole title band opens the thread: at least 24px (WCAG 2.2 AA).
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title a { display: block; padding: 3px 0; min-height: 24px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-pinned { padding-top: 3px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 { display: flex; gap: 6px; align-items: flex-start; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 .tfcc-meta { flex: 1 1 0; min-width: 0; margin-top: 0;',
+      '  padding-top: 2px; gap: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns { flex: none; display: inline-flex; gap: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns button { display: inline-flex; align-items: center;',
+      '  justify-content: center; min-width: 44px; min-height: 44px; padding: 0 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns button[aria-expanded="true"] { background: var(--tm-hover); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer { display: grid;',
+      '  grid-template-columns: repeat(auto-fit, minmax(7.5em, 1fr)); gap: 6px; margin-top: 6px;',
+      '  padding-top: 8px; border-top: 1px solid var(--tm-border); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer .tfcc-wide { grid-column: 1 / -1; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-step { display: flex; align-items: center; gap: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-step span { flex: 1 1 auto; text-align: center; color: var(--tm-meta); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-vh { font-size: var(--tfcc-text); margin: 2px 0 6px 0; }',
       '#' + PANEL_ID + ' .tfcc-error { color: var(--tm-bad-text); font-weight: bold;',
       '  margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-warn { color: var(--tm-warn-text); margin-bottom: var(--tfcc-gap-sm); }',
@@ -5040,18 +5060,10 @@
         + ' title="Lower this thread\'s priority by 1"');
   }
 
-  function renderRow(row, model) {
-    var out = ['<div class="tfcc-row" data-id="' + escapeHtml(row.id) + '">'];
-    out.push('<div class="tfcc-row-main">');
-    if (row.pinned) out.push('<span class="tfcc-pinned" title="Pinned">*</span>');
-    out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '"'
-      + threadLinkAttr(row.id) + '>'
-      + escapeHtml(row.title) + '</a></span>');
-    // Priority sits beside the title (#30), not in the action row, where two
-    // more buttons wrapped Archive onto a second line once Pin read Unpin.
-    // Siblings of the title span, never inside the marked anchor, so a tap on
-    // them is not a thread click and #8's auto-hide ignores it.
-    out.push(renderPriority(row));
+  // The unread count and the per-row status notes. Shared by the wide row
+  // (on the title line) and the narrow row (first in the meta).
+  function rowStatusHtml(row) {
+    var out = [];
     // Author-only mode (issue #4) never shows Torn's any-poster count, and an
     // unknown is named, never left blank.
     var amode = row.authorState || 'off';
@@ -5076,9 +5088,12 @@
     if (row.unreadSource === 'unchecked') out.push('<span class="tfcc-note">not checked yet</span>');
     if (!row.subscribed) out.push('<span class="tfcc-note">not subscribed</span>');
     if (row.isLocked) out.push('<span class="tfcc-note">locked</span>');
-    out.push('</div>');
+    return out.join('');
+  }
 
-    out.push('<div class="tfcc-meta">');
+  // The meta spans. Shared by the wide and the narrow row.
+  function rowMetaHtml(row, model) {
+    var out = [];
     // "started" is red (#30), so a thread you began stands out at a glance.
     if (row.mineRole === 'started') out.push('<span class="tfcc-tag tfcc-started">started</span>');
     else if (row.mineRole) out.push('<span class="tfcc-tag">posted in</span>');
@@ -5099,14 +5114,11 @@
     for (var i = 0; i < row.tags.length; i += 1) {
       out.push('<span class="tfcc-tag">' + escapeHtml(row.tags[i]) + '</span>');
     }
-    out.push('</div>');
+    return out.join('');
+  }
 
-    if (row.note) out.push('<div class="tfcc-note">' + escapeHtml(row.note) + '</div>');
-
-    out.push('<div class="tfcc-actions">');
-    out.push(btn('pin', row.pinned ? 'Unpin' : 'Pin', ' data-id="' + escapeHtml(row.id) + '"'));
-    out.push(btn('read', 'Mark read', ' data-id="' + escapeHtml(row.id) + '"'));
-    out.push('<select data-act="folder" data-id="' + escapeHtml(row.id) + '">');
+  function folderSelectHtml(row, model, extra) {
+    var out = ['<select data-act="folder" data-id="' + escapeHtml(row.id) + '"' + extra + '>'];
     out.push('<option value="">Unfiled</option>');
     for (var f = 0; f < model.folders.length; f += 1) {
       var fo = model.folders[f];
@@ -5114,18 +5126,122 @@
         + (row.folderId === fo.id ? ' selected' : '') + '>' + escapeHtml(fo.name) + '</option>');
     }
     out.push('</select>');
+    return out.join('');
+  }
+
+  function renderRow(row, model) {
+    var out = ['<div class="tfcc-row" data-id="' + escapeHtml(row.id) + '">'];
+    out.push('<div class="tfcc-row-main">');
+    if (row.pinned) out.push('<span class="tfcc-pinned" title="Pinned">*</span>');
+    out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '"'
+      + threadLinkAttr(row.id) + '>'
+      + escapeHtml(row.title) + '</a></span>');
+    // Priority sits beside the title (#30), not in the action row, where two
+    // more buttons wrapped Archive onto a second line once Pin read Unpin.
+    // Siblings of the title span, never inside the marked anchor, so a tap on
+    // them is not a thread click and #8's auto-hide ignores it.
+    out.push(renderPriority(row));
+    out.push(rowStatusHtml(row));
+    out.push('</div>');
+
+    out.push('<div class="tfcc-meta">' + rowMetaHtml(row, model) + '</div>');
+
+    if (row.note) out.push('<div class="tfcc-note">' + escapeHtml(row.note) + '</div>');
+
+    // #33: an uncommitted edit is shown wherever its field renders.
+    var edit = model.drawerEdit && model.drawerEdit.id === String(row.id) ? model.drawerEdit : null;
+    out.push('<div class="tfcc-actions">');
+    out.push(btn('pin', row.pinned ? 'Unpin' : 'Pin', ' data-id="' + escapeHtml(row.id) + '"'));
+    out.push(btn('read', 'Mark read', ' data-id="' + escapeHtml(row.id) + '"'));
+    out.push(folderSelectHtml(row, model, ''));
     out.push('<input type="text" data-act="tag-input" data-id="' + escapeHtml(row.id)
-      + '" placeholder="add tag" size="8">');
+      + '"' + (edit && edit.field === 'tag-input' ? ' value="' + escapeHtml(edit.value) + '"' : '') + ' placeholder="add tag" size="8">');
     // A note is edited in place rather than behind a button, because a button
     // needs somewhere to put the editor and every such place is another piece
     // of view state to get wrong.
     out.push('<input type="text" data-act="note-input" data-id="' + escapeHtml(row.id)
-      + '" value="' + escapeHtml(row.note) + '" placeholder="note" size="14">');
+      + '" value="' + escapeHtml(edit && edit.field === 'note-input' ? edit.value : row.note) + '" placeholder="note" size="14">');
     out.push(btn('draft', row.hasDraft ? 'Edit draft' : 'Draft', ' data-id="' + escapeHtml(row.id) + '"'));
     out.push(btn('archive', row.archived ? 'Unarchive' : 'Archive', ' data-id="' + escapeHtml(row.id) + '"'));
     out.push('</div>');
     out.push('</div>');
     return out.join('');
+  }
+
+  // The one row renderer the views call (#33).
+  function rowHtml(row, model) {
+    return model.narrow ? renderRowNarrow(row, model) : renderRow(row, model);
+  }
+
+  // Mark read as a check mark (spec 13e): named "Mark read", and described by
+  // the row's title so a screen reader hears which thread.
+  function readButton(row) {
+    var id = escapeHtml(row.id);
+    return '<button type="button" class="tfcc-read" data-act="read" data-id="' + id + '" aria-label="Mark read"'
+      + ' aria-describedby="tfcc-title-' + id + '">' + glyph('check') + '</button>';
+  }
+
+  // The drawer's controls (spec 4.4): the same data-act values as the wide
+  // action row, each at least 44px. Mark read is left out in Catch up, where
+  // the row already shows it.
+  function renderDrawer(row, model, inCatchUp) {
+    var id = ' data-id="' + escapeHtml(row.id) + '"';
+    var edit = model.drawerEdit && model.drawerEdit.id === String(row.id) ? model.drawerEdit : null;
+    var p = toInt(row.priority, 0);
+    var out = [];
+    out.push(btn('pin', row.pinned ? 'Unpin' : 'Pin', id));
+    if (!inCatchUp) out.push(readButton(row));
+    out.push(btn('draft', row.hasDraft ? 'Edit draft' : 'Draft', id));
+    out.push(btn('archive', row.archived ? 'Unarchive' : 'Archive', id));
+    out.push('<div class="tfcc-step tfcc-wide">'
+      + btn('prio-down', '-', id + ' aria-label="Lower priority"')
+      + '<span>Priority ' + escapeHtml((p > 0 ? '+' : '') + p) + '</span>'
+      + btn('prio-up', '+', id + ' aria-label="Raise priority"') + '</div>');
+    out.push(folderSelectHtml(row, model, ' class="tfcc-wide" aria-label="Folder"'));
+    out.push('<input type="text" data-act="tag-input"' + id + ' value="'
+      + escapeHtml(edit && edit.field === 'tag-input' ? edit.value : '') + '" placeholder="add tag" aria-label="Add tag">');
+    out.push('<input type="text" data-act="note-input"' + id + ' value="'
+      + escapeHtml(edit && edit.field === 'note-input' ? edit.value : row.note) + '" placeholder="note" aria-label="Note">');
+    return out.join('');
+  }
+
+  // The narrow row (spec 4.4): the title as a full-width block link, then the
+  // meta with the buttons on the right, then the note and the drawer. Read and
+  // Actions are siblings of the title span, never inside the marked anchor, so
+  // #8's auto-hide never sees them.
+  function renderRowNarrow(row, model) {
+    var id = escapeHtml(row.id);
+    var open = model.openRowId === String(row.id);
+    var inCatchUp = model.view === 'catchup';
+    var p = toInt(row.priority, 0);
+    var out = ['<div class="tfcc-row" data-id="' + id + '">'];
+    out.push('<div class="tfcc-row-t">');
+    if (row.pinned) out.push('<span class="tfcc-pinned" title="Pinned">*</span>');
+    out.push('<span class="tfcc-row-title"><a id="tfcc-title-' + id + '" href="' + escapeHtml(threadUrl(row)) + '"'
+      + threadLinkAttr(row.id) + '>' + escapeHtml(row.title) + '</a></span></div>');
+    out.push('<div class="tfcc-row-l2"><div class="tfcc-meta">' + rowStatusHtml(row)
+      + (p !== 0 ? '<span class="tfcc-prio">' + escapeHtml((p > 0 ? '+' : '') + p) + '</span>' : '')
+      + rowMetaHtml(row, model) + '</div><span class="tfcc-row-btns">');
+    if (inCatchUp) out.push(readButton(row));
+    out.push('<button type="button" data-act="row-more" data-id="' + id + '" aria-expanded="'
+      + (open ? 'true' : 'false') + '" aria-controls="tfcc-act-' + id + '" aria-label="'
+      + escapeHtml('Actions for ' + row.title) + '">' + glyph('more') + '</button>');
+    out.push('</span></div>');
+    if (row.note) out.push('<div class="tfcc-note">' + escapeHtml(row.note) + '</div>');
+    out.push('<div class="tfcc-drawer" id="tfcc-act-' + id + '"'
+      + (open ? '>' + renderDrawer(row, model, inCatchUp) : ' hidden>') + '</div>');
+    out.push('</div>');
+    return out.join('');
+  }
+
+  // The narrow view heading (spec 6, focus rule 3): the focus fallback. Visible
+  // in Catch up, where it carries the catch-up date; visually hidden elsewhere.
+  function renderViewHeading(model) {
+    var catchup = model.view === 'catchup';
+    var since = catchup ? ' <span class="tfcc-note">since ' + escapeHtml(model.lastCatchUpAt
+      ? formatAbsoluteTime(model.lastCatchUpAt) : 'your first run') + '</span>' : '';
+    return '<h3 class="tfcc-vh' + (catchup ? '' : ' tfcc-sr') + '" id="' + VIEW_HEADING_ID + '" tabindex="-1">'
+      + escapeHtml(VIEW_LABELS[model.view] || VIEW_LABELS.threads) + since + '</h3>';
   }
 
   // extra goes on the select element; the wide bar passes '' so its markup is
@@ -5223,7 +5339,7 @@
     } else {
       var shown = model.capped[cv].rows;
       out.push('<div class="tfcc-rows">');
-      for (var r = 0; r < shown.length; r += 1) out.push(renderRow(shown[r], model));
+      for (var r = 0; r < shown.length; r += 1) out.push(rowHtml(shown[r], model));
       out.push('</div>');
       out.push(renderCapLine(model.capped[cv], cv));
     }
@@ -5295,8 +5411,10 @@
   function renderCatchUpView(model) {
     var out = [];
     out.push('<div class="tfcc-bar">');
-    out.push('<span class="tfcc-note">Since ' + escapeHtml(model.lastCatchUpAt
-      ? formatAbsoluteTime(model.lastCatchUpAt) : 'your first run') + '</span>');
+    if (!model.narrow) {
+      out.push('<span class="tfcc-note">Since ' + escapeHtml(model.lastCatchUpAt
+        ? formatAbsoluteTime(model.lastCatchUpAt) : 'your first run') + '</span>');
+    }
     out.push(btn('markall', 'Mark all read'));
     out.push(btn('catchup-done', 'Set catch-up point to now'));
     out.push(renderInfoButton('catchup', model.openInfoId));
@@ -5310,7 +5428,7 @@
     if (pending.length) {
       var u = ['<div class="tfcc-section"><h4>Not yet checked for author posts (' + pending.length
         + ')</h4><div class="tfcc-rows">'];
-      for (var p = 0; p < pending.length; p += 1) u.push(renderRow(pending[p], model));
+      for (var p = 0; p < pending.length; p += 1) u.push(rowHtml(pending[p], model));
       u.push('</div></div>');
       unchecked = u.join('');
     }
@@ -5327,7 +5445,7 @@
       out.push('<div class="tfcc-section"><h4>' + escapeHtml(groups[n].name)
         + ' (' + groups[n].rows.length + ')</h4><div class="tfcc-rows">');
       for (var j = 0; j < groups[n].rows.length; j += 1) {
-        out.push(renderRow(groups[n].rows[j], model));
+        out.push(rowHtml(groups[n].rows[j], model));
       }
       out.push('</div></div>');
     }
@@ -5368,7 +5486,7 @@
     if (!matched.length) out.push('<div class="tfcc-empty">No thread matches.</div>');
     else {
       out.push('<div class="tfcc-rows">');
-      for (var i = 0; i < matched.length && i < SEARCH_ROWS_MAX; i += 1) out.push(renderRow(matched[i], model));
+      for (var i = 0; i < matched.length && i < SEARCH_ROWS_MAX; i += 1) out.push(rowHtml(matched[i], model));
       out.push('</div>');
     }
     out.push('</div>');
@@ -5912,6 +6030,7 @@
     }
 
     out.push(renderNav(model));
+    if (model.narrow) out.push(renderViewHeading(model));
 
     if (model.view === 'catchup') out.push(renderCatchUpView(model));
     else if (model.view === 'search') out.push(renderSearchView(model));
@@ -6155,6 +6274,12 @@
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
         if (!act || typeof handlers.onChange !== 'function') return;
         handlers.onChange(act, t);
+      });
+      panel.addEventListener('input', function (ev) {
+        var t = ev && ev.target;
+        var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+        if (!act || typeof handlers.onInput !== 'function') return;
+        handlers.onInput(act, t);
       });
       // An update deferred while the user was typing has to arrive eventually.
       // Waiting a tick lets focus settle first, so this does not fire while the
@@ -6512,6 +6637,8 @@
         }
 
         if (act === 'filters') { applyTransient({ type: 'filters' }); redraw(); return; }
+
+        if (act === 'row-more' && id) { applyTransient({ type: 'row-more', id: id }); redraw(); return; }
         if (act === 'pin' && id) { state.organizer = togglePin(state.organizer, id); persist('organizer'); recompute(now); redraw(); return; }
         if (act === 'read' && id) {
           var row = state.rows.filter(function (r) { return r.id === id; })[0];
@@ -6677,10 +6804,12 @@
           var noteNext = cloneOrganizer(state.organizer);
           entryOf(noteNext, id).note = safeString(value, 2000);
           state.organizer = noteNext;
+          state.drawerEdit = null;
           persist('organizer'); recompute(now); redraw(); return;
         }
         if (act === 'tag-input' && id && value.trim()) {
           state.organizer = toggleTag(state.organizer, id, value.trim());
+          state.drawerEdit = null;
           persist('organizer'); recompute(now); redraw(); return;
         }
         if (act === 'auto-refresh') {
@@ -6738,6 +6867,19 @@
           }
           redraw(); return;
         }
+      },
+      // #33: mirror a drawer field on every keystroke, without a redraw, so a
+      // forced redraw before the commit renders what was typed and restores
+      // the caret (spec section 6, dirty inputs rule 3).
+      onInput: function (act, el) {
+        if (act !== 'note-input' && act !== 'tag-input') return;
+        var id = idOf(el);
+        if (!id) return;
+        var n = function (v) { return typeof v === 'number' && isFinite(v) ? v : null; };
+        state.drawerEdit = {
+          id: id, field: act, value: el && el.value !== undefined ? String(el.value) : '',
+          selStart: n(el && el.selectionStart), selEnd: n(el && el.selectionEnd),
+        };
       },
     };
 

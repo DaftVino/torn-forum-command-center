@@ -183,3 +183,95 @@ test('Filters toggles through the real click, and a view change closes it', () =
   require('./narrow-helpers').click(env, '[data-act="view"][data-view="mine"]');
   assert.strictEqual(api.state.filtersOpen, false);
 });
+
+// ---- rows of the table that need the Actions markup (Task 12) ---------------
+
+const { click } = require('./narrow-helpers');
+
+test('Actions on A opens A and keeps the filters; again closes it', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, SIX);
+  api.state.settings.view = 'threads';
+  api.state.filtersOpen = true;
+  redraw(env);
+  click(env, '[data-act="row-more"][data-id="2"]');
+  assert.strictEqual(api.state.openRowId, '2');
+  assert.strictEqual(api.state.filtersOpen, true);
+  click(env, '[data-act="row-more"][data-id="2"]');
+  assert.strictEqual(api.state.openRowId, null);
+});
+
+test('Actions on B while A is open moves the drawer to B', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, SIX);
+  redraw(env);
+  click(env, '[data-act="row-more"][data-id="2"]');
+  click(env, '[data-act="row-more"][data-id="3"]');
+  assert.strictEqual(api.state.openRowId, '3');
+});
+
+test('Pin and priority keep the drawer open wherever the row moves', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, SIX);
+  api.state.settings.sort = 'priority';
+  redraw(env);
+  click(env, '[data-act="row-more"][data-id="5"]');
+  click(env, '[data-act="prio-up"][data-id="5"]');
+  assert.strictEqual(api.state.openRowId, '5');
+  click(env, '[data-act="pin"][data-id="5"]');
+  assert.strictEqual(api.state.openRowId, '5');
+});
+
+test('Mark read in Threads keeps the row and its drawer', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, SIX);
+  api.state.settings.view = 'threads';
+  redraw(env);
+  click(env, '[data-act="row-more"][data-id="4"]');
+  click(env, '[data-act="read"][data-id="4"]');
+  assert.strictEqual(api.state.openRowId, '4');
+});
+
+test('Archive closes the drawer of the row it removes', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, SIX);
+  redraw(env);
+  click(env, '[data-act="row-more"][data-id="4"]');
+  // An archived thread with new posts stays listed, so read it first.
+  click(env, '[data-act="read"][data-id="4"]');
+  click(env, '[data-act="archive"][data-id="4"]');
+  redraw(env);
+  assert.strictEqual(api.state.openRowId, null);
+});
+
+test('Actions for a row that is not rendered is reconciled closed', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, SIX);
+  api.makeHandlers(env.doc, env.win).onAction('row-more', { getAttribute: (k) => (k === 'data-id' ? '999' : 'row-more') });
+  assert.strictEqual(api.state.openRowId, null, 'the redraw reconciled the forged id away');
+});
+
+test('an uncommitted edit outlives its drawer, and its commit clears it', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, SIX);
+  redraw(env);
+  click(env, '[data-act="row-more"][data-id="2"]');
+  api.state.drawerEdit = { id: '2', field: 'note-input', value: 'unsaved', selStart: 7, selEnd: 7 };
+  click(env, '[data-act="row-more"][data-id="2"]');
+  assert.strictEqual(api.state.drawerEdit.value, 'unsaved', 'closed without a commit: still held');
+  click(env, '[data-act="row-more"][data-id="2"]');
+  assert.match(env.doc.getElementById('tfcc-panel').innerHTML, /data-act="note-input" data-id="2" value="unsaved"/,
+    'reopened, the field shows what was typed');
+  api.makeHandlers(env.doc, env.win).onChange('note-input',
+    { getAttribute: (k) => (k === 'data-id' ? '2' : 'note-input'), value: 'unsaved' });
+  assert.strictEqual(api.state.drawerEdit, null);
+  assert.strictEqual(api.state.organizer.threads['2'].note, 'unsaved');
+});
+
+test('the wide row shows an uncommitted edit too, so crossing the breakpoint keeps it on screen', () => {
+  const { api } = bootNarrow({ width: 900 });
+  seedRows(api, SIX);
+  api.state.drawerEdit = { id: '2', field: 'tag-input', value: 'half', selStart: 4, selEnd: 4 };
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /data-act="tag-input" data-id="2" value="half" placeholder="add tag" size="8">/);
+});

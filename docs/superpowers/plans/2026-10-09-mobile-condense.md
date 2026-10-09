@@ -3678,6 +3678,8 @@ test('Archive closes the drawer of the row it removes', () => {
   seedRows(api, SIX);
   redraw(env);
   click(env, '[data-act="row-more"][data-id="4"]');
+  // An archived thread with new posts stays listed, so read it first.
+  click(env, '[data-act="read"][data-id="4"]');
   click(env, '[data-act="archive"][data-id="4"]');
   redraw(env);
   assert.strictEqual(api.state.openRowId, null);
@@ -3740,6 +3742,8 @@ test('Read and Actions are not thread links, so they never auto-hide (#33)', () 
 
 Run: `node --test tests/narrow-view.test.js tests/narrow-state.test.js tests/auto-hide.test.js`
 Expected: FAIL: rows render wide.
+
+> Amended during implementation: the Archive test reads the row first, for the same `viewRows` reason as in Task 7.
 
 - [ ] **Step 4: Split `renderRow` without changing its output**
 
