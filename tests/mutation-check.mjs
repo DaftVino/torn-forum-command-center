@@ -1292,11 +1292,21 @@ const MUTATIONS = [
     ['dismiss no longer closes the drawer', (s) => s.replace("if (type === 'dismiss') { out.openRowId = null; return out; }", '')],
     ['a tap elsewhere in the panel leaves the drawer open', (s) => s.replace('if (state.openRowId && !insideOpenDrawer(panel, t)) {', 'if (false) {')],
     ['a tap inside the drawer closes it', (s) => s.replace("return !!(drawer && typeof drawer.contains === 'function' && drawer.contains(t));", 'return false;')],
-    ['a thread link redraws the closed drawer inside its click', (s) => s.replace(
-      'if (dismissed) setTimeout(function () { draw(doc, win, handlers); }, 0);', 'if (dismissed) draw(doc, win, handlers);')],
-    ['a tap on blank panel space closes the drawer without redrawing it', (s) => s.replace(
-      '          if (pressed) flushAfterPress(doc, win, handlers);\n          if (dismissed) draw(doc, win, handlers);\n',
-      '          if (pressed) flushAfterPress(doc, win, handlers);\n')],
+    // PR #40 review, finding 1: the closing redraw, and the press flush, run
+    // after dispatch, so the tapped node keeps its native default action.
+    ['the closing redraw runs inside the click and replaces the tapped node', (s) => s.replace(
+      "          applyTransient({ type: 'dismiss' });\n          setTimeout(function () { draw(doc, win, handlers); }, 0);\n",
+      "          applyTransient({ type: 'dismiss' });\n          draw(doc, win, handlers);\n")],
+    ['the closing tap never redraws the drawer closed', (s) => s.replace(
+      "          applyTransient({ type: 'dismiss' });\n          setTimeout(function () { draw(doc, win, handlers); }, 0);\n",
+      "          applyTransient({ type: 'dismiss' });\n")],
+    ['a held commit is flushed inside a native control\'s click', (s) => s.replace(
+      '          if (pressed) setTimeout(function () { flushAfterPress(doc, win, handlers); }, 0);\n        };',
+      '          if (pressed) flushAfterPress(doc, win, handlers);\n        };')],
+    // PR #40 review, finding 2.
+    ['the wrap fallback splits Mark against the whole catch-up group', (s) => s.replace(
+      '.tfcc-cu-wrap .tfcc-cubar .tfcc-infogroup { display: contents; }',
+      '.tfcc-cu-wrap .tfcc-cubar .tfcc-infogroup { flex: 1 1 0; min-width: 0; }')],
     ['the click-away window listener is never bound', (s) => s.replace(
       "win.addEventListener('click', function (ev) { closeDrawerFromOutside(ev); }, true);", '')],
     ['the click-away listener also closes on clicks inside the panel', (s) => s.replace('if (panel.contains(ev && ev.target)) return;', '')],
