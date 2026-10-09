@@ -208,12 +208,102 @@ test('a tap elsewhere in the panel closes the drawer and still does its own job'
   assert.strictEqual(again.api.state.settings.view, 'search', 'the view switched');
 });
 
+// PR #40 review: the closing tap must keep its own native default action, so
+// the node it lands on is never replaced while the click is dispatched.
+test('tapping the filter field with a drawer open: the field survives the click, takes input, and the drawer closes', () => {
+  const { env, api, panel } = openRow();
+  const before = panel.renderCount;
+  const field = panel.querySelector('[data-act="filter"]');
+  // The browser focuses the field on pointerdown, before the click.
+  panel.dispatchEvent({ type: 'pointerdown', target: field });
+  env.doc.activeElement = field;
+  panel.contains = () => true;
+  panel.dispatchEvent({ type: 'pointerup', target: field });
+  click(env, '[data-act="filter"]');
+  assert.strictEqual(panel.renderCount, before, 'the field is not replaced inside its click');
+  assert.strictEqual(api.state.openRowId, null, 'the drawer is closed in state at once');
+  env.advanceTimersBy(0);
+  assert.strictEqual(panel.renderCount, before, 'a caret in the field defers the redraw');
+  field.value = 'One';
+  panel.dispatchEvent({ type: 'change', target: field });
+  assert.strictEqual(api.state.searchQuery, 'One', 'the field took the typing');
+  env.doc.activeElement = null;
+  panel.dispatchEvent({ type: 'focusout', target: field });
+  env.advanceTimersBy(0);
+  assert.doesNotMatch(panel.innerHTML, /aria-label="Close actions"/, 'drawn closed once focus leaves');
+});
+
+test('tapping the folder filter select with a drawer open: the select survives the click, its change applies, the drawer closes', () => {
+  const { env, api, panel } = openRow();
+  api.state.filtersOpen = true;
+  redraw(env);
+  const before = panel.renderCount;
+  const select = panel.querySelector('[data-act="folder-filter"]');
+  assert.ok(select, 'precondition: the folder filter renders');
+  click(env, '[data-act="folder-filter"]');
+  assert.strictEqual(panel.renderCount, before, 'the picker opens on a node that is still there');
+  assert.strictEqual(api.state.openRowId, null);
+  select.value = api.state.organizer.folders[0].id;
+  panel.dispatchEvent({ type: 'change', target: select });
+  env.advanceTimersBy(0);
+  assert.strictEqual(api.state.settings.folderFilter, api.state.organizer.folders[0].id, 'the choice applied');
+  assert.doesNotMatch(panel.innerHTML, /aria-label="Close actions"/);
+});
+
+test('a dirty drawer field, then a tap on the sort select: commit, close, and the select survives its click', () => {
+  const { env, api, panel } = openRow();
+  api.state.filtersOpen = true;
+  redraw(env);
+  const note = panel.querySelector('[data-act="note-input"][data-id="1"]');
+  note.value = 'typed note';
+  const select = panel.querySelector('[data-act="sort"]');
+  const before = panel.renderCount;
+  panel.dispatchEvent({ type: 'pointerdown', target: select });
+  panel.dispatchEvent({ type: 'change', target: note });
+  panel.dispatchEvent({ type: 'pointerup', target: select });
+  click(env, '[data-act="sort"]');
+  assert.strictEqual(panel.renderCount, before, 'the held commit is not flushed inside the select\'s click');
+  env.advanceTimersBy(0);
+  assert.strictEqual(panel.renderCount, before + 1, 'then one redraw for the commit and the close');
+  assert.strictEqual(api.state.organizer.threads['1'].note, 'typed note');
+  assert.strictEqual(api.state.openRowId, null);
+  assert.strictEqual(api.state.pressActive, false);
+});
+
+test('Unread and a nav cell with a drawer open: each acts and closes the drawer in one redraw', () => {
+  for (const [sel, check] of [
+    ['[data-act="unread-only"]', (api) => api.state.settings.unreadOnly === true],
+    ['[data-act="view"][data-view="mine"]', (api) => api.state.settings.view === 'mine'],
+  ]) {
+    const { env, api, panel } = openRow();
+    const before = panel.renderCount;
+    click(env, sel);
+    env.advanceTimersBy(0);
+    assert.ok(check(api), sel + ' did its job');
+    assert.strictEqual(api.state.openRowId, null, sel);
+    assert.strictEqual(panel.renderCount, before + 1, sel + ': one redraw, the action\'s own');
+    assert.doesNotMatch(panel.innerHTML, /aria-label="Close actions"/, sel);
+    assert.strictEqual(lastFocus(env)['data-act'], sel.slice(11, sel.indexOf('"]')), sel + ' keeps focus');
+  }
+});
+
+test('another row\'s toggle closes the first and opens its own in one redraw', () => {
+  const { env, api, panel } = openRow();
+  const before = panel.renderCount;
+  click(env, '[data-act="row-more"][data-id="2"]');
+  env.advanceTimersBy(0);
+  assert.strictEqual(api.state.openRowId, '2');
+  assert.strictEqual(panel.renderCount, before + 1, 'no second redraw');
+});
+
 test('a tap on the open row outside its drawer, or on blank panel space, closes it', () => {
   const { env, api, panel } = openRow();
   const before = panel.renderCount;
   click(env, '.tfcc-row-l2');
   assert.strictEqual(api.state.openRowId, null);
-  assert.strictEqual(panel.renderCount, before + 1, 'redrawn closed');
+  assert.strictEqual(panel.renderCount, before, 'nothing redraws inside the click (PR #40 review)');
+  env.advanceTimersBy(0);
+  assert.strictEqual(panel.renderCount, before + 1, 'redrawn closed after dispatch');
   assert.doesNotMatch(panel.innerHTML, /aria-label="Close actions"/);
   const again = openRow();
   click(again.env, '.tfcc-rows');

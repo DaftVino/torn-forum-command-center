@@ -6547,11 +6547,17 @@
         var pressed = state.pressActive === true;
         if (pressed) clearPress();
         // #39: a tap anywhere but the open drawer and its toggle closes the
-        // drawer, and then still does its own job below.
-        var dismissed = false;
+        // drawer, and then still does its own job below. The state closes at
+        // once, so an action that redraws renders it closed in its own single
+        // redraw (another row's toggle, a nav cell). The closing redraw itself
+        // waits until after dispatch, for every target: the tapped node must
+        // still be in the DOM while its native default action runs (a field
+        // taking focus, a select opening, a label activating its control, a
+        // link being followed). Not forced, so a caret in the panel defers it
+        // (PR #40 review).
         if (state.openRowId && !insideOpenDrawer(panel, t)) {
           applyTransient({ type: 'dismiss' });
-          dismissed = true;
+          setTimeout(function () { draw(doc, win, handlers); }, 0);
         }
         // A thread link the panel rendered. The browser follows it; this only
         // gives the auto-hide setting a chance to persist first (issue #8).
@@ -6568,25 +6574,26 @@
           // zero-delay redraw usually renders the held change; this covers a
           // click that does not auto-hide.
           if (pressed) setTimeout(function () { flushAfterPress(doc, win, handlers); }, 0);
-          // The closed drawer is drawn after dispatch for the same reason.
-          if (dismissed) setTimeout(function () { draw(doc, win, handlers); }, 0);
           return;
         }
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+        // A held redraw is flushed after dispatch too, never inside the click:
+        // an action that redraws has already rendered it (pressed was cleared
+        // above), so the flush only matters for a tap with no redraw of its own,
+        // which is exactly a native control (field, select, label) whose node
+        // must survive its click (PR #40 review).
+        var flushLater = function () {
+          if (pressed) setTimeout(function () { flushAfterPress(doc, win, handlers); }, 0);
+        };
         if (!act || typeof handlers.onAction !== 'function') {
-          if (pressed) flushAfterPress(doc, win, handlers);
-          if (dismissed) draw(doc, win, handlers);
+          flushLater();
           return;
         }
         // #33: the plan is captured before the action runs, from the rows the
         // user was looking at, and consumed by the action's own redraw.
         state.focusIntent = focusPlan(focusTargetOf(t), lastRender);
         try { handlers.onAction(act, t); } finally { state.focusIntent = null; }
-        if (pressed) flushAfterPress(doc, win, handlers);
-        // Most actions redraw, which already rendered the drawer closed; this
-        // one is then a no-op (renderPanel skips an unchanged panel). It is not
-        // forced, so a caret in the panel still defers it.
-        if (dismissed) draw(doc, win, handlers);
+        flushLater();
       });
       panel.addEventListener('change', function (ev) {
         var t = ev && ev.target;
