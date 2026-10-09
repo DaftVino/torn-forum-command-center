@@ -497,6 +497,22 @@ Walk on Torn PDA and on desktop, signed in to a real account.
 - [ ] With a screen reader on (TalkBack in Torn PDA), an earned toast is
       announced once, or not at all, and never repeats on a redraw.
 
+## Compact drawer and transparency (#43)
+
+- [ ] On a phone (375 and 320px), open a row's actions: Pin, Mark read, Draft,
+      Archive, the info icon, the priority number, + and - share one line;
+      the info icon opens the priority explanation under that line.
+- [ ] Tag and Note open the small box in the panel; the keyboard opens on
+      its field. Save adds the tag or saves the note; Cancel and a tap
+      elsewhere close it. In Torn PDA, the keyboard's Enter saves.
+- [ ] A saved note shows as a bar under Note.
+- [ ] My posts looks like the other nav buttons until it is the current view.
+- [ ] Info icons have no box; hovering or opening one tints it.
+- [ ] Torn's page shows through the panel and its rows in both themes, and
+      text stays readable over the forum page behind it. Expand is solid.
+- [ ] Expand shows every row with no "Showing N of M" line; Shrink brings
+      the cap back.
+
 ## Sign-off
 
 Release is blocked until every box above is ticked on the same build, on a real
