@@ -1420,6 +1420,24 @@ const MUTATIONS = [
       ".tfcc-dprio > :first-child { margin-left: auto; }',", ".tfcc-dprio > :first-child { }',")],
     ['the drawer row targets shrink below the 24px floor', (s) => s.replace(
       "  justify-content: center; min-width: 24px; padding: 0; }',", "  justify-content: center; min-width: 0; padding: 0; }',")],
+    ['the popup outlives its drawer', (s) => s.replace(
+      '    state.openEditor = reconcileEditor(state.openEditor, state.openRowId);\n', '')],
+    ['a tap elsewhere in the drawer leaves the popup open', (s) => s.replace(
+      'if (state.openEditor && !insideOpenEditor(panel, t)) {', 'if (false) {')],
+    ['Escape no longer cancels the popup', (s) => s.replace("if (key !== 'Escape' && key !== 'Esc' && ", "if (key !== 'Esc' && ")],
+    ['Enter no longer saves the popup', (s) => s.replace("!(key === 'Enter' && act === 'editor-input')", 'true')],
+    ['opening the popup leaves focus on its button', (s) => s.replace(
+      "            ? [attrSel('data-act', 'editor-input') + attrSel('data-id', id)]", '            ? null')],
+    ['the popup field stops mirroring what is typed', (s) => s.replace(
+      "        if (act === 'editor-input') act = el && el.getAttribute ? el.getAttribute('data-field') : null;\n", '')],
+    ['Save on the note popup writes nothing', (s) => s.replace(
+      '              entryOf(nNext, id).note = safeString(typed, 2000);\n', '')],
+    ['Cancel keeps what was typed', (s) => s.replace(
+      "          if (state.drawerEdit && state.drawerEdit.id === id && state.drawerEdit.field === sField + '-input') state.drawerEdit = null;\n", '')],
+    ['the popup is not named', (s) => s.replace(
+      "+ (field === 'note' ? 'Edit the note' : 'Add a tag') + '\">'", "+ '\">'")],
+    ['a saved note does not show on the Note button', (s) => s.replace(
+      "opener('note', 'Note', row.note ? 'Edit note' : 'Add note', !!row.note)", "opener('note', 'Note', 'Add note', false)")],
   ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/compact-drawer.test.js', apply })),
 ];
 

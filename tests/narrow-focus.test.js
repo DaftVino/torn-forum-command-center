@@ -161,18 +161,24 @@ test('every querySelector call site in the source is one of the known ones', () 
     "panel('button[data-info=\"catchup\"]')",
     // #39: the open row's drawer, to tell a tap inside it from one elsewhere.
     'panel(sel)',
+    // #43: the open tag or note popup (the same question), its Save or Cancel
+    // for a key pressed in it, and its field's value on Save.
+    'panel(sel)',
+    'panel(sel)',
+    'panel(sel)',
   ].sort());
 });
 
 // ---- focus after a text field commits (plan review) -------------------------
 
+// #43: the adjacent tag and note fields are the wide row's; the narrow drawer
+// opens them one at a time in a popup.
 test('Tab from the tag field to the note field leaves focus in the note field', () => {
-  const { env, api } = bootNarrow();
+  const { env, api } = bootNarrow({ width: 900 });
   seedRows(api, [{ id: 1 }, { id: 2 }]);
   api.state.settings.view = 'threads';
   api.state.settings.sort = 'title';
   redraw(env);
-  click(env, '[data-act="row-more"][data-id="1"]');
   const panel = panelOf(env);
   panel.contains = () => true;
   const tag = panel.querySelector('[data-act="tag-input"][data-id="1"]');
@@ -189,22 +195,21 @@ test('Tab from the tag field to the note field leaves focus in the note field', 
 });
 
 test('Tab out of the note field moves on to the next control, not back into the note', () => {
-  const { env, api } = bootNarrow();
+  const { env, api } = bootNarrow({ width: 900 });
   seedRows(api, [{ id: 1 }, { id: 2 }]);
   api.state.settings.view = 'threads';
   api.state.settings.sort = 'title';
   redraw(env);
-  click(env, '[data-act="row-more"][data-id="1"]');
   const panel = panelOf(env);
   panel.contains = () => true;
   const note = panel.querySelector('[data-act="note-input"][data-id="1"]');
   note.value = 'a note';
   env.doc.activeElement = note;
   panel.dispatchEvent({ type: 'change', target: note });
-  env.doc.activeElement = panel.querySelector('[data-act="row-more"][data-id="2"]');
+  env.doc.activeElement = panel.querySelector('[data-act="draft"][data-id="1"]');
   env.advanceTimersBy(0);
   assert.strictEqual(api.state.organizer.threads['1'].note, 'a note');
-  assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['row-more', '2']);
+  assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['draft', '1']);
 });
 
 test('Enter in the filter field keeps focus in the field', () => {
@@ -234,7 +239,10 @@ test('a deferred redraw that removes a row leaves the focus bookkeeping on the r
   click(env, '[data-act="row-more"][data-id="1"]');
   const panel = panelOf(env);
   panel.contains = () => true;
-  env.doc.activeElement = panel.querySelector('[data-act="note-input"][data-id="1"]');
+  // #43: the caret is in the drawer's note popup.
+  click(env, '[data-act="editor"][data-id="1"][data-field="note"]');
+  env.doc.activeElement = panel.querySelector('[data-act="editor-input"][data-id="1"]');
+  assert.ok(env.doc.activeElement, 'the note popup is open');
   seedRows(api, [{ id: 1 }, { id: 3 }]);
   const before = panel.renderCount;
   env.exports.draw(env.doc, env.win, api.makeHandlers(env.doc, env.win));

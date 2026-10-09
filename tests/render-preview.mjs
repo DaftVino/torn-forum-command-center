@@ -295,13 +295,20 @@ const NARROW_STATES = [
   // and on with the long row's drawer open, where it shows them whole.
   ['threads-clipoff', () => { api.state.settings.view = 'threads'; api.state.settings.clipLines = false; }],
   ['threads-drawer-long', () => { api.state.settings.view = 'threads'; api.state.openRowId = '15978774'; }],
+  // #43: the tag and note popup open in the drawer (the note on a row that has one).
+  ['threads-drawer-tag', () => { api.state.settings.view = 'threads'; api.state.openRowId = '16474152';
+    api.state.openEditor = { id: '16474152', field: 'tag' }; }],
+  ['threads-drawer-note', () => { api.state.settings.view = 'threads'; api.state.openRowId = '16589908';
+    api.state.openEditor = { id: '16589908', field: 'note' }; }],
+  ['catchup-drawer-note', () => { api.state.settings.view = 'catchup'; api.state.openRowId = '16474152';
+    api.state.openEditor = { id: '16474152', field: 'note' }; }],
 ];
 for (const [label, setUp, extraCss] of NARROW_STATES) {
   for (const [vp, panelPx] of [[375, 343], [320, 288], [280, 248]]) {
     // 200% text is supported at 320px and up (spec 4.7), not at 280.
     if (extraCss === TEXT_200 && vp === 280) continue;
     for (const theme of ['dark', 'light']) {
-      Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false });
+      Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false, openEditor: null });
       api.state.settings.collapsed = false;
       api.state.settings.clipLines = true;
       api.state.settings.theme = theme;
@@ -316,7 +323,7 @@ for (const [label, setUp, extraCss] of NARROW_STATES) {
 }
 api.state.narrow = false;
 api.state.settings.clipLines = true;
-Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false });
+Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false, openEditor: null });
 api.state.settings.collapsed = false;
 
 // Badges (issue #9). Match Torn applies one of the two theme classes, so dark

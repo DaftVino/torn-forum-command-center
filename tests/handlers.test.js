@@ -53,6 +53,8 @@ function renderedActions() {
         if (narrow && model.renderedIds.length) {
           api.state.openRowId = model.renderedIds[0];
           api.state.filtersOpen = true;
+          // #43: the tag popup, so its field renders too.
+          api.state.openEditor = { id: model.renderedIds[0], field: 'tag' };
           model = api.buildPanelModel(NOW);
         }
         const html = api.panelHtml(model);

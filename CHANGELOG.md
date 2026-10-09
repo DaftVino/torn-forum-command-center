@@ -82,6 +82,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Every icon-only button has a hover note matching its name: the drawer's
   check mark ("Mark read"), the info buttons, the narrow header buttons, the
   row's Actions toggle and the Filters button. (#43)
+- The narrow row drawer is more compact (#43). Priority is the desktop style,
+  the number then small + and - buttons, right-aligned on the same row as Pin,
+  Mark read, Draft and Archive. The folder menu, a Tag button and a Note
+  button share the next row; Tag and Note open a small box in the panel with
+  a field, Save and Cancel (Enter saves, Escape cancels). A saved note shows
+  as a bar under the Note button. Desktop rows keep their inline fields.
 - The narrow drawer's Archive button shows an archive box (UXWing's "archive
   files" icon, inline and in the theme's text colour) instead of the
   wastebasket, so it reads as archive, not delete. (#41)

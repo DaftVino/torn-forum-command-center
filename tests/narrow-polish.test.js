@@ -255,23 +255,30 @@ test('tapping the folder filter select with a drawer open: the select survives t
   assert.doesNotMatch(panel.innerHTML, /aria-label="Close actions"/);
 });
 
-test('a dirty drawer field, then a tap on the sort select: commit, close, and the select survives its click', () => {
+// #43: the drawer's note is a popup that saves on Save only. Typed text and a
+// tap elsewhere: the drawer and the popup close, nothing is saved, and the
+// text waits in the mirror for the popup to open again.
+test('a dirty note popup, then a tap on the sort select: close, keep the text, and the select survives its click', () => {
   const { env, api, panel } = openRow();
   api.state.filtersOpen = true;
   redraw(env);
-  const note = panel.querySelector('[data-act="note-input"][data-id="1"]');
+  click(env, '[data-act="editor"][data-id="1"][data-field="note"]');
+  const note = panel.querySelector('[data-act="editor-input"][data-id="1"]');
   note.value = 'typed note';
+  panel.dispatchEvent({ type: 'input', target: note });
   const select = panel.querySelector('[data-act="sort"]');
   const before = panel.renderCount;
   panel.dispatchEvent({ type: 'pointerdown', target: select });
   panel.dispatchEvent({ type: 'change', target: note });
   panel.dispatchEvent({ type: 'pointerup', target: select });
   click(env, '[data-act="sort"]');
-  assert.strictEqual(panel.renderCount, before, 'the held commit is not flushed inside the select\'s click');
+  assert.strictEqual(panel.renderCount, before, 'nothing redraws inside the select\'s click');
   env.advanceTimersBy(0);
-  assert.strictEqual(panel.renderCount, before + 1, 'then one redraw for the commit and the close');
-  assert.strictEqual(api.state.organizer.threads['1'].note, 'typed note');
+  assert.strictEqual(panel.renderCount, before + 1, 'then one redraw for the close');
+  assert.ok(!api.state.organizer.threads['1'] || api.state.organizer.threads['1'].note === '', 'nothing saved without Save');
+  assert.strictEqual(api.state.drawerEdit.value, 'typed note', 'the text is kept');
   assert.strictEqual(api.state.openRowId, null);
+  assert.strictEqual(api.state.openEditor, null);
   assert.strictEqual(api.state.pressActive, false);
 });
 
@@ -327,10 +334,12 @@ test('a thread link elsewhere closes the drawer after the click, never during it
   assert.doesNotMatch(panel.innerHTML, /aria-label="Close actions"/);
 });
 
-test('a dirty drawer field, then a tap elsewhere: commit, close and act in one redraw', () => {
+test('a dirty note popup, then a tap elsewhere: close and act in one redraw, the text kept', () => {
   const { env, api, panel } = openRow();
-  const note = panel.querySelector('[data-act="note-input"][data-id="1"]');
+  click(env, '[data-act="editor"][data-id="1"][data-field="note"]');
+  const note = panel.querySelector('[data-act="editor-input"][data-id="1"]');
   note.value = 'typed note';
+  panel.dispatchEvent({ type: 'input', target: note });
   const before = panel.renderCount;
   const cell = panel.querySelector('[data-act="view"][data-view="drafts"]');
   panel.dispatchEvent({ type: 'pointerdown', target: cell });
@@ -343,7 +352,9 @@ test('a dirty drawer field, then a tap elsewhere: commit, close and act in one r
   assert.strictEqual(panel.renderCount, before + 1, 'one visible redraw');
   assert.strictEqual(api.state.openRowId, null);
   assert.strictEqual(api.state.settings.view, 'drafts');
-  assert.strictEqual(api.state.organizer.threads['1'].note, 'typed note');
+  assert.strictEqual(api.state.openEditor, null);
+  assert.ok(!api.state.organizer.threads['1'] || api.state.organizer.threads['1'].note === '', 'nothing saved without Save');
+  assert.strictEqual(api.state.drawerEdit.value, 'typed note', 'the text is kept');
 });
 
 test('a click outside the panel closes the drawer, without touching the event', () => {

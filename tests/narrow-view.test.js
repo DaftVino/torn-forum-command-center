@@ -213,7 +213,7 @@ test('an open drawer holds every row action at 44px, in the spec order', () => {
   const row = rowOf(api.panelHtml(api.buildPanelModel(NOW)), '7');
   assert.match(row, /data-act="row-more" data-id="7" aria-expanded="true"/);
   const acts = Array.from(row.slice(row.indexOf('tfcc-drawer')).matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]);
-  assert.deepStrictEqual(acts, ['pin', 'read', 'draft', 'archive', 'prio-up', 'prio-down', 'folder', 'tag-input', 'note-input']);
+  assert.deepStrictEqual(acts, ['pin', 'read', 'draft', 'archive', 'prio-up', 'prio-down', 'folder', 'editor', 'editor']);
 });
 
 test('in Catch up the drawer leaves out Mark read, which is already on the row', () => {
@@ -250,7 +250,9 @@ test('a drawer edit mirror renders the typed value instead of the stored one', (
   seedRows(api, [{ id: 7, unread: 1 }]);
   api.state.openRowId = '7';
   api.state.drawerEdit = { id: '7', field: 'note-input', value: 'half typed', selStart: 4, selEnd: 4 };
-  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /data-act="note-input" data-id="7" value="half typed"/);
+  // #43: in the note popup.
+  api.state.openEditor = { id: '7', field: 'note' };
+  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /data-act="editor-input" data-id="7" data-field="note-input" value="half typed"/);
 });
 
 // ---- an info button stays on the line of the control it follows -----------

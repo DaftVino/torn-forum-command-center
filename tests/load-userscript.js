@@ -70,7 +70,7 @@ const EXPORT_NAMES = [
   // #33: narrow layout
   'PRESS_FLUSH_MS',
   'restoreFocus', 'renderLive', 'focusTargetOf',
-  'rowHtml', 'renderRowNarrow', 'renderViewHeading', 'renderPriority',
+  'rowHtml', 'renderRowNarrow', 'renderViewHeading', 'renderPriority', 'nextEditor', 'reconcileEditor',
   'renderListBarNarrow',
   'renderNavNarrow', 'navNumeral',
   'renderHeadNarrow', 'fitHeader',

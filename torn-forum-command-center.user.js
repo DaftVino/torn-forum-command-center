@@ -2022,6 +2022,31 @@
     return out;
   }
 
+  // #43: the drawer's tag and note popup. { id, field } names the open one;
+  // it is runtime state only, never saved. Opening the one already open
+  // closes it; any other event closes it.
+  var EDITOR_FIELDS = Object.freeze(['tag', 'note']);
+
+  function nextEditor(editor, ev) {
+    var cur = isPlainObject(editor) && typeof editor.id === 'string' && editor.id
+      && EDITOR_FIELDS.indexOf(editor.field) !== -1 ? { id: editor.id, field: editor.field } : null;
+    var e = isPlainObject(ev) ? ev : {};
+    if (e.type === 'open' && typeof e.id === 'string' && e.id && EDITOR_FIELDS.indexOf(e.field) !== -1) {
+      return cur && cur.id === e.id && cur.field === e.field ? null : { id: e.id, field: e.field };
+    }
+    if (e.type === 'close') return null;
+    return cur;
+  }
+
+  // The popup lives inside its row's drawer, so it closes whenever that
+  // drawer is not the open one: a view change, collapse, auto-hide, a
+  // breakpoint cross, the row leaving the list, or a tap away all close the
+  // drawer, and with it the popup.
+  function reconcileEditor(editor, openRowId) {
+    var cur = nextEditor(editor, null);
+    return cur && cur.id === openRowId ? cur : null;
+  }
+
   // An attribute-equals selector part. Quotes and backslashes are dropped, not
   // escaped: ids and keys are this script's own tokens and never contain them,
   // so a value that does is forged and must not shape the selector.
@@ -3483,6 +3508,8 @@
     filtersOpen: false,
     openInfoId: null,
     drawerEdit: null,
+    // #43: the drawer's open tag or note popup, { id, field }. Never saved.
+    openEditor: null,
     focusIntent: null,
     pressActive: false,
     deferCommit: false,
@@ -4757,6 +4784,17 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-dprio { display: contents; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-dprio > :first-child { margin-left: auto; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-dprio .tfcc-prio { flex: none; }',
+      // #43: folder, Tag and Note on one row; the select takes what is left.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-org { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-org select { flex: 1 1 0; min-width: 32px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-org button { flex: none; padding: 0 10px; }',
+      // The tag or note popup: an opaque raised box in the drawer, the field
+      // on its own line, Save and Cancel under it on the right.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-editor { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px;',
+      '  border: 1px solid var(--tm-border-2); border-radius: 4px; background: var(--tm-bg-3);',
+      '  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-editor input { flex: 1 1 100%; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-editor .tfcc-edsave { margin-left: auto; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer button.tfcc-on { box-shadow: inset 0 -3px 0 currentColor; }',
       // Monochrome, exactly as the thumbs (#30): white on dark, black on light.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-emo { display: block; font-size: 16px; line-height: 1;',
@@ -4997,6 +5035,7 @@
     // this view does not render closes, and stays closed.
     var renderedIds = renderedRowIds(s.view, capped, unchecked, sorted);
     setTransient(reconcileTransient(currentTransient(), renderedIds, INFO_KEYS_BY_VIEW[s.view] || []));
+    state.openEditor = reconcileEditor(state.openEditor, state.openRowId);
 
     return {
       loading: false,
@@ -5013,6 +5052,7 @@
       filtersOpen: state.filtersOpen,
       openInfoId: state.openInfoId,
       drawerEdit: state.drawerEdit,
+      openEditor: state.openEditor,
       activeFilters: activeFilterCount(s),
       live: state.liveMessage && !state.liveMessage.announced ? state.liveMessage.text : null,
       sort: s.sort,
@@ -5414,12 +5454,45 @@
     // aligned on the same row: the wide row's own renderPriority markup.
     out.push('<span class="tfcc-dprio">' + renderPriority(row) + '</span>');
     out.push('</div>');
-    out.push(folderSelectHtml(row, model, ' class="tfcc-wide" aria-label="Folder"'));
-    out.push('<input type="text" data-act="tag-input"' + id + ' value="'
-      + escapeHtml(edit && edit.field === 'tag-input' ? edit.value : '') + '" placeholder="add tag" aria-label="Add tag">');
-    out.push('<input type="text" data-act="note-input"' + id + ' value="'
-      + escapeHtml(edit && edit.field === 'note-input' ? edit.value : row.note) + '" placeholder="note" aria-label="Note">');
+    // #43: folder, Tag and Note share one row. Tag and Note open a small
+    // popup in the drawer instead of holding inline fields.
+    var ed = model.openEditor && model.openEditor.id === String(row.id) ? model.openEditor.field : null;
+    var edId = 'tfcc-ed-' + escapeHtml(row.id);
+    var opener = function (field, label, name, on) {
+      return '<button type="button" class="tfcc-edbtn' + (on ? ' tfcc-on' : '') + '" data-act="editor"' + id
+        + ' data-field="' + field + '" aria-haspopup="dialog" aria-expanded="' + (ed === field ? 'true' : 'false')
+        + '" aria-controls="' + edId + '" aria-label="' + escapeHtml(name) + '" title="' + escapeHtml(name) + '">'
+        + label + '</button>';
+    };
+    out.push('<div class="tfcc-drawer-org tfcc-wide">');
+    out.push(folderSelectHtml(row, model, ' aria-label="Folder"'));
+    out.push(opener('tag', 'Tag', 'Add tag', false));
+    // A saved note shows as the set-state bar and the name "Edit note"; the
+    // note itself is the row's own line, shown whole while the drawer is open.
+    out.push(opener('note', 'Note', row.note ? 'Edit note' : 'Add note', !!row.note));
+    out.push('</div>');
+    out.push(renderEditor(row, ed, edit, edId));
     return out.join('');
+  }
+
+  // #43: the tag or note popup, inside the drawer under the folder row. It is
+  // always in the open drawer's markup, so aria-controls names a real
+  // element; hidden while closed. Its field mirrors into drawerEdit like the
+  // inline fields did, so typed text survives a redraw. Enter saves (the
+  // keydown listener), Escape cancels, and so do the two buttons.
+  function renderEditor(row, field, edit, edId) {
+    var id = ' data-id="' + escapeHtml(row.id) + '"';
+    if (!field) return '<div class="tfcc-editor tfcc-wide" id="' + edId + '" hidden></div>';
+    var mirror = field + '-input';
+    var value = edit && edit.field === mirror ? edit.value : (field === 'note' ? row.note : '');
+    var name = field === 'note' ? 'Note' : 'New tag';
+    return '<div class="tfcc-editor tfcc-wide" id="' + edId + '" role="dialog" aria-label="'
+      + (field === 'note' ? 'Edit the note' : 'Add a tag') + '">'
+      + '<input type="text" data-act="editor-input"' + id + ' data-field="' + mirror + '" value="' + escapeHtml(value)
+      + '" placeholder="' + (field === 'note' ? 'note' : 'tag') + '" aria-label="' + name + '">'
+      + '<button type="button" class="tfcc-edsave" data-act="editor-save"' + id + ' data-field="' + field + '">Save</button>'
+      + '<button type="button" data-act="editor-cancel"' + id + ' data-field="' + field + '">Cancel</button>'
+      + '</div>';
   }
 
   // The narrow row (spec 4.4): the title as a full-width block link, then the
@@ -6570,6 +6643,36 @@
     }
   }
 
+  // #43: true when a click on t keeps the open popup open: t is inside the
+  // popup or is the button that opened it. Our own nodes only.
+  function insideOpenEditor(panel, t) {
+    var ed = state.openEditor;
+    if (!ed || !t) return false;
+    try {
+      var get = function (k) { return typeof t.getAttribute === 'function' ? t.getAttribute(k) : null; };
+      if (get('data-act') === 'editor' && get('data-id') === ed.id && get('data-field') === ed.field) return true;
+      var sel = attrSel('id', 'tfcc-ed-' + ed.id);
+      var box = panel.querySelector(sel);
+      return !!(box && typeof box.contains === 'function' && box.contains(t));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // The popup's Save or Cancel for a key pressed in it, or a stand-in that
+  // carries the same row and field when the button cannot be found.
+  function editorButtonFor(panel, t, save) {
+    var get = function (k) { return t && typeof t.getAttribute === 'function' ? t.getAttribute(k) : null; };
+    var id = get('data-id');
+    var field = get('data-field');
+    if (field && /-input$/.test(field)) field = field.slice(0, -6);
+    var b = null;
+    var sel = attrSel('data-act', save ? 'editor-save' : 'editor-cancel') + attrSel('data-id', id);
+    try { b = panel.querySelector(sel); } catch (e) { b = null; }
+    if (b) return b;
+    return { getAttribute: function (k) { return k === 'data-id' ? id : (k === 'data-field' ? field : null); } };
+  }
+
   var clickAwayBound = false;
   var clickAwayCtx = null;
 
@@ -6660,6 +6763,13 @@
           applyTransient({ type: 'dismiss' });
           setTimeout(function () { draw(doc, win, handlers); }, 0);
         }
+        // #43: a tap outside the open tag or note popup (and its own button)
+        // closes it, the same way and with the same deferred redraw. What was
+        // typed stays in the mirror for when it is opened again.
+        if (state.openEditor && !insideOpenEditor(panel, t)) {
+          state.openEditor = nextEditor(state.openEditor, { type: 'close' });
+          setTimeout(function () { draw(doc, win, handlers); }, 0);
+        }
         // A thread link the panel rendered. The browser follows it; this only
         // gives the auto-hide setting a chance to persist first (issue #8).
         var link = threadLinkOf(t, panel);
@@ -6709,6 +6819,17 @@
         if (!text) state.focusIntent = focusPlan(focusTargetOf(t), lastRender);
         state.deferCommit = text;
         try { handlers.onChange(act, t); } finally { state.focusIntent = null; state.deferCommit = false; }
+      });
+      // #43: in the tag or note popup, Enter saves and Escape cancels.
+      panel.addEventListener('keydown', function (ev) {
+        var t = ev && ev.target;
+        var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+        if (act !== 'editor-input' && act !== 'editor-save' && act !== 'editor-cancel') return;
+        var key = ev.key;
+        if (key !== 'Escape' && key !== 'Esc' && !(key === 'Enter' && act === 'editor-input')) return;
+        if (typeof handlers.onAction !== 'function') return;
+        if (typeof ev.preventDefault === 'function') ev.preventDefault();
+        handlers.onAction(key === 'Enter' ? 'editor-save' : 'editor-cancel', editorButtonFor(panel, t, key === 'Enter'));
       });
       panel.addEventListener('input', function (ev) {
         var t = ev && ev.target;
@@ -7035,7 +7156,9 @@
   function restoreSelection(el) {
     var d = state.drawerEdit;
     if (!d || typeof el.setSelectionRange !== 'function' || typeof el.getAttribute !== 'function') return;
-    if (el.getAttribute('data-act') !== d.field || el.getAttribute('data-id') !== d.id) return;
+    // #43: the popup's field names its mirror in data-field.
+    var f = el.getAttribute('data-act') === 'editor-input' ? el.getAttribute('data-field') : el.getAttribute('data-act');
+    if (f !== d.field || el.getAttribute('data-id') !== d.id) return;
     if (d.selStart === null || d.selEnd === null) return;
     try { el.setSelectionRange(d.selStart, d.selEnd); } catch (e) { /* not a text field */ }
   }
@@ -7141,6 +7264,20 @@
       return el && el.value !== undefined ? String(el.value) : '';
     }
 
+    // #43: the popup's typed text: the field on screen, else the mirror. A
+    // read of this script's own panel, never of the document.
+    function valueOfEditor(id, field) {
+      var el = null;
+      try {
+        var panel = doc.getElementById(PANEL_ID);
+        var sel = attrSel('data-act', 'editor-input') + attrSel('data-id', id) + attrSel('data-field', field + '-input');
+        el = panel && typeof panel.querySelector === 'function' ? panel.querySelector(sel) : null;
+      } catch (e) { el = null; }
+      if (el && el.value !== undefined) return String(el.value);
+      var d = state.drawerEdit;
+      return d && d.id === id && d.field === field + '-input' ? String(d.value) : '';
+    }
+
     // Every way the view changes goes through here, so the disclosures close
     // with it (spec section 6). Tapping the current view changes nothing.
     function setView(v) {
@@ -7211,6 +7348,35 @@
         if (act === 'filters') { applyTransient({ type: 'filters' }); redraw(); return; }
 
         if (act === 'row-more' && id) { applyTransient({ type: 'row-more', id: id }); redraw(); return; }
+        // #43: the drawer's Tag and Note popup. Opening moves focus into its
+        // field; Save and Cancel return it to the button that opened it.
+        if (act === 'editor' && id) {
+          var edField = el.getAttribute('data-field');
+          state.openEditor = nextEditor(state.openEditor, { type: 'open', id: id, field: edField });
+          state.focusIntent = state.openEditor
+            ? [attrSel('data-act', 'editor-input') + attrSel('data-id', id)]
+            : [attrSel('data-act', 'editor') + attrSel('data-id', id) + attrSel('data-field', edField)];
+          redraw(); return;
+        }
+        if ((act === 'editor-save' || act === 'editor-cancel') && id) {
+          var sField = el.getAttribute('data-field');
+          if (EDITOR_FIELDS.indexOf(sField) === -1) return;
+          if (act === 'editor-save') {
+            var typed = valueOfEditor(id, sField);
+            if (sField === 'note') {
+              var nNext = cloneOrganizer(state.organizer);
+              entryOf(nNext, id).note = safeString(typed, 2000);
+              state.organizer = nNext;
+            } else if (typed.trim()) {
+              state.organizer = toggleTag(state.organizer, id, typed.trim());
+            }
+            persist('organizer'); recompute(now);
+          }
+          if (state.drawerEdit && state.drawerEdit.id === id && state.drawerEdit.field === sField + '-input') state.drawerEdit = null;
+          state.openEditor = nextEditor(state.openEditor, { type: 'close' });
+          state.focusIntent = [attrSel('data-act', 'editor') + attrSel('data-id', id) + attrSel('data-field', sField)];
+          redraw(); return;
+        }
         if (act === 'pin' && id) { state.organizer = togglePin(state.organizer, id); persist('organizer'); recompute(now); redraw(); return; }
         if (act === 'read' && id) {
           var row = state.rows.filter(function (r) { return r.id === id; })[0];
@@ -7453,6 +7619,8 @@
       // forced redraw before the commit renders what was typed and restores
       // the caret (spec section 6, dirty inputs rule 3).
       onInput: function (act, el) {
+        // #43: the popup's field mirrors under the inline field's name.
+        if (act === 'editor-input') act = el && el.getAttribute ? el.getAttribute('data-field') : null;
         if (act !== 'note-input' && act !== 'tag-input') return;
         var id = idOf(el);
         if (!id) return;

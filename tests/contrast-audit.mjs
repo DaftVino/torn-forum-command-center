@@ -257,6 +257,30 @@ const SCRIPT = `
     drawerGeo = 'row ' + Math.round(box.width) + 'px, targets ' + rects.map((r) => Math.round(r.width) + 'x' + Math.round(r.height)).join(' ')
       + ', gaps ' + gaps.join(' ');
   }
+  // #43: folder, Tag and Note share one row that never wraps or overflows;
+  // the tag or note popup, when open, sits inside the drawer with its field
+  // and both buttons inside it.
+  const org = panel.querySelector('.tfcc-drawer-org');
+  let editorSeen = false;
+  if (org) {
+    const kids = Array.from(org.children).map((k) => k.getBoundingClientRect());
+    const box = org.getBoundingClientRect();
+    if (!(Math.max(...kids.map((r) => r.top)) < Math.min(...kids.map((r) => r.bottom)))) polishBad.push('folder, Tag and Note are not on one line');
+    if (kids.some((r) => r.right > box.right + 0.5 || r.left < box.left - 0.5)) polishBad.push('the folder row overflows');
+    for (let i = 1; i < kids.length; i += 1) if (kids[i].left - kids[i - 1].right < 7.5) polishBad.push('folder row targets closer than 8px');
+  }
+  const editor = panel.querySelector('.tfcc-editor[role="dialog"]');
+  if (editor) {
+    editorSeen = true;
+    const e = editor.getBoundingClientRect();
+    const d = editor.closest('.tfcc-drawer').getBoundingClientRect();
+    if (e.left < d.left - 0.5 || e.right > d.right + 0.5) polishBad.push('the popup leaves its drawer');
+    for (const k of editor.querySelectorAll('input, button')) {
+      const r = k.getBoundingClientRect();
+      if (r.left < e.left || r.right > e.right) polishBad.push('a popup control leaves the popup');
+    }
+    if (!editor.getAttribute('aria-label')) polishBad.push('the popup has no name');
+  }
   const drawerTargets = Array.from(panel.querySelectorAll('.tfcc-drawer button, .tfcc-drawer select, .tfcc-drawer input'));
   for (const el of drawerTargets) {
     const r = el.getBoundingClientRect();
@@ -364,6 +388,8 @@ const SCRIPT = `
     cubar: !!cubar,
     drawerBtns: !!drawerBtns,
     drawerGeo: drawerGeo,
+    editorSeen: editorSeen,
+    org: !!org,
     emos: emos.length,
     navcells: panel.querySelectorAll('.tfcc-navgrid button').length,
     headBad: headBad,
@@ -434,6 +460,8 @@ for (const page of pages) {
     if (!seen.emos) missing.push('the drawer emoji');
     if (!seen.icos) missing.push('the archive icon');
     if (seen.drawerGeo) console.log(`.. ${page}: drawer ${seen.drawerGeo}`);
+    if (!seen.org) missing.push('the folder, Tag and Note row');
+    if (/-drawer-(tag|note)-/.test(page) && !seen.editorSeen) missing.push('the open tag or note popup');
   }
   // #41: the clip previews must show the setting doing its job: on cuts the
   // long title and summary, off wraps them, and an open long row is whole.

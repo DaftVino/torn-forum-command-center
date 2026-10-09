@@ -1,20 +1,25 @@
 'use strict';
 
-// Spec section 6, "Dirty inputs". A tap on another control blurs a drawer
+// Spec section 6, "Dirty inputs". A tap on another control blurs a text
 // field first; its change commits and redraws, and that redraw replaced the
 // node under the finger, so the tap never arrived as a click.
+//
+// #43: the narrow drawer's tag and note became a Save/Cancel popup, which
+// commits on Save, never on blur. The fields that commit on change are the
+// wide row's inline tag and note, so the press-hold is proved on them; the
+// popup's own rules are in tests/compact-drawer.test.js.
 
 const test = require('node:test');
 const assert = require('node:assert');
 const { NOW, bootNarrow, seedRows, panelOf, redraw, click } = require('./narrow-helpers');
 
 function setup(extraEnv) {
-  const { env, api } = bootNarrow({ env: extraEnv || {} });
+  const { env, api } = bootNarrow({ width: 900, env: extraEnv || {} });
   seedRows(api, [{ id: 1 }, { id: 2 }, { id: 3 }]);
   api.state.settings.view = 'threads';
   api.state.settings.sort = 'title';
   redraw(env);
-  click(env, '[data-act="row-more"][data-id="1"]');
+  assert.strictEqual(api.state.narrow, false, 'precondition: the wide row and its inline fields');
   const panel = panelOf(env);
   const note = panel.querySelector('[data-act="note-input"][data-id="1"]');
   note.value = 'typed note';
@@ -37,20 +42,20 @@ test('the no-click flush is 300ms, by contract', () => {
   assert.strictEqual(api.PRESS_FLUSH_MS, 300);
 });
 
-test('a tap on another control while a drawer input is dirty commits and acts, in one redraw', () => {
+test('a tap on another control while a text field is dirty commits and acts, in one redraw', () => {
   const { env, api, panel, note } = setup();
   const before = panel.renderCount;
-  panel.dispatchEvent({ type: 'pointerdown', target: panel.querySelector('[data-act="row-more"][data-id="2"]') });
+  panel.dispatchEvent({ type: 'pointerdown', target: panel.querySelector('[data-act="pin"][data-id="2"]') });
   panel.dispatchEvent({ type: 'change', target: note });
   assert.strictEqual(api.state.organizer.threads['1'].note, 'typed note', 'the change committed');
   env.advanceTimersBy(0);
   assert.strictEqual(panel.renderCount, before, 'its redraw is held while the press is in progress');
-  panel.dispatchEvent({ type: 'pointerup', target: panel.querySelector('[data-act="row-more"][data-id="2"]') });
-  click(env, '[data-act="row-more"][data-id="2"]');
+  panel.dispatchEvent({ type: 'pointerup', target: panel.querySelector('[data-act="pin"][data-id="2"]') });
+  click(env, '[data-act="pin"][data-id="2"]');
   env.advanceTimersBy(0);
   assert.strictEqual(panel.renderCount, before + 1, 'one visible redraw for both');
-  assert.strictEqual(api.state.openRowId, '2', 'the tapped action happened');
-  assert.match(panel.innerHTML, /<div class="tfcc-note">typed note<\/div>/);
+  assert.strictEqual(api.state.organizer.threads['2'].pinned, true, 'the tapped action happened');
+  assert.match(panel.innerHTML, /<div class="tfcc-note"[^>]*>typed note<\/div>/);
 });
 
 test('holding the pointer down past 300ms does not redraw; 300ms after it lifts with no click, it does', () => {
@@ -98,7 +103,7 @@ test('focus leaving the field during a press does not flush early', () => {
   panel.dispatchEvent({ type: 'focusout', target: note });
   env.advanceTimersBy(0);
   assert.strictEqual(panel.renderCount, before, 'the focusout flush waits for the click');
-  click(env, '[data-act="row-more"][data-id="3"]');
+  click(env, '[data-act="pin"][data-id="3"]');
   env.advanceTimersBy(0);
   assert.strictEqual(panel.renderCount, before + 1);
 });
@@ -152,6 +157,8 @@ test('a forced redraw before the commit keeps what was typed and the caret', () 
 });
 
 test('typed, rotated across the breakpoint, refreshed, then blurred: the value persists', async () => {
+  // #43: typed in the wide row's field, then rotated to narrow, where the row
+  // has no inline field at all; the caret keeps the old node until the blur.
   const { env, api, panel } = setup({ resizeObserver: true });
   const h = api.makeHandlers(env.doc, env.win);
   // The user starts a refresh, then types while it is in flight.
@@ -162,8 +169,8 @@ test('typed, rotated across the breakpoint, refreshed, then blurred: the value p
   env.doc.activeElement = note;
   panel.contains = () => true;
   const before = panel.renderCount;
-  env.resize(900);
-  assert.strictEqual(api.state.narrow, false, 'rotated to wide');
+  env.resize(343);
+  assert.strictEqual(api.state.narrow, true, 'rotated to narrow');
   assert.strictEqual(api.state.drawerEdit.value, 'keep me', 'the crossing kept the mirror');
   await settle(env);
   assert.strictEqual(panel.renderCount, before, 'neither the crossing nor the refresh replaced the field');
@@ -173,5 +180,5 @@ test('typed, rotated across the breakpoint, refreshed, then blurred: the value p
   env.advanceTimersBy(0);
   assert.strictEqual(api.state.organizer.threads['1'].note, 'keep me');
   assert.strictEqual(api.state.drawerEdit, null, 'the commit cleared the mirror');
-  assert.match(panel.innerHTML, /data-act="note-input" data-id="1" value="keep me"/, 'the wide row shows it');
+  assert.match(panel.innerHTML, /<div class="tfcc-note">keep me<\/div>/, 'the narrow row shows it');
 });

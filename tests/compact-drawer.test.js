@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { NOW, bootNarrow, seedRows, panelOf, redraw, click } = require('./narrow-helpers');
+const { NOW, bootNarrow, seedRows, panelOf, redraw, click, lastFocus } = require('./narrow-helpers');
 
 // Every <button> in some markup, with its opening tag and its inner HTML.
 function buttons(html) {
@@ -122,5 +122,226 @@ test('the drawer\'s Mark read check mark is hinted "Mark read", like its name (#
   const html = redraw(env);
   const drawer = html.slice(html.indexOf('id="tfcc-act-7"'));
   assert.match(drawer, /data-act="read" data-id="7" aria-label="Mark read" title="Mark read"/);
+});
+
+// ---- item 3: folder, Tag and Note on one row; the tag and note popup -------
+
+function openDrawer(rows) {
+  const { env, api } = bootNarrow();
+  seedRows(api, rows || [{ id: 1, title: 'One' }, { id: 2, title: 'Two' }, { id: 3, title: 'Three' }]);
+  api.state.settings.view = 'threads';
+  api.state.settings.sort = 'title';
+  redraw(env);
+  click(env, '[data-act="row-more"][data-id="1"]');
+  const panel = panelOf(env);
+  return { env, api, panel };
+}
+
+function openEditor(env, field) {
+  click(env, '[data-act="editor"][data-id="1"][data-field="' + field + '"]');
+  return panelOf(env).querySelector('[data-act="editor-input"][data-id="1"]');
+}
+
+test('folder, Tag and Note share one row; Tag and Note are buttons that control the popup (#43)', () => {
+  const { panel } = openDrawer();
+  const html = panel.innerHTML;
+  const org = /<div class="tfcc-drawer-org tfcc-wide">([\s\S]*?)<\/div>/.exec(html);
+  assert.ok(org, 'one row');
+  assert.deepStrictEqual(Array.from(org[1].matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]), ['folder', 'editor', 'editor']);
+  assert.match(org[1], /<select data-act="folder" data-id="1" aria-label="Folder">/);
+  assert.ok(org[1].includes('<button type="button" class="tfcc-edbtn" data-act="editor" data-id="1" data-field="tag" aria-haspopup="dialog"'
+    + ' aria-expanded="false" aria-controls="tfcc-ed-1" aria-label="Add tag" title="Add tag">Tag</button>'));
+  assert.ok(org[1].includes('<button type="button" class="tfcc-edbtn" data-act="editor" data-id="1" data-field="note" aria-haspopup="dialog"'
+    + ' aria-expanded="false" aria-controls="tfcc-ed-1" aria-label="Add note" title="Add note">Note</button>'));
+  // aria-controls names a real element while the drawer is open; closed, it is empty and hidden.
+  assert.match(html, /<div class="tfcc-editor tfcc-wide" id="tfcc-ed-1" hidden><\/div>/);
+  assert.doesNotMatch(html, /data-act="(tag|note)-input"/, 'no inline fields in the narrow drawer');
+  assert.doesNotMatch(html, /id="tfcc-ed-2"/, 'only the open row renders a popup target');
+});
+
+test('Tag opens a named dialog in the panel and moves focus into its field (#43)', () => {
+  const { env, api, panel } = openDrawer();
+  const input = openEditor(env, 'tag');
+  assert.ok(input, 'the field renders');
+  assert.deepStrictEqual(env.transform(api.state.openEditor), { id: '1', field: 'tag' });
+  const html = panel.innerHTML;
+  assert.match(html, /<div class="tfcc-editor tfcc-wide" id="tfcc-ed-1" role="dialog" aria-label="Add a tag"><input type="text" data-act="editor-input" data-id="1" data-field="tag-input" value="" placeholder="tag" aria-label="New tag"><button type="button" class="tfcc-edsave" data-act="editor-save" data-id="1" data-field="tag">Save<\/button><button type="button" data-act="editor-cancel" data-id="1" data-field="tag">Cancel<\/button><\/div>/);
+  assert.match(html, /data-field="tag" aria-haspopup="dialog" aria-expanded="true"/);
+  assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['editor-input', '1']);
+  assert.strictEqual(api.state.openRowId, '1', 'the drawer stays open');
+});
+
+test('Enter in the tag field adds the tag, as the inline field did, and focus returns to Tag (#43)', () => {
+  const { env, api, panel } = openDrawer();
+  const input = openEditor(env, 'tag');
+  input.value = 'later';
+  panel.dispatchEvent({ type: 'input', target: input });
+  let prevented = 0;
+  panel.dispatchEvent({ type: 'keydown', key: 'Enter', target: input, preventDefault() { prevented += 1; } });
+  assert.deepStrictEqual(Array.from(api.state.organizer.threads['1'].tags), ['later']);
+  assert.strictEqual(prevented, 1);
+  assert.strictEqual(api.state.openEditor, null, 'the popup closed');
+  assert.strictEqual(api.state.drawerEdit, null, 'the mirror cleared');
+  assert.strictEqual(api.state.openRowId, '1', 'the drawer stays open');
+  assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-field']], ['editor', 'tag']);
+  assert.match(panel.innerHTML, /<span class="tfcc-tag">later<\/span>/, 'the tag shows as a chip, where tags always show');
+});
+
+test('Save on the note popup writes the note field; the Note button then reads Edit note and shows a set state (#43)', () => {
+  const { env, api, panel } = openDrawer();
+  const input = openEditor(env, 'note');
+  input.value = 'remember this';
+  panel.dispatchEvent({ type: 'input', target: input });
+  click(env, '[data-act="editor-save"][data-id="1"]');
+  assert.strictEqual(api.state.organizer.threads['1'].note, 'remember this');
+  const html = panel.innerHTML;
+  assert.match(html, /class="tfcc-edbtn tfcc-on" data-act="editor" data-id="1" data-field="note"[^>]* aria-label="Edit note" title="Edit note">Note</);
+  assert.match(html, /<div class="tfcc-note">remember this<\/div>/);
+  // Reopened, the popup starts from the saved note.
+  openEditor(env, 'note');
+  assert.match(panel.innerHTML, /data-act="editor-input" data-id="1" data-field="note-input" value="remember this"/);
+});
+
+test('Escape and Cancel close the popup without saving, and drop what was typed (#43)', () => {
+  for (const how of ['escape', 'cancel']) {
+    const { env, api, panel } = openDrawer();
+    const input = openEditor(env, 'note');
+    input.value = 'nope';
+    panel.dispatchEvent({ type: 'input', target: input });
+    if (how === 'escape') panel.dispatchEvent({ type: 'keydown', key: 'Escape', target: input });
+    else click(env, '[data-act="editor-cancel"][data-id="1"]');
+    assert.strictEqual(api.state.openEditor, null, how);
+    assert.ok(!api.state.organizer.threads['1'] || api.state.organizer.threads['1'].note === '', how + ': nothing saved');
+    assert.strictEqual(api.state.drawerEdit, null, how + ': the typed text is dropped');
+    assert.strictEqual(api.state.openRowId, '1', how + ': the drawer stays open');
+    assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-field']], ['editor', 'note'], how);
+  }
+});
+
+test('other keys in the popup do nothing; Enter on Cancel is the button\'s own click (#43)', () => {
+  const { env, api, panel } = openDrawer();
+  const input = openEditor(env, 'tag');
+  panel.dispatchEvent({ type: 'keydown', key: 'a', target: input });
+  assert.deepStrictEqual(env.transform(api.state.openEditor), { id: '1', field: 'tag' });
+  panel.dispatchEvent({ type: 'keydown', key: 'Enter', target: panel.querySelector('[data-act="editor-cancel"][data-id="1"]') });
+  assert.deepStrictEqual(env.transform(api.state.openEditor), { id: '1', field: 'tag' }, 'not a save');
+});
+
+test('typed text survives a forced redraw, with the caret, through the drawerEdit mirror (#43)', () => {
+  const { env, api, panel } = openDrawer();
+  const input = openEditor(env, 'note');
+  input.value = 'half';
+  input.selectionStart = 2;
+  input.selectionEnd = 3;
+  panel.dispatchEvent({ type: 'input', target: input });
+  assert.deepStrictEqual(env.transform(api.state.drawerEdit), { id: '1', field: 'note-input', value: 'half', selStart: 2, selEnd: 3 });
+  env.doc.activeElement = input;
+  panel.contains = () => true;
+  redraw(env);
+  assert.match(panel.innerHTML, /data-act="editor-input" data-id="1" data-field="note-input" value="half"/);
+  const again = panel.querySelector('[data-act="editor-input"][data-id="1"]');
+  assert.deepStrictEqual(again.selection, [2, 3], 'the selection is restored on the new node');
+});
+
+test('a background redraw while typing in the popup is deferred by the caret (#43)', () => {
+  const { env, api, panel } = openDrawer();
+  const input = openEditor(env, 'tag');
+  env.doc.activeElement = input;
+  panel.contains = () => true;
+  const before = panel.renderCount;
+  api.state.organizer = api.togglePin(api.state.organizer, '2');
+  api.recompute(NOW);
+  env.exports.draw(env.doc, env.win, api.makeHandlers(env.doc, env.win));
+  assert.strictEqual(panel.renderCount, before, 'deferred');
+  assert.strictEqual(api.state.pendingRedraw, true);
+});
+
+test('the popup closes with its drawer: view change, collapse, auto-hide, breakpoint, the row leaving, a tap outside the panel (#43)', () => {
+  const cases = {
+    view: ({ env }) => click(env, '[data-act="view"][data-view="drafts"]'),
+    collapse: ({ env }) => click(env, '[data-act="collapse"]'),
+    'auto-hide': ({ env, api, panel }) => {
+      api.state.settings.autoHideOnOpen = true;
+      panel.dispatchEvent({ type: 'click', target: panel.querySelector('[data-tfcc-thread="2"]'), button: 0 });
+      env.advanceTimersBy(0);
+    },
+    breakpoint: ({ env }) => { env.resize(900); redraw(env); },
+    'row leaves': ({ env, api }) => { seedRows(api, [{ id: 2, title: 'Two' }, { id: 3, title: 'Three' }]); redraw(env); },
+    outside: ({ env, panel }) => {
+      const outside = env.makeElement('a');
+      panel.contains = (n) => n !== outside;
+      env.doc.activeElement = null; // the tap outside took focus from the field
+      env.win.fire('click', { type: 'click', target: outside });
+      env.advanceTimersBy(0);
+    },
+  };
+  for (const [name, act] of Object.entries(cases)) {
+    const ctx = openDrawer();
+    openEditor(ctx.env, 'tag');
+    assert.ok(ctx.api.state.openEditor, name + ': precondition');
+    act(ctx);
+    ctx.api.buildPanelModel(NOW);
+    assert.strictEqual(ctx.api.state.openEditor, null, name);
+    assert.doesNotMatch(ctx.panel.innerHTML, /role="dialog"/, name + ': not drawn');
+  }
+});
+
+test('a tap elsewhere in the drawer closes the popup but keeps the drawer and the typed text (#43)', () => {
+  const { env, api, panel } = openDrawer();
+  panel.contains = () => true;
+  const input = openEditor(env, 'note');
+  input.value = 'draft words';
+  panel.dispatchEvent({ type: 'input', target: input });
+  const before = panel.renderCount;
+  click(env, '[data-act="pin"][data-id="1"]');
+  assert.strictEqual(api.state.openEditor, null);
+  assert.strictEqual(api.state.openRowId, '1', 'the drawer stays');
+  assert.strictEqual(api.state.organizer.threads['1'].pinned, true, 'and Pin still did its job');
+  env.advanceTimersBy(0);
+  assert.ok(panel.renderCount > before);
+  assert.doesNotMatch(panel.innerHTML, /role="dialog"/);
+  assert.strictEqual(api.state.drawerEdit.value, 'draft words', 'kept for the next open');
+  openEditor(env, 'note');
+  assert.match(panel.innerHTML, /data-field="note-input" value="draft words"/);
+});
+
+test('a tap inside the popup keeps it open; its own button toggles it; the other button switches (#43)', () => {
+  const { env, api, panel } = openDrawer();
+  panel.contains = () => true;
+  openEditor(env, 'tag');
+  click(env, '[data-act="editor-input"][data-id="1"]');
+  assert.deepStrictEqual(env.transform(api.state.openEditor), { id: '1', field: 'tag' }, 'a tap in the field');
+  click(env, '[data-act="editor"][data-id="1"][data-field="note"]');
+  assert.deepStrictEqual(env.transform(api.state.openEditor), { id: '1', field: 'note' }, 'switched');
+  click(env, '[data-act="editor"][data-id="1"][data-field="note"]');
+  assert.strictEqual(api.state.openEditor, null, 'toggled closed');
+});
+
+test('the popup state is never saved (#43)', () => {
+  const { env } = openDrawer();
+  openEditor(env, 'tag');
+  for (const [k, v] of env.gmStore) assert.doesNotMatch(String(k) + JSON.stringify(v), /openEditor/, k);
+});
+
+test('nextEditor and reconcileEditor are the popup\'s whole state machine (#43)', () => {
+  const { api } = bootNarrow();
+  const t = (x) => JSON.parse(JSON.stringify(x));
+  assert.deepStrictEqual(t(api.nextEditor(null, { type: 'open', id: '1', field: 'tag' })), { id: '1', field: 'tag' });
+  assert.strictEqual(api.nextEditor({ id: '1', field: 'tag' }, { type: 'open', id: '1', field: 'tag' }), null, 'toggle');
+  assert.deepStrictEqual(t(api.nextEditor({ id: '1', field: 'tag' }, { type: 'open', id: '1', field: 'note' })), { id: '1', field: 'note' });
+  assert.strictEqual(api.nextEditor({ id: '1', field: 'tag' }, { type: 'close' }), null);
+  assert.strictEqual(api.nextEditor(null, { type: 'open', id: '1', field: 'folder' }), null, 'only tag and note');
+  assert.deepStrictEqual(t(api.reconcileEditor({ id: '1', field: 'note' }, '1')), { id: '1', field: 'note' });
+  assert.strictEqual(api.reconcileEditor({ id: '1', field: 'note' }, '2'), null, 'another drawer');
+  assert.strictEqual(api.reconcileEditor({ id: '1', field: 'note' }, null), null, 'no drawer');
+});
+
+test('desktop rows keep their inline tag and note fields (#43)', () => {
+  const { env, api } = bootNarrow({ width: 900 });
+  seedRows(api, [{ id: 1, title: 'One' }]);
+  const html = redraw(env);
+  assert.match(html, /<input type="text" data-act="tag-input" data-id="1" placeholder="add tag" size="8">/);
+  assert.match(html, /<input type="text" data-act="note-input" data-id="1" value="" placeholder="note" size="14">/);
+  assert.doesNotMatch(html, /data-act="editor/);
 });
 
