@@ -1549,6 +1549,54 @@ const MUTATIONS = [
     ['the light priority blue is the raw logo blue, under AA', (s) => s.replace(
       "'  --tfcc-prio: #2e5680;',", "'  --tfcc-prio: #5c768f;',")],
   ].map(([name, apply]) => ({ name: '#45: ' + name, suite: 'tests/style.test.js', apply })),
+  // #45 item 2: folder order, Unfiled, collapsible groups.
+  ...[
+    ['an organizer saved before #45 is reported as damaged', (s) => s.replace(
+      '      unfiledAt: clamp(toInt(raw.unfiledAt, folders.length), 0, folders.length),',
+      '      unfiledAt: clamp(toInt(raw.unfiledAt, 0), 0, folders.length),')],
+    ['Unfiled defaults to the top instead of last', (s) => s.replace(
+      '      unfiledAt: DEFAULT_FOLDERS.length,', '      unfiledAt: 0,')],
+    ['moving does not swap', (s) => s.replace('    keys[i] = keys[j];\n    keys[j] = key;\n', '')],
+    ['moving past an end wraps around instead of stopping', (s) => s.replace(
+      '    if (i === -1 || j < 0 || j >= keys.length) return org;', '    if (i === -1) return org;\n    j = (j + keys.length) % keys.length;')],
+    ['Catch up groups by name again, ignoring the order', (s) => s.replace(
+      '    return folderOrderKeys(org).filter(function (k) {', '    return folderOrderKeys(org).sort().filter(function (k) {')],
+    ['a collapsed group still renders its rows', (s) => s.replace(
+      '      if (groups[n].collapsed) {', '      if (false) {')],
+    ['a collapsed group still counts in the rendered rows, so its drawer stays open', (s) => s.replace(
+      '{ if (!g.collapsed) list = list.concat(g.rows); }', '{ list = list.concat(g.rows); }')],
+    ['collapsing is not saved', (s) => s.replace(
+      "          state.organizer = toggleFolderCollapsed(state.organizer, id); persist('organizer');",
+      '          state.organizer = toggleFolderCollapsed(state.organizer, id);')],
+    ['a reorder is not saved', (s) => s.replace(
+      "          if (moved !== state.organizer) { state.organizer = moved; persist('organizer'); }",
+      '          if (moved !== state.organizer) { state.organizer = moved; }')],
+    ['a new folder lands below Unfiled', (s) => s.replace(
+      '    next.unfiledAt = j === -1 ? next.folders.length : j;', '    next.unfiledAt = j === -1 ? org.folders.length : j;')],
+    ['deleting a folder above Unfiled moves Unfiled down a place', (s) => s.replace(
+      '    if (gone !== -1 && gone < next.unfiledAt) next.unfiledAt -= 1;\n', '')],
+    ['an import ignores the export\'s order', (s) => s.replace(
+      '      org = withFolderOrder(org, importedOrder(org, payload));\n', '')],
+    ['the first folder\'s up arrow is not disabled', (s) => s.replace(
+      "      out.push(moveButton(f, 'up', i === 0)", "      out.push(moveButton(f, 'up', false)")],
+    ['Unfiled can be deleted', (s) => s.replace(
+      "      if (unf) {\n        out.push('<span class=\"tfcc-note\">Threads in no folder</span></div>');\n        continue;\n      }\n", '')],
+    ['focus is lost when an arrow reaches its end', (s) => s.replace(
+      "          var mAct = atEnd ? (act === 'folder-up' ? 'folder-down' : 'folder-up') : act;", '          var mAct = act;')],
+    ['a folder named Unfiled takes the Unfiled key', (s) => s.replace(
+      '            if (slug === UNFILED_KEY) slug = UNFILED_KEY + \'-folder\';\n', '')],
+    ['the folder note drops the subscribed-only sentence', (s) => s.replace(
+      "      + 'Folders organise only threads you subscribe to (and ones you file by hand); they never add other threads '\n      + 'from a forum. ",
+      "      + '")],
+    ['the narrow group toggle drops below 44px', (s) => s.replace(
+      "'.tfcc-narrow button.tfcc-grp { min-height: 44px; }'", "'.tfcc-narrow button.tfcc-grp { min-height: 32px; }'")],
+  ].map(([name, apply]) => ({ name: '#45: ' + name, suite: 'tests/folders.test.js', apply })),
+  {
+    name: '#45: the group heading markup drifts from its listed wide replacement',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("+ groupDomId(g.key) + '\" title=\"' + escapeHtml((open ? 'Collapse ' : 'Expand ') + g.name)",
+      "+ groupDomId(g.key) + '\" title=\"' + escapeHtml((open ? 'Hide ' : 'Show ') + g.name)"),
+  },
   {
     name: '#45: the priority colour changes wide CSS outside its listed replacement',
     suite: 'tests/wide-parity.test.js',

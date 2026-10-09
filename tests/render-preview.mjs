@@ -274,6 +274,22 @@ for (const clip of [true, false]) {
 api.state.settings.clipLines = true;
 api.state.settings.theme = 'dark';
 
+// #45: Catch up on a wide panel with one folder group collapsed (Scripts and
+// tools), so its heading toggle shows both states.
+const baseOrg = api.state.organizer;
+api.state.settings.view = 'catchup';
+api.state.organizer = api.toggleFolderCollapsed(baseOrg, 'scripts');
+for (const theme of ['dark', 'light']) {
+  api.state.settings.theme = theme;
+  const body = api.panelHtml(api.buildPanelModel(NOW));
+  const name = 'catchup-collapsed-wide-' + theme + '.html';
+  fs.writeFileSync(path.join(outDir, name), page('catchup / one group collapsed / wide 720px / ' + theme, theme, body, 720));
+  written.push(name);
+}
+api.state.organizer = baseOrg;
+api.state.settings.view = 'threads';
+api.state.settings.theme = 'dark';
+
 // The cap line at PDA width, where it has to wrap without stranding the button.
 api.state.settings.rowsShown = 3;
 const cappedNarrow = api.panelHtml(api.buildPanelModel(NOW));
@@ -316,6 +332,9 @@ const NARROW_STATES = [
   // #43: the drawer's priority explanation open, under its icon row.
   ['threads-drawer-prioinfo', () => { api.state.settings.view = 'threads'; api.state.openRowId = '16474152';
     api.state.openInfoId = 'priority'; }],
+  // #45: a folder group collapsed (Scripts and tools), heading only.
+  ['catchup-collapsed', () => { api.state.settings.view = 'catchup';
+    api.state.organizer = api.toggleFolderCollapsed(baseOrg, 'scripts'); }],
   ['catchup-drawer-note', () => { api.state.settings.view = 'catchup'; api.state.openRowId = '16474152';
     api.state.openEditor = { id: '16474152', field: 'note' }; }],
 ];
@@ -328,6 +347,7 @@ for (const [label, setUp, extraCss] of NARROW_STATES) {
       api.state.settings.collapsed = false;
       api.state.settings.clipLines = true;
       api.state.settings.theme = theme;
+      api.state.organizer = baseOrg;
       setUp();
       const body = api.panelHtml(api.buildPanelModel(NOW));
       const name = `narrow-${label}-${vp}-${theme}.html`;
@@ -338,6 +358,7 @@ for (const [label, setUp, extraCss] of NARROW_STATES) {
   }
 }
 api.state.narrow = false;
+api.state.organizer = baseOrg;
 api.state.settings.clipLines = true;
 Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false, openEditor: null });
 api.state.settings.collapsed = false;

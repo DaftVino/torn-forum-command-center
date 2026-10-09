@@ -453,8 +453,24 @@ const SCRIPT = `
     const box = el.getBoundingClientRect();
     if (Math.round(box.width) !== 18 || Math.round(box.height) !== 18) polishBad.push('the archive icon is ' + Math.round(box.width) + 'x' + Math.round(box.height));
   }
+  // #45: the folder group toggles and the Settings order arrows keep their
+  // targets: 44px on a narrow panel, 24px or more on a wide one.
+  const narrowPanel = panel.classList.contains('tfcc-narrow');
+  const grps = Array.from(panel.querySelectorAll('button.tfcc-grp'));
+  panel.querySelectorAll('button.tfcc-grp, button.tfcc-move').forEach((b) => {
+    if (b.closest('[hidden]') || getComputedStyle(b).display === 'none') return;
+    const r = b.getBoundingClientRect();
+    const min = narrowPanel ? 43.5 : 23.5;
+    const wide = b.classList.contains('tfcc-move');
+    if (r.height < min || (wide && r.width < min)) {
+      polishBad.push('"' + (b.getAttribute('aria-label') || b.textContent.trim()) + '" is ' + Math.round(r.width) + 'x' + Math.round(r.height));
+    }
+  });
   out.seen = {
     polishBad: polishBad.concat(infoBad),
+    grp: grps.length,
+    grpCollapsed: grps.filter((b) => b.getAttribute('aria-expanded') === 'false').length,
+    moves: panel.querySelectorAll('button.tfcc-move').length,
     icos: icos.length,
     clip: clip,
     cut: cut,
@@ -554,6 +570,11 @@ for (const page of pages) {
   }
   // #39: every narrow Catch up page has the one-line action row, and every
   // page with an open drawer has its button row and the emoji.
+  // #45: every Catch up page has its folder group toggles; a collapsed page
+  // has a collapsed one; every Settings page has the order arrows.
+  if (/^(narrow-)?catchup-/.test(page) && !seen.grp) missing.push('a folder group toggle');
+  if (/catchup-collapsed/.test(page) && !seen.grpCollapsed) missing.push('a collapsed folder group');
+  if (/^(narrow-)?settings-/.test(page) && !seen.moves) missing.push('the folder order arrows');
   if (page.startsWith('narrow-catchup')) {
     if (!seen.cubar) missing.push('the Catch up action row');
     else console.log(`.. ${page}: Catch up labels ${seen.cuMode}, widths ${seen.cuWidths}`);

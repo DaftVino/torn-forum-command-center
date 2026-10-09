@@ -31,7 +31,7 @@ test('Catch up ids follow the folder grouping the view renders', () => {
   api.recompute(NOW);
   api.state.settings.view = 'catchup';
   const model = api.buildPanelModel(NOW);
-  const grouped = [].concat(...api.groupCatchUp(model.capped.catchup.rows).map((g) => g.rows.map((r) => String(r.id))));
+  const grouped = [].concat(...api.groupCatchUp(model.capped.catchup.rows, api.state.organizer).map((g) => g.rows.map((r) => String(r.id))));
   assert.deepStrictEqual(model.renderedIds, grouped);
   assert.strictEqual(model.renderedIds[0], '6', 'Guides sorts before Unfiled');
 });

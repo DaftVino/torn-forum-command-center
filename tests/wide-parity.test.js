@@ -103,6 +103,13 @@ test('every complete wide view is main\'s, byte for byte, apart from the listed 
   for (const view of views) assert.strictEqual(now.views[view], expectedView(view), view);
 });
 
+// #45: Threads stays flat (owner decision), so its wide markup is untouched;
+// only Catch up's group heading and Settings' folder list change.
+test('the #45 list touches only Catch up and Settings', () => {
+  assert.ok(D45.literals.length > 0);
+  for (const d of D45.literals) assert.ok(['catchup', 'settings'].includes(d.view), d.item);
+});
+
 test('the 13d list touches only the views the owner changed', () => {
   for (const d of D13) assert.ok(['catchup', 'mine', 'search', 'drafts', 'settings'].includes(d.view), d.item);
 });
