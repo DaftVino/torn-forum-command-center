@@ -252,9 +252,27 @@ const SCRIPT = `
     return el.getBoundingClientRect().height - pad > lh * 1.5;
   };
   // Cut means clipped out of sight: hidden overflow with more content than
-  // box. (An open meta line's last tag can stick out under the row's buttons
-  // with visible overflow at 280px; that is not a cut.)
+  // box. Visible overflow is checked by the containment test below.
   const isCut = (el) => getComputedStyle(el).overflowX === 'hidden' && el.scrollWidth > el.clientWidth + 1;
+  // PR #42 review: a row whose text is meant to be whole (an open row, or any
+  // row with clipping off) must keep every meta part inside the row's content
+  // box and clear of every button in the row, or a part is hidden under them.
+  const hits = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+  panel.querySelectorAll(clip ? '.tfcc-row.tfcc-open' : '.tfcc-row').forEach((row) => {
+    const rs = getComputedStyle(row);
+    const r = row.getBoundingClientRect();
+    const box = { left: r.left + parseFloat(rs.borderLeftWidth) + parseFloat(rs.paddingLeft) - 0.5,
+      right: r.right - parseFloat(rs.borderRightWidth) - parseFloat(rs.paddingRight) + 0.5 };
+    const buttons = Array.from(row.querySelectorAll('.tfcc-row-btns button')).map((b) => b.getBoundingClientRect());
+    row.querySelectorAll('.tfcc-meta > *').forEach((part) => {
+      const p = part.getBoundingClientRect();
+      if (!p.width) return;
+      const m = part.parentElement.getBoundingClientRect();
+      if (p.left < box.left || p.right > box.right) polishBad.push('a meta part ("' + part.textContent + '") leaves its row');
+      if (p.left < m.left - 0.5 || p.right > m.right + 0.5) polishBad.push('a meta part ("' + part.textContent + '") leaves its meta column');
+      if (buttons.some((b) => hits(p, b))) polishBad.push('a meta part ("' + part.textContent + '") sits under a row button');
+    });
+  });
   const closedText = Array.from(panel.querySelectorAll(isNarrow
     ? '.tfcc-row:not(.tfcc-open) .tfcc-row-title a, .tfcc-row:not(.tfcc-open) > .tfcc-note, .tfcc-row:not(.tfcc-open) .tfcc-row-l2 .tfcc-meta'
     : '.tfcc-row-main .tfcc-row-title, .tfcc-row > .tfcc-note'));
