@@ -408,3 +408,14 @@ test('the Settings checkbox shows the setting and saves a change', () => {
   handlers.onChange('auto-hide', { getAttribute: () => null, checked: false, value: '' });
   assert.strictEqual(storedSettings(env).autoHideOnOpen, false);
 });
+
+test('auto-hide closes the drawer, the filters and the info (#33)', () => {
+  const env = loaded({ autoHideOnOpen: true });
+  const panel = panelOf(env);
+  Object.assign(env.exports.state, { openRowId: '5', filtersOpen: true, openInfoId: 'catchup' });
+  panel.dispatchEvent(click(threadLink(env, 5, panel)));
+  assert.strictEqual(storedSettings(env).collapsed, true);
+  assert.strictEqual(env.exports.state.openRowId, null);
+  assert.strictEqual(env.exports.state.filtersOpen, false);
+  assert.strictEqual(env.exports.state.openInfoId, null);
+});

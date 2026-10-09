@@ -1673,6 +1673,8 @@ test('the cap, Unread only and archive each reconcile the open row', () => {
   api.state.settings.rowsShown = 0;
 
   api.state.openRowId = '2';
+  // An archived thread with new posts stays listed (viewRows), so read it first.
+  api.state.organizer = api.markRead(api.state.organizer, '2', 10, NOW);
   const e = api.state.organizer.threads['2'] || api.normaliseThreadEntry(null);
   api.state.organizer.threads['2'] = Object.assign({}, e, { archived: true });
   api.recompute(NOW);
@@ -1802,6 +1804,8 @@ test('auto-hide closes the drawer, the filters and the info (#33)', () => {
 
 Run: `node --test tests/narrow-state.test.js tests/auto-hide.test.js`
 Expected: FAIL: `renderedIds` and `openRowId` are undefined on the model; the handlers leave the transients set.
+
+> Amended during implementation: the archive case marks the row read first, because `viewRows` keeps an archived thread with new posts in the list.
 
 - [ ] **Step 4: Add the helpers before `buildPanelModel`**
 

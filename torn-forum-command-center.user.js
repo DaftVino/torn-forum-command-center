@@ -3451,6 +3451,15 @@
   }
   function applyTransient(ev) { setTransient(nextTransient(currentTransient(), ev)); }
 
+  // Every wholesale replacement of state.settings comes through here, so a
+  // replacement that changes the view or collapses the panel closes the
+  // disclosures exactly as the matching user action would (spec section 6).
+  function replaceSettings(next) {
+    if (next.view !== state.settings.view) applyTransient({ type: 'view' });
+    else if (next.collapsed === true && state.settings.collapsed !== true) applyTransient({ type: 'collapse' });
+    state.settings = next;
+  }
+
   // Torn has refused the stored key. Stop using it immediately and remember
   // that across reloads.
   //
@@ -4674,6 +4683,32 @@
 
   var noopHandlers = Object.freeze({});
 
+  // Search lists at most this many thread rows.
+  var SEARCH_ROWS_MAX = 50;
+
+  // Catch up groups its shown rows by folder name, sorted. One helper, so the
+  // focus order (renderedRowIds) is always the order the view renders.
+  function groupCatchUp(rows) {
+    var byFolder = {};
+    for (var i = 0; i < rows.length; i += 1) {
+      var k = rows[i].folderName || 'Unfiled';
+      (byFolder[k] = byFolder[k] || []).push(rows[i]);
+    }
+    return Object.keys(byFolder).sort().map(function (name) { return { name: name, rows: byFolder[name] }; });
+  }
+
+  // The thread rows the current view renders, as string ids in DOM order.
+  function renderedRowIds(view, capped, unchecked, rows) {
+    var list = [];
+    if (view === 'threads') list = capped.threads.rows;
+    else if (view === 'mine') list = capped.mine.rows;
+    else if (view === 'catchup') {
+      groupCatchUp(capped.catchup.rows).forEach(function (g) { list = list.concat(g.rows); });
+      list = list.concat(unchecked || []);
+    } else if (view === 'search') list = rows.slice(0, SEARCH_ROWS_MAX);
+    return list.map(function (r) { return String(r.id); });
+  }
+
   function buildPanelModel(now) {
     var s = state.settings;
     var rows = state.rows;
@@ -4700,7 +4735,17 @@
     var threadsSorted = s.view === 'mine' ? sortThreads(viewRows(rows, 'threads', s, query), s.sort) : sorted;
     var mineSorted = s.view === 'mine' ? sorted : sortThreads(viewRows(mineRows, 'mine', s, query), s.sort);
     var catchUp = catchUpRowsNow();
+    var unchecked = catchUpUncheckedNow();
     var showAll = state.showAll || {};
+    var capped = {
+      threads: capRows(threadsSorted, s.rowsShown, showAll.threads === true),
+      catchup: capRows(catchUp, s.rowsShown, showAll.catchup === true),
+      mine: capRows(mineSorted, s.rowsShown, showAll.mine === true),
+    };
+    // #33, spec section 6: after every model build, an open row or info that
+    // this view does not render closes, and stays closed.
+    var renderedIds = renderedRowIds(s.view, capped, unchecked, sorted);
+    setTransient(reconcileTransient(currentTransient(), renderedIds, INFO_KEYS_BY_VIEW[s.view] || []));
 
     return {
       loading: false,
@@ -4710,6 +4755,11 @@
       collapsed: s.collapsed,
       takeover: s.takeover,
       narrow: state.narrow === true,
+      renderedIds: renderedIds,
+      openRowId: state.openRowId,
+      filtersOpen: state.filtersOpen,
+      openInfoId: state.openInfoId,
+      drawerEdit: state.drawerEdit,
       sort: s.sort,
       unreadOnly: s.unreadOnly,
       folderFilter: s.folderFilter,
@@ -4737,12 +4787,8 @@
       badges: badgeModel(now),
       // What the capped views render. model.rows, model.catchUp and model.mine
       // stay whole, so Search and the nav counts are uncapped by construction.
-      capped: {
-        threads: capRows(threadsSorted, s.rowsShown, showAll.threads === true),
-        catchup: capRows(catchUp, s.rowsShown, showAll.catchup === true),
-        mine: capRows(mineSorted, s.rowsShown, showAll.mine === true),
-      },
-      catchUpUnchecked: catchUpUncheckedNow(),
+      capped: capped,
+      catchUpUnchecked: unchecked,
       authorOnly: s.authorOnly === true,
       mine: {
         total: mineAll.length,
@@ -5076,18 +5122,12 @@
     }
     // Cap the flat, activity-sorted list first, then group what is shown.
     // Capping per folder would show up to N rows times the folder count.
-    var shown = model.capped.catchup.rows;
-    var byFolder = {};
-    for (var i = 0; i < shown.length; i += 1) {
-      var k = shown[i].folderName || 'Unfiled';
-      (byFolder[k] = byFolder[k] || []).push(shown[i]);
-    }
-    var names = Object.keys(byFolder).sort();
-    for (var n = 0; n < names.length; n += 1) {
-      out.push('<div class="tfcc-section"><h4>' + escapeHtml(names[n])
-        + ' (' + byFolder[names[n]].length + ')</h4><div class="tfcc-rows">');
-      for (var j = 0; j < byFolder[names[n]].length; j += 1) {
-        out.push(renderRow(byFolder[names[n]][j], model));
+    var groups = groupCatchUp(model.capped.catchup.rows);
+    for (var n = 0; n < groups.length; n += 1) {
+      out.push('<div class="tfcc-section"><h4>' + escapeHtml(groups[n].name)
+        + ' (' + groups[n].rows.length + ')</h4><div class="tfcc-rows">');
+      for (var j = 0; j < groups[n].rows.length; j += 1) {
+        out.push(renderRow(groups[n].rows[j], model));
       }
       out.push('</div></div>');
     }
@@ -5127,7 +5167,7 @@
     if (!matched.length) out.push('<div class="tfcc-empty">No thread matches.</div>');
     else {
       out.push('<div class="tfcc-rows">');
-      for (var i = 0; i < matched.length && i < 50; i += 1) out.push(renderRow(matched[i], model));
+      for (var i = 0; i < matched.length && i < SEARCH_ROWS_MAX; i += 1) out.push(renderRow(matched[i], model));
       out.push('</div>');
     }
     out.push('</div>');
@@ -6093,6 +6133,13 @@
       return el && el.value !== undefined ? String(el.value) : '';
     }
 
+    // Every way the view changes goes through here, so the disclosures close
+    // with it (spec section 6). Tapping the current view changes nothing.
+    function setView(v) {
+      if (v !== state.settings.view) applyTransient({ type: 'view' });
+      state.settings.view = v;
+    }
+
     var handlers = {
       // Not an act === case: a thread link is navigation the browser performs,
       // not a control, so tests/handlers.test.js does not pair it.
@@ -6102,7 +6149,8 @@
         if (next === state.settings) return;
         // The shelf renders in the collapsed header too; hiding the panel closes it.
         state.badgeShelfOpen = false;
-        state.settings = next;
+        applyTransient({ type: 'auto-hide' });
+        replaceSettings(next);
         persist('settings');
         // Deferred: redrawing now would replace the anchor while its click is
         // still being dispatched. It also covers a click on the thread already
@@ -6123,14 +6171,18 @@
         }
         if (act === 'view') {
           var v = el.getAttribute('data-view');
-          if (VIEWS.indexOf(v) !== -1) { state.settings.view = v; persist('settings'); }
+          if (VIEWS.indexOf(v) !== -1) { setView(v); persist('settings'); }
           // Opening My posts is the user input that pays for it, once per TTL.
           if (v === 'mine' && isKeyShaped(loadApiKey()) && mineIsDue(state.mine, now, MINE_TTL_MS)) {
             refreshMine(now).then(function () { if (isForumsPage(win.location)) redraw(); });
           }
           redraw(); return;
         }
-        if (act === 'collapse') { state.settings.collapsed = !state.settings.collapsed; persist('settings'); redraw(); return; }
+        if (act === 'collapse') {
+          state.settings.collapsed = !state.settings.collapsed;
+          applyTransient({ type: state.settings.collapsed ? 'collapse' : 'show' });
+          persist('settings'); redraw(); return;
+        }
         if (act === 'takeover') { state.settings.takeover = !state.settings.takeover; persist('settings'); redraw(); return; }
         if (act === 'unread-only') { state.settings.unreadOnly = !state.settings.unreadOnly; persist('settings'); redraw(); return; }
         if (act === 'rows-toggle') {
@@ -6201,7 +6253,7 @@
         }
         if (act === 'draft' && id) {
           state.draftFocusId = id;
-          state.settings.view = 'drafts';
+          setView('drafts');
           persist('settings');
           redraw(); return;
         }
@@ -6264,7 +6316,7 @@
         }
         if (act === 'reset-all') {
           invalidateInFlight();
-          state.settings = freshSettings(); state.organizer = freshOrganizer(now); state.showAll = {};
+          replaceSettings(freshSettings()); state.drawerEdit = null; state.organizer = freshOrganizer(now); state.showAll = {};
           state.drafts = freshDrafts(); state.feed = freshFeed(); state.postCache = freshPostCache();
           state.mine = freshMine(); state.mineError = null; state.mineThrottled = false;
           state.mineDropped = { threads: 0, posts: 0 };
@@ -6281,7 +6333,7 @@
           // Expand too: the shelf shows when collapsed, and Settings does not.
           state.badgeShelfOpen = false; state.badgeCatalogueOpen = true;
           state.settings.collapsed = false;
-          state.settings.view = 'settings'; persist('settings'); redraw(); return;
+          setView('settings'); persist('settings'); redraw(); return;
         }
         if (act === 'badges-catalogue') { state.badgeCatalogueOpen = !state.badgeCatalogueOpen; redraw(); return; }
         if (act === 'badges-toast-dismiss') { state.badgeToast = null; redraw(); return; }
@@ -6312,7 +6364,7 @@
           persist('organizer'); recompute(now); redraw(); return;
         }
         if (act === 'auto-refresh') {
-          state.settings = normaliseSettings(Object.assign({}, state.settings, { autoRefreshMs: Number(value) }));
+          replaceSettings(normaliseSettings(Object.assign({}, state.settings, { autoRefreshMs: Number(value) })));
           persist('settings');
           // Rescheduling here is the whole point. Setting it up once at startup
           // would mean the choice did nothing until the next page load.
@@ -6322,7 +6374,7 @@
         if (act === 'rows-shown') {
           // Through the normaliser, like auto-refresh, so the select cannot
           // store anything the menu does not offer.
-          state.settings = normaliseSettings(Object.assign({}, state.settings, { rowsShown: Number(value) }));
+          replaceSettings(normaliseSettings(Object.assign({}, state.settings, { rowsShown: Number(value) })));
           // A new cap is a fresh statement of what the user wants; a Show all
           // from before it would silently override it.
           state.showAll = {};
