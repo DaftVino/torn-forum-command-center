@@ -39,6 +39,7 @@ const P = {
   read: '<path d="M2.5 10.5l3.5 3.5 6.5-7.5M9 13.5l1 1 7-8"/>',
   down: '<path d="M5 8l5 5 5-5"/>',
   close: '<path d="M5 5l10 10M15 5L5 15"/>',
+  info: '<circle cx="10" cy="10" r="7.5"/><path d="M10 9v5M10 6.2h.01" stroke-width="2.2"/>',
 };
 function ico(name, px) {
   const s = px || 20;
@@ -501,20 +502,33 @@ function conceptC(theme, opts) {
 const REVISED_CSS = `
 body.r-wrap { flex-wrap: wrap; max-width: 1700px; }
 #tfcc-panel.tfcc-narrow { padding: 8px; }
-#tfcc-panel .r-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
-#tfcc-panel .r-id { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
-#tfcc-panel .r-head .tfcc-logo { height: 24px; }
-#tfcc-panel .r-ctl { display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; margin-left: auto; }
+/* Header (owner decision b): one line. --tfcc-hb is the header button size,
+   44px at most and 24px at least, set from the panel width by fitHeader(). */
+#tfcc-panel .r-head { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; margin-bottom: 6px; }
+#tfcc-panel .r-id { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; flex-wrap: wrap; }
+#tfcc-panel .r-head .tfcc-logo { height: clamp(16px, calc(var(--tfcc-hb, 44px) * 0.545), 24px); }
+#tfcc-panel .r-ctl { display: inline-flex; align-items: center; gap: 4px; flex: none; flex-wrap: nowrap; margin-left: auto; }
 #tfcc-panel button.r-ico { display: inline-flex; align-items: center; justify-content: center;
-  min-width: 44px; min-height: 44px; padding: 0; }
-#tfcc-panel button.r-show { min-height: 44px; min-width: 44px; padding: 0 10px; font-weight: bold;
-  display: inline-flex; align-items: center; gap: 4px; }
-/* The chip: a 44px button with no chrome of its own; the 28px pill is a child. */
-#tfcc-panel button.r-chip { min-height: 44px; min-width: 44px; padding: 0; border: 0; background: transparent;
+  width: var(--tfcc-hb, 44px); min-height: var(--tfcc-hb, 44px); padding: 0; }
+#tfcc-panel .r-ctl .m-svg { width: clamp(14px, calc(var(--tfcc-hb, 44px) * 0.45), 20px); height: auto; }
+#tfcc-panel button.r-show { min-height: var(--tfcc-hb, 44px); min-width: var(--tfcc-hb, 44px); font-weight: bold;
+  padding: 0 clamp(4px, calc(var(--tfcc-hb, 44px) * 0.2), 10px); display: inline-flex; align-items: center; gap: 2px; }
+/* The chip: a button as tall as the header buttons, with no chrome of its own;
+   the pill is a child, at most 28px tall, with tighter padding when compact. */
+#tfcc-panel button.r-chip { min-height: var(--tfcc-hb, 44px); padding: 0; border: 0; background: transparent;
   display: inline-flex; align-items: center; }
-#tfcc-panel .r-pill { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; min-height: 28px;
-  padding: 2px 8px; border-radius: 14px; border: 1px solid var(--tm-border-2); background: var(--tm-bg-3);
-  font-size: var(--tfcc-text-sm); font-weight: bold; }
+#tfcc-panel .r-pill { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
+  min-height: min(28px, var(--tfcc-hb, 44px)); padding: 2px 8px; border-radius: 14px;
+  border: 1px solid var(--tm-border-2); background: var(--tm-bg-3); font-size: var(--tfcc-text-sm); font-weight: bold; }
+#tfcc-panel .r-chip.r-compact .r-pill { padding: 1px 4px; gap: 1px; }
+/* Info buttons and the explanation they disclose (owner decision 4). */
+#tfcc-panel button.r-info { min-width: 44px; min-height: 44px; padding: 0; display: inline-flex;
+  align-items: center; justify-content: center; border-color: var(--tm-border); }
+#tfcc-panel button.r-info[aria-expanded="true"] { background: var(--tm-hover); border-color: var(--tm-border-2); }
+#tfcc-panel .r-infotext { color: var(--tm-meta); font-size: var(--tfcc-text-sm); border-left: 3px solid var(--tm-accent-text);
+  padding: 2px 0 2px 8px; margin: 0 0 6px 0; }
+#tfcc-panel [hidden] { display: none !important; }
+#tfcc-panel .r-status { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 /* Nav: all six views, VIEWS order, 3 x 2. No More menu. */
 #tfcc-panel .r-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 6px; }
 #tfcc-panel .r-nav button { min-height: 44px; padding: 2px 4px; font-weight: bold; font-size: 0.93em; line-height: 1.2;
@@ -579,9 +593,11 @@ function rChip() {
 }
 function rHead(o) {
   const collapsed = !!o.collapsed;
-  return '<div class="r-head"><div class="r-id">' + LOGO + rChip() + '</div>'
+  // Collapsed keeps the word: with no nav on screen, a bare "16" says nothing.
+  // The badge is text in the id group, so it is what wraps, never a button.
+  return '<div class="r-head"><div class="r-id">' + LOGO + rChip()
+    + (collapsed ? '<span class="tfcc-badge">16 new</span>' : '') + '</div>'
     + '<span class="r-ctl tfcc-head-btns">'
-    + (collapsed ? '<span class="tfcc-badge">16 new</span>' : '')
     + '<button type="button" class="r-ico" data-act="refresh" aria-label="Refresh">' + ico('refresh') + '</button>'
     + '<button type="button" class="r-ico" data-act="takeover" aria-pressed="false" aria-label="Expand">' + ico('expand') + '</button>'
     + (collapsed
@@ -594,7 +610,7 @@ function rNav(active) {
     + (cls ? ' class="' + cls + '"' : '') + ' aria-pressed="' + (active === v ? 'true' : 'false') + '"'
     + (aria ? ' aria-label="' + aria + '"' : '') + '><span>' + label + '</span>' + (n ? '<span class="r-n">' + n + '</span>' : '') + '</button>';
   return '<div class="r-nav tfcc-nav" role="group" aria-label="Views">'
-    + cell('threads', 'Threads', '16 new', '', 'Threads, 16 new, 6 subscribed')
+    + cell('threads', 'Threads', '16', '', 'Threads, 16 new, 6 subscribed')
     + cell('catchup', 'Catch up', '3', '', 'Catch up, 3')
     + cell('search', 'Search', '')
     + cell('drafts', 'Drafts', '1', '', 'Drafts, 1')
@@ -676,15 +692,30 @@ function revisedCatchup(o) {
   return rHead({}) + rNav('catchup')
     + '<h3 class="r-vh" tabindex="-1">Catch up <span class="tfcc-note" style="font-weight:normal">since 7 Aug 12:00</span></h3>'
     + '<div class="r-catchbar"><button type="button" data-act="markall">Mark all read</button>'
-    + '<button type="button" data-act="catchup-done">Set catch-up point to now</button></div>'
-    + '<p class="tfcc-note" style="margin:0 0 6px 0">Marking read here hides a thread from this list. It cannot clear '
-    + 'Torn\'s own new-post counter, which only clears when you open the thread.</p>'
+    + '<button type="button" data-act="catchup-done">Set catch-up point to now</button>'
+    + infoBtn('catchup', 'About Catch up', opts.infoOpen) + '</div>'
+    + infoText('catchup', opts.infoOpen, 'Marking read here hides a thread from this list. It cannot clear '
+      + 'Torn\'s own new-post counter, which only clears when you open the thread.')
     + group('Guides', [pick[0]], 0) + group('Scripts and tools', [pick[1]], 1) + group('Unfiled', [pick[2]], 2);
 }
-function revisedMine() {
+// The info button and its explanation. The text is always in the markup, with
+// `hidden` when closed, so aria-controls always names a real element.
+function infoBtn(key, label, open) {
+  return '<button type="button" class="r-info" data-act="info" data-info="' + key + '" aria-expanded="'
+    + (open ? 'true' : 'false') + '" aria-controls="tfcc-info-' + key + '" aria-label="' + esc(label) + '">'
+    + ico('info', 20) + '</button>';
+}
+function infoText(key, open, text) {
+  return '<p class="r-infotext" id="tfcc-info-' + key + '"' + (open ? '' : ' hidden') + '>' + esc(text) + '</p>';
+}
+function revisedMine(o) {
+  const opts = o || {};
   return rHead({}) + rNav('mine')
     + '<div class="r-rx">' + pill() + '</div>'
-    + '<p class="tfcc-note" style="margin:0 0 6px 0">Threads you started or posted in. Updated 4m ago.</p>'
+    + '<div class="r-status"><span class="tfcc-note">Updated 4m ago. 1 not checked yet.</span>'
+    + infoBtn('mine', 'About My posts', opts.infoOpen) + '</div>'
+    + infoText('mine', opts.infoOpen, 'Threads you started or posted in, from Torn\'s API. Opening this view '
+      + 'refreshes it at most once every 15 minutes unless you press Refresh.')
     + rFilter(false) + '<div class="tfcc-rows">' + rRow(ROWS[4], {}) + '</div>';
 }
 function rScreen(theme, width, body, caption, extra) {
@@ -696,21 +727,60 @@ function revisedPage(width) {
   const phones = [
     rScreen('dark', w, revisedThreads(), 'R / dark / ' + w + ' / Threads at rest', fold),
     rScreen('light', w, revisedThreads(), 'R / light / ' + w + ' / Threads at rest', fold),
-    rScreen('dark', w, revisedCatchup({}), 'R / dark / ' + w + ' / Catch up, one-tap Read', fold),
-    rScreen('light', w, revisedCatchup({ openRow: 1 }), 'R / light / ' + w + ' / Catch up, one drawer open'),
+    rScreen('dark', w, revisedCatchup({}), 'R / dark / ' + w + ' / Catch up, Read, info closed', fold),
+    rScreen('light', w, revisedCatchup({ openRow: 1, infoOpen: true }), 'R / light / ' + w + ' / Catch up, info open, drawer open'),
     rScreen('light', w, revisedThreads({ filtersOpen: true }), 'R / light / ' + w + ' / filters open'),
     rScreen('dark', w, revisedThreads({ shelf: true }), 'R / dark / ' + w + ' / badge shelf open'),
     rScreen('dark', w, revisedThreads({ openRow: 0 }), 'R / dark / ' + w + ' / Threads, one drawer open'),
-    rScreen('light', w, revisedMine(), 'R / light / ' + w + ' / My posts, reactions visible'),
+    rScreen('light', w, revisedMine(), 'R / light / ' + w + ' / My posts, info closed'),
+    rScreen('dark', w, revisedMine({ infoOpen: true }), 'R / dark / ' + w + ' / My posts, info open'),
     rScreen('dark', w, revisedThreads({ collapsed: true }), 'R / dark / ' + w + ' / collapsed, Show has text'),
     rScreen('light', w, revisedThreads({ collapsed: true }), 'R / light / ' + w + ' / collapsed, Show has text'),
   ];
   if (w === 320) {
     phones.push(screen('dark', w, revisedThreads(), { caption: 'R / dark / 320 / text at 200%',
       panelClass: 'tfcc-narrow" style="--tfcc-text: 28px; --tfcc-text-sm: 24px' }));
+    phones.push(rScreen('dark', 280, revisedThreads(), 'R / dark / 280 / header on one line', fold));
+    phones.push(rScreen('light', 280, revisedThreads(), 'R / light / 280 / header on one line'));
+    phones.push(rScreen('dark', 280, revisedThreads({ collapsed: true }), 'R / dark / 280 / collapsed'));
+    phones.push(rScreen('light', 280, revisedCatchup({ infoOpen: true }), 'R / light / 280 / Catch up, info open'));
   }
   return phones;
 }
+
+// The header fit (owner decision b), as the userscript would run it from the
+// ResizeObserver and after each draw. It reads only the panel's own nodes.
+const FIT_SCRIPT = `<script>
+(function () {
+  function logoW(s) { return Math.min(24, Math.max(16, 0.545 * s)) * 106 / 45; }
+  function fitHeader(panel) {
+    var head = panel.querySelector('.r-head');
+    if (!head) return;
+    var cs = getComputedStyle(panel);
+    var c = panel.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    var chip = head.querySelector('.r-chip');
+    var show = head.querySelector('.r-show');
+    var icons = show ? 2 : 3;
+    function solve() {
+      var chipW = chip ? chip.getBoundingClientRect().width : 0;
+      var showW = show ? show.getBoundingClientRect().width : 0;
+      for (var s = 44; s > 24; s -= 0.5) {
+        if (logoW(s) + chipW + icons * s + showW + 20 <= c) return s;
+      }
+      return 24;
+    }
+    if (chip) chip.classList.remove('r-compact');
+    panel.style.setProperty('--tfcc-hb', '44px');
+    var s = solve();
+    if (s < 36 && chip) { chip.classList.add('r-compact'); s = solve(); }
+    panel.style.setProperty('--tfcc-hb', s + 'px');
+    if (show) { s = solve(); panel.style.setProperty('--tfcc-hb', s + 'px'); }
+    panel.setAttribute('data-hb', String(s));
+  }
+  var panels = document.querySelectorAll('.tfcc-narrow');
+  for (var i = 0; i < panels.length; i += 1) fitHeader(panels[i]);
+})();
+</script>`;
 
 // ---- write -----------------------------------------------------------------------
 const FOLD = 560;
@@ -746,11 +816,11 @@ const files = {
   'revised-375.html': page('Revised recommendation at 375px',
     'Issue #33 revised recommendation (task-first A, after the Codex review) at 375px, dark and light.',
     ['<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start;max-width:2100px">'
-      + revisedPage(375).join('\n') + '</div>'], REVISED_CSS),
+      + revisedPage(375).join('\n') + '</div>' + FIT_SCRIPT], REVISED_CSS),
   'revised-320.html': page('Revised recommendation at 320px',
     'Issue #33 revised recommendation (task-first A, after the Codex review) at 320px, dark and light, plus 200% text.',
     ['<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start;max-width:1900px">'
-      + revisedPage(320).join('\n') + '</div>'], REVISED_CSS),
+      + revisedPage(320).join('\n') + '</div>' + FIT_SCRIPT], REVISED_CSS),
 };
 
 for (const [name, html] of Object.entries(files)) {
