@@ -1,251 +1,218 @@
+<p align="center">
+  <img src="docs/images/fcc-banner.png" alt="Torn Forum Command Center banner" width="1200">
+</p>
+
 # Torn Forum Command Center
 
-> ## 📱 TORN PDA COMPATIBLE
->
-> Runs in the **Torn PDA** app as well as desktop Tampermonkey. The workspace
-> lays out for narrow mobile screens, and the panel appears reliably under PDA's
-> own userscript engine.
+Forum Command Center, or FCC, turns Torn's small subscribed-threads box into a full forum workspace. It runs on the forums page in desktop Tampermonkey and Torn PDA, using Torn's official API to organise followed threads, show what is new, preserve reply drafts, and search discussions you care about.
 
-Torn's subscribed-threads box is a small list in a corner. This replaces it with
-a real workspace on the forums page: folders, tags, pinned threads, unread
-tracking, a catch-up view for everything new since your last visit, reply drafts
-saved on your device, and search across the threads you follow — including the
-author-plus-text search Torn's own interface never gives you a box for.
-
-Needs a Torn API key that can read your subscribed threads. Nothing else, and
-nothing leaves your browser except the API calls themselves.
-
-## Read-only, and it stays that way
-
-This script **never acts on your account**. It cannot post, reply, subscribe,
-unsubscribe, vote, or change anything at all. There is no POST, PUT or DELETE
-anywhere in it, no simulated click, no form submission, and no page it loads on
-its own.
-
-It makes **no non-API requests to Torn**. Every request is a GET to
-`api.torn.com`, and the only thing it reads from the page is the address bar and
-the title of the page you are already looking at. It generates no alerts, opens
-no windows, and changes no page title or favicon.
-
-That is checked clause by clause against Torn's scripting rule and the API
-acceptable usage terms in [`docs/rules-compliance.md`](docs/rules-compliance.md),
-and it is held there by tests rather than by good intentions: a suite asserts
-each property and a mutation check breaks each one in turn to prove the suite
-notices.
+FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or automate gameplay. Its folders, tags, notes, drafts, read markers, badges, and settings stay on your device.
 
 ## Features
 
-### The workspace
+### A complete forum workspace
 
-- Every subscribed thread on one page, with its unread count, forum, author and
-  last activity.
-- Sort by last activity, unread first, your own priority, title, author, forum,
-  or recently added. Pinned threads stay at the top of all of them.
-- Filter by folder, by tag, by unread only, or by typing a query.
-- Give a thread a priority from -2 to +2 when "last activity" is not the order
-  you actually care about.
-- Expand the panel to fill the screen, or collapse it to a single line.
-- A Rows shown setting (3 to 30, or All; 5 by default) that caps Threads,
-  Catch up and My posts, with Show all for the rest. Search and Drafts are never capped.
+- **Threads** brings subscribed and manually organised threads into one sortable, filterable list.
+- **Catch up** shows new activity since your catch-up point, grouped by folder.
+- **My posts** lists threads you started or posted in, whether or not you follow them.
+- **Search** covers thread metadata and can search cached post bodies.
+- **Drafts** collects saved replies.
+- **Settings** holds the API key, refresh, appearance, folders, backup, storage, and badge controls.
+- Sort by activity, unread status, personal priority, title, author, forum, or recently added. Pinned threads stay first.
+- Filter by folder, tag, unread state, or query.
+- Rows shown can cap Threads, Catch up, and My posts. Search and Drafts remain uncapped, and Expand shows every row.
 
-### Folders, tags and watchlists
+### Folders, tags, and personal organisation
 
-- Folders are the watchlists: keep guides, faction discussion and script
-  releases apart.
-- A folder can claim a forum, and new subscriptions from that forum file
-  themselves into it. Filing a thread by hand always wins over a rule.
-- Tag anything. Filter and search by tag.
-- Add a private note to a thread. Notes are searchable.
-- Deleting a folder unfiles its threads. It never deletes your notes or tags:
-  the label goes, the work stays.
+- Create and reorder folders, including the built-in **Unfiled** group.
+- Let a folder claim one or more forums. New subscriptions from a claimed forum file themselves automatically; filing a thread by hand always wins.
+- A forum can belong to only one folder. Removing a claim affects future filing and does not move threads already filed.
+- Folders organise only threads you subscribe to or file by hand. They never add every thread from a forum.
+- Catch up follows the folder order, and each group can be collapsed.
+- Add tags and private notes, pin threads, set personal priority, and archive or unarchive without deleting local work.
 
-### Read, unread and catch-up
+### Read, unread, and Catch up
 
-- Unread counts come from Torn, per thread.
-- **Catch up** lists everything new since your last visit, grouped by folder.
-- Mark one thread read, or all of them, to clear it from the list. This hides a
-  thread from your catch-up view; it cannot clear Torn's own new-post counter,
-  which only clears when you open the thread. The panel says so rather than
-  pretending otherwise.
+- Subscribed-thread unread counts come from Torn.
+- Mark read is a local dismissal. It cannot clear Torn's own new-post counter; opening the thread on Torn does that.
+- **Mark all read** clears the current Catch up list locally.
+- **Set catch-up point to now** establishes where the next Catch up begins.
+- Optional author-only mode treats a thread as new only when its author posts. This is useful for guides, scripts, and announcement threads.
+- My posts uses Torn's unread value for started threads when available. Posted-in threads without a Torn count receive a clearly labelled local count.
 
-### My posts
+### Drafts and search
 
-- A **My posts** view lists the threads you started or posted in, whether or
-  not you follow them, with the same row actions, filters and sort as Threads,
-  plus `is:started` and `is:posted`.
-- Threads you started carry Torn's own unread count. Threads you only posted in
-  get a count made on your device, from the first time the script sees them,
-  cleared by Mark read or by your own post, and labelled as a local count. A
-  thread not looked up yet says so instead of showing zero.
-- It fetches only when you open it, at most once every 15 minutes unless you
-  press Refresh, and at most 17 requests by default.
-- A line under the panel header totals the thumbs up and thumbs down on the
-  threads you started, read from each thread's opening post inside the My posts
-  refresh, with Torn's rating shown as "net" until a thread is checked. It ends
-  with your forum karma as an endless-knot icon and a number. Torn's API has no
-  subscriber count, so none is shown.
+- Save reply drafts on the device and insert them into Torn's reply box.
+- Reply-box autosave is enabled by default and can be disabled.
+- If the reply box cannot be found, FCC offers Copy instead of silently failing.
+- Search titles, authors, forums, tags, and notes.
+- Deep search fetches post bodies for selected threads and caches them locally. It covers up to five fetched pages per thread.
+- Queries support bare words, quoted phrases, author, tag, folder, unread, pinned, and draft filters, with negation.
+- **Search on Torn** sends the query to Torn's own forum search through an ordinary link.
 
-### Drafts
+### Reactions, karma, and badges
 
-- Write a reply, save it, come back days later. Drafts live on your device.
-- On a thread page, insert a saved draft straight into the reply box. Where the
-  reply box cannot be found, you get a Copy button and an explanation instead of
-  a silent failure.
-- Optional autosave of whatever is in the reply box, on by default. It reads
-  your typing and keeps it locally so a long reply survives a stray navigation;
-  one checkbox in Settings turns it off.
+- My posts checks the opening posts of started threads for thumbs up and thumbs down.
+- Until a thread has been checked, Torn's thread rating is displayed only as **net**. The project does not assume whether that source value means net reactions or likes alone.
+- The reactions display also shows forum karma.
+- Fifteen local badges cover setup, organisation, focused thread visits, explored forums, backlog clearing, and Catch up streaks.
+- Badge streaks use TCT/UTC days. Badges make no API request of their own.
+- Badge progress can be disabled, exported, imported, or reset.
 
-### Search
+### Appearance and mobile layout
 
-- Search titles, authors, forums, your notes and your tags.
-- Search **inside post bodies** for chosen threads, cached so the second search
-  is instant.
-- One query syntax for both: bare words, `"quoted phrases"`, `by:username`,
-  `tag:name`, `folder:name`, `is:unread`, `is:pinned`, `is:draft`, and a leading
-  `-` to exclude any of them.
-- **Search on Torn** hands the same query to Torn's own forum search. Torn
-  understands `by:player words` but has never exposed a box for it, which
-  players have asked for more than once.
+- Choose **Dark**, **Light**, or **Match Torn**.
+- Optionally hide the panel when opening one of FCC's thread links.
+- Clip long titles and summaries to one line, with the full content available through the row's expanded actions on narrow panels.
+- The see-through option uses translucent panel and row backgrounds. Expand remains solid.
+- On narrow panels:
+  - the icon header scales to remain on one line;
+  - the views form a compact navigation grid with accessible counts;
+  - filters move behind a Filters control;
+  - each row has a drawer for pin, read, draft, archive, priority, folder, tag, and note actions;
+  - tag and note controls use small in-panel editors;
+  - info buttons explain controls without permanently occupying the screen.
 
-### Backup
+### Backup and diagnostics
 
-- Export folders, tags, pins, priorities, notes, read markers and drafts as one
-  string, and import it in another browser.
-- An export never carries your API key or the post cache.
-- Import is additive and tells you what it changed before it changes it. A
-  damaged string is refused by name and changes nothing.
+- Export folders, order, forum claims, tags, pins, priorities, notes, read markers, drafts, and badges as one portable string.
+- The API key and post cache are never exported.
+- Import is additive and reports what it added. Invalid data is refused without altering the workspace.
+- The debug report excludes the API key, drafts, notes, post text, thread titles, and thread IDs.
+- Auto refresh is off by default and pauses while the page is hidden or the window is unfocused.
 
 ## Install
 
-### Desktop
+### Desktop with Tampermonkey
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/).
-2. Install the script.
-3. Visit <https://www.torn.com/forums.php>.
-4. Open Settings in the panel and paste your Torn API key.
+2. Install [Torn Forum Command Center from Greasy Fork](https://greasyfork.org/en/scripts/599453-torn-forum-command-center).
+3. Visit [Torn Forums](https://www.torn.com/forums.php).
+4. Open FCC's **Settings** view and add the API key described below.
 
-### Torn PDA (mobile)
+### Torn PDA
 
-1. Add the script through Torn PDA's own userscript manager.
-2. Set injection time to **END**.
-3. Open the forums in the app and add your key in Settings.
+1. Add the same userscript through Torn PDA's userscript manager, using the Greasy Fork listing: https://greasyfork.org/en/scripts/599453-torn-forum-command-center.
+2. Set its injection time to **END**.
+3. Open Torn's forums in the app.
+4. Open FCC's **Settings** view and add the API key.
 
-No separate mobile build exists. The same file runs in both places.
+There is no separate mobile build. Torn PDA and desktop Tampermonkey run the same userscript.
 
-## Getting an API key
+## API key
 
-Torn, Settings, API Key.
+FCC requires a **Minimal Access** Torn API key. Limited Access also works but is unnecessary, while Public Only does not provide the required subscribed-thread selections. Do not give FCC a Full Access key.
 
-The script reads two of your own selections, `forumsubscribedthreads` and
-`forumfeed`, plus the public forum endpoints and, for My posts, the public
-`forumthreads` and `forumposts` selections (and `profile`, only for your forum
-karma when you have no threads or posts). Those need a **Minimal
-Access** key, which is the level to create. **Limited Access** also works but is
-not needed. **Public Only** does not.
+In FCC's Settings, select **Create a custom key on Torn**. This is a normal link to Torn's key page and pre-fills the least-privilege selections used by the script. Torn creates nothing until you confirm it there, and no key is placed in the link.
 
-Do not give it a Full Access key. It has no use for one and will not ask again
-if you give it less.
+The selections are:
 
-The key is stored in userscript storage on that device. It is masked in the
-panel, excluded from exports, and stripped out of error messages and debug
-reports before they can be shown or copied.
+- `user`: `forumsubscribedthreads`, `forumfeed`, `forumthreads`, `forumposts`, `profile`
+- `forum`: `categories`, `thread`, `posts`
 
-## Privacy and permissions
+Paste the confirmed key back into FCC and save it.
 
-- Runs only on `forums.php`, enforced at runtime as well as in the metadata,
-  because Torn PDA ignores `@match` and injects on every Torn page.
-- Requests exactly three permissions: `GM_getValue`, `GM_setValue` and
-  `GM_xmlhttpRequest`.
-- `@connect` names exactly one host, `api.torn.com`. There are no third-party
-  requests and no telemetry.
-- Only ever sends GET requests. It never posts, replies, subscribes,
-  unsubscribes, or changes anything at all on your account.
-- Folders, tags, notes and drafts stay in userscript storage. Clearing ordinary
-  Torn site data does not clear them; removing the script does.
-- **Autosave reads what you type into Torn's reply box** and saves it as a local
-  draft, so a long reply survives a stray navigation. It is on by default, it
-  writes only to storage on your device, and nothing about it is ever
-  transmitted. Turn it off with one checkbox in Settings.
-- The Settings view states, next to the key input, exactly who can see your data
-  (nobody), what it is used for, where it is stored, and what access level is
-  needed. That is Torn's API terms requirement, and it belongs on screen rather
-  than in a readme.
+The key is stored in userscript storage on that device, masked in the panel, excluded from exports, and removed from copied errors and debug reports.
 
-## How it stays inside Torn's rules
+## Settings overview
 
-Torn's rule permits software only when it relies "on data from our API or from a
-page that you have manually loaded and are actively viewing", and prohibits
-making "additional non-API requests to Torn", scraping pages not currently being
-viewed, bypassing CAPTCHA, extracting data from unfocused pages, generating
-alerts, or drawing attention to itself or another window.
+### API key
 
-This script makes **no non-API requests to Torn at all**. Every request is a GET
-to `api.torn.com`. The only thing it reads from the page is the address bar and
-the page title, of the page you are already looking at.
+Shows the required access level, who can see the stored data, what FCC uses it for, where it is stored, and the requests FCC makes.
 
-It also takes **no action on your behalf**. There is no POST anywhere in it, no
-simulated click, no form submission, and no navigation it starts by itself.
-Inserting a saved draft types into the reply box and stops; you press Post.
+### Refreshing
 
-A refresh is one action and at most 13 requests: two fixed calls, one forum-name
-call at most once a day, and up to ten last-activity lookups for threads with
-unread posts. Torn's API docs allow "up to 100 individual requests per minute
-across all of their keys"; this holds itself to **40**, leaving room for whatever
-else uses your key.
+Controls optional auto refresh, activity lookups, and author-only new-post tracking.
 
-Auto refresh is off by default. When on, the shortest interval is two minutes and
-it stops whenever the page is hidden **or unfocused**, so it never runs against a
-window you are not using.
+At the default activity-lookup setting:
 
-It generates no alerts, changes no title or favicon and opens no window. The one
-focus call puts the caret in the reply box after you click Insert, inside the
-page you are already on.
+- a Threads refresh is at most 13 requests;
+- a My posts refresh is at most 17 requests;
+- the rate limiter permits no more than 40 requests in a rolling minute.
 
-Torn's API terms also require that a disabled or invalid key is removed on
-error, because retrying one risks a temporary IP ban. If Torn rejects the key,
-the script stops using it immediately, remembers that across reloads, and tells
-you to save a new one.
+My posts refreshes on opening at most once every 15 minutes unless Refresh is pressed. Auto refresh is disabled by default.
 
-`docs/rules-compliance.md` has the full clause-by-clause check against both the
-scripting rule and the API acceptable usage terms.
+### Appearance
+
+Controls the theme, Rows shown, opening-thread auto-hide, line clipping, and the see-through background.
+
+### Folders
+
+Creates, reorders, and deletes user folders; moves Unfiled; and manages each folder's forum claims. Deleting a folder unfiles its threads but preserves their tags and notes.
+
+### Backup, storage, and badges
+
+Exports or imports the workspace, reports post-cache size, clears cached posts, creates the debug report, resets local data, and manages the badge catalogue.
+
+## Privacy and safety
+
+- FCC runs only on `forums.php`, with a runtime scope check because Torn PDA can ignore userscript `@match` metadata.
+- It requests only `GM_getValue`, `GM_setValue`, and `GM_xmlhttpRequest`.
+- Its only allowed connection host is `api.torn.com`.
+- Every network request is a GET. There are no POST, PUT, or DELETE requests, no third-party requests, and no telemetry.
+- FCC does not scrape Torn forum pages. Route capture uses the current address and page title; draft support reads the reply box on the page you are viewing, and the Match Torn theme reads the page background colour.
+- The script does not simulate account actions, submit forms, open windows, or navigate on its own. Inserting a draft stops at the reply box; the player presses Torn's Post button.
+- Auto refresh stops while the page is hidden or the window is unfocused.
+- A refused or invalid key is disabled instead of being retried repeatedly.
+- Local folders, tags, notes, drafts, read state, badges, and settings remain in userscript storage.
+- Clearing normal Torn site data does not clear userscript storage, but removing the userscript can.
+- Export never includes the key or post cache.
+
+See [`docs/rules-compliance.md`](docs/rules-compliance.md) for the clause-by-clause review of Torn's scripting and API rules.
 
 ## Limitations
 
-- **It cannot clear Torn's unread counter.** Marking read is a local dismissal.
-  Only opening a thread on Torn clears Torn's own count.
-- **It cannot notify you when your browser is closed.** No userscript can. The
-  catch-up view is the honest substitute.
-- Read state does not sync between devices. Use export and import.
-- Last activity is not always exact. `forumsubscribedthreads` carries no
-  timestamp, so it is resolved from the activity feed, a budgeted per-thread
-  lookup, and your own visits, and each row tells you which one it used. A
-  thread whose time cannot be resolved shows "unknown" rather than a guess.
-- Deep search covers the pages it has fetched, up to five per thread, not the
-  whole of a very long thread.
-- Inserting a draft into the reply box depends on finding Torn's reply box. If
-  Torn changes it, you get a Copy button and a message, not a silent failure.
+- Mark read cannot clear Torn's own unread counter.
+- A userscript cannot notify you while the browser or app is closed.
+- Read state does not automatically sync between devices; export and import can move it.
+- `forumsubscribedthreads` has no last-activity timestamp, so FCC resolves activity from several sources. An unresolved time is shown as unknown rather than guessed.
+- Deep search covers fetched pages, not every page of a very long thread.
+- Draft insertion depends on Torn's reply box remaining discoverable. Copy remains available when it is not.
+- Torn's API does not expose a subscriber count, so FCC does not display one.
 
 ## Development
 
+Requires Node.js and no runtime or development dependencies.
+
 ```text
-npm test                        # 249 tests, Node only, no browser
+npm test
 npm run test:syntax
-node tests/mutation-check.mjs   # breaks each promise, checks a test notices
-node tests/render-preview.mjs   # every view as standalone HTML, for looking at
+npm run verify:forum
+node tests/mutation-check.mjs > mutation-check.log 2>&1
 ```
 
-Tests never modify the userscript on disk; see `tests/load-userscript.js`. The
-mutation check does modify it, deliberately, and restores it — including on
-being killed. Do not pipe its output into `head`.
+Read the complete mutation report from `mutation-check.log`. Do not pipe the mutation check into `head`: it deliberately edits the userscript during each mutation and restores it, including when interrupted.
 
-Release is blocked on `docs/qa-checklist.md`, which has to be walked on a real
-signed-in account on real hardware.
+Release remains blocked on [`docs/qa-checklist.md`](docs/qa-checklist.md), which must be completed against a signed-in Torn account and real Torn PDA and desktop environments.
+
+### Code map
+
+- `torn-forum-command-center.user.js`
+  - **Engine**: pure normalisation, merging, unread state, sorting, queries, search, export/import, and badge rules.
+  - **Runtime**: storage, API transport, rate limiting, capture, rendering, and lifecycle integration.
+- `tests/load-userscript.js`: reads the userscript, adds test exports in memory, and executes it in a mocked VM context without modifying the source file.
+- `tests/*.test.js`: Node-only contract and regression tests.
+- `tests/mutation-check.mjs`: intentionally mutates promises one at a time and confirms that tests detect each break.
+- `tests/render-preview.mjs`: produces standalone visual previews.
+- `docs/architecture.md`: current design, data flow, constraints, and endpoint map.
+- `docs/qa-checklist.md`: real-device and live-API release checks.
+- `docs/rules-compliance.md`: Torn rule and API-term review.
+
+### Do not read the userscript whole
+
+The userscript is intentionally organised around marked Engine and Runtime sections. Do not dump the entire file into a review or assistant context.
+
+Use targeted searches first, then read only the relevant function or marked section. For example:
+
+```text
+rg -n "CUSTOM_KEY_SELECTIONS|VIEWS|BADGES|REQUESTS_PER_WINDOW" torn-forum-command-center.user.js
+rg -n "ENGINE START|RUNTIME START|renderSettingsView|buildPanelModel" torn-forum-command-center.user.js
+```
+
+Tests should continue to load the source through `tests/load-userscript.js`; they must not rewrite the production userscript on disk. The mutation check is the deliberate exception and must restore the file.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [`LICENSE`](LICENSE).
 
-The drawer's Archive icon is UXWing's "archive files" icon
-(https://uxwing.com/archive-files-icon/), used under the UXWing license, which
-allows commercial use and does not require attribution. It is credited here
-anyway.
+The drawer's Archive icon is UXWing's [archive files icon](https://uxwing.com/archive-files-icon/), used under the UXWing license. That license permits commercial use and does not require attribution; the project credits it here anyway.

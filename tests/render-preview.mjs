@@ -35,12 +35,12 @@ const env = loadUserscript({
 const api = env.exports;
 
 const THREADS = [
-  { id: 16589908, forumId: 61, title: 'A practical education guide and script companion', unread: 3, total: 214, author: 'DaftVino' },
-  { id: 16407150, forumId: 63, title: 'Public API v2 project board', unread: 0, total: 88, author: 'Chedburn' },
-  { id: 16474152, forumId: 67, title: 'SideWinder - Advanced Sidebar for Torn City', unread: 12, total: 46, author: 'Sidewinder' },
-  { id: 16208166, forumId: 63, title: 'Actual RSS feed for forum threads', unread: 0, total: 9, author: 'someone' },
-  { id: 16354991, forumId: 4, title: 'You can search forums by user AND text - show it', unread: 1, total: 31, author: 'aplayer' },
-  { id: 15978774, forumId: 4, title: 'A thread with a deliberately very long title that has to wrap on a narrow phone screen without pushing the page sideways', unread: 0, total: 400, author: 'verbose' },
+  { id: 16589908, forumId: 61, title: 'A practical education guide and script companion', unread: 3, total: 214, author: 'SpaceGhost' },
+  { id: 16407150, forumId: 63, title: 'Public API v2 project board', unread: 0, total: 88, author: 'Goku' },
+  { id: 16474152, forumId: 67, title: 'Ghost Planet - Advanced Sidebar for Torn City', unread: 12, total: 46, author: 'JohnnyBravo' },
+  { id: 16208166, forumId: 63, title: 'Actual RSS feed for forum threads', unread: 0, total: 9, author: 'ScoobyDoo' },
+  { id: 16354991, forumId: 4, title: 'You can search forums by user AND text - show it', unread: 1, total: 31, author: 'BugsBunny' },
+  { id: 15978774, forumId: 4, title: 'A thread with a deliberately very long title that has to wrap on a narrow phone screen without pushing the page sideways', unread: 0, total: 400, author: 'Velma' },
 ];
 
 api.state.feed.subscribed = THREADS.map((t) => api.normaliseSubscribedRow({
@@ -85,8 +85,8 @@ api.state.drafts = api.saveDraft(
   NOW - 30 * MIN, 'A practical education guide and script companion',
 );
 api.state.postCache = api.postCacheAdd(api.freshPostCache(), 16589908, [
-  { id: 1, authorName: 'DaftVino', at: NOW - 200 * MIN, text: 'The bank interest formula is compounded daily, not weekly. That is the part everybody gets wrong.' },
-  { id: 2, authorName: 'Chedburn', at: NOW - 100 * MIN, text: 'Confirmed, and the display rounds down.' },
+  { id: 1, authorName: 'SpaceGhost', at: NOW - 200 * MIN, text: 'The bank interest formula is compounded daily, not weekly. That is the part everybody gets wrong.' },
+  { id: 2, authorName: 'Goku', at: NOW - 100 * MIN, text: 'Confirmed, and the display rounds down.' },
 ], { fetchedAt: NOW, pages: 1, complete: true });
 
 // The Threads filter and the Search query are the same field on purpose, so
@@ -232,7 +232,7 @@ function page(title, theme, body, width, hostile, narrow, extraCss, underlay, ta
 const written = [];
 for (const view of api.VIEWS) {
   api.state.settings.view = view;
-  api.state.searchQuery = view === 'search' ? 'by:DaftVino' : '';
+  api.state.searchQuery = view === 'search' ? 'by:SpaceGhost' : '';
   for (const theme of ['dark', 'light']) {
     api.state.settings.theme = theme;
     const body = api.panelHtml(api.buildPanelModel(NOW));
@@ -385,7 +385,7 @@ const UNDERLAY_STATES = [
   ['narrow-threads-drawer', true, () => { api.state.settings.view = 'threads'; api.state.openRowId = '16474152'; }],
   ['narrow-catchup', true, () => { api.state.settings.view = 'catchup'; }],
   ['wide-threads', false, () => { api.state.settings.view = 'threads'; }],
-  ['wide-search', false, () => { api.state.settings.view = 'search'; api.state.searchQuery = 'by:DaftVino'; }],
+  ['wide-search', false, () => { api.state.settings.view = 'search'; api.state.searchQuery = 'by:SpaceGhost'; }],
   ['wide-settings', false, () => { api.state.settings.view = 'settings'; }],
 ];
 for (const [label, narrowState, setUp] of UNDERLAY_STATES) {
