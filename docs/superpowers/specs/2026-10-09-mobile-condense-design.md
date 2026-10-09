@@ -358,8 +358,8 @@ The 320px file adds a 200% text frame and four frames at 280px.
 - **The logo scales with the buttons:** height `clamp(16px, 0.545 x size,
   24px)`.
 - **Collapsed, Show is text.** The third button reads "Show" beside a chevron.
-  The collapsed header keeps **"16 new"** with the word (section 13a) as a text
-  badge in the logo-and-chip group. That badge is what wraps beneath the logo
+  The collapsed header shows the unread count as a bare **"16"** text badge in
+  the logo-and-chip group, with the accessible name "16 new" (section 13a). That badge is what wraps beneath the logo
   when space runs out, never a button. Expanded, Hide is a chevron-up icon
   named "Hide the panel".
 
@@ -380,9 +380,12 @@ The 320px file adds a 200% text frame and four frames at 280px.
   is stronger: every view is visible, there is no menu state, and the review's
   More-focus finding cannot happen. It costs one 44px row compared with the
   first draft, which is the price of discoverability.
-- **Reaction totals** (thumbs and karma) appear **on My posts only, at every
-  screen size** (owner answer 2), as the first line of that view, using the
-  existing pill markup. The pill leaves the desktop nav row as well.
+- **Reaction totals** (thumbs and karma), revised by the owner (section 13c):
+  - **Narrow panels:** they appear as the first line of My posts, using the
+    existing pill markup.
+  - **Wide panels (desktop):** the pill **stays in the nav row before My
+    posts**, exactly as on main, and still opens My posts. The desktop nav is
+    unchanged from main.
 
 ### 4.3 Filter line
 
@@ -644,9 +647,9 @@ contract:
   request budget (13 per refresh, 40 per minute). Nothing here makes a
   request.
 - Wide panels (no `tfcc-narrow`) keep today's layout, including #30's inline
-  priority, with two changes the owner chose for every size:
-  - the reactions pill moves from the nav row to the top of My posts;
-  - standing explanations go behind info buttons (section 13d).
+  priority. The nav is unchanged from main, with the reactions pill before My
+  posts, still opening My posts. The one change the owner chose for every size
+  is that standing explanations go behind info buttons (section 13d).
 - The thread anchor (`data-tfcc-thread`) and #8's plain-click rule. Only the
   anchor's display changes, to a block.
 - The badge chip's content and aria-label, the shelf, the toast and the
@@ -695,7 +698,7 @@ contract:
 | #8 auto-hide: only plain clicks on a thread link collapse | Read, Actions and the drawer controls are siblings of the title span, never inside the anchor. `threadLinkOf` returns null for them. Tests: `row-more` and `read` do not collapse. |
 | Expand / takeover | The same `data-act="takeover"` with `aria-pressed`. If Expand crosses the breakpoint, section 6 applies. |
 | Badge chip and shelf | The same chip content, in a box as tall as the header buttons. The pill is compact below a 36px button size. The shelf opens under the header (measured above). |
-| Reactions pill opens My posts | Owner answer 2: the pill shows only as the first line of My posts, at every size. The "opens My posts" behaviour is therefore retired: the pill is a summary inside the view it used to open. If it stays a button there, tapping it is harmless. The implementation may render it as plain text with the same label. |
+| Reactions pill opens My posts | Wide panels: unchanged from main. The pill sits in the nav before My posts and opens My posts. Narrow panels: the totals are the first line of My posts. Tapping them there is harmless, and the implementation may render them as plain text with the same label. Section 13c. |
 | Rows cap and Show all | The cap applies before rendering. `openRowId` is reconciled against the capped rows. |
 | Drafts and search | Drafts and Search are direct nav cells. Draft/Edit draft is in the drawer with the same `data-act`. |
 | 320px header wrap rule | Superseded by owner decision b. Refresh, Expand and Hide stay one nowrap unit, in order. Instead of wrapping, they shrink, so the header is one line at 280-375px (measured). |
@@ -755,7 +758,7 @@ given.
 | A3 | Focus lost when an action removes its row | Accepted | Same control, then next row, previous row, view heading. The successor is captured before mutation. Section 6. |
 | A4 | Stale `openRowId` | Accepted | Reconciled after every model build. Section 6. |
 | A5 | Dirty editor destroyed by redraw | Modified | Corrected diagnosis: `change` already commits on blur, so the value survives. What gets lost is the tap that caused the blur. Fixed by a press-aware deferred flush, plus a `drawerEdit` mirror against forced redraws. Section 6. |
-| A6 | Search and reactions hidden in More | Modified | Stronger than asked: More is removed and all six views are visible. Reaction totals are visible at the top of My posts, not on every view, which saves 50px. The owner confirmed this for every size (answer 2). Section 4.2. |
+| A6 | Search and reactions hidden in More | Modified | Stronger than asked: More is removed and all six views are visible. Reaction totals are visible at the top of My posts, not on every view, which saves 50px. The owner confirmed this for narrow panels. On desktop the pill stays in the nav as on main (section 13c). Section 4.2. |
 | A7 | Focus hole after choosing a More view | Accepted | Removed at the source (no More). A view change focuses the pressed nav cell. Section 6. |
 | A8 | Breakpoint watches the viewport | Accepted | `ResizeObserver` on the panel's own element, with hysteresis. A container query was considered. Section 5. |
 | A9 | 320px only at default text size | Accepted | `min-height`/`min-width`, auto-fit grids, and 200% measured. Section 4.7. |
@@ -779,7 +782,8 @@ given.
 All six are closed by the owner's decisions of 2026-10-09 (section 13):
 
 1. **Pin outside Catch up:** stays at two taps.
-2. **Reaction totals:** on My posts only, at every screen size.
+2. **Reaction totals:** on narrow panels, at the top of My posts. On desktop,
+   the pill stays in the nav before My posts, as on main (revised; see 13c).
 3. **Container queries:** Torn PDA's minimum iOS version is unknown. Look it up
    only if a pure-CSS container query is ever needed.
 4. **ADR 0001:** a `ResizeObserver` on the script's own `#tfcc-panel` stays
@@ -806,10 +810,13 @@ disagree, this section wins.
   6 subscribed").
 - On wide panels the nav keeps today's "Catch up (3)" text form. That is
   outside this issue.
-- **The collapsed header keeps "16 new"**, word included. A collapsed panel has
-  no nav, so a bare "16" beside the logo would not say what it counts, and
-  "new" is the reason to press Show. It is a text badge, and it is the part of
-  the header that wraps under the logo when space runs out.
+- **The collapsed header shows just "16"** (owner, revised 2026-10-09).
+  - The badge's accessible name stays "16 new", written as a visually hidden
+    span beside an `aria-hidden` "16", because `aria-label` on a plain span is
+    not reliably read.
+  - It is a text badge, and it is the part of the header that wraps under the
+    logo when space runs out.
+  - This replaces an earlier choice in this spec to keep the word "new".
 
 ### 13b. Header buttons are icons that scale to the width
 
@@ -878,6 +885,14 @@ still meet WCAG 2.2 SC 2.5.8 (AA). That is the floor the owner set.
 These are recorded in section 12, and the body is amended: section 4.2 for
 the reaction totals, section 5 for the ADR ruling and the iOS note, and
 section 4.4 for Pin.
+
+**Reaction totals, revised by the owner (2026-10-09).** The first answer was
+"My posts only, at every size". The owner then decided:
+- **Desktop / wide panels:** the reactions pill **stays in the nav, before My
+  posts**, exactly as on main, and still opens My posts. The desktop nav is
+  unchanged from main.
+- **Narrow panels:** the totals sit at the top of My posts, as in the revised
+  design. The narrow nav grid has no pill.
 
 ### 13d. Standing explanations go behind info buttons, at every size
 
