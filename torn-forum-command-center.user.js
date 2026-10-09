@@ -4439,8 +4439,6 @@
       '  --tfcc-focus-ring: 2px solid var(--tm-good-text);',
       '  --tfcc-tier-bronze: #d6955b; --tfcc-tier-silver: #c3ccd6; --tfcc-tier-gold: #e8c06a;',
       '  --tfcc-tier-legend: #c9a2ff; --tfcc-locked: #8a8a8a;',
-      '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
-      '  --tfcc-mine-text: #141414; --tfcc-mine-border: #d9d9d9;',
       // "started" in My posts (#30): 6.2:1 on the row, 7.8:1 on the tag fill.
       '  --tfcc-started: #ff8080;',
       // #33: the narrow header button size; fitHeader overrides it inline.
@@ -4458,10 +4456,6 @@
       '  --tm-warn-text: #7a5600; --tm-accent-text: #14507d;',
       '  --tfcc-tier-bronze: #8c4e17; --tfcc-tier-silver: #4f5966; --tfcc-tier-gold: #7a5600;',
       '  --tfcc-tier-legend: #6a2fb5; --tfcc-locked: #6e6e6e;',
-      // Same fill and text as dark; only the border differs, because a light
-      // grey fill on the light panel is not itself a visible boundary.
-      '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
-      '  --tfcc-mine-text: #141414; --tfcc-mine-border: #5c5c5c;',
       // "started" (#30): 6.5:1 on the row, 8.0:1 on the tag fill.
       '  --tfcc-started: #a11414;',
       '}',
@@ -4579,19 +4573,11 @@
       '  color: var(--tm-text); }',
       '#' + PANEL_ID + ' .tfcc-nav { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
       '  margin-bottom: var(--tfcc-gap); }',
-      // My posts stands apart from the other five: last, pushed right, and
-      // light grey with dark text in every theme. Each rule names the button
-      // element so it is (1,1,1) or more and beats the generic button,
-      // :hover and aria-pressed rules above. Pressed is shown by an underline
-      // bar as well as the fill, so it never depends on colour alone.
-      // Measured: text on fill 13.05, on hover 11.01, on pressed 8.49; fill
-      // on the dark panel 11.68; light border on the light panel 5.97.
-      '#' + PANEL_ID + ' button.tfcc-nav-mine { margin-left: auto; background: var(--tfcc-mine-bg);',
-      '  color: var(--tfcc-mine-text); border-color: var(--tfcc-mine-border); font-weight: bold; }',
-      '#' + PANEL_ID + ' button.tfcc-nav-mine:hover { background: var(--tfcc-mine-hover);',
-      '  color: var(--tfcc-mine-text); }',
-      '#' + PANEL_ID + ' button.tfcc-nav-mine[aria-pressed="true"] { background: var(--tfcc-mine-pressed);',
-      '  color: var(--tfcc-mine-text); box-shadow: inset 0 -3px 0 var(--tfcc-mine-text); }',
+      // My posts stands apart from the other five by place only: last, and
+      // pushed right. Its colours are every nav button's (#43, owner): the
+      // normal fill, and the selected fill only while it is the current view.
+      // Its old light-grey fill read as selected.
+      '#' + PANEL_ID + ' button.tfcc-nav-mine { margin-left: auto; }',
       '#' + PANEL_ID + ' .tfcc-bar { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
       '  align-items: center; margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-grow { flex: 1 1 180px; min-width: 0; }',

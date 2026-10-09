@@ -60,12 +60,11 @@ function expectedView(view, before43) {
 
 // Main's stylesheet with the #43 line replacements applied.
 function expectedCss() {
-  const out = golden.css.slice();
+  let out = golden.css.slice();
   for (const d of D43.css) {
-    const at = [];
-    out.forEach((line, i) => { if (line === d.from) at.push(i); });
-    assert.strictEqual(at.length, 1, 'item ' + d.item + ': its "from" occurs ' + at.length + ' times in the main stylesheet');
-    out.splice(at[0], 1, ...d.to);
+    const n = out.filter((line) => line === d.from).length;
+    assert.strictEqual(n, d.times || 1, 'item ' + d.item + ': its "from" occurs ' + n + ' times in the main stylesheet');
+    out = out.flatMap((line) => (line === d.from ? d.to : [line]));
   }
   return out;
 }

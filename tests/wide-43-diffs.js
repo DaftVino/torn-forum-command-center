@@ -8,8 +8,9 @@
 // places it must change in that view, so a widened or stale entry fails
 // rather than hiding a change.
 //
-// css: each entry replaces one line of main's stylesheet (`from`, required
-// exactly once in the golden) with the lines in `to` (none removes it).
+// css: each entry replaces a line of main's stylesheet (`from`, required
+// exactly `times` times in the golden, once unless stated) with the lines in
+// `to` (none removes it).
 //
 // selectors: the new rules a wide panel may now see.
 
@@ -26,7 +27,23 @@ const markup = [
   },
 ];
 
-const css = [];
+// 2. My posts takes every nav button's colours (#43 item 4, owner: its
+//    light-grey fill looked selected). Its rule keeps only its placement;
+//    its hover and pressed rules and its five colour tokens go.
+const MINE = '43 My posts colour';
+
+const css = [
+  { item: MINE, from: '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;', times: 2, to: [] },
+  { item: MINE, from: '  --tfcc-mine-text: #141414; --tfcc-mine-border: #d9d9d9;', to: [] },
+  { item: MINE, from: '  --tfcc-mine-text: #141414; --tfcc-mine-border: #5c5c5c;', to: [] },
+  { item: MINE, from: '#tfcc-panel button.tfcc-nav-mine { margin-left: auto; background: var(--tfcc-mine-bg);',
+    to: ['#tfcc-panel button.tfcc-nav-mine { margin-left: auto; }'] },
+  { item: MINE, from: '  color: var(--tfcc-mine-text); border-color: var(--tfcc-mine-border); font-weight: bold; }', to: [] },
+  { item: MINE, from: '#tfcc-panel button.tfcc-nav-mine:hover { background: var(--tfcc-mine-hover);', to: [] },
+  { item: MINE, from: '  color: var(--tfcc-mine-text); }', to: [] },
+  { item: MINE, from: '#tfcc-panel button.tfcc-nav-mine[aria-pressed="true"] { background: var(--tfcc-mine-pressed);', to: [] },
+  { item: MINE, from: '  color: var(--tfcc-mine-text); box-shadow: inset 0 -3px 0 var(--tfcc-mine-text); }', to: [] },
+];
 
 const selectors = new Set([]);
 

@@ -359,36 +359,34 @@ test('following the theme costs no redraw', () => {
   assert.strictEqual(panel.classList.contains('tfcc-theme-light'), true);
 });
 
-test('My posts is right-aligned, light grey with dark text, in both themes', () => {
-  const rule = (sel) => {
-    const i = css.indexOf(sel + ' {');
-    assert.ok(i !== -1, 'missing rule: ' + sel);
-    return css.slice(i, css.indexOf('}', i));
-  };
-  const base = rule('#tfcc-panel button.tfcc-nav-mine');
-  assert.match(base, /margin-left:\s*auto/);
-  assert.match(base, /background:\s*var\(--tfcc-mine-bg\)/);
-  assert.match(base, /color:\s*var\(--tfcc-mine-text\)/);
-  assert.match(base, /border-color:\s*var\(--tfcc-mine-border\)/);
-  assert.match(rule('#tfcc-panel button.tfcc-nav-mine:hover'), /background:\s*var\(--tfcc-mine-hover\)/);
-  const pressed = rule('#tfcc-panel button.tfcc-nav-mine[aria-pressed="true"]');
-  assert.match(pressed, /background:\s*var\(--tfcc-mine-pressed\)/);
-  assert.match(pressed, /box-shadow:\s*inset 0 -3px 0 var\(--tfcc-mine-text\)/, 'pressed needs a non-colour cue');
+// #43 (owner): My posts takes every nav button's colours, at every width.
+// Its old light-grey fill made it look selected. Only its place differs.
+test('My posts is right-aligned and coloured like every other nav button (#43)', () => {
+  const i = css.indexOf('#tfcc-panel button.tfcc-nav-mine {');
+  assert.ok(i !== -1, 'the placement rule');
+  assert.strictEqual(css.slice(i, css.indexOf('}', i) + 1), '#tfcc-panel button.tfcc-nav-mine { margin-left: auto; }');
+  assert.doesNotMatch(css, /button\.tfcc-nav-mine:hover|button\.tfcc-nav-mine\[aria-pressed/, 'no state colours of its own');
+  assert.doesNotMatch(css, /--tfcc-mine-/, 'no My posts colour tokens');
+  // Every rule that names it, at every width, sets only layout.
+  for (const m of css.matchAll(/([^\n{}]*tfcc-nav-mine[^{]*)\{([^}]*)\}/g)) {
+    assert.doesNotMatch(m[2], /background|(^|[^-])color|border-color|font-weight|box-shadow/, m[1].trim());
+  }
 });
 
-test('the My posts rules come after, and are at least as specific as, the generic button rules', () => {
-  const generic = css.indexOf('button[aria-pressed="true"] {');
-  const mine = css.indexOf('button.tfcc-nav-mine[aria-pressed="true"] {');
-  assert.ok(generic !== -1 && mine > generic, 'a later rule of equal or higher specificity must win');
-});
-
-test('every My posts colour token is set in both theme blocks, to the agreed values', () => {
-  const dark = { bg: '#d9d9d9', hover: '#c8c8c8', pressed: '#b0b0b0', text: '#141414', border: '#d9d9d9' };
-  const light = Object.assign({}, dark, { border: '#5c5c5c' });
-  const darkBlock = css.slice(0, css.indexOf('.tfcc-theme-light {'));
-  const lightBlock = css.slice(css.indexOf('.tfcc-theme-light {'), css.indexOf('}', css.indexOf('.tfcc-theme-light {')));
-  for (const [k, v] of Object.entries(dark)) assert.ok(darkBlock.indexOf('--tfcc-mine-' + k + ': ' + v) !== -1, 'dark ' + k);
-  for (const [k, v] of Object.entries(light)) assert.ok(lightBlock.indexOf('--tfcc-mine-' + k + ': ' + v) !== -1, 'light ' + k);
+test('the narrow and wide My posts buttons carry only their placement class, so the generic states apply (#43)', () => {
+  const env = loadUserscript({ location: require('./load-userscript').FORUMS_LOCATION });
+  const api = env.exports;
+  for (const narrow of [false, true]) {
+    api.state.narrow = narrow;
+    for (const view of ['threads', 'mine']) {
+      api.state.settings.view = view;
+      const html = api.panelHtml(api.buildPanelModel(Date.now()));
+      const btn = /<button type="button" data-act="view" data-view="mine"([^>]*)>/.exec(html);
+      assert.ok(btn, 'My posts renders');
+      assert.match(btn[1], /^ class="tfcc-nav-mine" aria-pressed="(true|false)"/);
+      assert.match(btn[1], new RegExp('aria-pressed="' + (view === 'mine') + '"'), 'selected only when it is the view');
+    }
+  }
 });
 
 test('the reactions pill sits in the wrapping nav row and wraps rather than overflowing', () => {
@@ -571,8 +569,6 @@ test('every nav label stays at 4.5:1 over the numeral painted on its cell, in bo
   for (const [theme, block] of [['dark', dark], ['light', light]]) {
     states.push([theme + ' default', t(block, '--tm-text'), t(block, '--tm-bg-3'), false]);
     states.push([theme + ' selected', t(block, '--tm-text'), t(block, '--tm-good-bg'), true]);
-    states.push([theme + ' My posts', t(block, '--tfcc-mine-text'), t(block, '--tfcc-mine-bg'), false]);
-    states.push([theme + ' My posts selected', t(block, '--tfcc-mine-text'), t(block, '--tfcc-mine-pressed'), true]);
   }
   for (const [label, text, cell, selected] of states) {
     const num = mix(hex(text), hex(cell), op(selected ? '--tfcc-navnum-opacity-selected' : '--tfcc-navnum-opacity'));

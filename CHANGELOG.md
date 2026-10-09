@@ -88,6 +88,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   button share the next row; Tag and Note open a small box in the panel with
   a field, Save and Cancel (Enter saves, Escape cancels). A saved note shows
   as a bar under the Note button. Desktop rows keep their inline fields.
+- The My posts nav button uses the same colours as the other nav buttons, at
+  every width: the normal fill, and the selected fill only while My posts is
+  the current view. Its light-grey fill made it look selected. (#43)
 - The narrow drawer's Archive button shows an archive box (UXWing's "archive
   files" icon, inline and in the theme's text colour) instead of the
   wastebasket, so it reads as archive, not delete. (#41)

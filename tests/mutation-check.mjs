@@ -529,9 +529,17 @@ const MUTATIONS = [
     apply: (s) => s.replace(' button.tfcc-nav-mine { margin-left: auto; ', ' button.tfcc-nav-mine { '),
   },
   {
-    name: 'the My posts pressed rule loses to the generic one',
+    // #43: the pressed-rule mutation it replaces guarded a rule the owner removed.
+    name: '#43: My posts gets a fill of its own again, and looks selected',
     suite: 'tests/style.test.js',
-    apply: (s) => s.replace(' button.tfcc-nav-mine[aria-pressed="true"] {', ' .tfcc-nav-mine-x[aria-pressed="true"] {'),
+    apply: (s) => s.replace("' button.tfcc-nav-mine { margin-left: auto; }',",
+      "' button.tfcc-nav-mine { margin-left: auto; background: #d9d9d9; color: #141414; }',"),
+  },
+  {
+    name: '#43: the wide My posts colour leaves the listed replacement',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("' button.tfcc-nav-mine { margin-left: auto; }',",
+      "' button.tfcc-nav-mine { margin-left: auto; font-weight: bold; }',"),
   },
   {
     name: 'Unread only is ignored in My posts',
