@@ -4740,7 +4740,10 @@
       '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-short .tfcc-lfull { display: none; }',
       '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-short .tfcc-lshort { display: inline; }',
       '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar > button { flex: 1 1 0; min-width: 44px; white-space: normal; }',
-      '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar .tfcc-infogroup { flex: 1 1 0; min-width: 0; }',
+      // The group is flattened, so the two label buttons are siblings in one
+      // flex row with the same basis and share the width equally; the info
+      // button keeps its own 44px (PR #40 review).
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar .tfcc-infogroup { display: contents; }',
       '#' + PANEL_ID + '.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar .tfcc-infogroup > :first-child { flex: 1 1 0;',
       '  min-width: 44px; white-space: normal; }',
       '#' + PANEL_ID + ' .tfcc-error { color: var(--tm-bad-text); font-weight: bold;',

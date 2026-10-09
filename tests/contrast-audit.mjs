@@ -191,6 +191,7 @@ const SCRIPT = `
   const polishBad = [];
   const cubar = panel.classList.contains('tfcc-narrow') ? panel.querySelector('.tfcc-cubar') : null;
   let cuMode = '';
+  let cuWidths = '';
   if (cubar) {
     cuMode = panel.classList.contains('tfcc-cu-wrap') ? 'wrap' : panel.classList.contains('tfcc-cu-short') ? 'short' : 'full';
     const ctl = ['button[data-act="markall"]', 'button[data-act="catchup-done"]', 'button[data-info="catchup"]']
@@ -205,6 +206,17 @@ const SCRIPT = `
         polishBad.push('the Catch up actions are not on one line (' + cuMode + ')');
       }
       if (rs.some((r, i) => i > 0 && r.left < rs[i - 1].right)) polishBad.push('the Catch up actions overlap');
+      // PR #40 review: no label overflows its button, and in the wrap
+      // fallback the two label buttons share the width equally.
+      ctl.forEach((b) => {
+        if (b.scrollWidth > b.clientWidth) {
+          polishBad.push('"' + b.getAttribute('aria-label') + '" overflows its button (' + b.scrollWidth + ' > ' + b.clientWidth + ')');
+        }
+      });
+      if (cuMode === 'wrap' && Math.abs(rs[0].width - rs[1].width) > 1) {
+        polishBad.push('the wrap fallback splits the labels ' + Math.round(rs[0].width) + ' / ' + Math.round(rs[1].width) + ', not equally');
+      }
+      cuWidths = rs.map((r) => Math.round(r.width)).join(' / ');
       const right = Math.max(...ctl.map((b) => b.getBoundingClientRect().right));
       if (right > cubar.getBoundingClientRect().right + 1) polishBad.push('the Catch up actions overflow the bar');
       if (ctl.some((b) => b.getBoundingClientRect().height < 43.5)) polishBad.push('a Catch up action under 44px');
@@ -252,6 +264,7 @@ const SCRIPT = `
   out.seen = {
     polishBad: polishBad,
     cuMode: cuMode,
+    cuWidths: cuWidths,
     cubar: !!cubar,
     drawerBtns: !!drawerBtns,
     emos: emos.length,
@@ -317,7 +330,7 @@ for (const page of pages) {
   // page with an open drawer has its button row and the emoji.
   if (page.startsWith('narrow-catchup')) {
     if (!seen.cubar) missing.push('the Catch up action row');
-    else console.log(`.. ${page}: Catch up labels ${seen.cuMode}`);
+    else console.log(`.. ${page}: Catch up labels ${seen.cuMode}, widths ${seen.cuWidths}`);
   }
   if (page.startsWith('narrow-') && page.includes('-drawer')) {
     if (!seen.drawerBtns) missing.push('the drawer button row');

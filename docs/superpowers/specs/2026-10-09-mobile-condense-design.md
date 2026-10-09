@@ -1191,9 +1191,13 @@ how they were applied:
   against 325px of content at 375, so all three phone widths (375, 320, 280)
   use the short labels, which need about 218px.
 - **The fallback.** If even the short labels cannot fit (200% text at 320 and
-  375 in the previews), the row still holds one line of controls: the two
-  label buttons share the width (`flex: 1 1 0`, at least 44px) and their
-  labels wrap inside them; the info button keeps 44px. Nothing here goes below
+  375 in the previews), the row still holds one line of controls: the info
+  group is flattened (`display: contents`), so the two label buttons share the
+  width equally (`flex: 1 1 0`, at least 44px; 107px each at 320 and 135px at
+  375 under 200% text) and their labels wrap inside them; the info button
+  keeps 44px. The audit fails an unequal split or a label wider than its
+  button (PR #40 review: before the fix the split was 141 / 73 at 320 and the
+  catch-up label overflowed). Nothing here goes below
   44px, so this row never needs the header's 24px floor.
 - **Known trade-off:** the short catch-up label is not contained in its
   accessible name "Set catch-up point to now" (WCAG 2.5.3, label in name, level
@@ -1224,10 +1228,14 @@ how they were applied:
   again closes the drawer; opening another row closes the first (unchanged).
 - **Inside the panel:** a click whose target is neither the open row's toggle
   nor inside its drawer (`#tfcc-act-<id>`) applies the pure `dismiss`
-  transition (`openRowId` to null, nothing else), then does its own job. A
-  thread link closes the drawer after dispatch (zero-delay redraw), so the
-  anchor is still there when the browser follows it. With a dirty drawer field
-  the press-hold still gives one redraw: commit, close and the tapped action.
+  transition (`openRowId` to null, nothing else) at once, then does its own
+  job; an action that redraws renders the drawer closed in that one redraw.
+  The closing redraw itself runs after dispatch (zero delay) for every
+  target, so the tapped node is still there for its native default action: a
+  link followed, a field focused, a select's picker, a label's control (PR #40
+  review). The press-hold flush is deferred the same way. With a dirty drawer
+  field the press-hold still gives one redraw: commit, close and the tapped
+  action.
   Focus follows the tapped control's own plan, as before.
 - **Outside the panel:** one capture-phase `click` listener on the window,
   bound once like `pressWinBound`. It checks only whether `#tfcc-panel`

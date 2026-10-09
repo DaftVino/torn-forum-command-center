@@ -474,3 +474,17 @@ test('the Catch up row never wraps, and the panel class swaps the labels (#39)',
   assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar > button'),
     /flex: 1 1 0; min-width: 44px; white-space: normal/);
 });
+
+test('in the wrap fallback the two label buttons share the width equally; the info button stays 44px (PR #40 review)', () => {
+  const { api } = bootNarrow();
+  // The group is flattened, so Mark and Set catch-up point are siblings in
+  // one flex row with the same basis, instead of Mark against the whole group.
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar .tfcc-infogroup'), /display: contents;/);
+  const mark = cssRule(api, '#tfcc-panel.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar > button');
+  const set = cssRule(api, '#tfcc-panel.tfcc-narrow.tfcc-cu-wrap .tfcc-cubar .tfcc-infogroup > :first-child');
+  const grow = (b) => /flex: ([^;]+);/.exec(b)[1];
+  assert.strictEqual(grow(mark), '1 1 0');
+  assert.strictEqual(grow(set), grow(mark), 'the same flex for both label buttons');
+  assert.match(set, /min-width: 44px;/);
+  assert.match(cssRule(api, '#tfcc-panel button.tfcc-info'), /flex: none; min-width: 44px;/);
+});
