@@ -373,6 +373,9 @@ The 320px file adds a 200% text frame and four frames at 280px.
   up "3", Drafts "1", My posts "1" (owner decision a). A cell wraps only when
   the number is large. Each cell's accessible name still says what the number
   counts ("Threads, 16 new, 6 subscribed"; "Catch up, 3").
+- **Pending the owner's choice:** a layered alternative, in which the number
+  is a large numeral behind a one-line label, so a cell never wraps. Section
+  13f has four variants with measured contrast.
 - **Why there is no More.** The review asked for a labelled More. Removing it
   is stronger: every view is visible, there is no menu state, and the review's
   More-focus finding cannot happen. It costs one 44px row compared with the
@@ -410,13 +413,18 @@ The 320px file adds a 200% text frame and four frames at 280px.
   unchanged.
 - **Line 2** is the meta (unread first, in green bold) wrapping on the left,
   and the buttons on the right, each 44 x 44 or wider:
-  - **Catch up only:** a visible **Read** button (check icon plus "Read",
-    `data-act="read"`, aria-label "Mark read: <title>"). Triage stays one tap.
+  - **Catch up only:** a visible **Mark read** button (section 13e).
+    - It shows the check mark alone, with no "Read" text.
+    - It is 44 x 44, with `data-act="read"`, `aria-label="Mark read"` and
+      `aria-describedby` pointing at the row's title link
+      (`id="tfcc-title-<id>"`), so a screen reader hears which thread.
+    - Triage stays one tap.
   - **Every view:** an **Actions** button ("...", `data-act="row-more"`,
     `aria-expanded`, `aria-controls="tfcc-act-<id>"`, aria-label "Actions for
     <title>").
-- **The drawer** (one open at a time) holds Pin/Unpin, Mark read (not in Catch
-  up, where it is already visible), Draft/Edit draft and Archive. Below those
+- **The drawer** (one open at a time) holds Pin/Unpin, Mark read, Draft/Edit
+  draft and Archive. Mark read is the same check-mark-only button and is left
+  out in Catch up, where it is already visible. Below those
   are a priority stepper (- / value / +, each 44 x 44), Folder, Add tag and
   Note. Every control is at least 44px. It is an auto-fit grid, so it reflows
   to one column at large text. Pin stays two taps (owner answer 1).
@@ -444,8 +452,8 @@ figures are from `threads-narrow.html`, and the first draft from
 | Approved, filters open | 309 | 902 | 306 | 987 |
 | Approved, badge shelf open | 323 | 916 | 341 | 1022 |
 | Approved, one drawer open (row 1) | 209 | 1061 | 206 | 1146 |
-| Approved, Catch up, info closed (3 rows) | 320 | 825 | 317 | 870 |
-| Approved, Catch up, info open and one drawer open | 384 | 1148 | 381 | 1193 |
+| Approved, Catch up, info closed (3 rows) | 320 | 775 | 317 | 846 |
+| Approved, Catch up, info open and one drawer open | 384 | 1098 | 381 | 1169 |
 | Approved, My posts, info closed / open | 309 / 373 | - | 306 / 370 | - |
 | Approved, collapsed | - | 92 | - | 110 |
 | Approved, 320 at 200% text | - | - | 378 | 2309 |
@@ -661,8 +669,9 @@ contract:
     panels under about 330px wide. The owner chose this.
   - The title band is the full row width and at least 24px tall.
 - **Names:** the icon buttons have `aria-label`s ("Refresh", "Expand", "Hide
-  the panel"). The SVGs are `aria-hidden`. Show is visible text. Read is
-  visible text with a per-row label. Filters is "Filters, N active".
+  the panel"). The SVGs are `aria-hidden`. Show is visible text. Mark read is a
+  check mark named "Mark read", described by its row's title. Filters is
+  "Filters, N active".
 - **State:** the nav cells and Unread keep `aria-pressed`. Actions and Filters
   use `aria-expanded` plus `aria-controls`, on ids prefixed `tfcc-` with the
   thread id. Nothing claims `role="tab"` or `role="menu"`, because the panel
@@ -950,3 +959,98 @@ Totals:
 No error, live status or required disclosure is hidden. Every hidden
 explanation is one tap away, where the thing it explains happens. That keeps
 the rules-compliance principle "stated where it happens".
+
+### 13e. Mark read is a check mark only (owner feedback)
+
+- **The button:** on thread rows, the Read / Mark read button shows only the
+  check-mark icon, with no text. This applies everywhere a row shows it: the
+  Catch up one-tap button and the drawer's Mark read in other views.
+- **Markup:** it stays a 44 x 44 `<button>` with `data-act="read"` and
+  `aria-label="Mark read"`. `aria-describedby="tfcc-title-<id>"` names the
+  thread to a screen reader without changing the accessible name, and the
+  title anchor gains that id.
+- **Glyph contrast, measured in the mockups:** the stroke is `currentColor`
+  on the button's `--tm-bg-3`. That is **18.9:1 in dark** and **18.4:1 in
+  light**, well over the 3:1 that WCAG 1.4.11 requires for graphical objects.
+- **Size, measured:** 44 x 44 in Catch up rows. In the drawer it fills its
+  grid cell.
+
+### 13f. Nav counts as a numeral behind the label: variants (owner to choose)
+
+**The feedback.** The owner does not want the label and the number to wrap
+inside a cell. The alternative puts the count behind the label as a large
+numeral, centred and nearly the cell's height, so the label stays on one line.
+
+Mockup: `docs/designs/mockups/33-mobile/nav-count-variants.html` / `.png`.
+It shows the nav block only, for each variant in dark and light at 375, 320
+and 280px. Each block shows:
+- Threads selected, with Drafts at 0, Search and Settings (no count), and
+  My posts at 128;
+- My posts selected, with Catch up at 104.
+
+The ratios under each block are computed in the page from the browser's own
+computed colours and opacities.
+
+**States, the same in all variants.**
+- **No count** (Search, Settings): the label alone, centred.
+- **Zero:** no numeral at all, so the cell looks like Search. A large ghost
+  "0" would draw the eye to nothing. "No numeral means nothing new" reads at a
+  glance, and the accessible name still says "Drafts, none".
+- **Selected:** the existing pressed fill plus a 3px inset bar under the
+  label, so selection never depends on colour alone. My posts keeps its #30
+  light-grey pressed style and bar.
+- **Large counts:** 3-digit counts (128, 104) fit inside a 72px cell at 280px.
+  Long labels ("My posts", "Catch up") fit on one line at 280px. None of
+  them truncated in the mockup.
+- **At 200% text** a label could exceed its cell. It then ends in an ellipsis,
+  and the accessible name keeps the full label. That is the cost of "never
+  wraps".
+
+**Two contrast tests, because the numeral is the count.**
+- The label must reach 4.5:1 against whatever is directly behind it,
+  including the numeral.
+- The numeral carries the information too, so as large text it needs 3:1
+  against the cell. A numeral faint enough to stay out of the label's way can
+  fail as a count.
+
+**Measured worst cases.** These are the same at 375, 320 and 280, since width
+does not change the colours. "Raw" means the label against the numeral
+painted on the cell, with no halo credit.
+
+| Variant | Treatment | Dark: label | Dark: numeral | Light: label | Light: numeral | Verdict |
+|---|---|---|---|---|---|---|
+| v1 tint | Numeral in the label colour at 14% (9% on the selected cell). Label at 90% (96% selected) | 4.98:1 (selected Threads) | **1.18:1** | 6.84:1 | **1.18:1** | The label passes, but the count is barely visible: it fails as information |
+| v2 ghost | Numeral as a 1.5px outline at 45%. Solid label | **2.46:1** | **2.50:1** | **3.40:1** | **2.50:1** | Fails both: the outline crosses the label's strokes |
+| v3 halo | Numeral in the unread green at 35% (label colour at 10% on the selected cell). Label at 92% with a soft, blurred halo | 4.62:1 | **1.07:1** | 6.32:1 | **1.20:1** | The label passes, but the count is not legible |
+| **v4 legible** | Numeral solid at 3:1 or better against the cell, a colour per cell state. Solid label with a crisp 1.5px halo in the cell colour (eight zero-blur text-shadows) | **6.44:1** against its halo (2.47:1 raw) | **3.26:1** | **8.49:1** against its halo (2.47:1 raw) | **3.36:1** | **Passes both** |
+
+**Why v4 can pass.** A dark label over a mid-grey numeral can never reach 4.5:1
+when that numeral also reaches 3:1 against a light cell: the measured raw
+ratio is 2.47:1. v4 does not mix the two. The halo puts the cell's own
+colour around every label stroke, so the label's adjacent pixels are the cell
+(6.44:1 and 8.49:1), and the numeral shows only between letters and around
+the label. The halo has zero blur so that the claim holds. v3's blurred halo
+is partly transparent, so it gets no credit.
+
+**v4's numeral colours, per cell state:**
+
+| Cell | Dark theme | Light theme |
+|---|---|---|
+| Default | #6b6b6b | #8c8c8c |
+| Selected | #000000 | #787878 |
+| My posts (both themes) | #737373 | #737373 |
+| My posts, selected (both themes) | #555555 | #555555 |
+
+The implementation should make these tokens and add them to
+`tests/contrast-audit.mjs`.
+
+**One deviation from the brief.** The brief asked for a semi-opaque label.
+v4's label is solid: once the halo separates it from the numeral, opacity only
+costs contrast. v1 and v3 keep the semi-opaque label for comparison.
+
+**Recommendation: v4**, if the owner wants the layered look. It is the only
+variant where the label reads at AA and the count is still legible. If the
+owner prefers a quieter numeral (v1 or v3), the count fails 3:1. In that case
+it should be treated as decoration, and the number shown again in plain text
+somewhere, which defeats the point. The number-only badges in section 4.2
+remain the fallback.
