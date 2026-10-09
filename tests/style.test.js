@@ -521,6 +521,11 @@ test('"started" is red per theme, from its own token, at AA on the row (#30)', (
   assert.match(blockFor('#tfcc-panel .tfcc-tag.tfcc-started'), /color: var\(--tfcc-started\)/);
 });
 
+test('a tap on a span inside any panel button lands on the button, so the reactions pill opens My posts (#30)', () => {
+  assert.match(css, /#tfcc-panel button \* \{ pointer-events: none; \}/,
+    'the click listener reads data-act from ev.target only');
+});
+
 test('the header keeps Refresh, Expand and Hide together on the right', () => {
   assert.match(blockFor('#tfcc-panel .tfcc-head-ctl'), /margin-left: auto/);
   assert.match(blockFor('#tfcc-panel .tfcc-head-btns'), /flex-wrap: nowrap/);

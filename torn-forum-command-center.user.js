@@ -4242,6 +4242,10 @@
       '  border: 1px solid var(--tm-border-2); border-radius: 4px; padding: 3px 8px; }',
       '#' + PANEL_ID + ' option { background: var(--tm-bg-3); color: var(--tm-text); }',
       '#' + PANEL_ID + ' button { cursor: pointer; }',
+      // The click listener reads data-act from ev.target alone, so a tap on a
+      // span or icon inside a button (the reactions pill's numbers and thumbs)
+      // must land on the button itself (#30).
+      '#' + PANEL_ID + ' button * { pointer-events: none; }',
       '#' + PANEL_ID + ' button:hover { background: var(--tm-hover); }',
       // Thread reactions (#10). (1,1,1) beats the generic button rule (1,0,1);
       // :hover at (1,2,1) beats the generic button:hover (1,1,1).

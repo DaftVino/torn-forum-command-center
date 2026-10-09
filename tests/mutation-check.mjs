@@ -922,6 +922,8 @@ const MUTATIONS = [
     apply: (s) => s.replace('\n          persist(\'badges\');\n', '\n') },
   { name: 'badges: a tap on the cup misses the button', suite: 'tests/style.test.js',
     apply: (s) => s.replace("'#' + PANEL_ID + ' .tfcc-chip * { pointer-events: none; }',", '') },
+  { name: 'a tap on a number or thumb in the reactions pill misses the button', suite: 'tests/style.test.js',
+    apply: (s) => s.replace("'#' + PANEL_ID + ' button * { pointer-events: none; }',", '') },
   { name: 'badges: the day turns over at a local 04:00', suite: 'tests/badges-engine.test.js',
     apply: (s) => s.replace('return Math.floor(toInt(now, 0) / DAY_MS);',
       'return Math.floor((toInt(now, 0) - 4 * 3600000) / DAY_MS);') },
