@@ -220,6 +220,21 @@ test('Unfiled in Settings can be moved but not deleted, renamed or given a forum
   assert.match(row, /data-act="folder-up" data-id="unfiled"/);
 });
 
+// #45 (owner): the note says what a folder is, how to use one and why it helps.
+test('the folder note says what folders are, how to use them and why', () => {
+  const { env } = bootNarrow({ width: 900 });
+  const s = settingsHtml(env);
+  const info = /id="tfcc-info-settings-folders" hidden>([^<]*)<\/p>/.exec(s)[1];
+  assert.strictEqual(info, 'Folders organise only threads you subscribe to (and ones you file by hand); they never add '
+    + 'other threads from a forum. To use them: add a folder below; optionally claim a forum, so new subscriptions '
+    + 'from that forum file themselves into it; or file a thread from the folder menu on its row. Filing by hand '
+    + 'always wins over a claim. The arrows set the order, Unfiled included. This helps because Catch up groups '
+    + 'threads with new posts by folder, in that order, so the ones you care about most come first, and a group you '
+    + 'do not need right now collapses out of the way; Threads can also be filtered to one folder. Folders stay on '
+    + 'this device and travel in the export. With badges on, filing a thread in a folder of your own earns the '
+    + 'First folder badge.');
+});
+
 test('the folder note says folders organise only the threads you follow', () => {
   const { env } = bootNarrow({ width: 900 });
   assert.match(settingsHtml(env), /Folders organise only threads you subscribe to \(and ones you file by hand\); they never add other threads from a forum\./);

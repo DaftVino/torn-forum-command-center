@@ -6359,10 +6359,20 @@
 
     out.push('<div class="tfcc-section"><div class="tfcc-infobar"><h4>Folders</h4>'
       + renderInfoButton('settings-folders', model.openInfoId) + '</div>');
-    out.push(renderInfoText('settings-folders', model.openInfoId, 'A folder can claim a forum, and new '
-      + 'subscriptions from that forum file themselves into it. Filing a thread by hand always wins over a rule. '
+    // #45 (owner): what a folder is, how to use one, and why it helps. Each
+    // claim is the code's: applyAutoAssign files a subscription with no folder
+    // into the folder claiming its forum, a hand filing is never moved, Catch
+    // up groups by folder in the order (groupCatchUp), the Threads folder
+    // filter, encodeState, and the First folder badge (ownFoldersFilled).
+    out.push(renderInfoText('settings-folders', model.openInfoId, ''
       + 'Folders organise only threads you subscribe to (and ones you file by hand); they never add other threads '
-      + 'from a forum. The arrows set the order of the groups in Catch up and of the folder menus.'));
+      + 'from a forum. To use them: add a folder below; optionally claim a forum, so new subscriptions from that '
+      + 'forum file themselves into it; or file a thread from the folder menu on its row. Filing by hand always '
+      + 'wins over a claim. The arrows set the order, Unfiled included. This helps because Catch up groups threads '
+      + 'with new posts by folder, in that order, so the ones you care about most come first, and a group you do '
+      + 'not need right now collapses out of the way; Threads can also be filtered to one folder. Folders stay on '
+      + 'this device and travel in the export. With badges on, filing a thread in a folder of your own earns the '
+      + 'First folder badge.'));
     // #45: one list in the user's order, Unfiled included. Unfiled moves but
     // is built in: no delete, no rename, no forum claim.
     var orderKeys = folderOrderKeys({ folders: model.folders, unfiledAt: model.unfiledAt });

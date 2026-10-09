@@ -58,7 +58,9 @@ const move = (id, name, dir, disabled) => '<button type="button" class="tfcc-mov
 // The seed's three starter folders, in the default order, Unfiled last.
 const FOLDERS = [['guides', 'Guides'], ['scripts', 'Scripts and tools'], ['faction', 'Faction']];
 
-const FOLDER_NOTE = 'Filing a thread by hand always wins over a rule.</p>';
+// The 13d folder explanation, whole, as main's view has it after the 13d list.
+const FOLDER_NOTE = 'hidden>A folder can claim a forum, and new subscriptions from that forum file themselves into it. '
+  + 'Filing a thread by hand always wins over a rule.</p>';
 
 const literals = [
   // 2. Catch up: the group heading becomes a toggle (button, aria-expanded,
@@ -71,14 +73,19 @@ const literals = [
       + ' data-id="unfiled" aria-expanded="true" aria-controls="tfcc-grp-unfiled" title="Collapse Unfiled">' + glyph(DOWN)
       + '<span class="tfcc-grpname">Unfiled (3)</span></button></h4><div class="tfcc-rows" id="tfcc-grp-unfiled">',
   },
-  // 3. Settings: the folder note gains the owner's sentence and the arrows'
-  //    purpose.
+  // 3. Settings: the folder note is rewritten (owner): what, how and why.
   {
     item: '45 folder note', view: 'settings',
     from: FOLDER_NOTE,
-    to: 'Filing a thread by hand always wins over a rule. Folders organise only threads you subscribe to (and ones you '
-      + 'file by hand); they never add other threads from a forum. The arrows set the order of the groups in Catch up '
-      + 'and of the folder menus.</p>',
+    // The owner's rewrite: what a folder is, how to use one, why it helps.
+    to: 'hidden>Folders organise only threads you subscribe to (and ones you file by hand); they never add other '
+      + 'threads from a forum. To use them: add a folder below; optionally claim a forum, so new subscriptions from '
+      + 'that forum file themselves into it; or file a thread from the folder menu on its row. Filing by hand always '
+      + 'wins over a claim. The arrows set the order, Unfiled included. This helps because Catch up groups threads '
+      + 'with new posts by folder, in that order, so the ones you care about most come first, and a group you do not '
+      + 'need right now collapses out of the way; Threads can also be filtered to one folder. Folders stay on this '
+      + 'device and travel in the export. With badges on, filing a thread in a folder of your own earns the First '
+      + 'folder badge.</p>',
   },
   // 4. Settings: each folder row gains its up and down arrows after its name
   //    (the first up is disabled; Unfiled is below the last folder, so its
