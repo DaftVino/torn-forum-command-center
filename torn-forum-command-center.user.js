@@ -4907,6 +4907,45 @@
       // #45: the group toggle and the order arrows keep the 44px target.
       '#' + PANEL_ID + '.tfcc-narrow button.tfcc-grp { min-height: 44px; }',
       '#' + PANEL_ID + '.tfcc-narrow button.tfcc-move { min-width: 44px; min-height: 44px; }',
+      // #47: narrow Settings, tighter. One scale: 4px from a label to its own
+      // control, 8px between items (and between stacked targets), 12px
+      // between sections. Targets stay 44px and text keeps its size; only the
+      // whitespace around them shrinks. Everything hangs off .tfcc-set, the
+      // narrow Settings wrapper, so no other view moves.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-section { margin-bottom: 12px; padding-bottom: 0; }',
+      // (Every item ends in an 8px margin, which the border keeps inside the
+      // section, so the bottom matches the 8px padding at the top.)
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-section > h4 { margin-bottom: 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kv { gap: 8px; margin-bottom: 8px; }',
+      // A label shares its control's line where both fit, and stacks only
+      // where they do not, 4px above it (its -4px margin on the 8px gap).
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kv > label { flex: 1 1 8em; min-height: 0; margin-bottom: -4px; }',
+      // A checkbox's label is its 44px target, on the checkbox's line, with
+      // the info icon (if any) after the checkbox.
+      // The checkbox leads its line, so every checkbox lines up at the left
+      // and every info icon at the right.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kvc > label { min-height: 44px; margin-bottom: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kvc > input[type="checkbox"] { order: -1; margin: 0; }',
+      // The new folder's name field shares Add's line.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kv > input[type="text"] { flex: 1 1 6em; min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-infobar { margin-bottom: 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set p.tfcc-note { margin: 0 0 8px 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-actions { margin: 0 0 8px 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-draft { display: block; margin: 0 0 8px 0; }',
+      // A note or info bar that explains the row above it sits 4px under it.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kv + .tfcc-infobar { margin-top: -4px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kv + p.tfcc-note { margin-top: -4px; }',
+      // #47: a folder row: name and arrows, then its claimed forums, then the
+      // claim menu and Delete.
+      // The name fills the first line beside the two 44px arrows (2 x 44 +
+      // 2 x 8 = 104), so whatever follows starts a line of its own.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder > label { flex: 1 0 calc(100% - 104px); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder .tfcc-claims { flex: 1 1 100%; gap: 8px; }',
+      // A folder row is several lines, so a rule marks where the next begins.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder + .tfcc-forder { border-top: 1px solid var(--tm-border);',
+      '  padding-top: 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-forder select { flex: 1 1 0; min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-claim { border-radius: 22px; }',
       '#' + PANEL_ID + '.tfcc-narrow button.tfcc-unclaim { min-width: 44px; min-height: 44px; border-radius: 22px; }',
       // The header: one line. These gaps add up to HB_GAPS (20): logo-chip 6,
       // group 6, and 2 x 4 between the buttons.
@@ -6192,10 +6231,17 @@
     checkinDays: 'days', bigBacklog: 'threads in the backlog',
   });
 
+  // #47: a Settings checkbox row. Narrow, it carries tfcc-kvc, so its label
+  // keeps the 44px target and sits on the checkbox's line; a label over a
+  // select or a text field needs no target of its own. Wide is unchanged.
+  function checkRow(model) {
+    return '<div class="tfcc-kv' + (model.narrow ? ' tfcc-kvc' : '') + '">';
+  }
+
   function renderBadgeCatalogue(model) {
     var b = model.badges || { enabled: false };
     var out = ['<div class="tfcc-section"><h4>Badges</h4>'];
-    out.push('<div class="tfcc-kv"><label for="tfcc-badges">Show badges and record progress</label>'
+    out.push(checkRow(model) + '<label for="tfcc-badges">Show badges and record progress</label>'
       + '<input id="tfcc-badges" type="checkbox" data-act="badges-toggle"' + (b.enabled ? ' checked' : '') + '></div>');
     out.push('<div class="tfcc-infobar"><span class="tfcc-note">Recorded on this device only. No request is made.'
       + '</span>' + renderInfoButton('settings-badges', model.openInfoId) + '</div>');
@@ -6319,7 +6365,7 @@
       + '; never more than ' + REQUESTS_PER_WINDOW + ' a minute.') + '</span>'
       + renderInfoButton('settings-budget', model.openInfoId) + '</div>');
     out.push(renderInfoText('settings-budget', model.openInfoId, budgetText));
-    out.push('<div class="tfcc-kv"><label for="tfcc-author">Only flag new posts by the thread author</label>'
+    out.push(checkRow(model) + '<label for="tfcc-author">Only flag new posts by the thread author</label>'
       // #45 (owner): a one-line hover summary. The checkbox's name stays its
       // label; the title is only its description.
       + '<input id="tfcc-author" type="checkbox" data-act="author-only" title="'
@@ -6369,13 +6415,13 @@
     out.push(renderInfoText('settings-rows', model.openInfoId, 'Search and Drafts always show everything. '
       + 'A capped list says how many it is hiding, and Show all lifts the cap for that list until the page '
       + 'reloads. The default is 5.'));
-    out.push('<div class="tfcc-kv"><label for="tfcc-hide">Hide Torn\'s own subscribed box</label>'
+    out.push(checkRow(model) + '<label for="tfcc-hide">Hide Torn\'s own subscribed box</label>'
       + '<input id="tfcc-hide" type="checkbox" data-act="hide-torn-box"'
       + (model.settings.hideTornBox ? ' checked' : '') + '></div>');
-    out.push('<div class="tfcc-kv"><label for="tfcc-autosave">Autosave the reply box as a draft</label>'
+    out.push(checkRow(model) + '<label for="tfcc-autosave">Autosave the reply box as a draft</label>'
       + '<input id="tfcc-autosave" type="checkbox" data-act="autosave"'
       + (model.settings.autosaveDrafts ? ' checked' : '') + '></div>');
-    out.push('<div class="tfcc-kv"><label for="tfcc-autohide">Hide the panel when I open a thread</label>'
+    out.push(checkRow(model) + '<label for="tfcc-autohide">Hide the panel when I open a thread</label>'
       + '<input id="tfcc-autohide" type="checkbox" data-act="auto-hide"'
       + (model.settings.autoHideOnOpen ? ' checked' : '') + '>'
       + renderInfoButton('settings-autohide', model.openInfoId) + '</div>');
@@ -6383,7 +6429,7 @@
       + 'and only a plain click. Opening a link in a new tab, or following links on the Torn page itself, '
       + 'leaves the panel as it is. Press Show to bring it back.'));
     // #41: on by default. A class on the panel switches the CSS (tfcc-clip).
-    out.push('<div class="tfcc-kv"><label for="tfcc-clip">Clip titles and summaries that wrap</label>'
+    out.push(checkRow(model) + '<label for="tfcc-clip">Clip titles and summaries that wrap</label>'
       + '<input id="tfcc-clip" type="checkbox" data-act="clip-lines"'
       + (model.settings.clipLines ? ' checked' : '') + '>'
       + renderInfoButton('settings-clip', model.openInfoId) + '</div>');
@@ -6392,7 +6438,7 @@
       + 'screen, hover over it. Turn this off to let them wrap.'));
     // #43 (owner): on by default. A class on the panel switches the CSS
     // (tfcc-seethrough).
-    out.push('<div class="tfcc-kv"><label for="tfcc-seethrough">See-through background</label>'
+    out.push(checkRow(model) + '<label for="tfcc-seethrough">See-through background</label>'
       + '<input id="tfcc-seethrough" type="checkbox" data-act="see-through"'
       + (model.settings.seeThrough ? ' checked' : '') + '>'
       + renderInfoButton('settings-seethrough', model.openInfoId) + '</div>');
@@ -6738,7 +6784,11 @@
     if (model.view === 'catchup') out.push(renderCatchUpView(model));
     else if (model.view === 'search') out.push(renderSearchView(model));
     else if (model.view === 'drafts') out.push(renderDraftsView(model));
-    else if (model.view === 'settings') out.push(renderSettingsView(model));
+    // #47: narrow, Settings sits in a wrapper its tighter spacing hangs off,
+    // so no other view's sections change. Wide markup is unchanged.
+    else if (model.view === 'settings') {
+      out.push(model.narrow ? '<div class="tfcc-set">' + renderSettingsView(model) + '</div>' : renderSettingsView(model));
+    }
     else if (model.view === 'mine') out.push(renderMineView(model));
     else out.push(renderThreadsView(model));
 

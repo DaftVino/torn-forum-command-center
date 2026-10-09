@@ -6,6 +6,21 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 
+- A folder can claim more than one forum (#47). Settings shows each claimed
+  forum as a chip with its own remove button, and a "Claim a forum..." menu
+  adds another. A forum belongs to one folder at a time, so the menu lists
+  only forums no folder has claimed. Removing a claim never moves a thread
+  already filed; only new subscriptions are affected. Filing by hand still
+  wins over a claim. Saved folders with one claim show it as one chip, and an
+  export and import keeps every claim (a forum this device already gave to a
+  folder keeps that folder).
+- Tighter Settings on a phone (#47). On a narrow panel the gaps between
+  Settings items shrink to one scale (4px from a label to its control, 8px
+  between items, 12px between sections), a label shares its control's line
+  where both fit, and each checkbox sits before its label with the info icon
+  at the end of the line. Targets stay 44px and text keeps its size. The
+  Settings view is about 17% shorter at 375, 320 and 280px. Desktop is
+  unchanged.
 - Folder order (#45). Settings lists your folders and a built-in **Unfiled**
   with up and down arrows; the order sets the order of the Catch up groups and
   of every folder menu. Unfiled can be moved but not deleted or renamed. A

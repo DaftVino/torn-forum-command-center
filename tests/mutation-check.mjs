@@ -1642,6 +1642,57 @@ const MUTATIONS = [
     apply: (s) => s.replace("' .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: var(--tfcc-text-sm);'",
       "' .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: 11px;'"),
   },
+  // #47 item 2: several forums per folder, one folder per forum.
+  ...[
+    ['a forum can be claimed by a second folder', (s) => s.replace(
+      '    if (f <= 0 || folderFor(org, f)) return org;', '    if (f <= 0) return org;')],
+    ['claimForum changes the organizer it was given', (s) => s.replace(
+      '    var next = cloneOrganizer(org);\n    next.folders[i].forumIds.push(f);\n    return next;',
+      '    org.folders[i].forumIds.push(f);\n    return org;')],
+    ['removing a claim unfiles the threads it filed', (s) => s.replace(
+      '    next.folders[i].forumIds = next.folders[i].forumIds.filter(function (x) { return x !== f; });\n',
+      '    next.folders[i].forumIds = next.folders[i].forumIds.filter(function (x) { return x !== f; });\n'
+      + '    Object.keys(next.threads).forEach(function (t) { if (next.threads[t].forumId === f) next.threads[t].folderId = null; });\n')],
+    ['the claim menu offers forums another folder claims', (s) => s.replace(
+      '        if (claimed[cat.id]) continue;\n', '')],
+    ['a chip\'s remove button loses its name', (s) => s.replace(
+      `' aria-label="' + escapeHtml(rm) + '" title="'`, `' title="'`)],
+    ['an import drops the claims of a folder this device has', (s) => s.replace(
+      '        for (var w = 0; w < wanted.length; w += 1) org = claimForum(org, f.id, wanted[w]);\n', '')],
+    ['an import gives a forum a second claimant', (s) => s.replace(
+      '          f.forumIds = [];\n          org.folders.push(f);', '          org.folders.push(f);')],
+    ['a new claim is not saved', (s) => s.replace(
+      "            state.organizer = claimedOrg;\n            persist('organizer');", '            state.organizer = claimedOrg;\n           ')],
+    ['focus is lost when a chip is removed', (s) => s.replace(
+      "          state.focusIntent = [attrSel('data-act', 'folder-forum') + attrSel('data-id', id)];\n", '')],
+    ['the folder note says a folder claims one forum', (s) => s.replace(
+      "optionally claim one or more forums, so new subscriptions '\n      + 'from them", "optionally claim a forum, so new subscriptions '\n      + 'from it")],
+  ].map(([name, apply]) => ({ name: '#47: ' + name, suite: 'tests/claims.test.js', apply })),
+  ...[
+    ['the claim menu\'s name drifts from its listed wide replacement', (s) => s.replace(
+      "escapeHtml('Claim a forum for ' + f.name)", "escapeHtml('Claim forum for ' + f.name)")],
+    ['a chip rule changes wide CSS outside its listed lines', (s) => s.replace(
+      "'  border: 1px solid var(--tm-border); border-radius: 12px; color: var(--tm-text); }',",
+      "'  border: 1px solid var(--tm-border); border-radius: 4px; color: var(--tm-text); }',")],
+    ['a narrow Settings spacing rule reaches a wide panel', (s) => s.replace(
+      "'.tfcc-narrow .tfcc-set .tfcc-kv { gap: 8px; margin-bottom: 8px; }'", "' .tfcc-set .tfcc-kv { gap: 8px; margin-bottom: 8px; }'")],
+  ].map(([name, apply]) => ({ name: '#47: ' + name, suite: 'tests/wide-parity.test.js', apply })),
+  // #47 item 1: tighter narrow Settings.
+  ...[
+    ['sections lose their larger separation', (s) => s.replace(
+      "'.tfcc-narrow .tfcc-set .tfcc-section { margin-bottom: 12px;", "'.tfcc-narrow .tfcc-set .tfcc-section { margin-bottom: 8px;")],
+    ['a checkbox label loses its 44px target', (s) => s.replace(
+      "'.tfcc-narrow .tfcc-set .tfcc-kvc > label { min-height: 44px;", "'.tfcc-narrow .tfcc-set .tfcc-kvc > label { min-height: 24px;")],
+    ['a note drifts away from the row it explains', (s) => s.replace(
+      "      '#' + PANEL_ID + '.tfcc-narrow .tfcc-set .tfcc-kv + p.tfcc-note { margin-top: -4px; }',\n", '')],
+    ['the Settings wrapper renders on a wide panel', (s) => s.replace(
+      "out.push(model.narrow ? '<div class=\"tfcc-set\">' + renderSettingsView(model) + '</div>' : renderSettingsView(model));",
+      "out.push('<div class=\"tfcc-set\">' + renderSettingsView(model) + '</div>');")],
+    ['the checkbox-row class renders on a wide panel', (s) => s.replace(
+      "(model.narrow ? ' tfcc-kvc' : '')", "' tfcc-kvc'")],
+    ['a Settings rule shrinks text', (s) => s.replace(
+      "'.tfcc-narrow .tfcc-set p.tfcc-note { margin: 0 0 8px 0; }'", "'.tfcc-narrow .tfcc-set p.tfcc-note { margin: 0 0 8px 0; font-size: 11px; }'")],
+  ].map(([name, apply]) => ({ name: '#47: ' + name, suite: 'tests/settings-spacing.test.js', apply })),
 ];
 
 let failures = 0;
