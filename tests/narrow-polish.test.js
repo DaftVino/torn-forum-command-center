@@ -136,13 +136,16 @@ test('closed rows hold the title, tagline and meta to one line with an ellipsis;
   const { api } = bootNarrow();
   const oneLine = /white-space: nowrap; overflow: hidden; text-overflow: ellipsis/;
   // The title band stays a block of at least 24px: the truncation never cuts the tap target.
+  // #41: the cut is switched by the clip setting (tfcc-clip, on by default);
+  // tests/clip-lines.test.js covers the off case.
   const title = cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row-t .tfcc-row-title a');
   assert.match(title, /display: block; padding: 3px 0; min-height: 24px;/);
-  assert.match(title, oneLine);
-  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row > .tfcc-note'), oneLine);
-  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row-l2 .tfcc-meta'), oneLine);
-  for (const sel of ['.tfcc-row-t .tfcc-row-title a', '> .tfcc-note', '.tfcc-row-l2 .tfcc-meta']) {
-    assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row.tfcc-open ' + sel), /white-space: normal; overflow: visible;/, sel);
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow.tfcc-clip .tfcc-row-t .tfcc-row-title a'), oneLine);
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-clip .tfcc-row > .tfcc-note'), oneLine);
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow.tfcc-clip .tfcc-row-l2 .tfcc-meta'), oneLine);
+  for (const [scope, sel] of [['.tfcc-narrow.tfcc-clip', '.tfcc-row-t .tfcc-row-title a'], ['.tfcc-clip', '> .tfcc-note'],
+    ['.tfcc-narrow.tfcc-clip', '.tfcc-row-l2 .tfcc-meta']]) {
+    assert.match(cssRule(api, '#tfcc-panel' + scope + ' .tfcc-row.tfcc-open ' + sel), /white-space: normal; overflow: visible;/, sel);
   }
 });
 

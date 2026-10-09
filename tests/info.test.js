@@ -42,6 +42,8 @@ const OWNER_13D = {
       'settings-author': 'About author-only mode',
       'settings-rows': 'About Rows shown',
       'settings-autohide': 'About hiding the panel',
+      // #41: the clip setting's explanation, 13d pattern.
+      'settings-clip': 'About clipping',
       'settings-folders': 'About folders',
       'settings-badges': 'About badges',
     },
@@ -50,6 +52,7 @@ const OWNER_13D = {
       'With this on, a thread in Threads and Catch up counts as new only when',
       'Search and Drafts always show everything.',
       'Only thread links in this panel do this, and only a plain click.',
+      'Each row\'s title and summary stay on one line',
       'A folder can claim a forum',
       'Earned from what you do here',
     ],

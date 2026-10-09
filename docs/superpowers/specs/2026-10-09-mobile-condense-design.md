@@ -1289,3 +1289,53 @@ how they were applied:
   audit measures its fill against the button at 3:1 or better. UXWing's
   licence allows commercial use without attribution; it is quoted beside the
   icon and credited in the README. Pin and Draft keep their emoji.
+
+### 14e. Clip titles and summaries that wrap (#41)
+
+The owner made 14b's one-line cut a setting, and carried it to desktop.
+
+- **The setting:** `settings.clipLines`, on by default. A stored blob with no
+  field (every install before #41) normalises to on; an explicit `false` is
+  kept; a present value that is not a boolean takes the default. A blob saved
+  before #41 is not reported as damaged: `isRecoveredValue` fills the missing
+  top-level field from the normalised value before comparing
+  (`tests/clip-lines.test.js` loads main's own blob).
+- **Settings:** Appearance, right after "Hide the panel when I open a thread":
+  a checkbox "Clip titles and summaries that wrap" (`data-act="clip-lines"`)
+  and an info button, `settings-clip`, "About clipping" (the 13d pattern),
+  whose text says how to read a clipped row at each width.
+- **One switch:** the runtime puts `tfcc-clip` on the panel while the setting
+  is on, beside `tfcc-narrow`, on every render. Every clipping rule hangs off
+  it: off, nothing clips at any width.
+- **On, every width:** a thread row's title and note (its summary) are one
+  line with an ellipsis. Narrow, this is 14b unchanged, and the open row
+  (`tfcc-open`) shows them whole. Wide, `.tfcc-row-main .tfcc-row-title`
+  clips (its flex item already has `min-width: 0`), and `.tfcc-row >
+  .tfcc-note` clips, one rule for both widths.
+- **The meta line (decision):** it follows the setting on narrow only, as 14b
+  collapsed it: on, one line, with the drawer showing it whole; off, the
+  pre-#39 flex row that wraps. Wide never clips the meta. A wide row has no
+  drawer, its meta spans carry tooltips of their own (the time's source, the
+  author-only reason), and one tooltip cannot stand in for a line of separate
+  facts; at desktop widths the meta rarely wraps anyway.
+- **Wide tooltips:** with the setting on, the wide row's title span and note
+  carry `title` with the full text, so hovering shows it. The tooltip is on
+  the span, not the link: the link's accessible name stays its own text, the
+  full title, with no duplicate description. Narrow rows carry no tooltip;
+  the drawer is their expand.
+- **Desktop parity:** the golden (`tests/fixtures/wide-golden.json`) is
+  compared with the setting off, where every wide row and nav is main's byte
+  for byte. The one other wide markup change, the new Settings checkbox, is a
+  listed literal replacement (`tests/wide-41-diffs.js`), like 13d's. A
+  separate test pins what "on" adds: exactly the title attributes on each
+  row's title span and note, and the checkbox ticked; the stylesheet text is
+  the same either way, and its three new wide selectors are listed and all
+  start `#tfcc-panel.tfcc-clip`. The golden was not regenerated.
+- **Measured in the previews** (`clip-on-*`, `clip-off-*`,
+  `narrow-threads-clipoff-*`, `narrow-threads-drawer-long-*`): on, the long
+  title and summary are cut to one line at 720px wide and at 375, 320 and
+  280px; off, they wrap; an open long row is whole. The contrast audit fails
+  a page whose setting does not do this.
+- **Found, not changed:** in the open narrow row at 280px the meta line's
+  last tag can sit past the meta's box under the row's buttons (visible
+  overflow, no overlap with a control). This predates #41 (#39's open meta).

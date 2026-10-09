@@ -240,12 +240,42 @@ const SCRIPT = `
       polishBad.push('a drawer target is ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' (' + (el.getAttribute('data-act') || el.tagName) + ')');
     }
   }
-  // #39: a closed row's title is one line, its note too.
-  panel.querySelectorAll('.tfcc-narrow .tfcc-row:not(.tfcc-open) .tfcc-row-title a, .tfcc-narrow .tfcc-row:not(.tfcc-open) > .tfcc-note').forEach((el) => {
+  // #39, switched by #41's setting (tfcc-clip): with it on, a closed row's
+  // title and note are one line at every width, and the narrow meta too; with
+  // it off, nothing is cut. An open narrow row shows its text whole.
+  const clip = panel.classList.contains('tfcc-clip');
+  const isNarrow = panel.classList.contains('tfcc-narrow');
+  const multiLine = (el) => {
     const cs = getComputedStyle(el);
     const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
     const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
-    if (el.getBoundingClientRect().height - pad > lh * 1.5) polishBad.push('a closed row\\'s text takes more than one line');
+    return el.getBoundingClientRect().height - pad > lh * 1.5;
+  };
+  // Cut means clipped out of sight: hidden overflow with more content than
+  // box. (An open meta line's last tag can stick out under the row's buttons
+  // with visible overflow at 280px; that is not a cut.)
+  const isCut = (el) => getComputedStyle(el).overflowX === 'hidden' && el.scrollWidth > el.clientWidth + 1;
+  const closedText = Array.from(panel.querySelectorAll(isNarrow
+    ? '.tfcc-row:not(.tfcc-open) .tfcc-row-title a, .tfcc-row:not(.tfcc-open) > .tfcc-note, .tfcc-row:not(.tfcc-open) .tfcc-row-l2 .tfcc-meta'
+    : '.tfcc-row-main .tfcc-row-title, .tfcc-row > .tfcc-note'));
+  let cut = 0;
+  let wrapped = 0;
+  for (const el of closedText) {
+    if (multiLine(el)) wrapped += 1;
+    if (isCut(el)) cut += 1;
+  }
+  if (clip && wrapped) polishBad.push(wrapped + ' closed row text(s) take more than one line with clipping on');
+  if (!clip && cut) polishBad.push(cut + ' row text(s) are cut with clipping off');
+  // Wide, a cut title or note carries its full text as a tooltip.
+  if (!isNarrow) {
+    for (const el of closedText) {
+      if (clip && isCut(el) && el.getAttribute('title') !== el.textContent) polishBad.push('a cut wide row text has no full tooltip');
+    }
+  }
+  let openWhole = 0;
+  panel.querySelectorAll('.tfcc-row.tfcc-open .tfcc-row-title a, .tfcc-row.tfcc-open > .tfcc-note, .tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta').forEach((el) => {
+    if (isCut(el)) polishBad.push('an open row\\'s text is cut');
+    else if (multiLine(el)) openWhole += 1;
   });
   // #39: the drawer emoji, monochrome per theme with the thumbs' filter, and
   // the colour that filter paints (white on dark, black on light) at 3:1 or
@@ -283,6 +313,10 @@ const SCRIPT = `
   out.seen = {
     polishBad: polishBad,
     icos: icos.length,
+    clip: clip,
+    cut: cut,
+    wrapped: wrapped,
+    openWhole: openWhole,
     cuMode: cuMode,
     cuWidths: cuWidths,
     cubar: !!cubar,
@@ -357,6 +391,19 @@ for (const page of pages) {
     if (!seen.emos) missing.push('the drawer emoji');
     if (!seen.icos) missing.push('the archive icon');
   }
+  // #41: the clip previews must show the setting doing its job: on cuts the
+  // long title and summary, off wraps them, and an open long row is whole.
+  if (page.startsWith('clip-on-') || /^narrow-threads-(\d|drawer-long)/.test(page)) {
+    if (!seen.clip) missing.push('the tfcc-clip class');
+    else if (!seen.cut) missing.push('a row text cut by the clip setting');
+    else console.log(`.. ${page}: clip on, ${seen.cut} cut, open whole ${seen.openWhole}`);
+  }
+  if (page.startsWith('clip-off-') || page.startsWith('narrow-threads-clipoff-')) {
+    if (seen.clip) missing.push('clipping off');
+    else if (!seen.wrapped) missing.push('a row text that wraps with clipping off');
+    else console.log(`.. ${page}: clip off, ${seen.wrapped} wrapped`);
+  }
+  if (page.startsWith('narrow-threads-drawer-long-') && !seen.openWhole) missing.push('the open long row shown whole');
   if ((seen.polishBad || []).length) seen.headBad = (seen.headBad || []).concat(seen.polishBad);
   if (seen.headBad && seen.headBad.length) {
     console.log(`!! ${page}: ${seen.headBad.join('; ')}`);

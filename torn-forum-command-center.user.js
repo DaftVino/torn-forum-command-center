@@ -223,6 +223,7 @@
     'settings-author': 'About author-only mode',
     'settings-rows': 'About Rows shown',
     'settings-autohide': 'About hiding the panel',
+    'settings-clip': 'About clipping',
     'settings-folders': 'About folders',
     'settings-badges': 'About badges',
   });
@@ -232,7 +233,7 @@
     search: Object.freeze(['search']),
     drafts: Object.freeze([]),
     settings: Object.freeze(['settings-budget', 'settings-author', 'settings-rows', 'settings-autohide',
-      'settings-folders', 'settings-badges']),
+      'settings-clip', 'settings-folders', 'settings-badges']),
     mine: Object.freeze(['mine']),
   });
   // The events that close every disclosure (spec section 6 table).
@@ -462,6 +463,9 @@
       rowsShown: 5,
       // Issue #9. On by default; Settings has the off switch.
       badges: true,
+      // #41: clip a row's title and summary to one line, at every width. On
+      // by default; a stored false is kept.
+      clipLines: true,
     };
   }
 
@@ -486,6 +490,10 @@
     out.autoHideOnOpen = Object.prototype.hasOwnProperty.call(raw, 'autoHideOnOpen')
       ? raw.autoHideOnOpen === true : d.autoHideOnOpen;
     out.badges = raw.badges !== false;
+    // #41: only a real boolean is kept. Absent, or present but not a boolean,
+    // takes the default (on): clipping is presentation only, so a corrupt
+    // value costs nothing worse than the default look.
+    out.clipLines = typeof raw.clipLines === 'boolean' ? raw.clipLines : d.clipLines;
     out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1
       ? 0 : toInt(raw.keyRejected, 0);
     out.folderFilter = typeof raw.folderFilter === 'string' ? safeString(raw.folderFilter, 64) : null;
@@ -4585,6 +4593,14 @@
       '  margin-top: var(--tfcc-gap-xs); }',
       '#' + PANEL_ID + ' .tfcc-actions button { font-size: var(--tfcc-text-sm); padding: 1px 6px; }',
       '#' + PANEL_ID + ' .tfcc-note { color: var(--tm-muted); font-size: var(--tfcc-text-sm); }',
+      // #41: "Clip titles and summaries that wrap", one class on the panel. A
+      // row's title and note (its summary) are one line with an ellipsis at
+      // every width; a wide row carries the full text as a title tooltip and
+      // a narrow one shows it whole while its drawer is open. Thread rows
+      // only: Search hits and Drafts are not .tfcc-row.
+      '#' + PANEL_ID + '.tfcc-clip .tfcc-row-main .tfcc-row-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-clip .tfcc-row > .tfcc-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-clip .tfcc-row.tfcc-open > .tfcc-note { white-space: normal; overflow: visible; }',
       // #33: anything carrying the hidden attribute stays hidden, whatever a
       // display rule on it or on the host says.
       '#' + PANEL_ID + ' [hidden] { display: none !important; }',
@@ -4677,24 +4693,27 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t { display: flex; gap: 4px; align-items: flex-start; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title { line-height: 1.35; }',
       // The whole title band opens the thread: at least 24px (WCAG 2.2 AA).
-      // #39: one line with an ellipsis until the row's drawer opens. The cut is
-      // visual only: the link's text, and so its accessible name, is whole,
-      // and the block keeps the full width and 24px height of the tap target.
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title a { display: block; padding: 3px 0; min-height: 24px;',
-      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title a { display: block; padding: 3px 0; min-height: 24px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title { flex: 1 1 0; min-width: 0; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row > .tfcc-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row.tfcc-open .tfcc-row-t .tfcc-row-title a { white-space: normal; overflow: visible; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row.tfcc-open > .tfcc-note { white-space: normal; overflow: visible; }',
+      // #39, switched by the #41 setting (tfcc-clip): one line with an
+      // ellipsis until the row's drawer opens. The cut is visual only: the
+      // link's text, and so its accessible name, is whole, and the block keeps
+      // the full width and 24px height of the tap target.
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row-t .tfcc-row-title a {',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row.tfcc-open .tfcc-row-t .tfcc-row-title a { white-space: normal; overflow: visible; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-pinned { padding-top: 3px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 { display: flex; gap: 6px; align-items: flex-start; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 .tfcc-meta { flex: 1 1 0; min-width: 0; margin-top: 0;',
-      '  padding-top: 2px; gap: var(--tfcc-gap-sm);',
+      '  padding-top: 2px; gap: var(--tfcc-gap-sm); }',
       // #39: the meta is one line too, status first so a live status is the
       // last thing cut. A block, not a flex row, so the ellipsis can show.
+      // Narrow only, and only with the #41 setting on: off, it wraps as a flex
+      // row again, as before #39.
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row-l2 .tfcc-meta {',
       '  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 .tfcc-meta > * { margin-right: var(--tfcc-gap-sm); }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta { white-space: normal; overflow: visible; }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row-l2 .tfcc-meta > * { margin-right: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-clip .tfcc-row.tfcc-open .tfcc-row-l2 .tfcc-meta { white-space: normal; overflow: visible; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns { flex: none; display: inline-flex; gap: 6px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns button { display: inline-flex; align-items: center;',
       '  justify-content: center; min-width: 44px; min-height: 44px; padding: 0 6px; }',
@@ -4964,6 +4983,8 @@
       collapsed: s.collapsed,
       takeover: s.takeover,
       narrow: state.narrow === true,
+      // #41: clip row titles and summaries to one line (the tfcc-clip class).
+      clipLines: s.clipLines !== false,
       renderedIds: renderedIds,
       openRowId: state.openRowId,
       filtersOpen: state.filtersOpen,
@@ -5028,6 +5049,7 @@
         hideTornBox: s.hideTornBox,
         authorOnly: s.authorOnly,
         autoHideOnOpen: s.autoHideOnOpen,
+        clipLines: s.clipLines !== false,
         deepSearchPages: s.deepSearchPages,
         rowsShown: s.rowsShown,
       },
@@ -5250,7 +5272,12 @@
     var out = ['<div class="tfcc-row" data-id="' + escapeHtml(row.id) + '">'];
     out.push('<div class="tfcc-row-main">');
     if (row.pinned) out.push('<span class="tfcc-pinned" title="Pinned">*</span>');
-    out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '"'
+    // #41: with clipping on, the full title is a hover tooltip, since a wide
+    // row has no drawer to open. On the span, not the link, so the link's
+    // name stays its text, the full title.
+    var clip = model.clipLines === true;
+    out.push('<span class="tfcc-row-title"' + (clip ? ' title="' + escapeHtml(row.title) + '"' : '')
+      + '><a href="' + escapeHtml(threadUrl(row)) + '"'
       + threadLinkAttr(row.id) + '>'
       + escapeHtml(row.title) + '</a></span>');
     // Priority sits beside the title (#30), not in the action row, where two
@@ -5263,7 +5290,10 @@
 
     out.push('<div class="tfcc-meta">' + rowMetaHtml(row, model) + '</div>');
 
-    if (row.note) out.push('<div class="tfcc-note">' + escapeHtml(row.note) + '</div>');
+    if (row.note) {
+      out.push('<div class="tfcc-note"' + (clip ? ' title="' + escapeHtml(row.note) + '"' : '') + '>'
+        + escapeHtml(row.note) + '</div>');
+    }
 
     // #33: an uncommitted edit is shown wherever its field renders.
     var edit = model.drawerEdit && model.drawerEdit.id === String(row.id) ? model.drawerEdit : null;
@@ -5931,6 +5961,14 @@
     out.push(renderInfoText('settings-autohide', model.openInfoId, 'Only thread links in this panel do this, '
       + 'and only a plain click. Opening a link in a new tab, or following links on the Torn page itself, '
       + 'leaves the panel as it is. Press Show to bring it back.'));
+    // #41: on by default. A class on the panel switches the CSS (tfcc-clip).
+    out.push('<div class="tfcc-kv"><label for="tfcc-clip">Clip titles and summaries that wrap</label>'
+      + '<input id="tfcc-clip" type="checkbox" data-act="clip-lines"'
+      + (model.settings.clipLines ? ' checked' : '') + '>'
+      + renderInfoButton('settings-clip', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-clip', model.openInfoId, 'Each row\'s title and summary stay on one line, '
+      + 'ending in ... when they would wrap. On a phone, open a row\'s actions to read it whole; on a wider '
+      + 'screen, hover over it. Turn this off to let them wrap.'));
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><div class="tfcc-infobar"><h4>Folders</h4>'
@@ -6282,6 +6320,7 @@
 
   // #33: the class the narrow stylesheet hangs off. On our own element only.
   var NARROW_CLASS = 'tfcc-narrow';
+  var CLIP_CLASS = 'tfcc-clip';
 
   // The panel's border-box width, or 0 when it cannot be read. Reads only this
   // script's #tfcc-panel (the owner's ADR 0001 ruling, spec section 5).
@@ -6552,6 +6591,9 @@
       model.openRowId = null; model.filtersOpen = false; model.openInfoId = null;
     }
     if (panel.classList) panel.classList.toggle(NARROW_CLASS, state.narrow === true);
+    // #41: the clip setting is one class; the loading and error models carry
+    // no rows, so they keep whatever the setting says.
+    if (panel.classList) panel.classList.toggle(CLIP_CLASS, !state.settings || state.settings.clipLines !== false);
 
     var html = panelHtml(model);
 
@@ -7356,6 +7398,10 @@
         }
         if (act === 'auto-hide') {
           state.settings.autoHideOnOpen = !!el.checked;
+          persist('settings'); redraw(); return;
+        }
+        if (act === 'clip-lines') {
+          state.settings.clipLines = !!el.checked;
           persist('settings'); redraw(); return;
         }
         if (act === 'badges-toggle') {

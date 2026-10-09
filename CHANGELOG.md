@@ -15,6 +15,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   every API call site, so a new endpoint fails the suite until its selection is
   added. The link format is unverified, and release is gated on the QA
   checklist comparing it with a link generated on torn.com/api.html.
+- Settings, Appearance: **Clip titles and summaries that wrap**, on by default
+  (#41). On, each thread row's title and note end in an ellipsis on one line
+  instead of wrapping, at every width; on a phone the meta line does too, and
+  opening a row's actions shows all three in full; on a desktop, hovering a
+  clipped title or note shows the full text. Off, they wrap, on a phone too.
+  Saved settings from before keep working and start with it on.
 - Settings, Appearance: **Hide the panel when I open a thread**, on by
   default (#30). A plain click on a thread link in the panel (Threads, Catch up,
   Search, Drafts, and My posts) collapses the panel and leaves Expand, then the

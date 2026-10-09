@@ -31,12 +31,16 @@ const MOVED_OUT_OF_MEDIA = new Set([
 // (tests/wide-13d-diffs.js); every `from` must occur exactly once in main's
 // golden, so a stale or widened entry fails here rather than hiding a change.
 const D13 = require('./wide-13d-diffs');
+// #41: the clip setting's Settings checkbox, applied after the 13d list. The
+// golden is compared with the setting OFF (tests/wide-seed.js), where every
+// wide row is main's; the test "what clip on adds" below pins the rest.
+const D41 = require('./wide-41-diffs');
 
 function expectedView(view) {
   let html = golden.views[view];
-  for (const d of D13.filter((x) => x.view === view)) {
+  for (const d of D13.concat(D41).filter((x) => x.view === view)) {
     const n = html.split(d.from).length - 1;
-    assert.strictEqual(n, 1, '13d item ' + d.item + ': its "from" occurs ' + n + ' times in main\'s ' + view);
+    assert.strictEqual(n, 1, 'item ' + d.item + ': its "from" occurs ' + n + ' times in main\'s ' + view);
     html = html.replace(d.from, () => d.to);
   }
   return html;
@@ -92,11 +96,54 @@ const WIDE_13D_SELECTORS = new Set([
   '#tfcc-panel .tfcc-infotext',
 ]);
 
-test('every new stylesheet rule is scoped to .tfcc-narrow or is a listed 13d rule', () => {
+// #41: the clip setting's rules, which a wide panel sees only while it carries
+// tfcc-clip (the setting on). Each hangs off .tfcc-clip.
+const WIDE_41_SELECTORS = new Set([
+  '#tfcc-panel.tfcc-clip .tfcc-row-main .tfcc-row-title',
+  '#tfcc-panel.tfcc-clip .tfcc-row > .tfcc-note',
+  '#tfcc-panel.tfcc-clip .tfcc-row.tfcc-open > .tfcc-note',
+]);
+
+test('every new stylesheet rule is scoped to .tfcc-narrow or is a listed 13d or #41 rule', () => {
   const old = new Set(golden.css);
   const stray = captureWide(loadUserscript, FORUMS_LOCATION).css
     .filter((line) => !old.has(line) && line.indexOf('{') !== -1)
     .map((line) => line.slice(0, line.indexOf('{')).trim())
-    .filter((sel) => sel.indexOf('.tfcc-narrow') === -1 && !WIDE_13D_SELECTORS.has(sel));
+    .filter((sel) => sel.indexOf('.tfcc-narrow') === -1 && !WIDE_13D_SELECTORS.has(sel) && !WIDE_41_SELECTORS.has(sel));
   assert.deepStrictEqual(stray, [], 'a new rule a wide panel would see');
+  for (const sel of WIDE_41_SELECTORS) assert.ok(sel.startsWith('#tfcc-panel.tfcc-clip '), sel);
+});
+
+// #41: with the clip setting ON, the wide output is the OFF output plus
+// exactly: a title tooltip on each row's title span and note, and the
+// Settings checkbox ticked. Nothing else; the stylesheet is the same text.
+test('what clip on adds to the wide output, and nothing more (#41)', () => {
+  const off = captureWide(loadUserscript, FORUMS_LOCATION, false);
+  const on = captureWide(loadUserscript, FORUMS_LOCATION, true);
+  assert.deepStrictEqual(on.css, off.css);
+  const strip = (html) => html
+    .replace(/<span class="tfcc-row-title" title="[^"]*">/g, '<span class="tfcc-row-title">')
+    .replace(/<div class="tfcc-note" title="[^"]*">/g, '<div class="tfcc-note">');
+  let tips = 0;
+  for (const view of Object.keys(off.views)) {
+    let want = off.views[view];
+    if (view === 'settings') {
+      want = want.replace('data-act="clip-lines">', 'data-act="clip-lines" checked>');
+    }
+    assert.strictEqual(strip(on.views[view]), want, view);
+    tips += (on.views[view].match(/<span class="tfcc-row-title" title="/g) || []).length;
+  }
+  assert.ok(tips > 0, 'the rows carry tooltips');
+  for (const view of Object.keys(off.rows)) {
+    assert.deepStrictEqual(on.rows[view].map(strip), off.rows[view], 'rows in ' + view);
+    for (const row of on.rows[view]) {
+      const t = /<span class="tfcc-row-title" title="([^"]*)"><a [^>]*>([^<]*)<\/a>/.exec(row);
+      assert.ok(t, 'each row has its tooltip in ' + view);
+      assert.strictEqual(t[1], t[2], 'the tooltip is the full title, the link text unchanged');
+    }
+  }
+  const noted = off.rows.threads.filter((r) => r.includes('<div class="tfcc-note">'));
+  assert.ok(noted.length > 0, 'the seed has a note');
+  assert.ok(on.rows.threads.some((r) => r.includes('<div class="tfcc-note" title="The one to link people to.">')));
+  assert.deepStrictEqual(on.nav, off.nav);
 });

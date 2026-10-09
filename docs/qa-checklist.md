@@ -163,6 +163,21 @@ Walk on Torn PDA, portrait, on the narrowest phone you have, then landscape.
       smaller than the nav and Actions buttons, still easy to hit, and tapping
       a field does not zoom the page (iOS).
 
+### Clip titles and summaries (#41)
+
+- [ ] Fresh install, or an install updated from before #41: Settings,
+      Appearance shows "Clip titles and summaries that wrap" ticked, right
+      after "Hide the panel when I open a thread", with no "Settings were
+      damaged" warning. Its info button explains it.
+- [ ] Phone, ticked: each row's title, meta line and note are one line ending
+      in "..."; opening a row's actions shows them in full.
+- [ ] Phone, unticked: titles, meta lines and notes wrap onto as many lines
+      as they need, closed or open. Reload: it stays unticked.
+- [ ] Desktop, ticked: a long title and a long note end in "..." on one line;
+      hovering either shows the full text as a tooltip, and the title still
+      opens its thread. The meta line still wraps.
+- [ ] Desktop, unticked: long titles and notes wrap, exactly as before.
+
 ### Hide on opening a thread
 
 - [ ] Fresh install: Settings shows "Hide the panel when I open a thread"

@@ -7,7 +7,7 @@
 const NOW = Date.UTC(2026, 7, 8, 12, 0, 0);
 const MIN = 60000;
 
-function seedWide(api) {
+function seedWide(api, clipLines) {
   api.state.feed.subscribed = [
     { id: 101, forum: 61, title: 'A practical education guide and script companion', unread: 3, total: 214, author: 'DaftVino' },
     { id: 102, forum: 63, title: 'Public API v2 project board', unread: 0, total: 88, author: 'Chedburn' },
@@ -48,6 +48,11 @@ function seedWide(api) {
   api.state.mine = api.setKarma(mine, 1208, NOW - 5 * MIN);
   api.state.settings.rowsShown = 0;
   api.state.settings.theme = 'dark';
+  // #41: the golden predates the clip setting, so parity is checked with it
+  // off, where the wide rows must be main's byte for byte. Main's code has no
+  // such field and ignores this. What "on" adds is asserted separately in
+  // tests/wide-parity.test.js, never by regenerating the golden.
+  api.state.settings.clipLines = clipLines === true;
   // The bootstrap's own refresh has no transport and may have failed in the
   // meantime; none of that belongs in a layout golden.
   api.state.refreshing = false;
@@ -58,12 +63,12 @@ function seedWide(api) {
 
 // Every complete wide view, plus the loading and error states. Drafts is
 // captured on a thread page with no reply box, so its reply-box line renders.
-function captureWide(loadUserscript, FORUMS_LOCATION) {
+function captureWide(loadUserscript, FORUMS_LOCATION, clipLines) {
   const env = loadUserscript({
     location: FORUMS_LOCATION, now: NOW, gmStore: [['tfcc:key', 'abcdefghij123456']],
   });
   const api = env.exports;
-  seedWide(api);
+  seedWide(api, clipLines);
   const html = () => api.panelHtml(api.buildPanelModel(NOW));
   const out = { css: api.panelStyleText().split('\n'), views: {}, nav: {}, rows: {} };
   api.state.route = api.parseForumRoute({

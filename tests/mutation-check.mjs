@@ -1331,7 +1331,7 @@ const MUTATIONS = [
     ['the archive icon reaches screen readers', (s) => s.replace(
       ' width="18" height="18" aria-hidden="true"', ' width="18" height="18"')],
     ['the archive icon takes a fixed colour', (s) => s.replace(
-      '<path fill="currentColor" fill-rule="evenodd"', '<path fill="#000" fill-rule="evenodd"')],
+      'focusable="false"><path fill="currentColor" fill-rule="evenodd"', 'focusable="false"><path fill="#000" fill-rule="evenodd"')],
     ['a host svg fill rule can recolour the archive icon', (s) => s.replace(
       ".tfcc-narrow .tfcc-archico path { fill: currentColor; }',", ".tfcc-narrow .tfcc-archico path { }',")],
     ['the archive icon is drawn through the emoji filter', (s) => s.replace(
@@ -1339,6 +1339,54 @@ const MUTATIONS = [
     ['the archive icon carries an xmlns', (s) => s.replace(
       "'<svg class=\"tfcc-archico\" viewBox", "'<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"tfcc-archico\" viewBox")],
   ].map(([name, apply]) => ({ name: '#41: ' + name, suite: 'tests/narrow-polish.test.js', apply })),
+  // #41: the clip setting.
+  ...[
+    ['clipping defaults off', (s) => s.replace('      clipLines: true,\n', '      clipLines: false,\n')],
+    ['an absent clipLines field turns clipping off', (s) => s.replace(
+      "out.clipLines = typeof raw.clipLines === 'boolean' ? raw.clipLines : d.clipLines;", 'out.clipLines = raw.clipLines === true;')],
+    ['a junk clipLines value is coerced instead of defaulted', (s) => s.replace(
+      "out.clipLines = typeof raw.clipLines === 'boolean' ? raw.clipLines : d.clipLines;", 'out.clipLines = !!raw.clipLines;')],
+    ['an explicit off is not kept', (s) => s.replace(
+      "out.clipLines = typeof raw.clipLines === 'boolean' ? raw.clipLines : d.clipLines;", 'out.clipLines = d.clipLines;')],
+    ['the panel never carries tfcc-clip', (s) => s.replace(
+      'panel.classList.toggle(CLIP_CLASS, !state.settings || state.settings.clipLines !== false);', '')],
+    ['the panel carries tfcc-clip whatever the setting says', (s) => s.replace(
+      'panel.classList.toggle(CLIP_CLASS, !state.settings || state.settings.clipLines !== false);', 'panel.classList.toggle(CLIP_CLASS, true);')],
+    ['a wide title has no tooltip', (s) => s.replace(
+      "out.push('<span class=\"tfcc-row-title\"' + (clip ? ' title=\"' + escapeHtml(row.title) + '\"' : '')",
+      "out.push('<span class=\"tfcc-row-title\"' + ''")],
+    ['a wide note has no tooltip', (s) => s.replace(
+      "out.push('<div class=\"tfcc-note\"' + (clip ? ' title=\"' + escapeHtml(row.note) + '\"' : '') + '>'",
+      "out.push('<div class=\"tfcc-note\"' + '>'")],
+    ['the wide title is not cut', (s) => s.replace(
+      ".tfcc-clip .tfcc-row-main .tfcc-row-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',",
+      ".tfcc-clip .tfcc-row-main .tfcc-row-title { }',")],
+    ['the note is not cut', (s) => s.replace(
+      ".tfcc-clip .tfcc-row > .tfcc-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',",
+      ".tfcc-clip .tfcc-row > .tfcc-note { }',")],
+    ['the narrow title is cut whatever the setting says', (s) => s.replace(
+      "'.tfcc-narrow.tfcc-clip .tfcc-row-t .tfcc-row-title a {',", "'.tfcc-narrow .tfcc-row-t .tfcc-row-title a {',")],
+    ['the narrow meta is cut whatever the setting says', (s) => s.replace(
+      "'.tfcc-narrow.tfcc-clip .tfcc-row-l2 .tfcc-meta {',", "'.tfcc-narrow .tfcc-row-l2 .tfcc-meta {',")],
+    ['an open narrow row keeps its note cut', (s) => s.replace(
+      ".tfcc-clip .tfcc-row.tfcc-open > .tfcc-note { white-space: normal; overflow: visible; }',", ".tfcc-clip .tfcc-row.tfcc-open > .tfcc-note { }',")],
+    ['unticking the checkbox is not saved', (s) => s.replace(
+      "          state.settings.clipLines = !!el.checked;\n          persist('settings'); redraw(); return;",
+      "          state.settings.clipLines = !!el.checked;\n          redraw(); return;")],
+    ['the checkbox does not show the setting', (s) => s.replace("+ (model.settings.clipLines ? ' checked' : '') + '>'", "+ '>'")],
+    ['the clip info key is not registered', (s) => s.replace("    'settings-clip': 'About clipping',\n", '')],
+  ].map(([name, apply]) => ({ name: '#41: ' + name, suite: 'tests/clip-lines.test.js', apply })),
+  {
+    name: '#41: wide rows carry the tooltip with clipping off',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("var clip = model.clipLines === true;", 'var clip = true;'),
+  },
+  {
+    name: '#41: the Settings checkbox moves out of Appearance',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("      + 'screen, hover over it. Turn this off to let them wrap.'));\n    out.push('</div>');",
+      "      + 'screen, hover over it. Turn this off to let them wrap.'));\n    out.push('</div><div>');"),
+  },
   {
     name: '#39: the wide Catch up bar takes the narrow two-label buttons',
     suite: 'tests/wide-parity.test.js',
