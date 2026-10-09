@@ -336,12 +336,12 @@ function screen(theme, width, body, opts) {
     + '<div id="tfcc-panel" class="tfcc-theme-' + theme + (o.panelClass ? ' ' + o.panelClass : '') + '">' + body + '</div>'
     + fold + '</div></div>';
 }
-function page(title, desc, phones) {
+function page(title, desc, phones, extraCss) {
   return '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">\n'
     + '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
     + '<title>' + esc(title) + '</title>\n'
     + '<!-- ' + esc(desc) + ' -->\n'
-    + '<style>' + PAGE_CSS + BASE_CSS + PROPOSAL_CSS + '</style></head>\n<body>\n'
+    + '<style>' + PAGE_CSS + BASE_CSS + PROPOSAL_CSS + (extraCss || '') + '</style></head>\n<body>\n'
     + phones.join('\n') + '\n</body></html>\n';
 }
 
@@ -494,6 +494,224 @@ function conceptC(theme, opts) {
     + '<button type="button" data-act="rows-toggle" data-view="threads">Show all</button></div>';
 }
 
+// ---- Revised recommendation: task-first A (after the Codex review) -------------
+// r-* classes. Sizes are em (the panel is 14px) so the 200% frame scales with
+// the tokens. Every control box is a real 44x44 minimum: min-height and
+// min-width, never a fixed height, and no pseudo-element hit areas.
+const REVISED_CSS = `
+body.r-wrap { flex-wrap: wrap; max-width: 1700px; }
+#tfcc-panel.tfcc-narrow { padding: 8px; }
+#tfcc-panel .r-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+#tfcc-panel .r-id { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+#tfcc-panel .r-head .tfcc-logo { height: 24px; }
+#tfcc-panel .r-ctl { display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; margin-left: auto; }
+#tfcc-panel button.r-ico { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; min-height: 44px; padding: 0; }
+#tfcc-panel button.r-show { min-height: 44px; min-width: 44px; padding: 0 10px; font-weight: bold;
+  display: inline-flex; align-items: center; gap: 4px; }
+/* The chip: a 44px button with no chrome of its own; the 28px pill is a child. */
+#tfcc-panel button.r-chip { min-height: 44px; min-width: 44px; padding: 0; border: 0; background: transparent;
+  display: inline-flex; align-items: center; }
+#tfcc-panel .r-pill { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; min-height: 28px;
+  padding: 2px 8px; border-radius: 14px; border: 1px solid var(--tm-border-2); background: var(--tm-bg-3);
+  font-size: var(--tfcc-text-sm); font-weight: bold; }
+/* Nav: all six views, VIEWS order, 3 x 2. No More menu. */
+#tfcc-panel .r-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 6px; }
+#tfcc-panel .r-nav button { min-height: 44px; padding: 2px 4px; font-weight: bold; font-size: 0.93em; line-height: 1.2;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 5px; text-align: center; }
+#tfcc-panel .r-n { font-size: 0.8em; font-weight: bold; padding: 0 6px; border-radius: 8px; line-height: 1.5;
+  background: var(--tm-good-bg); color: var(--tm-text); }
+#tfcc-panel .r-nav .tfcc-nav-mine .r-n { background: var(--tm-bg-3); }
+/* Filter line. */
+#tfcc-panel .r-filter { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+#tfcc-panel .r-filter input { flex: 1 1 8em; min-width: 0; min-height: 44px; font-size: max(16px, 1em); }
+#tfcc-panel .r-filter button { min-height: 44px; min-width: 44px; padding: 0 8px; display: inline-flex;
+  align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
+#tfcc-panel .r-filters-open { display: grid; grid-template-columns: repeat(auto-fit, minmax(8em, 1fr)); gap: 6px;
+  margin: 0 0 6px 0; }
+#tfcc-panel .r-filters-open select { min-height: 44px; min-width: 0; font-size: max(16px, 1em); }
+/* View heading: the focus fallback when the last row goes. */
+#tfcc-panel .r-vh { font-size: 1em; margin: 2px 0 6px 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#tfcc-panel .r-catchbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; align-items: center; }
+#tfcc-panel .r-catchbar button { min-height: 44px; }
+#tfcc-panel .tfcc-section { border: 1px solid var(--tm-border); border-radius: 4px; padding: 6px; margin-bottom: 6px; }
+#tfcc-panel .tfcc-section h4 { margin: 0 0 6px 0; font-size: 1em; }
+/* Rows: the title has the whole width; unread, meta and the buttons share line 2. */
+#tfcc-panel .r-t { display: flex; gap: 4px; align-items: flex-start; }
+#tfcc-panel .r-t .tfcc-row-title { line-height: 1.35; }
+#tfcc-panel .r-t .tfcc-row-title a { display: block; padding: 3px 0; min-height: 24px; }
+#tfcc-panel .r-t .tfcc-pinned { padding-top: 3px; }
+#tfcc-panel .r-l2 { display: flex; gap: 6px; align-items: flex-start; }
+#tfcc-panel .r-l2 .tfcc-meta { flex: 1 1 0; min-width: 0; margin-top: 0; padding-top: 2px; }
+#tfcc-panel .r-l2 .tfcc-unread { font-size: 1em; }
+#tfcc-panel .r-btns { flex: none; display: inline-flex; gap: 6px; }
+#tfcc-panel .r-btns button { min-width: 44px; min-height: 44px; padding: 0 6px; display: inline-flex;
+  align-items: center; justify-content: center; gap: 4px; border-color: var(--tm-border); }
+#tfcc-panel .r-btns button[aria-expanded="true"] { background: var(--tm-hover); border-color: var(--tm-border-2); }
+#tfcc-panel .r-btns button.r-read { font-weight: bold; border-color: var(--tm-border-2); }
+#tfcc-panel .r-note { color: var(--tm-muted); font-size: var(--tfcc-text-sm); }
+#tfcc-panel .r-drawer { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5em, 1fr)); gap: 6px; margin-top: 6px;
+  padding-top: 8px; border-top: 1px solid var(--tm-border); }
+#tfcc-panel .r-drawer button, #tfcc-panel .r-drawer select, #tfcc-panel .r-drawer input { min-height: 44px; min-width: 0; }
+#tfcc-panel .r-drawer button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+#tfcc-panel .r-drawer input, #tfcc-panel .r-drawer select { font-size: max(16px, 1em); }
+#tfcc-panel .r-drawer .r-wide { grid-column: 1 / -1; }
+#tfcc-panel .r-step { display: flex; align-items: center; gap: 6px; }
+#tfcc-panel .r-step button { min-width: 44px; font-weight: bold; font-size: 1.25em; }
+#tfcc-panel .r-step span { flex: 1 1 auto; text-align: center; color: var(--tm-meta); }
+#tfcc-panel .r-cap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+#tfcc-panel .r-cap button { min-height: 44px; }
+#tfcc-panel .r-shelf { border: 1px solid var(--tm-border); border-radius: 4px; padding: 6px 8px; margin-bottom: 6px;
+  background: var(--tm-bg-2); }
+#tfcc-panel .r-shelf .r-shelf-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+#tfcc-panel .r-shelf button { min-height: 44px; }
+#tfcc-panel .r-bar-track { display: inline-block; background: var(--tm-bg-3); border: 1px solid var(--tm-border);
+  border-radius: 3px; height: 8px; width: 120px; max-width: 40%; }
+#tfcc-panel .r-bar-fill { display: block; background: var(--tm-good-text); height: 100%; width: 40%; }
+#tfcc-panel .r-rx { margin-bottom: 6px; }
+#tfcc-panel .r-rx button.tfcc-reactions { min-height: 44px; border-radius: 4px; padding: 0 10px; width: 100%; }
+`;
+
+function rChip() {
+  return '<button type="button" class="tfcc-chip r-chip" data-act="badges-shelf" aria-expanded="false"'
+    + ' aria-label="Badges: 4 of 31. Streak 5 days, today counted. Show badges.">'
+    + '<span class="r-pill">' + CUP + '<span>4</span>' + FLAME + '<span>5</span></span></button>';
+}
+function rHead(o) {
+  const collapsed = !!o.collapsed;
+  return '<div class="r-head"><div class="r-id">' + LOGO + rChip() + '</div>'
+    + '<span class="r-ctl tfcc-head-btns">'
+    + (collapsed ? '<span class="tfcc-badge">16 new</span>' : '')
+    + '<button type="button" class="r-ico" data-act="refresh" aria-label="Refresh">' + ico('refresh') + '</button>'
+    + '<button type="button" class="r-ico" data-act="takeover" aria-pressed="false" aria-label="Expand">' + ico('expand') + '</button>'
+    + (collapsed
+      ? '<button type="button" class="r-show" data-act="collapse" aria-label="Show the panel">' + ico('show', 18) + 'Show</button>'
+      : '<button type="button" class="r-ico" data-act="collapse" aria-label="Hide the panel">' + ico('hide') + '</button>')
+    + '</span></div>';
+}
+function rNav(active) {
+  const cell = (v, label, n, cls, aria) => '<button type="button" data-act="view" data-view="' + v + '"'
+    + (cls ? ' class="' + cls + '"' : '') + ' aria-pressed="' + (active === v ? 'true' : 'false') + '"'
+    + (aria ? ' aria-label="' + aria + '"' : '') + '><span>' + label + '</span>' + (n ? '<span class="r-n">' + n + '</span>' : '') + '</button>';
+  return '<div class="r-nav tfcc-nav" role="group" aria-label="Views">'
+    + cell('threads', 'Threads', '16 new', '', 'Threads, 16 new, 6 subscribed')
+    + cell('catchup', 'Catch up', '3', '', 'Catch up, 3')
+    + cell('search', 'Search', '')
+    + cell('drafts', 'Drafts', '1', '', 'Drafts, 1')
+    + cell('settings', 'Settings', '')
+    + cell('mine', 'My posts', '1', 'tfcc-nav-mine', 'My posts, 1 new')
+    + '</div>';
+}
+function rFilter(open) {
+  return '<div class="r-filter">'
+    + '<input type="search" data-act="filter" placeholder="filter threads" aria-label="Filter: words, by:player, tag:x, is:unread">'
+    + '<button type="button" data-act="unread-only" aria-pressed="false">Unread</button>'
+    + '<button type="button" data-act="filters-toggle" aria-expanded="' + (open ? 'true' : 'false') + '"'
+    + ' aria-controls="tfcc-filters" aria-label="Filters, 1 active">' + ico('filter', 18) + '1</button></div>'
+    + (open ? '<div class="r-filters-open" id="tfcc-filters">'
+      + '<select data-act="sort" aria-label="Sort"><option>Last activity</option></select>'
+      + '<select data-act="folder-filter" aria-label="Folder"><option>Guides</option></select>'
+      + '<select data-act="tag-filter" aria-label="Tag"><option>All tags</option></select></div>' : '');
+}
+function rRow(r, o) {
+  const id = ' data-id="' + r.id + '"';
+  const open = !!o.open;
+  const catchup = !!o.catchup;
+  const bits = [];
+  if (r.unread) bits.push('<span class="tfcc-unread">' + r.unread + ' new</span>');
+  if (r.started) bits.push('<span class="tfcc-tag tfcc-started">started</span>');
+  if (r.prio) bits.push('<span class="m-prio" title="Priority">' + (r.prio > 0 ? '+' : '') + r.prio + '</span>');
+  bits.push('<span>' + esc(r.time) + '</span>', '<span>' + esc(r.forum) + '</span>', '<span>by ' + esc(r.by) + '</span>');
+  if (r.folder && !catchup) bits.push('<span>' + esc(r.folder) + '</span>');
+  if (r.draft) bits.push('<span class="tfcc-tag">draft</span>');
+  for (const t of r.tags) bits.push('<span class="tfcc-tag">' + esc(t) + '</span>');
+  let h = '<div class="tfcc-row" data-id="' + r.id + '">'
+    + '<div class="r-t">' + (r.pinned ? '<span class="tfcc-pinned" title="Pinned">*</span>' : '') + titleLink(r) + '</div>'
+    + '<div class="r-l2"><div class="tfcc-meta">' + bits.join('') + '</div><span class="r-btns">'
+    + (catchup ? '<button type="button" class="r-read" data-act="read"' + id + ' aria-label="Mark read: ' + esc(r.title) + '">'
+      + ico('check', 18) + 'Read</button>' : '')
+    + '<button type="button" data-act="row-more"' + id + ' aria-expanded="' + (open ? 'true' : 'false') + '"'
+    + ' aria-controls="tfcc-act-' + r.id + '" aria-label="Actions for ' + esc(r.title) + '">' + ico(open ? 'close' : 'more', 18) + '</button>'
+    + '</span></div>';
+  if (r.note) h += '<div class="r-note">' + esc(r.note) + '</div>';
+  if (open) {
+    h += '<div class="r-drawer" id="tfcc-act-' + r.id + '">'
+      + '<button type="button" data-act="pin"' + id + '>' + ico('pin', 18) + (r.pinned ? 'Unpin' : 'Pin') + '</button>'
+      + (catchup ? '' : '<button type="button" data-act="read"' + id + '>' + ico('read', 18) + 'Mark read</button>')
+      + '<button type="button" data-act="draft"' + id + '>' + ico('draft', 18) + (r.draft ? 'Edit draft' : 'Draft') + '</button>'
+      + '<button type="button" data-act="archive"' + id + '>' + ico('archive', 18) + 'Archive</button>'
+      + '<div class="r-step r-wide"><button type="button" data-act="prio-down"' + id + ' aria-label="Lower priority">-</button>'
+      + '<span>Priority <b>' + (r.prio > 0 ? '+' : '') + r.prio + '</b></span>'
+      + '<button type="button" data-act="prio-up"' + id + ' aria-label="Raise priority">+</button></div>'
+      + '<select data-act="folder"' + id + ' class="r-wide" aria-label="Folder"><option>' + esc(r.folder || 'Unfiled') + '</option></select>'
+      + '<input type="text" data-act="tag-input"' + id + ' placeholder="add tag" aria-label="Add tag">'
+      + '<input type="text" data-act="note-input"' + id + ' placeholder="note" value="' + esc(r.note || '') + '" aria-label="Note">'
+      + '</div>';
+  }
+  return h + '</div>';
+}
+function rShelf() {
+  return '<div class="r-shelf"><div>Streak 5 Torn days, today counted. Best 9.</div>'
+    + '<div class="r-shelf-row">Next: Regular <span class="r-bar-track"><span class="r-bar-fill"></span></span>'
+    + '<span class="tfcc-note">10 / 25</span></div>'
+    + '<div class="r-shelf-row"><span class="tfcc-note">4 of 31 earned</span>'
+    + '<button type="button" data-act="badges-all">All badges</button></div></div>';
+}
+function revisedThreads(o) {
+  const opts = o || {};
+  if (opts.collapsed) return rHead({ collapsed: true });
+  const rows = ROWS.map((r, i) => rRow(r, { open: opts.openRow === i })).join('');
+  return rHead({}) + (opts.shelf ? rShelf() : '') + rNav('threads') + rFilter(opts.filtersOpen)
+    + '<h3 class="m-sr" tabindex="-1">Threads</h3>'
+    + '<div class="tfcc-rows">' + rows + '</div>'
+    + '<div class="r-cap"><span class="tfcc-note">Showing 5 of 6</span>'
+    + '<button type="button" data-act="rows-toggle" data-view="threads">Show all</button></div>'
+    + '<p class="tfcc-note" style="margin:6px 0 0 0">Updated 4m ago.</p>';
+}
+function revisedCatchup(o) {
+  const opts = o || {};
+  const pick = [ROWS[0], ROWS[1], ROWS[2]];
+  const group = (name, list, start) => '<div class="tfcc-section"><h4>' + esc(name) + ' (' + list.length + ')</h4><div class="tfcc-rows">'
+    + list.map((r, j) => rRow(r, { catchup: true, open: opts.openRow === start + j })).join('') + '</div></div>';
+  return rHead({}) + rNav('catchup')
+    + '<h3 class="r-vh" tabindex="-1">Catch up <span class="tfcc-note" style="font-weight:normal">since 7 Aug 12:00</span></h3>'
+    + '<div class="r-catchbar"><button type="button" data-act="markall">Mark all read</button>'
+    + '<button type="button" data-act="catchup-done">Set catch-up point to now</button></div>'
+    + '<p class="tfcc-note" style="margin:0 0 6px 0">Marking read here hides a thread from this list. It cannot clear '
+    + 'Torn\'s own new-post counter, which only clears when you open the thread.</p>'
+    + group('Guides', [pick[0]], 0) + group('Scripts and tools', [pick[1]], 1) + group('Unfiled', [pick[2]], 2);
+}
+function revisedMine() {
+  return rHead({}) + rNav('mine')
+    + '<div class="r-rx">' + pill() + '</div>'
+    + '<p class="tfcc-note" style="margin:0 0 6px 0">Threads you started or posted in. Updated 4m ago.</p>'
+    + rFilter(false) + '<div class="tfcc-rows">' + rRow(ROWS[4], {}) + '</div>';
+}
+function rScreen(theme, width, body, caption, extra) {
+  return screen(theme, width, body, Object.assign({ caption: caption, panelClass: 'tfcc-narrow' }, extra || {}));
+}
+function revisedPage(width) {
+  const w = width;
+  const fold = { fold: FOLD, foldLabel: FOLD_LABEL };
+  const phones = [
+    rScreen('dark', w, revisedThreads(), 'R / dark / ' + w + ' / Threads at rest', fold),
+    rScreen('light', w, revisedThreads(), 'R / light / ' + w + ' / Threads at rest', fold),
+    rScreen('dark', w, revisedCatchup({}), 'R / dark / ' + w + ' / Catch up, one-tap Read', fold),
+    rScreen('light', w, revisedCatchup({ openRow: 1 }), 'R / light / ' + w + ' / Catch up, one drawer open'),
+    rScreen('light', w, revisedThreads({ filtersOpen: true }), 'R / light / ' + w + ' / filters open'),
+    rScreen('dark', w, revisedThreads({ shelf: true }), 'R / dark / ' + w + ' / badge shelf open'),
+    rScreen('dark', w, revisedThreads({ openRow: 0 }), 'R / dark / ' + w + ' / Threads, one drawer open'),
+    rScreen('light', w, revisedMine(), 'R / light / ' + w + ' / My posts, reactions visible'),
+    rScreen('dark', w, revisedThreads({ collapsed: true }), 'R / dark / ' + w + ' / collapsed, Show has text'),
+    rScreen('light', w, revisedThreads({ collapsed: true }), 'R / light / ' + w + ' / collapsed, Show has text'),
+  ];
+  if (w === 320) {
+    phones.push(screen('dark', w, revisedThreads(), { caption: 'R / dark / 320 / text at 200%',
+      panelClass: 'tfcc-narrow" style="--tfcc-text: 28px; --tfcc-text-sm: 24px' }));
+  }
+  return phones;
+}
+
 // ---- write -----------------------------------------------------------------------
 const FOLD = 560;
 const FOLD_LABEL = 'about one screen of PDA web view';
@@ -525,6 +743,14 @@ const files = {
       screen('light', 320, conceptA('light', { openRow: 0 }), { caption: 'Rec / light / 320 / row 1 drawer open' }),
       screen('dark', 320, conceptA('dark', { moreOpen: true }), { caption: 'Rec / dark / 320 / More open' }),
     ]),
+  'revised-375.html': page('Revised recommendation at 375px',
+    'Issue #33 revised recommendation (task-first A, after the Codex review) at 375px, dark and light.',
+    ['<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start;max-width:2100px">'
+      + revisedPage(375).join('\n') + '</div>'], REVISED_CSS),
+  'revised-320.html': page('Revised recommendation at 320px',
+    'Issue #33 revised recommendation (task-first A, after the Codex review) at 320px, dark and light, plus 200% text.',
+    ['<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start;max-width:1900px">'
+      + revisedPage(320).join('\n') + '</div>'], REVISED_CSS),
 };
 
 for (const [name, html] of Object.entries(files)) {
