@@ -1248,7 +1248,8 @@ how they were applied:
 ### 14d. The compact drawer
 
 - Pin, Draft and Archive are the owner's emoji (pin U+1F4CC, pencil U+270F
-  U+FE0F, wastebasket U+1F5D1 U+FE0F, written as escapes) in `aria-hidden`
+  U+FE0F, wastebasket U+1F5D1 U+FE0F, written as escapes; the wastebasket was
+  replaced in #41, below) in `aria-hidden`
   spans, drawn monochrome with the thumbs' filters: `grayscale(1)
   brightness(0) invert(1)` on dark, `grayscale(1) brightness(0)` on light.
   They sit on one row (`.tfcc-drawer-btns`, nowrap) with the check-mark Mark
@@ -1263,3 +1264,12 @@ how they were applied:
   reversible, not a delete, so the name and the hint say "Archive" (or
   "Unarchive"), never "Delete"; the mutation check fails if the name changes.
   Whether the hint should add "(can be undone)" is left to the owner.
+- **#41: the archive icon replaces the wastebasket.** The owner asked for a
+  glyph that reads as archive, not delete: UXWing's "archive files" icon (a
+  box with a down arrow), inlined as one ASCII SVG path (`ARCHIVE_SVG`,
+  class `tfcc-archico`, 18 x 18 by its attributes, `aria-hidden`, no id, no
+  xmlns). It is filled with `currentColor`, the button's text colour, so it
+  is monochrome in both themes without the emoji filter, and the contrast
+  audit measures its fill against the button at 3:1 or better. UXWing's
+  licence allows commercial use without attribution; it is quoted beside the
+  icon and credited in the README. Pin and Draft keep their emoji.

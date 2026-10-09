@@ -70,6 +70,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Changed
 
+- The narrow drawer's Archive button shows an archive box (UXWing's "archive
+  files" icon, inline and in the theme's text colour) instead of the
+  wastebasket, so it reads as archive, not delete. (#41)
 - Narrow view polish (#39). In the narrow layout only:
   - Catch up's "Mark all read", "Set catch-up point to now" and its info
     button share one line. Where the full labels would wrap they shorten to

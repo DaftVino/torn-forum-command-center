@@ -1315,7 +1315,7 @@ const MUTATIONS = [
       "      if (ev && ev.preventDefault) ev.preventDefault();\n      applyTransient({ type: 'dismiss' });\n      setTimeout(")],
     // 4. The compact drawer.
     ['the drawer emoji reach screen readers', (s) => s.replace('\'<span class="tfcc-emo" aria-hidden="true">\'', '\'<span class="tfcc-emo">\'')],
-    ['the wastebasket is named Delete', (s) => s.replace("emojiButton('archive', row.archived ? 'Unarchive' : 'Archive'", "emojiButton('archive', row.archived ? 'Unarchive' : 'Delete'")],
+    ['the archive button is named Delete', (s) => s.replace("emojiButton('archive', row.archived ? 'Unarchive' : 'Archive'", "emojiButton('archive', row.archived ? 'Unarchive' : 'Delete'")],
     ['a pinned row is not marked on its Pin button', (s) => s.replace("class=\"tfcc-emobtn' + (on ? ' tfcc-on' : '')", "class=\"tfcc-emobtn' + ''")],
     ['the drawer emoji stay in colour on dark', (s) => s.replace("      '  filter: grayscale(1) brightness(0) invert(1); }',", "      '  filter: none; }',")],
     ['the drawer emoji stay in colour on light', (s) => s.replace('.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }', '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: none; }')],
@@ -1323,6 +1323,20 @@ const MUTATIONS = [
     ['the drawer buttons may wrap, 4px apart', (s) => s.replace('.tfcc-drawer-btns { display: flex; flex-wrap: nowrap; gap: 8px; }', '.tfcc-drawer-btns { display: flex; flex-wrap: wrap; gap: 4px; }')],
     ['a drawer field is shortened by its font', (s) => s.replace("      '  padding: 4px 8px; }',", "      '  padding: 4px 8px; font-size: 12px; }',")],
   ].map(([name, apply]) => ({ name: '#39: ' + name, suite: 'tests/narrow-polish.test.js', apply })),
+  ...[
+    ['the archive button goes back to the wastebasket', (s) => s.replace(
+      "row.archived ? 'Unarchive' : 'Archive', ARCHIVE_SVG,", "row.archived ? 'Unarchive' : 'Archive', emojiIcon('" + String.fromCharCode(92) + "uD83D" + String.fromCharCode(92) + "uDDD1'),")],
+    ['the archive icon reaches screen readers', (s) => s.replace(
+      ' width="18" height="18" aria-hidden="true"', ' width="18" height="18"')],
+    ['the archive icon takes a fixed colour', (s) => s.replace(
+      '<path fill="currentColor" fill-rule="evenodd"', '<path fill="#000" fill-rule="evenodd"')],
+    ['a host svg fill rule can recolour the archive icon', (s) => s.replace(
+      ".tfcc-narrow .tfcc-archico path { fill: currentColor; }',", ".tfcc-narrow .tfcc-archico path { }',")],
+    ['the archive icon is drawn through the emoji filter', (s) => s.replace(
+      ".tfcc-narrow .tfcc-archico { display: block; flex: none; }',", ".tfcc-narrow .tfcc-archico { display: block; flex: none; filter: invert(1); }',")],
+    ['the archive icon carries an xmlns', (s) => s.replace(
+      "'<svg class=\"tfcc-archico\" viewBox", "'<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"tfcc-archico\" viewBox")],
+  ].map(([name, apply]) => ({ name: '#41: ' + name, suite: 'tests/narrow-polish.test.js', apply })),
   {
     name: '#39: the wide Catch up bar takes the narrow two-label buttons',
     suite: 'tests/wide-parity.test.js',

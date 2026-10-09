@@ -152,12 +152,12 @@ Walk on Torn PDA, portrait, on the narrowest phone you have, then landscape.
       outside the panel: the drawer closes and nothing else happens.
 - [ ] Type a note in a drawer, then tap outside the panel without pressing
       Enter: the note is saved and the drawer closes.
-- [ ] The drawer shows a pin, a check mark, a pencil and a wastebasket on one
-      row, in white on the dark theme and black on the light theme (no colour
-      emoji). TalkBack reads them as "Pin" (or "Unpin"), "Mark read", "Draft"
+- [ ] The drawer shows a pin, a check mark, a pencil and an archive box (a
+      box with a down arrow, #41) on one row, in white on the dark theme and
+      black on the light theme (no colour emoji). TalkBack reads them as "Pin" (or "Unpin"), "Mark read", "Draft"
       (or "Edit draft") and "Archive" (or "Unarchive"). A pinned row's pin
       button is underlined.
-- [ ] The wastebasket archives, it does not delete: the thread leaves the list
+- [ ] The archive box archives, it does not delete: the thread leaves the list
       and comes back with Unarchive.
 - [ ] The drawer's buttons, stepper, folder select and fields are visibly
       smaller than the nav and Actions buttons, still easy to hit, and tapping

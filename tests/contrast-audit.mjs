@@ -261,8 +261,28 @@ const SCRIPT = `
     if (r < ${MIN_LARGE}) out.push({ tag: 'emoji', cls: 'tfcc-emo', color: light ? 'black' : 'white', bg: 'button',
       ratio: Math.round(r * 100) / 100, need: ${MIN_LARGE}, text: el.parentElement.getAttribute('aria-label') });
   }
+  // #41: the archive icon paints its path in the button's currentColor, in
+  // both themes, at 3:1 or better against the button (WCAG 1.4.11), and no
+  // filter recolours it.
+  const icos = Array.from(panel.querySelectorAll('svg.tfcc-archico'));
+  for (const el of icos) {
+    const path = el.querySelector('path');
+    const fill = parse(getComputedStyle(path).fill);
+    const own = parse(getComputedStyle(el.parentElement).color);
+    if (getComputedStyle(el).filter !== 'none') polishBad.push('the archive icon has a filter');
+    if (!fill || !own || fill.r !== own.r || fill.g !== own.g || fill.b !== own.b) {
+      polishBad.push('the archive icon is ' + getComputedStyle(path).fill + ', not its button\\'s colour');
+      continue;
+    }
+    const r = ratio(fill, effectiveBg(el));
+    if (r < ${MIN_LARGE}) out.push({ tag: 'icon', cls: 'tfcc-archico', color: getComputedStyle(path).fill, bg: 'button',
+      ratio: Math.round(r * 100) / 100, need: ${MIN_LARGE}, text: el.parentElement.getAttribute('aria-label') });
+    const box = el.getBoundingClientRect();
+    if (Math.round(box.width) !== 18 || Math.round(box.height) !== 18) polishBad.push('the archive icon is ' + Math.round(box.width) + 'x' + Math.round(box.height));
+  }
   out.seen = {
     polishBad: polishBad,
+    icos: icos.length,
     cuMode: cuMode,
     cuWidths: cuWidths,
     cubar: !!cubar,
@@ -335,6 +355,7 @@ for (const page of pages) {
   if (page.startsWith('narrow-') && page.includes('-drawer')) {
     if (!seen.drawerBtns) missing.push('the drawer button row');
     if (!seen.emos) missing.push('the drawer emoji');
+    if (!seen.icos) missing.push('the archive icon');
   }
   if ((seen.polishBad || []).length) seen.headBad = (seen.headBad || []).concat(seen.polishBad);
   if (seen.headBad && seen.headBad.length) {

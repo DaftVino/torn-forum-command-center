@@ -384,6 +384,8 @@ test('the click-away listener is bound once, in the capture phase, and checks on
 const PIN = '\uD83D\uDCCC';
 const PENCIL = '\u270F\uFE0F';
 const BIN = '\uD83D\uDDD1\uFE0F';
+// #41: Archive draws UXWing's "archive files" icon, not the wastebasket.
+const ARCHIVE_SVG_HEAD = '<svg class="tfcc-archico" viewBox="0 0 512 441.48" width="18" height="18" aria-hidden="true" focusable="false">';
 
 function drawerOf(html, id) {
   const i = html.indexOf('<div class="tfcc-drawer" id="tfcc-act-' + id + '">');
@@ -391,7 +393,7 @@ function drawerOf(html, id) {
   return html.slice(i, html.indexOf('</div></div>', i) + 12);
 }
 
-test('Pin, Draft and Archive are emoji buttons on one row, named and hinted in words', () => {
+test('Pin and Draft are emoji buttons and Archive an icon button, on one row, named and hinted in words', () => {
   const { env, api } = bootNarrow();
   seedRows(api, [{ id: 7, unread: 1 }]);
   api.state.openRowId = '7';
@@ -402,9 +404,39 @@ test('Pin, Draft and Archive are emoji buttons on one row, named and hinted in w
     + label + '" title="' + label + '"><span class="tfcc-emo" aria-hidden="true">' + glyph + '</span></button>';
   assert.ok(btns[1].includes(emo('pin', 'Pin', PIN)), 'pin');
   assert.ok(btns[1].includes(emo('draft', 'Draft', PENCIL)), 'pencil');
-  assert.ok(btns[1].includes(emo('archive', 'Archive', BIN)), 'wastebasket, named Archive');
+  assert.ok(btns[1].includes('<button type="button" class="tfcc-emobtn" data-act="archive" data-id="7" aria-label="Archive"'
+    + ' title="Archive">' + ARCHIVE_SVG_HEAD), 'the archive icon, named Archive');
+  assert.ok(!btns[1].includes(BIN), 'no wastebasket');
   assert.match(btns[1], /data-act="read" data-id="7" aria-label="Mark read"/, 'Mark read shares the row outside Catch up');
   assert.deepStrictEqual(Array.from(btns[1].matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]), ['pin', 'read', 'draft', 'archive']);
+});
+
+test('the archive icon is a clean inline ASCII SVG drawn in currentColor (#41)', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, [{ id: 7, unread: 1 }]);
+  api.state.openRowId = '7';
+  const d = drawerOf(redraw(env), '7');
+  const svg = /<svg class="tfcc-archico"[\s\S]*?<\/svg>/.exec(d);
+  assert.ok(svg, 'the archive icon renders');
+  assert.ok(svg[0].startsWith(ARCHIVE_SVG_HEAD));
+  assert.match(svg[0], /^[\x20-\x7e]+$/, 'ASCII');
+  assert.doesNotMatch(svg[0], /\sid=|xmlns|<title|style=/, 'no id, no xmlns, no title, no inline style');
+  assert.match(svg[0], /<path fill="currentColor" fill-rule="evenodd" d="m439\.55 3\.74 /, 'currentColor, with the original evenodd hole');
+  assert.strictEqual((svg[0].match(/<path/g) || []).length, 1, 'one path');
+  // The UXWing licence is quoted beside the icon.
+  const src = require('./load-userscript').readSource();
+  assert.match(src, /uxwing\.com\/archive-files-icon/);
+  assert.match(src, /without attribution/);
+});
+
+test('the archive icon is monochrome in currentColor in both themes, never a filter (#41)', () => {
+  const { api } = bootNarrow();
+  // Sized by its width and height attributes (18px, the 16px emoji's optical
+  // match), like the .tfcc-gl glyphs: a narrow rule never fixes a height.
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-archico'), /display: block; flex: none;/);
+  // (1,2,1) beats the host's "svg * { fill }" the way the logo rule does.
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-archico path'), /fill: currentColor;/);
+  assert.doesNotMatch(api.panelStyleText(), /\.tfcc-archico[^{]*\{[^}]*filter/, 'currentColor already follows the theme');
 });
 
 test('the pinned state is marked on the Pin button', () => {

@@ -4719,6 +4719,9 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-emo { display: block; font-size: 16px; line-height: 1;',
       '  filter: grayscale(1) brightness(0) invert(1); }',
       '#' + PANEL_ID + '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }',
+      // #41: the archive icon, in the button's own text colour in both themes.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-archico { display: block; flex: none; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-archico path { fill: currentColor; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-step { display: flex; align-items: center; gap: 8px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-step span { flex: 1 1 auto; text-align: center; color: var(--tm-meta); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-vh { font-size: var(--tfcc-text); margin: 2px 0 6px 0; }',
@@ -5297,21 +5300,46 @@
 
   // The drawer's emoji (#39, the owner's choice), as escapes so the source
   // stays ASCII. Drawn monochrome by the .tfcc-emo filter rules, like the
-  // thumbs. The wastebasket means Archive, which is reversible: the button's
-  // name and hint say Archive (or Unarchive), never Delete.
+  // thumbs.
   var DRAWER_EMOJI = Object.freeze({
     pin: '\uD83D\uDCCC',
     draft: '\u270F\uFE0F',
-    archive: '\uD83D\uDDD1\uFE0F',
   });
 
-  // A compact drawer button (#39): the emoji is decoration (aria-hidden); the
+  function emojiIcon(emoji) {
+    return '<span class="tfcc-emo" aria-hidden="true">' + emoji + '</span>';
+  }
+
+  // #41: Archive draws the "archive files" icon from UXWing, so the button
+  // reads as archive, not delete (it replaced the wastebasket emoji). Archive
+  // is reversible: the name and hint say Archive (or Unarchive), never Delete.
+  // Source: uxwing.com/archive-files-icon/ (path data unchanged;
+  // xmlns, rendering hints and clip-rule dropped). Licence, from
+  // uxwing.com/license/ (read 2026-10-09): "All files on this site can
+  // be used in personal, commercial, and client projects." "Attribution and
+  // credit are NOT required; however, any credit will be much appreciated."
+  // The icon page itself: "All icons on this site can be used for personal,
+  // commercial, and client projects without attribution." Credit is given
+  // anyway, here and in the README. No id and no xmlns (see LOGO_SVG); the
+  // fill is currentColor, so it follows the theme with no filter, and the
+  // .tfcc-archico rules repeat it so a host "svg * { fill }" cannot win.
+  var ARCHIVE_SVG = '<svg class="tfcc-archico" viewBox="0 0 512 441.48" width="18" height="18" aria-hidden="true"'
+    + ' focusable="false"><path fill="currentColor" fill-rule="evenodd" d="'
+    + 'm439.55 3.74 67.81 78.75c2.5 1.95 4.11 5 4.11 8.42 0 1.02-.14 2-.41 2.94l.94 336.97c0 5.86-4.76 '
+    + '10.62-10.62 10.62v.04H10.66C4.77 441.48 0 436.7 0 430.82V90.91c0-3 1.24-5.71 3.23-7.65L72.6 '
+    + '3.66c2.1-2.39 5.04-3.62 8-3.62V0h350.84c3.25 0 6.16 1.45 8.11 3.74zM34.05 80.25h443.24l-50.73-58.93H85.4'
+    + 'L34.05 80.25zm316.63 169.79c6.9.3 11.81 2.57 14.64 6.88 7.68 11.51-1.96 23.76-10.09 30.9l-90.69 '
+    + '79.63c-7.72 8.53-18.71 8.53-26.42 0-10.53-12.29-63.8-59.72-83.42-81.81-6.8-7.65-15.21-18.1-8.13-28.72 '
+    + '2.84-4.31 7.74-6.58 14.65-6.88h44.43v-76.57c0-4.81 3.93-8.74 8.74-8.74h83.23c4.81 0 8.75 3.94 8.75 '
+    + '8.74v76.57h44.31z"/></svg>';
+
+  // A compact drawer button (#39): the icon is decoration (aria-hidden); the
   // name and the hint are the words. tfcc-on marks a set state (pinned, a
   // draft saved, archived), so the state never rests on the name alone.
-  function emojiButton(action, label, emoji, on, rowId) {
+  function emojiButton(action, label, icon, on, rowId) {
     return '<button type="button" class="tfcc-emobtn' + (on ? ' tfcc-on' : '') + '" data-act="' + escapeHtml(action)
       + '" data-id="' + escapeHtml(rowId) + '" aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '">'
-      + '<span class="tfcc-emo" aria-hidden="true">' + emoji + '</span></button>';
+      + icon + '</button>';
   }
 
   // The drawer's controls (spec 4.4): the same data-act values as the wide
@@ -5325,10 +5353,10 @@
     // #39: Pin, Draft and Archive are compact emoji buttons on one row, with
     // Mark read beside them outside Catch up.
     out.push('<div class="tfcc-drawer-btns tfcc-wide">');
-    out.push(emojiButton('pin', row.pinned ? 'Unpin' : 'Pin', DRAWER_EMOJI.pin, row.pinned, row.id));
+    out.push(emojiButton('pin', row.pinned ? 'Unpin' : 'Pin', emojiIcon(DRAWER_EMOJI.pin), row.pinned, row.id));
     if (!inCatchUp) out.push(readButton(row));
-    out.push(emojiButton('draft', row.hasDraft ? 'Edit draft' : 'Draft', DRAWER_EMOJI.draft, row.hasDraft, row.id));
-    out.push(emojiButton('archive', row.archived ? 'Unarchive' : 'Archive', DRAWER_EMOJI.archive, row.archived, row.id));
+    out.push(emojiButton('draft', row.hasDraft ? 'Edit draft' : 'Draft', emojiIcon(DRAWER_EMOJI.draft), row.hasDraft, row.id));
+    out.push(emojiButton('archive', row.archived ? 'Unarchive' : 'Archive', ARCHIVE_SVG, row.archived, row.id));
     out.push('</div>');
     out.push('<div class="tfcc-step tfcc-wide">'
       + btn('prio-down', '-', id + ' aria-label="Lower priority"')
