@@ -1578,7 +1578,7 @@ const MUTATIONS = [
     ['an import ignores the export\'s order', (s) => s.replace(
       '      org = withFolderOrder(org, importedOrder(org, payload));\n', '')],
     ['the first folder\'s up arrow is not disabled', (s) => s.replace(
-      "      out.push(moveButton(f, 'up', i === 0)", "      out.push(moveButton(f, 'up', false)")],
+      "      out.push(moveButton(orderKeys[i], f.name, 'up', i === 0)", "      out.push(moveButton(orderKeys[i], f.name, 'up', false)")],
     ['Unfiled can be deleted', (s) => s.replace(
       "      if (unf) {\n        out.push('<span class=\"tfcc-note\">Threads in no folder</span></div>');\n        continue;\n      }\n", '')],
     ['focus is lost when an arrow reaches its end', (s) => s.replace(
