@@ -183,6 +183,26 @@
     mine: 'My posts',
   });
 
+  // Narrow layout (#33). The panel's own border-box width decides it, with 16px
+  // of hysteresis so a scrollbar appearing cannot flap the layout (spec 5).
+  var NARROW_ENTER_PX = 600;
+  var NARROW_LEAVE_PX = 616;
+  // Narrow header buttons scale between these, in half-pixel steps, so the
+  // header stays on one line (spec 13b). HB_GAPS is the fixed gaps: logo-chip 6,
+  // group 6, and 2 x 4 between the buttons. The narrow header CSS uses exactly
+  // these gaps; tests/style.test.js holds the two together.
+  var HB_MAX = 44;
+  var HB_MIN = 24;
+  var HB_STEP = 0.5;
+  var HB_COMPACT_BELOW = 36;
+  var HB_GAPS = 20;
+  // The logo's viewBox is 106 x 45; its height follows the button size between
+  // 16 and 24px.
+  var LOGO_ASPECT = 106 / 45;
+  var LOGO_PER_HB = 0.545;
+  var LOGO_MIN_PX = 16;
+  var LOGO_MAX_PX = 24;
+
   var THEMES = Object.freeze(['dark', 'light', 'match']);
 
   var DEFAULT_FOLDERS = Object.freeze([
@@ -1830,6 +1850,42 @@
       expandable: bites,
       expanded: open,
     };
+  }
+
+  // True when the panel should use the narrow layout. An unknown width (0,
+  // NaN, a failed measurement) keeps whatever layout is current.
+  function narrowFor(width, wasNarrow) {
+    var was = wasNarrow === true;
+    if (typeof width !== 'number' || !(width > 0)) return was;
+    if (width <= NARROW_ENTER_PX) return true;
+    if (width > NARROW_LEAVE_PX) return false;
+    return was;
+  }
+
+  function headerLogoWidth(size) {
+    return Math.min(LOGO_MAX_PX, Math.max(LOGO_MIN_PX, LOGO_PER_HB * size)) * LOGO_ASPECT;
+  }
+
+  // The largest header button size in [HB_MIN, HB_MAX], in HB_STEP steps, that
+  // keeps logo, chip, buttons and the Show label on one line of `content`
+  // pixels. fits is false only when even HB_MIN does not fit; the runtime then
+  // lets the logo-and-chip group wrap, never the buttons (spec 13b, last resort).
+  function headerButtonSize(content, chipW, showW, icons) {
+    var c = typeof content === 'number' && isFinite(content) ? content : 0;
+    var chip = typeof chipW === 'number' && chipW > 0 ? chipW : 0;
+    var show = typeof showW === 'number' && showW > 0 ? showW : 0;
+    var n = icons === 2 ? 2 : 3;
+    for (var s = HB_MAX; s >= HB_MIN; s -= HB_STEP) {
+      if (headerLogoWidth(s) + chip + n * s + show + HB_GAPS <= c) return { size: s, fits: true };
+    }
+    return { size: HB_MIN, fits: false };
+  }
+
+  // The number the narrow Filters button shows: the filters it hides. Sort is
+  // an order and Unread has its own visible toggle, so neither counts.
+  function activeFilterCount(settings) {
+    var s = isPlainObject(settings) ? settings : {};
+    return (s.folderFilter ? 1 : 0) + (s.tagFilter ? 1 : 0);
   }
 
   // -- query parsing and search --------------------------------------------

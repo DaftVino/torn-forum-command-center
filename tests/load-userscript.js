@@ -67,6 +67,8 @@ const EXPORT_NAMES = [
   'ACTIVITY_SOURCES', 'resolveLastActivity', 'unreadFor', 'mergeThreads',
   'SORT_MODES', 'SORT_LABELS', 'sortThreads', 'catchUpList', 'catchUpUnchecked', 'checkAuthorPosts',
   'ROWS_SHOWN_OPTIONS', 'CAPPED_VIEWS', 'UNCAPPED_VIEWS', 'VIEW_LABELS', 'capRows', 'renderCapLine',
+  // #33: narrow layout
+  'NARROW_ENTER_PX', 'NARROW_LEAVE_PX', 'HB_MAX', 'HB_MIN', 'HB_STEP', 'HB_COMPACT_BELOW', 'HB_GAPS', 'LOGO_ASPECT', 'LOGO_PER_HB', 'LOGO_MIN_PX', 'LOGO_MAX_PX', 'narrowFor', 'headerLogoWidth', 'headerButtonSize', 'activeFilterCount',
   'authorPageStep', 'summariseAuthorPosts', 'AUTHOR_MAX_PAGES', 'authorSinceFor', 'authorStateFor', 'AUTHOR_REASON_TEXT',
   // engine: search
   'parseQuery', 'matchThread', 'matchPost', 'searchMetadata', 'searchPosts',

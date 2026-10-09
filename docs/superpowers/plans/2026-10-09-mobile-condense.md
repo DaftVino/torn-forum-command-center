@@ -755,9 +755,12 @@ test('headerButtonSize returns the largest half-pixel size that keeps the header
 });
 
 test('the logo follows the button size between 16 and 24px tall', () => {
-  assert.strictEqual(api.headerLogoWidth(44), 24 * 106 / 45);
-  assert.strictEqual(api.headerLogoWidth(24), 16 * 106 / 45);
-  assert.strictEqual(api.headerLogoWidth(36), 0.545 * 36 * 106 / 45);
+  // Within floating-point rounding: the code multiplies by the 106 / 45 ratio.
+  const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, a + ' vs ' + b);
+  near(api.headerLogoWidth(50), 24 * 106 / 45); // the 24px cap (0.545 x 44 is 23.98, just under it)
+  near(api.headerLogoWidth(44), 0.545 * 44 * 106 / 45);
+  near(api.headerLogoWidth(24), 16 * 106 / 45);
+  near(api.headerLogoWidth(36), 0.545 * 36 * 106 / 45);
 });
 
 test('the gap constant is the sum the stylesheet promises', () => {
@@ -781,6 +784,8 @@ test('activeFilterCount counts the folder and tag filters only', () => {
 
 Run: `node --test tests/narrow-engine.test.js`
 Expected: FAIL: `api.narrowFor is not a function`.
+
+> Amended during implementation: the logo-width test compares within 1e-9 (floating point) and checks the 24px cap at a 50px size, because 0.545 x 44 = 23.98 sits just under the cap.
 
 - [ ] **Step 4: Add the constants**
 
