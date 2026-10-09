@@ -13,7 +13,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   already filed; only new subscriptions are affected. Filing by hand still
   wins over a claim. Saved folders with one claim show it as one chip, and an
   export and import keeps every claim (a forum this device already gave to a
-  folder keeps that folder).
+  folder keeps that folder). A forum that older saved data or an import puts
+  in two folders stays with the first folder in your order, the one that
+  already filed its threads, with no "damaged" notice.
 - Tighter Settings on a phone (#47). On a narrow panel the gaps between
   Settings items shrink to one scale (4px from a label to its control, 8px
   between items, 12px between sections), a label shares its control's line

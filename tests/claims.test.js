@@ -132,6 +132,102 @@ test('an organizer saved before #47, one claim per folder, loads with no damage 
   assert.deepStrictEqual(claims(env.exports.state.organizer, 'guides'), [61]);
 });
 
+// -- canonical claims at every boundary (PR #48 review) -----------------------
+// Each forum is kept by the FIRST folder in the user's order (the one
+// folderFor already picks, so auto-filing does not change), each folder's
+// list has no repeats, and the 40 cap applies after both.
+
+function loaded(stored) {
+  const env = loadUserscript({ gmStore: [['tfcc:organizer', JSON.stringify(stored)]] });
+  env.exports.loadAll(NOW);
+  return env.exports;
+}
+const damaged = (a) => /Folders and tags were damaged/.test(a.state.notices.map((n) => n.text).join(' '));
+
+test('cross-folder duplicates load into the first folder in the order, with no damage notice', () => {
+  const a = loaded({ v: 1, folders: [
+    { id: 'guides', name: 'Guides', order: 0, forumIds: [61] },
+    { id: 'scripts', name: 'Scripts', order: 1, forumIds: [61, 67] },
+  ], threads: {}, lastCatchUpAt: 0 });
+  assert.strictEqual(damaged(a), false);
+  assert.deepStrictEqual(claims(a.state.organizer, 'guides'), [61]);
+  assert.deepStrictEqual(claims(a.state.organizer, 'scripts'), [67]);
+  assert.strictEqual(a.folderFor(a.state.organizer, 61).id, 'guides', 'the folder that already auto-filed it');
+});
+
+test('same-folder duplicates load once, with no damage notice', () => {
+  const a = loaded({ v: 1, folders: [{ id: 'guides', name: 'Guides', order: 0, forumIds: [61, 61, 67, 61] }],
+    threads: {}, lastCatchUpAt: 0 });
+  assert.strictEqual(damaged(a), false);
+  assert.deepStrictEqual(claims(a.state.organizer, 'guides'), [61, 67]);
+});
+
+test('the 40 cap applies after duplicates are dropped', () => {
+  const many = Array.from({ length: 45 }, (_, i) => i + 1);
+  const o = api.normaliseOrganizer({ folders: [
+    { id: 'a', name: 'A', order: 0, forumIds: [1, 2, 3, 4, 5] },
+    { id: 'b', name: 'B', order: 1, forumIds: [1, 1, 2, 2, 3].concat(many) },
+  ], threads: {} }, NOW);
+  const b = claims(o, 'b');
+  assert.strictEqual(b.length, 40);
+  assert.deepStrictEqual(b.slice(0, 3), [6, 7, 8], 'the duplicates did not use up the cap');
+  assert.deepStrictEqual(b[39], 45);
+});
+
+test('genuinely invalid claims are still damage', () => {
+  for (const bad of [['x'], [-3], [0], [1.5], 'nope']) {
+    const a = loaded({ v: 1, folders: [{ id: 'guides', name: 'Guides', order: 0, forumIds: bad }],
+      threads: {}, lastCatchUpAt: 0 });
+    assert.strictEqual(damaged(a), true, JSON.stringify(bad));
+  }
+});
+
+test('upsertFolder canonicalises: a forum another folder already holds stays there', () => {
+  let o = api.claimForum(api.freshOrganizer(NOW), 'guides', 61);
+  o = api.upsertFolder(o, Object.assign({}, o.folders[1], { forumIds: [61, 67, 67] }));
+  assert.deepStrictEqual(claims(o, 'guides'), [61]);
+  assert.deepStrictEqual(claims(o, 'scripts'), [67]);
+  o = api.upsertFolder(o, { id: 'top', name: 'Top', order: -1, forumIds: [67] });
+  assert.deepStrictEqual(claims(o, 'top'), [67], 'the first folder in the order keeps it');
+  assert.deepStrictEqual(claims(o, 'scripts'), []);
+});
+
+test('an import into local data that already has duplicates leaves each forum in one folder', () => {
+  const env = loadUserscript();
+  const a = env.exports;
+  const local = a.freshOrganizer(NOW);
+  // Duplicates as an older script could have stored them, past every helper.
+  local.folders[0].forumIds = [61, 61];
+  local.folders[1].forumIds = [61, 63];
+  const text = a.encodeState(a.claimForum(a.freshOrganizer(NOW), 'faction', 4), a.freshDrafts(), env.sandbox.btoa);
+  const out = a.importState(local, a.freshDrafts(), text, env.sandbox.atob);
+  assert.deepStrictEqual(claims(out.organizer, 'guides'), [61]);
+  assert.deepStrictEqual(claims(out.organizer, 'scripts'), [63]);
+  assert.deepStrictEqual(claims(out.organizer, 'faction'), [4]);
+});
+
+test('an import whose payload has cross-folder duplicates keeps each forum in its first folder', () => {
+  const env = loadUserscript();
+  const a = env.exports;
+  const payload = { v: 1, unfiledAt: 4, threads: {}, drafts: {}, folders: [
+    { id: 'later', name: 'Later', order: 3, forumIds: [61, 67] },
+    { id: 'earlier', name: 'Earlier', order: 2, forumIds: [61, 61] },
+    { id: 'guides', name: 'Guides', order: 0, forumIds: [67] },
+  ] };
+  const text = a.EXPORT_PREFIX + a.b64EncodeUtf8(JSON.stringify(payload), env.sandbox.btoa);
+  const out = a.importState(a.freshOrganizer(NOW), a.freshDrafts(), text, env.sandbox.atob);
+  assert.ok(out.ok, out.detail);
+  const o = out.organizer;
+  const order = Array.from(o.folders, (f) => f.id);
+  assert.ok(order.indexOf('earlier') < order.indexOf('later'));
+  assert.deepStrictEqual(claims(o, 'guides'), [67]);
+  assert.deepStrictEqual(claims(o, 'earlier'), [61]);
+  assert.deepStrictEqual(claims(o, 'later'), []);
+  for (const n of [61, 67]) {
+    assert.strictEqual(o.folders.filter((f) => f.forumIds.includes(n)).length, 1, 'forum ' + n + ' in one folder');
+  }
+});
+
 // -- Settings -----------------------------------------------------------------
 
 function settingsEnv(width, org) {

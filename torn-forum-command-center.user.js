@@ -653,12 +653,37 @@
     if (!id || !name) return null;
     var forumIds = [];
     if (Array.isArray(raw.forumIds)) {
-      for (var i = 0; i < raw.forumIds.length && forumIds.length < 40; i += 1) {
+      // #47 (PR #48 review): repeats are dropped here and the 40 cap is
+      // applied by canonicalClaims, after the cross-folder pass, so neither
+      // kind of duplicate uses up the cap.
+      for (var i = 0; i < raw.forumIds.length && i < MAX_RAW_CLAIMS; i += 1) {
         var n = toInt(raw.forumIds[i], 0);
         if (n > 0 && forumIds.indexOf(n) === -1) forumIds.push(n);
       }
     }
     return { id: id, name: name, order: toInt(raw.order, index), forumIds: forumIds };
+  }
+
+  var MAX_CLAIMS = 40;
+  var MAX_RAW_CLAIMS = 400;
+
+  // #47 (PR #48 review): a forum is claimed by one folder at most. Given the
+  // folders in the user's order, each forum stays with the FIRST folder that
+  // claims it (the one folderFor already picks, so auto-filing does not
+  // change), each list loses its repeats, and the cap applies after both.
+  // Every boundary runs it: load, upsertFolder and import.
+  function canonicalClaims(folders) {
+    var taken = {};
+    return folders.map(function (f) {
+      var ids = [];
+      for (var i = 0; i < f.forumIds.length && ids.length < MAX_CLAIMS; i += 1) {
+        var n = f.forumIds[i];
+        if (Object.prototype.hasOwnProperty.call(taken, n)) continue;
+        taken[n] = true;
+        ids.push(n);
+      }
+      return { id: f.id, name: f.name, order: f.order, forumIds: ids };
+    });
   }
 
   function normaliseOrganizer(raw, now) {
@@ -699,6 +724,7 @@
     }
 
     folders.sort(function (a, b) { return a.order - b.order; });
+    folders = canonicalClaims(folders);
     // #45: both fields are new. Absent (every organizer saved before #45),
     // Unfiled is last and nothing is collapsed; isRecoveredValue fills absent
     // top-level fields, so that is not reported as damage.
@@ -738,6 +764,19 @@
   // that is present and changed, a key the normaliser drops, and an entry it
   // drops all still differ, so they are still damage.
   function isRecoveredOrganizer(raw, value) {
+    // #47 (PR #48 review): a list of whole positive forum ids that only lost
+    // repeats, claims another folder holds first, or entries past the cap was
+    // canonicalised, not damaged. Any other value in it is still damage.
+    if (isPlainObject(raw) && Array.isArray(raw.folders) && isPlainObject(value) && Array.isArray(value.folders)) {
+      var byId = {};
+      value.folders.forEach(function (f) { byId[f.id] = f; });
+      raw = Object.assign({}, raw, { folders: raw.folders.map(function (r) {
+        if (!isPlainObject(r) || !Array.isArray(r.forumIds) || typeof r.id !== 'string') return r;
+        var v = Object.prototype.hasOwnProperty.call(byId, r.id) ? byId[r.id] : null;
+        var wellFormed = r.forumIds.every(function (n) { return typeof n === 'number' && n > 0 && Math.floor(n) === n; });
+        return v && wellFormed ? Object.assign({}, r, { forumIds: v.forumIds }) : r;
+      }) });
+    }
     if (isPlainObject(raw) && isPlainObject(raw.threads) && isPlainObject(value) && isPlainObject(value.threads)) {
       var threads = {};
       Object.keys(raw.threads).forEach(function (id) {
@@ -2512,7 +2551,7 @@
     var f = toInt(forumId, 0);
     if (f <= 0 || folderFor(org, f)) return org;
     var i = org.folders.findIndex(function (x) { return x.id === folderId; });
-    if (i === -1 || org.folders[i].forumIds.length >= 40) return org;
+    if (i === -1 || org.folders[i].forumIds.length >= MAX_CLAIMS) return org;
     var next = cloneOrganizer(org);
     next.folders[i].forumIds.push(f);
     return next;
@@ -2622,6 +2661,8 @@
     if (i === -1) next.folders.push(f);
     else next.folders[i] = f;
     next.folders.sort(function (a, b) { return a.order - b.order; });
+    // #47 (PR #48 review): a forum another folder holds first stays there.
+    next.folders = canonicalClaims(next.folders);
     var j = after === null ? -1 : next.folders.findIndex(function (x) { return x.id === after; });
     next.unfiledAt = j === -1 ? next.folders.length : j;
     return next;
@@ -2824,23 +2865,32 @@
     var addedFolders = 0;
     var changedThreads = 0;
     var addedDrafts = 0;
+    var wanted = {};
 
     if (Array.isArray(payload.folders)) {
       for (var i = 0; i < payload.folders.length && i < 40; i += 1) {
         var f = normaliseFolder(payload.folders[i], org.folders.length);
         if (!f) continue;
-        // #47: every claim travels. A forum this device already gave to a
-        // folder keeps that claimant, so no forum ends up with two.
-        var wanted = f.forumIds;
+        // #47: every claim travels. Claims are applied once the order is
+        // known, below.
+        if (!Object.prototype.hasOwnProperty.call(wanted, f.id)) wanted[f.id] = f.forumIds.slice();
         if (!org.folders.some(function (x) { return x.id === f.id; })) {
           f.forumIds = [];
           org.folders.push(f);
           addedFolders += 1;
         }
-        for (var w = 0; w < wanted.length; w += 1) org = claimForum(org, f.id, wanted[w]);
       }
       org.folders.sort(function (a, b) { return a.order - b.order; });
       org = withFolderOrder(org, importedOrder(org, payload));
+    }
+    // #47 (PR #48 review): this device's claims are made canonical first, so a
+    // forum it already gave to a folder keeps that folder; then the export's
+    // claims are added in the final folder order, so a forum the export gave
+    // to two folders lands in the first of them.
+    org.folders = canonicalClaims(org.folders);
+    for (var wf = 0; wf < org.folders.length; wf += 1) {
+      var want = Object.prototype.hasOwnProperty.call(wanted, org.folders[wf].id) ? wanted[org.folders[wf].id] : [];
+      for (var w = 0; w < want.length; w += 1) org = claimForum(org, org.folders[wf].id, want[w]);
     }
 
     var known = {};

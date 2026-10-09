@@ -1658,7 +1658,7 @@ const MUTATIONS = [
     ['a chip\'s remove button loses its name', (s) => s.replace(
       `' aria-label="' + escapeHtml(rm) + '" title="'`, `' title="'`)],
     ['an import drops the claims of a folder this device has', (s) => s.replace(
-      '        for (var w = 0; w < wanted.length; w += 1) org = claimForum(org, f.id, wanted[w]);\n', '')],
+      '      for (var w = 0; w < want.length; w += 1) org = claimForum(org, org.folders[wf].id, want[w]);\n', '')],
     ['an import gives a forum a second claimant', (s) => s.replace(
       '          f.forumIds = [];\n          org.folders.push(f);', '          org.folders.push(f);')],
     ['a new claim is not saved', (s) => s.replace(
@@ -1677,6 +1677,22 @@ const MUTATIONS = [
     ['a narrow Settings spacing rule reaches a wide panel', (s) => s.replace(
       "'.tfcc-narrow .tfcc-set .tfcc-kv { gap: 8px; margin-bottom: 8px; }'", "' .tfcc-set .tfcc-kv { gap: 8px; margin-bottom: 8px; }'")],
   ].map(([name, apply]) => ({ name: '#47: ' + name, suite: 'tests/wide-parity.test.js', apply })),
+  // #47 (PR #48 review): claims are canonical at every boundary.
+  ...[
+    ['the normaliser keeps a forum in two folders', (s) => s.replace(
+      '    folders = canonicalClaims(folders);\n', '')],
+    ['canonicalised claims are reported as damage', (s) => s.replace(
+      'return v && wellFormed ? ', 'return v && false ? ')],
+    ['invalid claims are forgiven as if canonical', (s) => s.replace(
+      'var wellFormed = r.forumIds.every(', 'var wellFormed = true || r.forumIds.every(')],
+    ['the claim cap is applied before duplicates are dropped', (s) => s.replace(
+      'for (var i = 0; i < f.forumIds.length && ids.length < MAX_CLAIMS; i += 1) {',
+      'for (var i = 0; i < f.forumIds.length && i < MAX_CLAIMS; i += 1) {')],
+    ['upsertFolder lets a forum into a second folder', (s) => s.replace(
+      '    next.folders = canonicalClaims(next.folders);\n', '')],
+    ['an import keeps this device\'s duplicate claims', (s) => s.replace(
+      '    org.folders = canonicalClaims(org.folders);\n    for (var wf', '    for (var wf')],
+  ].map(([name, apply]) => ({ name: '#47: ' + name, suite: 'tests/claims.test.js', apply })),
   // #47 item 1: tighter narrow Settings.
   ...[
     ['sections lose their larger separation', (s) => s.replace(
