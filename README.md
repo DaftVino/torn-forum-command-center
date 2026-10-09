@@ -8,6 +8,21 @@ Forum Command Center, or FCC, turns Torn's small subscribed-threads box into a f
 
 FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or automate gameplay. Its folders, tags, notes, drafts, read markers, badges, and settings stay on your device.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/images/readme-threads.png" alt="Threads view: followed threads with priority, tags, notes and row actions" width="24%">
+  <img src="docs/images/readme-catchup.png" alt="Catch up view: new activity grouped into collapsible folders" width="24%">
+  <img src="docs/images/readme-myposts.png" alt="My posts view: threads you started or posted in, with thumbs and karma" width="24%">
+  <img src="docs/images/readme-settings.png" alt="Settings view: key setup and Torn API key disclosure" width="24%">
+</p>
+
+<p align="center">
+  <img src="docs/images/readme-mobile-threads.png" alt="Narrow layout on a phone: scaling icon header, nav counts and one-line rows" width="20%">
+  <img src="docs/images/readme-mobile-drawer.png" alt="Narrow layout: a row's actions drawer with pin, read, draft, archive and priority" width="20%">
+  <img src="docs/images/readme-mobile-catchup.png" alt="Narrow layout: Catch up with All read, Caught up and folder groups" width="20%">
+</p>
+
 ## Features
 
 ### A complete forum workspace
