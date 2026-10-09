@@ -19,7 +19,7 @@
 - **The request budget text stays true** (CLAUDE.md constraint 7): a default refresh is at most 13 requests and the limiter holds 40 a minute. The Settings view keeps a visible line computed from the constants and the user's own lookup setting (Task 8).
 - **No version bump.** `@version`, `SCRIPT_VERSION` and `package.json` `version` are not touched; this PR adds an entry under `## [Unreleased]` in `CHANGELOG.md` only (Task 18). Constraint 8 is satisfied by the separate release commit.
 - `@match`, `@grant` and `@connect` do not change.
-- **Wide layout unchanged.** With `state.narrow === false`, the Threads panel, the collapsed panel, every nav and every row must stay byte-identical to main (`tests/wide-parity.test.js`, Task 1). The only wide changes are the owner's section 13d info buttons and the 13d "Shorten" texts.
+- **Wide layout unchanged.** With `state.narrow === false`, every complete view (Threads, capped, collapsed, Catch up, My posts, Search, Drafts, Settings, loading, error), every nav and every row must stay byte-identical to main's golden, captured before any code change (`tests/wide-parity.test.js`, Task 1). The only wide changes allowed are the owner's section 13d items, each one literal replacement in `tests/wide-13d-diffs.js`. Every new stylesheet rule is scoped to `.tfcc-narrow`, apart from the listed 13d selectors.
 - `node tests/mutation-check.mjs` edits the production file in place. **Never pipe it into `head`** or anything that closes the pipe early. Redirect to a file and read the file: `node tests/mutation-check.mjs > "$TMPDIR/mutation.txt" 2>&1; echo exit=$?` (use the session scratchpad if `$TMPDIR` is unset).
 - Commit messages are Conventional Commits with **no** attribution, no `Co-Authored-By`, no generated-by footer, no session URL. Check the tail of every message.
 - Every new `data-act` is a `<button>` (or the existing `select`/`input`) whose own element carries `data-act`; its children sit under the existing `#tfcc-panel button * { pointer-events: none; }`.
@@ -31,9 +31,9 @@
 The riskiest promises, most likely to bite a real user first, each pinned to a named test in the task that owns the code:
 
 1. **A TalkBack user marks the last row read in Catch up.** Focus must land on the previous row's Read, and with no rows left on the visible "Catch up" heading, never at the top of the page. Pinned by `narrow-focus.test.js`: "Read removes the last row: focus goes to the previous row's Read" and "Read removes the only row: focus goes to the view heading" (Task 13).
-2. **An iOS user types a note in a drawer, then taps another row's Actions.** iOS fires `change` and blur before the click, so the commit's redraw used to replace the node under the finger. The note must be saved and row B's drawer must open, in exactly one redraw. Pinned by `dirty-input.test.js`: "a tap on another control while a drawer input is dirty commits and acts, in one redraw" (Task 14).
+2. **An iOS user types a note in a drawer, then taps another row's Actions, a thread title, or holds a slow press.** iOS fires `change` and blur before the click, so the commit's redraw used to replace the node under the finger. The note must be saved and the tapped thing must happen: Actions opens in exactly one redraw, a thread link is never redrawn away inside its own click, and a press held past 300ms keeps its target. Pinned by `dirty-input.test.js`: "a tap on another control while a drawer input is dirty commits and acts, in one redraw", "a dirty field, then a plain thread-link tap: no redraw during the click, then one, with auto-hide" and "holding the pointer down past 300ms does not redraw; 300ms after it lifts with no click, it does" (Task 14).
 3. **A refresh, filter, cap or archive removes the row whose drawer is open, and the row later returns.** It must come back closed. Pinned by `narrow-state.test.js`: "a stale open row is reconciled away and does not reopen when it returns" (Task 7) and the engine test "reconcileTransient clears an open row that is not rendered" (Task 4).
-4. **A phone rotates across the breakpoint while a drawer input has focus.** The class flips, the drawer and filters close, and the markup update waits until focus leaves; nothing typed is lost. Pinned by `narrow-runtime.test.js`: "crossing the breakpoint while typing defers the markup but closes the transients" (Task 6).
+4. **A phone rotates across the breakpoint while a drawer input has focus, and a refresh lands before the field is left.** The class flips, the drawer and filters close, the markup update and the refresh's redraw both wait until focus leaves, and the typed value is committed on blur. Pinned by `narrow-runtime.test.js`: "crossing the breakpoint while typing defers the markup but closes the transients" (Task 6) and `dirty-input.test.js`: "typed, rotated across the breakpoint, refreshed, then blurred: the value persists" (Task 14).
 5. **A very narrow panel or 200% text.** The header buttons never go under 24px and never wrap; 4-digit counts show as "999+" without wrapping the cell. Pinned by `narrow-engine.test.js`: "headerButtonSize never goes below the 24px floor and says when even that does not fit" (Task 3) and `narrow-view.test.js`: "a count over 999 shows as 999+" (Task 10).
 6. **An old WebView without `ResizeObserver`.** The narrow layout must still apply, from the per-render measurement. Pinned by `narrow-runtime.test.js`: "without ResizeObserver the per-render measurement still picks the narrow layout" (Task 6).
 7. **A forged or stale `data-info` / `data-id`.** An unknown info key changes nothing; Actions for an id no longer rendered is reconciled to closed on the next build. Pinned by `info.test.js`: "an unknown data-info changes nothing and does not throw" (Task 8) and `narrow-state.test.js`: "Actions for a row that is not rendered is reconciled closed" (Task 12).
@@ -48,7 +48,8 @@ The riskiest promises, most likely to bite a real user first, each pinned to a n
 | `tests/load-userscript.js` | `EXPORT_NAMES`; opt-in harness options `panelWidth`, `panelPadding`, `measure`, `htmlQuery`, `resizeObserver`; `env.resize`, `env.focusLog`; `style.setProperty` |
 | `tests/wide-seed.js` | **New.** The fixed workspace and capture used by the parity golden |
 | `tests/make-wide-golden.mjs` | **New.** One-off generator, run once on main's code in Task 1 |
-| `tests/fixtures/wide-golden.json` | **New.** Main's wide output |
+| `tests/fixtures/wide-golden.json` | **New.** Main's complete wide output: every view, loading and error |
+| `tests/wide-13d-diffs.js` | **New.** The owner's 13d wide changes as literal replacements (filled in Task 8) |
 | `tests/wide-parity.test.js` | **New.** Desktop stays byte-identical |
 | `tests/narrow-helpers.js` | **New.** Shared boot/seed/query helpers for the narrow suites (not a `.test.js`, so `npm test` does not run it) |
 | `tests/narrow-engine.test.js` | **New.** Pure maths, state machine, focus plan |
@@ -77,10 +78,10 @@ No other file is in scope without amending this plan.
 This task changes **no** production code. It must run before any other task, on the branch's starting point (`origin/main`), because the golden is the record of what desktop looks like today.
 
 **Files:**
-- Create: `tests/wide-seed.js`, `tests/make-wide-golden.mjs`, `tests/fixtures/wide-golden.json`, `tests/wide-parity.test.js`
+- Create: `tests/wide-seed.js`, `tests/make-wide-golden.mjs`, `tests/fixtures/wide-golden.json`, `tests/wide-13d-diffs.js`, `tests/wide-parity.test.js`
 
 **Interfaces:**
-- Produces: `seedWide(api)`, `captureWide(loadUserscript, FORUMS_LOCATION)` returning `{ css: string[], views: { threads, threadsCapped, collapsed }, nav: { [view]: string }, rows: { [view]: string[] } }`. Later tasks never edit the golden.
+- Produces: `seedWide(api)`, `captureWide(loadUserscript, FORUMS_LOCATION)` returning `{ css: string[], views: { threads, threadsCapped, collapsed, catchup, mine, search, drafts, settings, loading, error }, nav: { [view]: string }, rows: { [view]: string[] } }`. Later tasks never edit the golden.
 
 - [ ] **Step 1: Write the shared seed and capture**
 
@@ -145,6 +146,8 @@ function seedWide(api) {
   api.recompute(NOW);
 }
 
+// Every complete wide view, plus the loading and error states. Drafts is
+// captured on a thread page with no reply box, so its reply-box line renders.
 function captureWide(loadUserscript, FORUMS_LOCATION) {
   const env = loadUserscript({
     location: FORUMS_LOCATION, now: NOW, gmStore: [['tfcc:key', 'abcdefghij123456']],
@@ -153,14 +156,24 @@ function captureWide(loadUserscript, FORUMS_LOCATION) {
   seedWide(api);
   const html = () => api.panelHtml(api.buildPanelModel(NOW));
   const out = { css: api.panelStyleText().split('\n'), views: {}, nav: {}, rows: {} };
+  api.state.route = api.parseForumRoute({
+    origin: 'https://www.torn.com', hostname: 'www.torn.com', pathname: '/forums.php', search: '',
+    hash: '#/p=threads&f=61&t=101', href: 'https://www.torn.com/forums.php#/p=threads&f=61&t=101',
+  });
+  api.state.replyBoxFound = false;
+  for (const view of ['threads', 'catchup', 'mine', 'search', 'drafts', 'settings']) {
+    api.state.settings.view = view;
+    out.views[view] = html();
+  }
   api.state.settings.view = 'threads';
-  out.views.threads = html();
   api.state.settings.rowsShown = 3;
   out.views.threadsCapped = html();
   api.state.settings.rowsShown = 0;
   api.state.settings.collapsed = true;
   out.views.collapsed = html();
   api.state.settings.collapsed = false;
+  out.views.loading = api.panelHtml(api.loadingModel(NOW));
+  out.views.error = api.panelHtml(api.errorModel('x', 'Torn is unreachable.', NOW));
   for (const view of api.VIEWS) {
     api.state.settings.view = view;
     const model = api.buildPanelModel(NOW);
@@ -250,11 +263,31 @@ const MOVED_OUT_OF_MEDIA = new Set([
   '  #tfcc-panel .tfcc-meta { gap: var(--tfcc-gap-sm); }',
 ]);
 
-test('the wide Threads, capped and collapsed panels are byte-identical to main', () => {
+// The owner's section 13d changes are the only wide markup changes allowed.
+// Each is one literal replacement, written in the commit that makes it
+// (tests/wide-13d-diffs.js); every `from` must occur exactly once in main's
+// golden, so a stale or widened entry fails here rather than hiding a change.
+const D13 = require('./wide-13d-diffs');
+
+function expectedView(view) {
+  let html = golden.views[view];
+  for (const d of D13.filter((x) => x.view === view)) {
+    const n = html.split(d.from).length - 1;
+    assert.strictEqual(n, 1, '13d item ' + d.item + ': its "from" occurs ' + n + ' times in main\'s ' + view);
+    html = html.replace(d.from, () => d.to);
+  }
+  return html;
+}
+
+test('every complete wide view is main\'s, byte for byte, apart from the listed 13d items', () => {
   const now = captureWide(loadUserscript, FORUMS_LOCATION);
-  assert.strictEqual(now.views.threads, golden.views.threads);
-  assert.strictEqual(now.views.threadsCapped, golden.views.threadsCapped);
-  assert.strictEqual(now.views.collapsed, golden.views.collapsed);
+  const views = ['threads', 'threadsCapped', 'collapsed', 'catchup', 'mine', 'search', 'drafts', 'settings', 'loading', 'error'];
+  assert.deepStrictEqual(Object.keys(golden.views).sort(), views.slice().sort(), 'the golden holds every view');
+  for (const view of views) assert.strictEqual(now.views[view], expectedView(view), view);
+});
+
+test('the 13d list touches only the views the owner changed', () => {
+  for (const d of D13) assert.ok(['catchup', 'mine', 'search', 'drafts', 'settings'].includes(d.view), d.item);
 });
 
 test('every wide nav and every wide row is byte-identical to main', () => {
@@ -279,6 +312,40 @@ test('no stylesheet line from main was removed or edited, apart from the rules t
   }
   assert.deepStrictEqual(missing, [], 'wide CSS lines removed, edited or reordered');
 });
+
+// The only new rules a wide panel may see: the 13d info button, its text, the
+// glyph it draws and the hidden attribute (spec 13d, every size). Everything
+// else #33 adds hangs off .tfcc-narrow.
+const WIDE_13D_SELECTORS = new Set([
+  '#tfcc-panel [hidden]',
+  '#tfcc-panel .tfcc-gl',
+  '#tfcc-panel .tfcc-gl path',
+  '#tfcc-panel .tfcc-infobar',
+  '#tfcc-panel .tfcc-infobar h4',
+  '#tfcc-panel button.tfcc-info',
+  '#tfcc-panel button.tfcc-info[aria-expanded="true"]',
+  '#tfcc-panel .tfcc-infotext',
+]);
+
+test('every new stylesheet rule is scoped to .tfcc-narrow or is a listed 13d rule', () => {
+  const old = new Set(golden.css);
+  const stray = captureWide(loadUserscript, FORUMS_LOCATION).css
+    .filter((line) => !old.has(line) && line.indexOf('{') !== -1)
+    .map((line) => line.slice(0, line.indexOf('{')).trim())
+    .filter((sel) => sel.indexOf('.tfcc-narrow') === -1 && !WIDE_13D_SELECTORS.has(sel));
+  assert.deepStrictEqual(stray, [], 'a new rule a wide panel would see');
+});
+```
+
+Create `tests/wide-13d-diffs.js`, empty until Task 8 adds the owner's changes in the commit that makes them:
+
+```js
+'use strict';
+
+// The owner-approved wide markup changes of spec section 13d, one literal
+// replacement per audited item, applied to main's golden by
+// tests/wide-parity.test.js. Task 8 fills this in.
+module.exports = [];
 ```
 
 - [ ] **Step 5: Run it**
@@ -289,7 +356,7 @@ Expected: PASS (it compares main with itself). This is the baseline every later 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add tests/wide-seed.js tests/make-wide-golden.mjs tests/fixtures/wide-golden.json tests/wide-parity.test.js
+git add tests/wide-seed.js tests/make-wide-golden.mjs tests/fixtures/wide-golden.json tests/wide-13d-diffs.js tests/wide-parity.test.js
 git commit -m "test: capture main's wide panel as a parity golden before #33"
 ```
 
@@ -310,6 +377,7 @@ git commit -m "test: capture main's wide panel as a parity golden before #33"
   - `options.measure(stub)` returns a stub's width (default 0).
   - `options.resizeObserver`: `true` installs a fake `ResizeObserver`; `'no-box'` omits `borderBoxSize` from entries; `'throws'` makes the constructor throw.
   - `env.resize(width)` sets `panelWidth` and fires every connected fake observer. `env.resizeObservers` lists them. `env.focusLog` collects `{ ...attrs }` of every stub focused; a focus also sets `doc.activeElement` to the stub.
+  - `env.queryLog`: every selector passed to `document.querySelector`/`querySelectorAll`, recorded from the moment the sandbox exists, so the script's bootstrap is recorded too (the ADR 0001 gate in Task 13).
   - Every element's `style` gains `setProperty`, `removeProperty`, `getPropertyValue`.
 
 - [ ] **Step 1: Write the failing harness tests**
@@ -363,6 +431,12 @@ test('the fake ResizeObserver reports the border box, and env.resize fires it', 
   ro.disconnect();
   env.resize(700);
   assert.deepStrictEqual(seen, [500], 'a disconnected observer is silent');
+});
+
+test('queryLog records document queries from before the script runs', () => {
+  const env = loadUserscript({ location: { pathname: '/forums.php', hostname: 'www.torn.com', href: 'https://www.torn.com/forums.php', hash: '', search: '', origin: 'https://www.torn.com' } });
+  assert.ok(env.queryLog.length > 0, 'the bootstrap\'s mount search is in the log');
+  assert.ok(env.queryLog.includes(env.exports.MOUNT_SELECTORS[0]));
 });
 
 test('style.setProperty and getComputedStyle padding are available', () => {
@@ -489,6 +563,20 @@ with
       get clientWidth() { return this.id === 'tfcc-panel' && panelWidth > 2 ? panelWidth - 2 : 0; },
 ```
 
+In `documentStub`, replace its `querySelector(sel) {` and `querySelectorAll(sel) {` first lines so each records the selector before answering:
+
+```js
+    querySelector(sel) {
+      queryLog.push(String(sel));
+```
+
+```js
+    querySelectorAll(sel) {
+      queryLog.push(String(sel));
+```
+
+and declare `const queryLog = [];` next to `const focusLog = [];`. The log is always on; it costs nothing and needs no option, so the bootstrap's queries are never missed.
+
 In `windowStub.getComputedStyle`, before the final `return`, add:
 
 ```js
@@ -524,7 +612,7 @@ After `sandbox.self = sandbox;`, add:
   }
 ```
 
-In the returned object, add `resize, resizeObservers, focusLog,` next to `runTimers, advanceTimersBy,`.
+In the returned object, add `resize, resizeObservers, focusLog, queryLog,` next to `runTimers, advanceTimersBy,`.
 
 - [ ] **Step 4: Add the purity names**
 
@@ -626,7 +714,7 @@ test('headerButtonSize matches the spec widths', () => {
     [230, 58, 0, 3, 35],    // 280 with the compact chip
     [188, 58, 0, 3, 24],    // the floor still fits at C = 188
     [270, 86, 0, 3, 38],    // 320 at 200% text: the chip widens to 86px
-    [270, 58, 65, 2, 38.5], // 320 collapsed: two icons plus a 65px Show, compact chip
+    [270, 58, 65, 2, 38.5], // one solve with a fixed 65px Show; fitHeader re-measures Show, giving 37 (narrow-runtime)
   ];
   for (const [c, chip, show, icons, size] of cases) {
     const r = api.headerButtonSize(c, chip, show, icons);
@@ -811,10 +899,10 @@ test('Actions on row A opens A, and again closes it', () => {
   assert.strictEqual(closed.openRowId, null);
 });
 
-test('Actions on row B while A is open opens B and drops A\'s edit mirror', () => {
+test('Actions on row B while A is open opens B and keeps A\'s uncommitted edit', () => {
   const b = api.nextTransient(OPEN, { type: 'row-more', id: 'B' });
   assert.strictEqual(b.openRowId, 'B');
-  assert.strictEqual(b.drawerEdit, null);
+  assert.deepStrictEqual(b.drawerEdit, OPEN.drawerEdit, 'the mirror lives until its field commits');
   assert.strictEqual(b.filtersOpen, true, 'filters are unchanged');
   assert.strictEqual(b.openInfoId, 'catchup', 'info is unchanged by row actions');
 });
@@ -833,10 +921,14 @@ test('an info button toggles its own key, one open at a time', () => {
   assert.strictEqual(api.nextTransient(t, { type: 'info', key: 'not-a-key' }).openInfoId, 'catchup', 'an unknown key changes nothing');
 });
 
-test('a view change, Hide, auto-hide and the breakpoint close everything', () => {
+test('a view change, Hide, auto-hide and the breakpoint close every disclosure but keep an uncommitted edit', () => {
+  // The mirror is the only copy of what was typed until the field commits on
+  // blur; a rotation or a redraw in between must not lose it (plan review).
   for (const type of ['view', 'collapse', 'auto-hide', 'breakpoint']) {
-    assert.deepStrictEqual(api.nextTransient(OPEN, { type }), api.freshTransient(), type);
+    assert.deepStrictEqual(api.nextTransient(OPEN, { type }),
+      { openRowId: null, filtersOpen: false, openInfoId: null, drawerEdit: OPEN.drawerEdit }, type);
   }
+  assert.deepStrictEqual(api.nextTransient(api.freshTransient(), { type: 'view' }), api.freshTransient());
 });
 
 test('Show, refresh, filter, cap and row actions leave the transients alone', () => {
@@ -855,7 +947,7 @@ test('nextTransient normalises a damaged input', () => {
 test('reconcileTransient clears an open row that is not rendered', () => {
   const t = api.reconcileTransient(OPEN, ['B', 'C'], ['catchup']);
   assert.strictEqual(t.openRowId, null);
-  assert.strictEqual(t.drawerEdit, null, 'its edit mirror goes with it');
+  assert.deepStrictEqual(t.drawerEdit, OPEN.drawerEdit, 'an uncommitted edit outlives its drawer');
   assert.strictEqual(t.openInfoId, 'catchup');
   assert.strictEqual(t.filtersOpen, true);
 });
@@ -937,10 +1029,13 @@ After `function activeFilterCount(`'s closing `}`, add:
       drawerEdit: isPlainObject(cur.drawerEdit) ? cur.drawerEdit : null,
     };
     var type = isPlainObject(ev) ? ev.type : null;
-    if (TRANSIENT_RESET_EVENTS.indexOf(type) !== -1) return freshTransient();
+    // drawerEdit survives every transition: it is the only copy of what was
+    // typed until the field commits, and only that commit clears it.
+    if (TRANSIENT_RESET_EVENTS.indexOf(type) !== -1) {
+      return { openRowId: null, filtersOpen: false, openInfoId: null, drawerEdit: out.drawerEdit };
+    }
     if (type === 'row-more' && typeof ev.id === 'string' && ev.id) {
       out.openRowId = out.openRowId === ev.id ? null : ev.id;
-      out.drawerEdit = null;
       return out;
     }
     if (type === 'filters') { out.filtersOpen = !out.filtersOpen; return out; }
@@ -953,14 +1048,14 @@ After `function activeFilterCount(`'s closing `}`, add:
 
   // After every model build: an open row that is not rendered (refreshed,
   // filtered, capped or archived away) closes, so it cannot reopen by itself
-  // when it returns; an info key the view does not render closes too.
+  // when it returns; an info key the view does not render closes too. An
+  // uncommitted edit is kept (see nextTransient).
   function reconcileTransient(t, renderedIds, infoKeys) {
     var out = nextTransient(t, null);
     var ids = Array.isArray(renderedIds) ? renderedIds : [];
     var keys = Array.isArray(infoKeys) ? infoKeys : [];
     if (out.openRowId !== null && ids.indexOf(out.openRowId) === -1) out.openRowId = null;
     if (out.openInfoId !== null && keys.indexOf(out.openInfoId) === -1) out.openInfoId = null;
-    if (out.drawerEdit && out.drawerEdit.id !== out.openRowId) out.drawerEdit = null;
     return out;
   }
 ```
@@ -1462,14 +1557,14 @@ with
     if (measured !== state.narrow) {
       setNarrow(measured);
       model.narrow = state.narrow;
-      model.openRowId = null; model.filtersOpen = false; model.openInfoId = null; model.drawerEdit = null;
+      model.openRowId = null; model.filtersOpen = false; model.openInfoId = null;
     }
     if (panel.classList) panel.classList.toggle(NARROW_CLASS, state.narrow === true);
 
     var html = panelHtml(model);
 ```
 
-(`model.openRowId` and friends do not exist until Task 7; writing them here is harmless and saves a second edit.)
+(`model.openRowId` and friends do not exist until Task 7; writing them here is harmless and saves a second edit. `drawerEdit` is deliberately not cleared: an uncommitted edit outlives a breakpoint crossing.)
 
 In the delegated-listener block, directly after `delegated = panel;`, add:
 
@@ -1636,6 +1731,31 @@ test('Hide closes everything, and Show leaves it closed', () => {
   handlersOf(env).onAction('collapse', el({ 'data-act': 'collapse' }));
   assert.strictEqual(api.state.settings.collapsed, false);
   assert.deepStrictEqual([api.state.openRowId, api.state.filtersOpen, api.state.openInfoId], [null, false, null]);
+});
+
+test('Reset everything replaces the settings through the transient reset', () => {
+  // It replaces state.settings wholesale, which moves Settings to Threads; a
+  // view change that skipped the reset would leave the filters open.
+  const { env, api } = bootNarrow();
+  seedRows(api, SIX);
+  api.state.settings.view = 'settings';
+  Object.assign(api.state, { openRowId: '1', filtersOpen: true, openInfoId: 'settings-rows',
+    drawerEdit: { id: '1', field: 'note-input', value: 'x', selStart: 1, selEnd: 1 } });
+  handlersOf(env).onAction('reset-all', el({ 'data-act': 'reset-all' }));
+  assert.strictEqual(api.state.settings.view, 'threads');
+  assert.deepStrictEqual([api.state.openRowId, api.state.filtersOpen, api.state.openInfoId, api.state.drawerEdit],
+    [null, false, null, null], 'a real reset drops the edit mirror too');
+});
+
+test('a settings replacement that keeps the view keeps the transients', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, SIX);
+  api.state.settings.view = 'settings';
+  api.state.openInfoId = 'settings-rows';
+  handlersOf(env).onChange('rows-shown', { getAttribute: (k) => (k === 'data-act' ? 'rows-shown' : null), value: '10' });
+  assert.strictEqual(api.state.openInfoId, 'settings-rows');
+  handlersOf(env).onChange('auto-refresh', { getAttribute: (k) => (k === 'data-act' ? 'auto-refresh' : null), value: '0' });
+  assert.strictEqual(api.state.openInfoId, 'settings-rows');
 });
 
 test('Expand and Shrink leave the transients alone when no breakpoint is crossed', () => {
@@ -1812,7 +1932,27 @@ Then:
         }
 ```
 
-- In `onThreadLink`, after `state.badgeShelfOpen = false;` add `applyTransient({ type: 'auto-hide' });`.
+- In `onThreadLink`, after `state.badgeShelfOpen = false;` add `applyTransient({ type: 'auto-hide' });`, and replace `state.settings = next;` with `replaceSettings(next);`.
+
+Every wholesale replacement of `state.settings` goes through one helper, so none can change the view or collapse the panel without the reset. After `function applyTransient(` (Task 6), add:
+
+```js
+  // Every wholesale replacement of state.settings comes through here, so a
+  // replacement that changes the view or collapses the panel closes the
+  // disclosures exactly as the matching user action would (spec section 6).
+  function replaceSettings(next) {
+    if (next.view !== state.settings.view) applyTransient({ type: 'view' });
+    else if (next.collapsed === true && state.settings.collapsed !== true) applyTransient({ type: 'collapse' });
+    state.settings = next;
+  }
+```
+
+Then in `makeHandlers`:
+- `reset-all`: replace `state.settings = freshSettings(); state.organizer = freshOrganizer(now); state.showAll = {};` with `replaceSettings(freshSettings()); state.drawerEdit = null; state.organizer = freshOrganizer(now); state.showAll = {};`.
+- `auto-refresh`: replace `state.settings = normaliseSettings(Object.assign({}, state.settings, { autoRefreshMs: Number(value) }));` with `replaceSettings(normaliseSettings(Object.assign({}, state.settings, { autoRefreshMs: Number(value) })));`.
+- `rows-shown`: replace `state.settings = normaliseSettings(Object.assign({}, state.settings, { rowsShown: Number(value) }));` with `replaceSettings(normaliseSettings(Object.assign({}, state.settings, { rowsShown: Number(value) })));`.
+
+Check with `grep -n "state.settings = " torn-forum-command-center.user.js` that no other wholesale assignment is left outside `loadAll` (which runs before the first render, when every transient is already null) and `replaceSettings` itself. Export `'replaceSettings'` in the `// #33` block of `EXPORT_NAMES`.
 
 - [ ] **Step 8: Run, full suite, commit**
 
@@ -1858,21 +1998,103 @@ function htmlFor(api, view) {
   return api.panelHtml(api.buildPanelModel(NOW));
 }
 
-test('every info key renders one button and one text in its view, wired by aria-controls', () => {
+// The owner-approved spec 13d audit, written out here and never read from the
+// production constants, so dropping an item from both the code and
+// INFO_KEYS_BY_VIEW still fails. info: the exact keys the view renders, with
+// their accessible names. hidden: text that stays in the markup but is not
+// shown until asked. visible: text that must be shown. gone: wording that the
+// audit removed or shortened away.
+const OWNER_13D = {
+  threads: { info: {} },
+  catchup: {
+    info: { catchup: 'About Catch up' },
+    hidden: ['Marking read here hides a thread from this list.'],
+  },
+  mine: {
+    info: { mine: 'About My posts' },
+    hidden: ['Threads you started or posted in.', 'at most once every 15 minutes; Refresh always does.'],
+    visible: ['Updated 4m ago.'],
+  },
+  search: {
+    info: { search: 'About Search' },
+    hidden: ['Filtering searches titles, authors, forums, your notes and tags.'],
+    visible: ['Cached posts:'],
+  },
+  drafts: {
+    info: {},
+    visible: ['No reply box here, so Copy replaces Insert.'],
+    gone: ['No reply box was found'],
+  },
+  settings: {
+    info: {
+      'settings-budget': 'About the request budget',
+      'settings-author': 'About author-only mode',
+      'settings-rows': 'About Rows shown',
+      'settings-autohide': 'About hiding the panel',
+      'settings-folders': 'About folders',
+      'settings-badges': 'About badges',
+    },
+    hidden: [
+      'A refresh of Threads makes two requests',
+      'With this on, a thread in Threads and Catch up counts as new only when',
+      'Search and Drafts always show everything.',
+      'Only thread links in this panel do this, and only a plain click.',
+      'A folder can claim a forum',
+      'Earned from what you do here',
+    ],
+    visible: [
+      'Create a <strong>Minimal Access</strong> key on Torn (Settings, API Key).',
+      'Opens Torn in a new tab with only this script\'s selections.',
+      'A Threads refresh is at most 13 requests and My posts at most 17; never more than 40 a minute.',
+      'Costs no extra requests. Some threads may show &quot;not checked&quot;.',
+      'Applies to Threads, Catch up and My posts.',
+      'Never includes your API key or the post cache.',
+      'Never includes your key, drafts, notes or post text.',
+      'Recorded on this device only. No request is made.',
+    ],
+    gone: ['This script needs a key', 'This opens Torn', 'An export carries', 'A debug report carries'],
+  },
+};
+
+function seeded(width) {
+  const { env, api } = bootNarrow({ width });
+  seedRows(api, [{ id: 1, unread: 1 }]);
+  api.state.mine.fetchedAt = NOW - 4 * 60000;
+  api.state.route = api.parseForumRoute({ origin: 'https://www.torn.com', hostname: 'www.torn.com',
+    pathname: '/forums.php', search: '', hash: '#/p=threads&f=61&t=1', href: 'https://www.torn.com/forums.php#/p=threads&f=61&t=1' });
+  api.state.replyBoxFound = false;
+  return { env, api };
+}
+
+test('every view renders exactly the owner\'s info buttons, each wired to a hidden text', () => {
   for (const width of [900, 343]) {
-    const { api } = bootNarrow({ width });
-    seedRows(api, [{ id: 1, unread: 1 }]);
-    for (const view of api.VIEWS) {
+    const { api } = seeded(width);
+    for (const [view, spec] of Object.entries(OWNER_13D)) {
       const html = htmlFor(api, view);
-      for (const key of api.INFO_KEYS_BY_VIEW[view]) {
-        const btns = html.match(new RegExp('data-act="info" data-info="' + key + '"', 'g')) || [];
-        assert.strictEqual(btns.length, 1, view + ' renders one ' + key + ' button at ' + width);
-        assert.match(html, new RegExp('aria-controls="tfcc-info-' + key + '"'));
-        assert.match(html, new RegExp('aria-label="' + api.INFO_KEYS[key] + '"'));
+      const keys = Array.from(html.matchAll(/data-act="info" data-info="([a-z-]+)"/g), (m) => m[1]);
+      assert.deepStrictEqual(keys.slice().sort(), Object.keys(spec.info).sort(), view + ' at ' + width);
+      for (const [key, label] of Object.entries(spec.info)) {
+        assert.match(html, new RegExp('data-info="' + key + '" aria-expanded="false" aria-controls="tfcc-info-'
+          + key + '" aria-label="' + label + '"'), key);
         assert.match(html, new RegExp('<p class="tfcc-note tfcc-infotext" id="tfcc-info-' + key + '" hidden>'),
           key + ' is in the markup and hidden while closed');
-        assert.match(html, new RegExp('data-info="' + key + '" aria-expanded="false"'));
       }
+    }
+  }
+});
+
+test('every audited text is hidden, visible or gone exactly as section 13d prescribes', () => {
+  for (const width of [900, 343]) {
+    const { api } = seeded(width);
+    for (const [view, spec] of Object.entries(OWNER_13D)) {
+      const html = htmlFor(api, view);
+      const v = visible(html);
+      for (const s of spec.hidden || []) {
+        assert.ok(html.includes(s), view + ': still in the markup: ' + s);
+        assert.ok(!v.includes(s), view + ': not shown until asked: ' + s);
+      }
+      for (const s of spec.visible || []) assert.ok(v.includes(s), view + ': visible: ' + s);
+      for (const s of spec.gone || []) assert.ok(!html.includes(s), view + ': gone: ' + s);
     }
   }
 });
@@ -1942,7 +2164,8 @@ test('the required disclosures stay visible: the ToS table, key status and both 
   const v = visible(htmlFor(api, 'settings'));
   for (const s of ['<th>Who can see your data</th>', '<th>Access level required</th>', '<th>Requests made</th>',
     'No key saved yet.', 'Create a <strong>Minimal Access</strong> key on Torn (Settings, API Key).',
-    'Opens Torn in a new tab with only the selections this script uses.',
+    'Opens Torn in a new tab with only this script\'s selections.',
+    '<tr><th>Access level required</th><td>Minimal Access. Limited Access also works but is not needed. Public Only does not.</td></tr>',
     'Never includes your API key or the post cache.',
     'Never includes your key, drafts, notes or post text.',
     'Recorded on this device only. No request is made.',
@@ -2115,7 +2338,8 @@ In `renderSettingsView(model)`:
 with
 
 ```js
-    out.push('<p class="tfcc-note">Opens Torn in a new tab with only the selections this script uses.</p>');
+    // Spec 13d item 16, the owner's wording.
+    out.push('<p class="tfcc-note">Opens Torn in a new tab with only this script\'s selections.</p>');
 ```
 
 3. Change the budget paragraph's first line from `out.push('<p class="tfcc-note">A refresh of Threads makes two requests, plus one for the forum list at '` to `var budgetText = 'A refresh of Threads makes two requests, plus one for the forum list at '` and its last line from `+ 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.</p>');` to `+ 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.';`. Every line between stays exactly as it is. Then directly after it add:
@@ -2243,13 +2467,146 @@ and in the test `'the key help names Minimal Access as the required level'`, rep
 
 In `tests/panel.test.js`, replace `assert.match(html, /No reply box was found/, 'the user is told why, not left guessing');` with `assert.match(html, /No reply box here, so Copy replaces Insert\./, 'the user is told why, not left guessing');`.
 
-- [ ] **Step 10: Run, full suite, commit**
+In `tests/custom-key.test.js`, in `'the key section offers the link as a new-tab anchor'`, replace `assert.match(section, /only the selections this script uses/);` with:
+
+```js
+  // Spec 13d item 16: the point-of-action disclosure, in the owner's words. It
+  // still says the link opens a new tab and carries nothing but this script's
+  // selections.
+  assert.match(section, /Opens Torn in a new tab with only this script's selections\./);
+```
+
+- [ ] **Step 10: Record the owner's wide changes for the parity test**
+
+Replace the contents of `tests/wide-13d-diffs.js` with the list below. Each `from` was taken from main's actual output for the Task 1 seed; each `to` is what this task's code renders. `INFO` and `HID` are written out literally here, not borrowed from the script, so the expectation stays independent of the code it checks. If an entry fails, compare the two strings: change the entry only if the difference is inside that same 13d item, never to absorb anything else.
+
+```js
+'use strict';
+
+// The owner-approved wide markup changes of spec section 13d, one literal
+// replacement per audited item (the item numbers are the spec's audit table),
+// applied to main's golden by tests/wide-parity.test.js.
+
+const SVG_INFO = '<svg class="tfcc-gl" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">'
+  + '<path d="M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5v.5"/></svg>';
+
+function INFO(key, label) {
+  return '<button type="button" class="tfcc-info" data-act="info" data-info="' + key + '" aria-expanded="false"'
+    + ' aria-controls="tfcc-info-' + key + '" aria-label="' + label + '">' + SVG_INFO + '</button>';
+}
+
+function HID(key, text) {
+  return '<p class="tfcc-note tfcc-infotext" id="tfcc-info-' + key + '" hidden>' + text + '</p>';
+}
+
+module.exports = [
+  {
+    item: "2 Catch up", view: "catchup",
+    from: "<button type=\"button\" data-act=\"catchup-done\">Set catch-up point to now</button></div><p class=\"tfcc-note\">Marking read here hides a thread from this list. It cannot clear Torn's own new-post counter, which only clears when you open the thread.</p>",
+    to: "<button type=\"button\" data-act=\"catchup-done\">Set catch-up point to now</button>"
+      + INFO("catchup", "About Catch up")
+      + "</div>"
+      + HID("catchup", "Marking read here hides a thread from this list. It cannot clear Torn's own new-post counter, which only clears when you open the thread."),
+  },
+  {
+    item: "4 My posts", view: "mine",
+    from: "<p class=\"tfcc-note\">Threads you started or posted in. Updated 4m ago.</p>",
+    to: "<div class=\"tfcc-infobar\"><span class=\"tfcc-note\">Updated 4m ago.</span>"
+      + INFO("mine", "About My posts")
+      + "</div>"
+      + HID("mine", "Threads you started or posted in. Opening My posts checks Torn again at most once every 15 minutes; Refresh always does."),
+  },
+  {
+    item: "8 Search", view: "search",
+    from: "Search on Torn</a></div><p class=\"tfcc-note\">Filtering searches titles, authors, forums, your notes and tags. Searching inside posts fetches up to 5 pages for each of the threads currently listed, then keeps them for next time. Search on Torn hands the same query to Torn's own forum search, which understands by:player but never shows you a box for it.</p>",
+    to: "Search on Torn</a>"
+      + INFO("search", "About Search")
+      + "</div>"
+      + HID("search", "Filtering searches titles, authors, forums, your notes and tags. Searching inside posts fetches up to 5 pages for each of the threads currently listed, then keeps them for next time. Search on Torn hands the same query to Torn's own forum search, which understands by:player but never shows you a box for it."),
+  },
+  {
+    item: "11 Drafts", view: "drafts",
+    from: "<p class=\"tfcc-note\">No reply box was found on this page, so Insert is unavailable. Copy puts the draft on your clipboard instead.</p>",
+    to: "<p class=\"tfcc-note\">No reply box here, so Copy replaces Insert.</p>",
+  },
+  {
+    item: "13 key note", view: "settings",
+    from: "<p class=\"tfcc-note\">This script needs a key that can read your subscribed threads. On Torn, go to Settings, API Key, and create a <strong>Minimal Access</strong> key. A <strong>Limited Access</strong> key also works but is not needed. A <strong>Public Only</strong> key does not.</p>",
+    to: "<p class=\"tfcc-note\">Create a <strong>Minimal Access</strong> key on Torn (Settings, API Key).</p>",
+  },
+  {
+    item: "16 custom key", view: "settings",
+    from: "<p class=\"tfcc-note\">This opens Torn's key page in a new tab with only the selections this script uses. You confirm the key there, then paste it here.</p>",
+    to: "<p class=\"tfcc-note\">Opens Torn in a new tab with only this script's selections.</p>",
+  },
+  {
+    item: "17 budget", view: "settings",
+    from: "<p class=\"tfcc-note\">A refresh of Threads makes two requests, plus one for the forum list at most once a day. Opening My posts, or refreshing while it is open, makes two requests of its own, at most once every 15 minutes unless you press Refresh. Each activity lookup adds one more to either, and only runs for a thread with no recent time. My posts also reads the opening post of up to 5 threads you started, for their thumbs up and down, each at most once every 12 hours; with lookups set to 0 it reads none. If you have started no threads and written no posts, My posts instead reads your profile once for your forum karma, at most once every 12 hours, which is 3 requests in all. With the default of 10, a Threads refresh is at most 13 requests and My posts at most 17; at the largest setting of 25, 28 and 32. The script keeps itself under 40 requests a minute regardless.</p>",
+    to: "<div class=\"tfcc-infobar\"><span class=\"tfcc-note\">A Threads refresh is at most 13 requests and My posts at most 17; never more than 40 a minute.</span>"
+      + INFO("settings-budget", "About the request budget")
+      + "</div>"
+      + HID("settings-budget", "A refresh of Threads makes two requests, plus one for the forum list at most once a day. Opening My posts, or refreshing while it is open, makes two requests of its own, at most once every 15 minutes unless you press Refresh. Each activity lookup adds one more to either, and only runs for a thread with no recent time. My posts also reads the opening post of up to 5 threads you started, for their thumbs up and down, each at most once every 12 hours; with lookups set to 0 it reads none. If you have started no threads and written no posts, My posts instead reads your profile once for your forum karma, at most once every 12 hours, which is 3 requests in all. With the default of 10, a Threads refresh is at most 13 requests and My posts at most 17; at the largest setting of 25, 28 and 32. The script keeps itself under 40 requests a minute regardless."),
+  },
+  {
+    item: "18 author-only", view: "settings",
+    from: "<p class=\"tfcc-note\">With this on, a thread in Threads and Catch up counts as new only when its author has posted since you last looked. Each activity lookup then reads the thread's posts since you last looked, 20 at a time, newest first, instead of its last-post time. Each page is one lookup from the same allowance, so the cost does not change: with your setting of 10, a Threads refresh is at most 13 requests a refresh, on or off. A thread gets at most 3 pages, and only once every other thread has had its first. With more new posts than that, a count shows as a minimum (N+), or as \"not checked (too many new)\" when none of the posts read is by the author. Threads not checked yet show \"not checked\". My posts ignores this setting. Posts from before you started using this script are not flagged, and edits are not detected.</p>",
+    to: "<div class=\"tfcc-infobar\"><span class=\"tfcc-note\">Costs no extra requests. Some threads may show &quot;not checked&quot;.</span>"
+      + INFO("settings-author", "About author-only mode")
+      + "</div>"
+      + HID("settings-author", "With this on, a thread in Threads and Catch up counts as new only when its author has posted since you last looked. Each activity lookup then reads the thread's posts since you last looked, 20 at a time, newest first, instead of its last-post time. Each page is one lookup from the same allowance, so the cost does not change: with your setting of 10, a Threads refresh is at most 13 requests a refresh, on or off. A thread gets at most 3 pages, and only once every other thread has had its first. With more new posts than that, a count shows as a minimum (N+), or as \"not checked (too many new)\" when none of the posts read is by the author. Threads not checked yet show \"not checked\". My posts ignores this setting. Posts from before you started using this script are not flagged, and edits are not detected."),
+  },
+  {
+    item: "19 rows shown", view: "settings",
+    from: "<p class=\"tfcc-note\">Applies to Threads, Catch up and My posts. Search and Drafts always show everything. A capped list says how many it is hiding, and Show all lifts the cap for that list until the page reloads. The default is 5.</p>",
+    to: "<div class=\"tfcc-infobar\"><span class=\"tfcc-note\">Applies to Threads, Catch up and My posts.</span>"
+      + INFO("settings-rows", "About Rows shown")
+      + "</div>"
+      + HID("settings-rows", "Search and Drafts always show everything. A capped list says how many it is hiding, and Show all lifts the cap for that list until the page reloads. The default is 5."),
+  },
+  {
+    item: "20 auto-hide", view: "settings",
+    from: "data-act=\"auto-hide\" checked></div><p class=\"tfcc-note\">Only thread links in this panel do this, and only a plain click. Opening a link in a new tab, or following links on the Torn page itself, leaves the panel as it is. Press Show to bring it back.</p>",
+    to: "data-act=\"auto-hide\" checked>"
+      + INFO("settings-autohide", "About hiding the panel")
+      + "</div>"
+      + HID("settings-autohide", "Only thread links in this panel do this, and only a plain click. Opening a link in a new tab, or following links on the Torn page itself, leaves the panel as it is. Press Show to bring it back."),
+  },
+  {
+    item: "21 folders", view: "settings",
+    from: "<div class=\"tfcc-section\"><h4>Folders</h4><p class=\"tfcc-note\">A folder can claim a forum, and new subscriptions from that forum file themselves into it. Filing a thread by hand always wins over a rule.</p>",
+    to: "<div class=\"tfcc-section\"><div class=\"tfcc-infobar\"><h4>Folders</h4>"
+      + INFO("settings-folders", "About folders")
+      + "</div>"
+      + HID("settings-folders", "A folder can claim a forum, and new subscriptions from that forum file themselves into it. Filing a thread by hand always wins over a rule."),
+  },
+  {
+    item: "23 backup", view: "settings",
+    from: "<p class=\"tfcc-note\">An export carries folders, tags, pins, priorities, notes, read markers drafts and badges. It never carries your API key or the post cache.</p>",
+    to: "<p class=\"tfcc-note\">Never includes your API key or the post cache.</p>",
+  },
+  {
+    item: "25 debug", view: "settings",
+    from: "<p class=\"tfcc-note\">A debug report carries the script version, the transport in use, counts and the last error. It never carries your key, your drafts, your notes or any post text.</p>",
+    to: "<p class=\"tfcc-note\">Never includes your key, drafts, notes or post text.</p>",
+  },
+  {
+    item: "26 badges", view: "settings",
+    from: "<p class=\"tfcc-note\">Earned from what you do here: focused visits to threads, finishing Torn days with Catch up empty, and organising. A visit counts once a Torn day, after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days with it off.</p>",
+    to: "<div class=\"tfcc-infobar\"><span class=\"tfcc-note\">Recorded on this device only. No request is made.</span>"
+      + INFO("settings-badges", "About badges")
+      + "</div>"
+      + HID("settings-badges", "Earned from what you do here: focused visits to threads, finishing Torn days with Catch up empty, and organising. A visit counts once a Torn day, after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days with it off."),
+  },
+];
+```
+
+- [ ] **Step 11: Run, full suite, commit**
 
 Run: `node --test tests/info.test.js tests/style.test.js tests/panel.test.js tests/handlers.test.js tests/custom-key.test.js tests/rows-cap.test.js tests/auto-hide.test.js tests/read-only.test.js tests/wide-parity.test.js && npm test && npm run test:syntax`
-Expected: PASS. The handler pairing test now sees `info` both rendered and handled.
+Expected: PASS. The handler pairing test now sees `info` both rendered and handled, and the parity test sees every wide byte change accounted for by one 13d entry.
 
 ```bash
-git add torn-forum-command-center.user.js tests/load-userscript.js tests/info.test.js tests/style.test.js tests/panel.test.js
+git add torn-forum-command-center.user.js tests/load-userscript.js tests/info.test.js tests/style.test.js tests/panel.test.js tests/custom-key.test.js tests/wide-13d-diffs.js
 git commit -m "feat: info buttons replace standing explanations at every size (#33)"
 ```
 
@@ -2329,6 +2686,15 @@ test('Expand reads Shrink, pressed, in takeover; Refresh says when it is busy', 
   assert.match(head, /data-act="refresh" aria-label="Refreshing" aria-busy="true"/);
 });
 
+test('the loading and error states use the narrow header, without controls', () => {
+  const { api } = bootNarrow();
+  for (const html of [api.panelHtml(api.loadingModel(NOW)), api.panelHtml(api.errorModel('x', 'broken', NOW))]) {
+    assert.match(html, /^<div class="tfcc-head"><div class="tfcc-head-id"><svg class="tfcc-logo"/);
+    assert.match(html, /<span class="tfcc-pill">/, 'the chip has its narrow box');
+    assert.doesNotMatch(html, /tfcc-hbtn|tfcc-hshow/);
+  }
+});
+
 test('the narrow chip wraps its pill in a span, so the 44px box and the 28px pill are separate', () => {
   const { api } = bootNarrow();
   const html = api.panelHtml(api.buildPanelModel(NOW));
@@ -2341,33 +2707,50 @@ Append to `tests/narrow-runtime.test.js`:
 ```js
 // ---- fitHeader (spec 13b) -----------------------------------------------------
 
-function fitEnv(width, chip, show, collapsed) {
+// The chip measures 72px normal and 58px compact (spec 13b). The Show button's
+// width follows the size, because its padding is clamp(4px, 0.2 x hb, 10px) on
+// each side: 13b's own figure of 65px at a 24px size gives 55.4 + 0.4 x hb.
+function fitEnv(width, collapsed) {
+  let panel = null;
+  const hbNow = () => parseFloat(panel.style.getPropertyValue('--tfcc-hb')) || 44;
   const measure = (n) => {
-    if (n.classList.contains('tfcc-chip')) return n.classList.contains('tfcc-compact') ? chip[1] : chip[0];
-    if (n.classList.contains('tfcc-hshow')) return show;
+    if (n.classList.contains('tfcc-chip')) return n.classList.contains('tfcc-compact') ? 58 : 72;
+    if (n.classList.contains('tfcc-hshow')) return 55.4 + 0.4 * hbNow();
     return 0;
   };
   const { env, api } = bootNarrow({ width, env: { measure, gmStore: collapsed
     ? [['tfcc:settings', JSON.stringify({ v: 1, collapsed: true })]] : [] } });
+  panel = panelOf(env);
   redraw(env);
-  return { env, api, hb: () => panelOf(env).style.getPropertyValue('--tfcc-hb') };
+  return { env, api, hb: () => panel.style.getPropertyValue('--tfcc-hb') };
 }
 
 test('fitHeader sizes the header buttons from the panel\'s own width', () => {
-  assert.strictEqual(fitEnv(343, [72, 58], 0).hb(), '44px', '375px phone');
-  assert.strictEqual(fitEnv(288, [72, 58], 0).hb(), '41.5px', '320px phone');
+  assert.strictEqual(fitEnv(343).hb(), '44px', '375px phone');
+  assert.strictEqual(fitEnv(288).hb(), '41.5px', '320px phone');
 });
 
 test('below 36px the chip goes compact and the solve runs again', () => {
-  const { env, hb } = fitEnv(248, [72, 58], 0);
+  const { env, hb } = fitEnv(248);
   assert.strictEqual(hb(), '35px');
   assert.strictEqual(panelOf(env).querySelector('.tfcc-chip').classList.contains('tfcc-compact'), true);
-  const roomy = fitEnv(343, [72, 58], 0);
+  const roomy = fitEnv(343);
   assert.strictEqual(panelOf(roomy.env).querySelector('.tfcc-chip').classList.contains('tfcc-compact'), false);
 });
 
-test('collapsed, the Show label is part of the solve', () => {
-  assert.strictEqual(fitEnv(288, [72, 58], 65, true).hb(), '38.5px');
+test('collapsed, the Show label is part of the solve, measured again at the size it gets', () => {
+  // 320 collapsed: Show at 44px is 73px, the first solve goes compact at 36,
+  // Show re-measured at 36 is 69.8px, and the second solve gives 37. 280
+  // collapsed lands half a step above the floor. Spec 13b is amended to match.
+  assert.strictEqual(fitEnv(288, true).hb(), '37px');
+  assert.strictEqual(fitEnv(248, true).hb(), '24.5px');
+});
+
+test('the loading header has no buttons to fit, so it keeps the full size', () => {
+  const { env, api } = bootNarrow({ width: 288 });
+  const panel = panelOf(env);
+  panel.innerHTML = api.panelHtml(api.loadingModel(NOW));
+  assert.strictEqual(api.fitHeader(panel, env.win), 44);
 });
 
 test('a wide panel carries no header size at all', () => {
@@ -2408,7 +2791,11 @@ After `function renderHeadId(`'s closing `}`, add:
   // The narrow header (spec 4.1, 13a, 13b): logo, chip and, when collapsed, a
   // bare unread count, then Refresh, Expand/Shrink and Hide as icon buttons
   // that fitHeader sizes. Collapsed, the third button is the visible word Show.
-  function renderHeadNarrow(model) {
+  // withControls false is the loading and error header: logo and chip only.
+  function renderHeadNarrow(model, withControls) {
+    if (withControls === false) {
+      return '<div class="tfcc-head"><div class="tfcc-head-id">' + LOGO_SVG + renderBadgeChip(model) + '</div></div>';
+    }
     var count = '';
     if (model.collapsed && model.totals && model.totals.unread > 0) {
       var n = formatCount(model.totals.unread);
@@ -2444,7 +2831,32 @@ After `function renderHeadId(`'s closing `}`, add:
 
 - [ ] **Step 6: Branch in `panelHtml`**
 
-In `panelHtml(model)`, replace the block from `out.push('<div class="tfcc-head">');` through `out.push('</span></div></div>');` with:
+In `panelHtml(model)`, the loading and fatal early returns get the narrow header too, without controls (main's loading and fatal headers have none; fatal keeps its own Try again). Replace
+
+```js
+    if (model.loading) {
+      return '<div class="tfcc-head">' + renderHeadId(model) + '</div>'
+        + '<div class="tfcc-empty">Loading your subscribed threads...</div>';
+    }
+    if (model.fatal) {
+      return '<div class="tfcc-head">' + renderHeadId(model) + '</div>'
+```
+
+with
+
+```js
+    // #33: a narrow loading or error state gets the narrow header (scaled
+    // logo, the chip's 44px box), with no controls, as on main.
+    var bareHead = model.narrow ? renderHeadNarrow(model, false) : '<div class="tfcc-head">' + renderHeadId(model) + '</div>';
+    if (model.loading) {
+      return bareHead
+        + '<div class="tfcc-empty">Loading your subscribed threads...</div>';
+    }
+    if (model.fatal) {
+      return bareHead
+```
+
+Then replace the block from `out.push('<div class="tfcc-head">');` through `out.push('</span></div></div>');` with:
 
 ```js
     if (model.narrow) {
@@ -2496,6 +2908,8 @@ After `function watchPanelWidth(`'s closing `}`, add:
       if (!(content > 0)) return null;
       var chip = panel.querySelector('.tfcc-chip');
       var show = panel.querySelector('.tfcc-hshow');
+      // The loading and error headers have no buttons: nothing to fit.
+      if (!show && !panel.querySelector('.tfcc-hbtn')) { setHeaderSize(panel, HB_MAX); return HB_MAX; }
       var icons = show ? 2 : 3;
       var width = function (el) {
         var r = el && typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect() : null;
@@ -2546,7 +2960,9 @@ In the `#tfcc-panel {` token block, after `'  --tfcc-started: #ff8080;',` add:
 After the `[hidden]`/info rules from Task 8, add:
 
 ```js
-      '#' + PANEL_ID + ' .tfcc-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;',
+      // Narrow only: the collapsed count's name, the view heading and the live
+      // region all render in the narrow layout alone.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;',
       '  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }',
       // ---- #33 narrow layout. Every rule below hangs off .tfcc-narrow, so a
       // wide panel never sees one. ----
@@ -3264,14 +3680,29 @@ test('Actions for a row that is not rendered is reconciled closed', () => {
   assert.strictEqual(api.state.openRowId, null, 'the redraw reconciled the forged id away');
 });
 
-test('closing a drawer drops its edit mirror', () => {
+test('an uncommitted edit outlives its drawer, and its commit clears it', () => {
   const { env, api } = bootNarrow();
   seedRows(api, SIX);
   redraw(env);
   click(env, '[data-act="row-more"][data-id="2"]');
-  api.state.drawerEdit = { id: '2', field: 'tag-input', value: 'unsaved', selStart: 7, selEnd: 7 };
+  api.state.drawerEdit = { id: '2', field: 'note-input', value: 'unsaved', selStart: 7, selEnd: 7 };
   click(env, '[data-act="row-more"][data-id="2"]');
+  assert.strictEqual(api.state.drawerEdit.value, 'unsaved', 'closed without a commit: still held');
+  click(env, '[data-act="row-more"][data-id="2"]');
+  assert.match(env.doc.getElementById('tfcc-panel').innerHTML, /data-act="note-input" data-id="2" value="unsaved"/,
+    'reopened, the field shows what was typed');
+  api.makeHandlers(env.doc, env.win).onChange('note-input',
+    { getAttribute: (k) => (k === 'data-id' ? '2' : 'note-input'), value: 'unsaved' });
   assert.strictEqual(api.state.drawerEdit, null);
+  assert.strictEqual(api.state.organizer.threads['2'].note, 'unsaved');
+});
+
+test('the wide row shows an uncommitted edit too, so crossing the breakpoint keeps it on screen', () => {
+  const { api } = bootNarrow({ width: 900 });
+  seedRows(api, SIX);
+  api.state.drawerEdit = { id: '2', field: 'tag-input', value: 'half', selStart: 4, selEnd: 4 };
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /data-act="tag-input" data-id="2" value="half" placeholder="add tag" size="8">/);
 });
 ```
 
@@ -3346,6 +3777,15 @@ and replace the three statements with `out.push('<div class="tfcc-meta">' + rowM
 ```
 
 and use `out.push(folderSelectHtml(row, model, ''));` in `renderRow`.
+
+4. The wide row's two text fields show an uncommitted edit (`state.drawerEdit`) when one exists for them, so a value typed in a narrow drawer stays on screen after a rotation to wide. With no edit the markup is byte-identical. In `renderRow`, before `out.push('<div class="tfcc-actions">');`, add:
+
+```js
+    // #33: an uncommitted edit is shown wherever its field renders.
+    var edit = model.drawerEdit && model.drawerEdit.id === String(row.id) ? model.drawerEdit : null;
+```
+
+replace `+ '" placeholder="add tag" size="8">');` with `+ '"' + (edit && edit.field === 'tag-input' ? ' value="' + escapeHtml(edit.value) + '"' : '') + ' placeholder="add tag" size="8">');`, and replace `+ '" value="' + escapeHtml(row.note) + '" placeholder="note" size="14">');` with `+ '" value="' + escapeHtml(edit && edit.field === 'note-input' ? edit.value : row.note) + '" placeholder="note" size="14">');`.
 
 Run `node --test tests/wide-parity.test.js` now. Expected: PASS. If it fails, the split changed a byte; fix it before going on.
 
@@ -3654,25 +4094,134 @@ test('Archive and Mark all read announce too', () => {
   assert.match(panelOf(env).innerHTML, /role="status" aria-live="polite">Archived\.</);
 });
 
-test('the narrow layout makes no new document-level query: Torn\'s DOM stays at two places', () => {
+// ---- ADR 0001: Torn's markup is read in exactly two places ------------------
+
+test('every document query, from bootstrap on, is a mount, reply-box or own-control selector', () => {
+  // env.queryLog records from before the script runs, so an init-only query
+  // is caught too. The whitelist is exact: no prefix match.
   const { env, api } = bootNarrow({ env: { resizeObserver: true } });
-  const seen = [];
-  const original = env.doc.querySelector;
-  env.doc.querySelector = (sel) => { seen.push(sel); return original.call(env.doc, sel); };
   seedRows(api, [{ id: 1, unread: 1 }, { id: 2, unread: 1 }]);
   api.state.settings.view = 'catchup';
   redraw(env);
   click(env, '[data-act="row-more"][data-id="1"]');
-  click(env, '[data-act="read"][data-id="1"]');
+  click(env, '[data-act="read"][data-id="2"]');
+  click(env, '[data-act="filters"]');
   env.resize(900);
   env.resize(300);
-  const allowed = new Set([].concat(api.MOUNT_SELECTORS, api.REPLY_SELECTORS));
-  const stray = seen.filter((s) => !allowed.has(s) && s.indexOf('[data-act=') !== 0);
-  assert.deepStrictEqual(stray, [], 'selectors outside the mount, the reply box and our own controls');
+  api.state.settings.view = 'settings';
+  redraw(env);
+  click(env, '[data-act="key-save"]');
+  const allowed = new Set([].concat(api.MOUNT_SELECTORS, api.REPLY_SELECTORS, [
+    // valueOf() in makeHandlers reads the panel's own value-carrying controls.
+    '[data-act="key-input"]', '[data-act="draft-text"]', '[data-act="import-text"]', '[data-act="folder-name"]',
+  ]));
+  const stray = env.queryLog.filter((s) => !allowed.has(s));
+  assert.deepStrictEqual(stray, [], 'a document query outside ADR 0001\'s two places and our own controls');
+  assert.ok(env.queryLog.includes(api.MOUNT_SELECTORS[0]), 'the log really did record the bootstrap');
+});
+
+test('every querySelector call site in the source is one of the known ones', () => {
+  // A static audit, so a branch the runtime test never reaches is covered
+  // too. document reads are the three that predate #33; #33 adds panel reads
+  // only, on this script's own element.
+  const src = require('./load-userscript').readSource();
+  const calls = Array.from(src.matchAll(/(\w+)\.querySelector(?:All)?\(([^()]*)\)/g), (m) => m[1] + '(' + m[2] + ')');
+  assert.deepStrictEqual(calls.slice().sort(), [
+    'doc(MOUNT_SELECTORS[i])',
+    'doc(REPLY_SELECTORS[i])',
+    "doc('[data-act=\"' + act + '\"]')",
+    "panel('.tfcc-chip')",
+    "panel('.tfcc-hbtn')",
+    "panel('.tfcc-hshow')",
+    'panel(plan[i])',
+  ].sort());
 });
 ```
 
-If this test lists a selector that main already used before #33 (check with `git grep -n "<selector>" origin/main -- torn-forum-command-center.user.js`), add it to `allowed` with a comment naming the function that owns it. A selector #33 introduced is a stop condition, not an allow-list entry.
+If the runtime test lists a selector that main already used before #33 (check with `git grep -n "<selector>" origin/main -- torn-forum-command-center.user.js`), add it to `allowed` with a comment naming the function that owns it. A selector #33 introduced is a stop condition, not a whitelist entry. If the static audit's list differs only because a call is written differently from this plan's code (for example a renamed loop variable), match the list to the code and say so in the commit message; a new receiver or a new document read is a stop condition.
+
+Also append to `tests/narrow-focus.test.js`:
+
+```js
+// ---- focus after a text field commits (plan review) -------------------------
+
+test('Tab from the tag field to the note field leaves focus in the note field', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, [{ id: 1 }, { id: 2 }]);
+  api.state.settings.view = 'threads';
+  api.state.settings.sort = 'title';
+  redraw(env);
+  click(env, '[data-act="row-more"][data-id="1"]');
+  const panel = panelOf(env);
+  panel.contains = () => true;
+  const tag = panel.querySelector('[data-act="tag-input"][data-id="1"]');
+  tag.value = 'newtag';
+  env.doc.activeElement = tag;
+  panel.dispatchEvent({ type: 'change', target: tag });
+  // The browser moves focus after change; the redraw waits a tick for it.
+  env.doc.activeElement = panel.querySelector('[data-act="note-input"][data-id="1"]');
+  const before = env.focusLog.length;
+  env.advanceTimersBy(0);
+  assert.ok(api.state.organizer.threads['1'].tags.includes('newtag'));
+  assert.ok(env.focusLog.length > before, 'focus was restored');
+  assert.strictEqual(lastFocus(env)['data-act'], 'note-input', 'not pulled back into the tag field');
+});
+
+test('Tab out of the note field moves on to the next control, not back into the note', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, [{ id: 1 }, { id: 2 }]);
+  api.state.settings.view = 'threads';
+  api.state.settings.sort = 'title';
+  redraw(env);
+  click(env, '[data-act="row-more"][data-id="1"]');
+  const panel = panelOf(env);
+  panel.contains = () => true;
+  const note = panel.querySelector('[data-act="note-input"][data-id="1"]');
+  note.value = 'a note';
+  env.doc.activeElement = note;
+  panel.dispatchEvent({ type: 'change', target: note });
+  env.doc.activeElement = panel.querySelector('[data-act="row-more"][data-id="2"]');
+  env.advanceTimersBy(0);
+  assert.strictEqual(api.state.organizer.threads['1'].note, 'a note');
+  assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['row-more', '2']);
+});
+
+test('Enter in the filter field keeps focus in the field', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, [{ id: 1, title: 'alpha' }, { id: 2, title: 'beta' }]);
+  redraw(env);
+  const panel = panelOf(env);
+  panel.contains = () => true;
+  const filter = panel.querySelector('[data-act="filter"]');
+  filter.value = 'alpha';
+  env.doc.activeElement = filter;
+  panel.dispatchEvent({ type: 'change', target: filter });
+  env.advanceTimersBy(0);
+  assert.strictEqual(api.state.searchQuery, 'alpha');
+  assert.strictEqual(lastFocus(env)['data-act'], 'filter');
+});
+
+test('a deferred redraw that removes a row leaves the focus bookkeeping on the rows still shown', () => {
+  // The caret in row 1's note defers a background redraw that drops row 2.
+  // The DOM still shows row 2, so a tap on its Actions must still find row 3
+  // as its successor, not fall through to the heading.
+  const { env, api } = bootNarrow();
+  seedRows(api, [{ id: 1 }, { id: 2 }, { id: 3 }]);
+  api.state.settings.view = 'threads';
+  api.state.settings.sort = 'title';
+  redraw(env);
+  click(env, '[data-act="row-more"][data-id="1"]');
+  const panel = panelOf(env);
+  panel.contains = () => true;
+  env.doc.activeElement = panel.querySelector('[data-act="note-input"][data-id="1"]');
+  seedRows(api, [{ id: 1 }, { id: 3 }]);
+  const before = panel.renderCount;
+  env.exports.draw(env.doc, env.win, api.makeHandlers(env.doc, env.win));
+  assert.strictEqual(panel.renderCount, before, 'deferred by the caret');
+  click(env, '[data-act="row-more"][data-id="2"]');
+  assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['row-more', '3']);
+});
+```
 
 - [ ] **Step 3: Run to verify failure**
 
@@ -3736,7 +4285,10 @@ Immediately before `function draw(doc, win, handlers, force) {`, add:
 
   // One polite live region, rendered with the panel and announced once, the
   // way the badge toast's role="status" is (spec section 6, focus rule 5).
+  // Narrow only, like the rest of the section 6 machinery: desktop markup
+  // stays main's.
   function renderLive(model) {
+    if (!model.narrow) return '';
     if (!model.live) return '';
     return '<div class="tfcc-sr" role="status" aria-live="polite">' + escapeHtml(model.live) + '</div>';
   }
@@ -3756,9 +4308,15 @@ Replace `draw` with:
     var plan = state.focusIntent || focusPlanFromActive(doc);
     var model = buildPanelModel(now);
     var panel = renderPanel(doc, win, model, handlers, force);
-    lastRender = { ids: model.renderedIds || [], view: model.view, narrow: model.narrow === true };
-    // Only a rewrite destroys the focused node; an unchanged panel keeps it.
-    if (panel && plan && panel.__tfccHtml !== htmlBefore) restoreFocus(panel, plan);
+    // Only a rewrite changes what is on screen. A deferred one (a caret in the
+    // panel) leaves the old rows in the DOM, so lastRender must keep
+    // describing them, or the next action's neighbours would be wrong.
+    var rewrote = !!panel && panel.__tfccHtml !== htmlBefore;
+    if (rewrote) {
+      lastRender = { ids: model.renderedIds || [], view: model.view, narrow: model.narrow === true };
+      // Only a rewrite destroys the focused node; an unchanged panel keeps it.
+      if (plan) restoreFocus(panel, plan);
+    }
     if (state.badgeToast && !state.pendingRedraw) state.badgeToast.announced = true;
     if (state.liveMessage && !state.pendingRedraw) state.liveMessage.announced = true;
     // The chip's width changes with its counts and Show replaces Hide, so the
@@ -3798,8 +4356,50 @@ with
 and in the `change` listener replace `handlers.onChange(act, t);` with:
 
 ```js
-        state.focusIntent = focusPlan(focusTargetOf(t), lastRender);
-        try { handlers.onChange(act, t); } finally { state.focusIntent = null; }
+        // A text field commits on blur, when the browser still reports it as
+        // focused although focus is already on its way to the next control.
+        // Its commit redraws a tick later, from wherever focus landed, and
+        // never pulls focus back into the field (plan review). A select or a
+        // checkbox keeps focus, so it brings its own plan.
+        var text = isTextField(t);
+        if (!text) state.focusIntent = focusPlan(focusTargetOf(t), lastRender);
+        state.deferCommit = text;
+        try { handlers.onChange(act, t); } finally { state.focusIntent = null; state.deferCommit = false; }
+```
+
+Next to `focusTargetOf`, add:
+
+```js
+  function isTextField(el) {
+    var tag = el && el.tagName ? String(el.tagName).toLowerCase() : '';
+    if (tag === 'textarea') return true;
+    if (tag !== 'input') return false;
+    var type = el.getAttribute ? String(el.getAttribute('type') || 'text').toLowerCase() : 'text';
+    return type !== 'checkbox' && type !== 'radio';
+  }
+```
+
+Add `deferCommit: false,` to `var state = {` next to `pressActive: false,`. In `makeHandlers`, replace `function redraw() { draw(doc, win, handlers, true); }` with:
+
+```js
+    var commitTimer = null;
+    function redraw() {
+      // A text field's commit (state.deferCommit, set by the change listener)
+      // redraws a tick later, once focus has settled: Tab lands on the next
+      // control and the redraw restores focus there; Enter leaves focus in the
+      // field and the redraw restores it there.
+      if (state.deferCommit) {
+        state.pendingRedraw = true;
+        if (commitTimer === null) {
+          commitTimer = setTimeout(function () {
+            commitTimer = null;
+            if (state.pendingRedraw) redraw();
+          }, 0);
+        }
+        return;
+      }
+      draw(doc, win, handlers, true);
+    }
 ```
 
 In `makeHandlers`:
@@ -3812,7 +4412,7 @@ Export `'MOUNT_SELECTORS'` and `'REPLY_SELECTORS'` are already in `EXPORT_NAMES`
 - [ ] **Step 5: Run, full suite, commit**
 
 Run: `node --test tests/narrow-focus.test.js tests/redraw.test.js tests/badges-runtime.test.js tests/wide-parity.test.js && npm test && npm run test:syntax`
-Expected: PASS. The wide parity golden has no live message, so it is unchanged.
+Expected: PASS. The wide parity golden has no live message, so it is unchanged. If a pre-existing suite dispatches a text-field `change` through the panel and reads the HTML straight away, it now needs `env.advanceTimersBy(0)` before the read (the commit redraws a tick later); change when it looks, never what it asserts.
 
 ```bash
 git add torn-forum-command-center.user.js tests/load-userscript.js tests/narrow-focus.test.js
@@ -3821,15 +4421,16 @@ git commit -m "feat: restore focus after every redraw and announce Read and Arch
 
 ---
 
-### Task 14: Hold a redraw while a press is in progress (dirty drawer inputs)
+### Task 14: Hold a redraw while a press is in progress, and keep background redraws behind the caret
 
 **Files:**
-- Modify: `torn-forum-command-center.user.js`: new `PRESS_FLUSH_MS`, `pressTimer`, `startPress`, `armPressTimer`, `endPress`, `clearPress`, `flushAfterPress` before `function renderPanel(`; `renderPanel` (pointer listeners, the click listener, the focusout listener); `makeHandlers` (`redraw`)
+- Modify: `torn-forum-command-center.user.js`: new `PRESS_FLUSH_MS`, `pressTimer`, `pressWinBound`, `startPress`, `armPressTimer`, `endPress`, `clearPress`, `flushAfterPress` before `function renderPanel(`; `renderPanel` (pointer listeners, the click listener, the focusout listener); `makeHandlers` (`redraw`, a new `quietRedraw`, the async completions)
 - Modify: `tests/load-userscript.js`
 - Create: `tests/dirty-input.test.js`
 
 **Interfaces:**
-- Produces: `PRESS_FLUSH_MS = 300`; `state.pressActive` semantics: set on `pointerdown` in the panel, cleared by the next `click` (before its action runs), by `pointercancel`, or `PRESS_FLUSH_MS` after the last pointer event; while set, `makeHandlers`' `redraw()` only marks `state.pendingRedraw`.
+- Produces: `PRESS_FLUSH_MS = 300`. `state.pressActive` is set on `pointerdown` in the panel and cleared by the next `click` (before its action runs), by `pointercancel`, or 300ms after the `pointerup` (on the panel or anywhere in the window) when no click followed. Nothing times out while the pointer is still down. While it is set, `makeHandlers`' `redraw()` and `quietRedraw()` only mark `state.pendingRedraw`.
+- `quietRedraw()`: the redraw for work that finishes later (a refresh, My posts, deep search, a key check). It is not forced, so a caret in the panel defers it like any other background redraw.
 
 - [ ] **Step 1: Export**
 
@@ -3850,8 +4451,8 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { NOW, bootNarrow, seedRows, panelOf, redraw, click } = require('./narrow-helpers');
 
-function setup() {
-  const { env, api } = bootNarrow();
+function setup(extraEnv) {
+  const { env, api } = bootNarrow({ env: extraEnv || {} });
   seedRows(api, [{ id: 1 }, { id: 2 }, { id: 3 }]);
   api.state.settings.view = 'threads';
   api.state.settings.sort = 'title';
@@ -3863,18 +4464,61 @@ function setup() {
   return { env, api, panel, note };
 }
 
+// The same settle loop as tests/refresh.test.js: let promise chains and the
+// timers they schedule run to the end.
+async function settle(env) {
+  for (let i = 0; i < 20; i += 1) {
+    await new Promise((r) => setImmediate(r));
+    env.runTimers();
+  }
+}
+
+test('the no-click flush is 300ms, by contract', () => {
+  // A literal, so changing the constant fails here (CLAUDE.md: a test must not
+  // advance time by the constant it is testing).
+  const { api } = bootNarrow();
+  assert.strictEqual(api.PRESS_FLUSH_MS, 300);
+});
+
 test('a tap on another control while a drawer input is dirty commits and acts, in one redraw', () => {
   const { env, api, panel, note } = setup();
   const before = panel.renderCount;
   panel.dispatchEvent({ type: 'pointerdown', target: panel.querySelector('[data-act="row-more"][data-id="2"]') });
   panel.dispatchEvent({ type: 'change', target: note });
   assert.strictEqual(api.state.organizer.threads['1'].note, 'typed note', 'the change committed');
+  env.advanceTimersBy(0);
   assert.strictEqual(panel.renderCount, before, 'its redraw is held while the press is in progress');
   panel.dispatchEvent({ type: 'pointerup', target: panel.querySelector('[data-act="row-more"][data-id="2"]') });
   click(env, '[data-act="row-more"][data-id="2"]');
+  env.advanceTimersBy(0);
   assert.strictEqual(panel.renderCount, before + 1, 'one visible redraw for both');
   assert.strictEqual(api.state.openRowId, '2', 'the tapped action happened');
   assert.match(panel.innerHTML, /<div class="tfcc-note">typed note<\/div>/);
+});
+
+test('holding the pointer down past 300ms does not redraw; 300ms after it lifts with no click, it does', () => {
+  const { env, panel, note } = setup();
+  const before = panel.renderCount;
+  panel.dispatchEvent({ type: 'pointerdown', target: panel });
+  panel.dispatchEvent({ type: 'change', target: note });
+  env.advanceTimersBy(1000);
+  assert.strictEqual(panel.renderCount, before, 'a slow press keeps its target');
+  panel.dispatchEvent({ type: 'pointerup', target: panel });
+  env.advanceTimersBy(299);
+  assert.strictEqual(panel.renderCount, before);
+  env.advanceTimersBy(1);
+  assert.strictEqual(panel.renderCount, before + 1);
+  assert.strictEqual(env.exports.state.pressActive, false);
+});
+
+test('a pointerup outside the panel still ends the press', () => {
+  const { env, panel, note } = setup();
+  const before = panel.renderCount;
+  panel.dispatchEvent({ type: 'pointerdown', target: panel });
+  panel.dispatchEvent({ type: 'change', target: note });
+  env.win.fire('pointerup', { type: 'pointerup' });
+  env.advanceTimersBy(300);
+  assert.strictEqual(panel.renderCount, before + 1, 'a press can never hold redraws forever');
 });
 
 test('a pointercancel flushes the held redraw', () => {
@@ -3883,20 +4527,9 @@ test('a pointercancel flushes the held redraw', () => {
   panel.dispatchEvent({ type: 'pointerdown', target: panel });
   panel.dispatchEvent({ type: 'change', target: note });
   panel.dispatchEvent({ type: 'pointercancel', target: panel });
+  env.advanceTimersBy(0);
   assert.strictEqual(panel.renderCount, before + 1);
   assert.strictEqual(env.exports.state.pressActive, false);
-});
-
-test('a press with no click flushes after PRESS_FLUSH_MS', () => {
-  const { env, panel, note } = setup();
-  const before = panel.renderCount;
-  panel.dispatchEvent({ type: 'pointerdown', target: panel });
-  panel.dispatchEvent({ type: 'change', target: note });
-  panel.dispatchEvent({ type: 'pointerup', target: panel });
-  env.advanceTimersBy(env.exports.PRESS_FLUSH_MS - 1);
-  assert.strictEqual(panel.renderCount, before);
-  env.advanceTimersBy(1);
-  assert.strictEqual(panel.renderCount, before + 1);
 });
 
 test('focus leaving the field during a press does not flush early', () => {
@@ -3909,15 +4542,38 @@ test('focus leaving the field during a press does not flush early', () => {
   env.advanceTimersBy(0);
   assert.strictEqual(panel.renderCount, before, 'the focusout flush waits for the click');
   click(env, '[data-act="row-more"][data-id="3"]');
+  env.advanceTimersBy(0);
   assert.strictEqual(panel.renderCount, before + 1);
 });
 
-test('a background refresh that lands mid-press is held too', () => {
-  const { env, api, panel } = setup();
+test('a dirty field, then a plain thread-link tap: no redraw during the click, then one, with auto-hide', () => {
+  // Redrawing while the click is being dispatched would remove the anchor
+  // before the browser follows it. The thread-link branch never flushes
+  // synchronously; the existing zero-delay redraw after dispatch does it.
+  const { env, api, panel, note } = setup();
+  api.state.settings.autoHideOnOpen = true;
   const before = panel.renderCount;
+  const link = env.makeElement('a');
+  link.setAttribute('data-tfcc-thread', '2');
+  link.parentNode = panel;
+  panel.dispatchEvent({ type: 'pointerdown', target: link });
+  panel.dispatchEvent({ type: 'change', target: note });
+  panel.dispatchEvent({ type: 'pointerup', target: link });
+  panel.dispatchEvent({ type: 'click', target: link, button: 0, ctrlKey: false, metaKey: false,
+    shiftKey: false, altKey: false, defaultPrevented: false });
+  assert.strictEqual(panel.renderCount, before, 'nothing redraws inside the click');
+  env.advanceTimersBy(0);
+  assert.strictEqual(panel.renderCount, before + 1, 'one redraw after dispatch');
+  assert.strictEqual(api.state.settings.collapsed, true, 'auto-hide still happened');
+  assert.strictEqual(api.state.organizer.threads['1'].note, 'typed note', 'and the note was saved');
+});
+
+test('any redraw requested mid-press is held too', () => {
+  const { env, api, panel } = setup();
   panel.dispatchEvent({ type: 'pointerdown', target: panel });
+  const before = panel.renderCount;
   api.makeHandlers(env.doc, env.win).onAction('badges-shelf', { getAttribute: () => 'badges-shelf' });
-  assert.strictEqual(panel.renderCount, before);
+  assert.strictEqual(panel.renderCount, before, 'held until the press ends');
   panel.dispatchEvent({ type: 'pointercancel', target: panel });
   assert.strictEqual(panel.renderCount, before + 1);
 });
@@ -3936,12 +4592,37 @@ test('a forced redraw before the commit keeps what was typed and the caret', () 
   const again = panel.querySelector('[data-act="note-input"][data-id="1"]');
   assert.deepStrictEqual(again.selection, [2, 3], 'the selection is restored on the new node');
 });
+
+test('typed, rotated across the breakpoint, refreshed, then blurred: the value persists', async () => {
+  const { env, api, panel } = setup({ resizeObserver: true });
+  const h = api.makeHandlers(env.doc, env.win);
+  // The user starts a refresh, then types while it is in flight.
+  h.onAction('refresh', { getAttribute: () => 'refresh' });
+  const note = panel.querySelector('[data-act="note-input"][data-id="1"]');
+  note.value = 'keep me';
+  panel.dispatchEvent({ type: 'input', target: note });
+  env.doc.activeElement = note;
+  panel.contains = () => true;
+  const before = panel.renderCount;
+  env.resize(900);
+  assert.strictEqual(api.state.narrow, false, 'rotated to wide');
+  assert.strictEqual(api.state.drawerEdit.value, 'keep me', 'the crossing kept the mirror');
+  await settle(env);
+  assert.strictEqual(panel.renderCount, before, 'neither the crossing nor the refresh replaced the field');
+  panel.dispatchEvent({ type: 'change', target: note });
+  env.doc.activeElement = null;
+  panel.contains = () => false;
+  env.advanceTimersBy(0);
+  assert.strictEqual(api.state.organizer.threads['1'].note, 'keep me');
+  assert.strictEqual(api.state.drawerEdit, null, 'the commit cleared the mirror');
+  assert.match(panel.innerHTML, /data-act="note-input" data-id="1" value="keep me"/, 'the wide row shows it');
+});
 ```
 
 - [ ] **Step 3: Run to verify failure**
 
 Run: `node --test tests/dirty-input.test.js`
-Expected: FAIL: the change's redraw lands immediately.
+Expected: FAIL: the change's redraw lands immediately, and the refresh completion forces through the caret.
 
 - [ ] **Step 4: Implement the press helpers**
 
@@ -3950,9 +4631,11 @@ Immediately before `function renderPanel(`, add:
 ```js
   // #33, spec section 6 "Dirty inputs": a redraw held while a press that began
   // in the panel is in progress is flushed by the click, a pointercancel, or
-  // this long after the last pointer event with no click.
+  // this long after the pointer lifts with no click. Nothing is flushed while
+  // the pointer is still down, so a slow tap keeps its target.
   var PRESS_FLUSH_MS = 300;
   var pressTimer = null;
+  var pressWinBound = false;
 
   function clearPress() {
     if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
@@ -3963,6 +4646,7 @@ Immediately before `function renderPanel(`, add:
     if (state.pendingRedraw && !panelHasEditableFocus(doc)) draw(doc, win, handlers, true);
   }
 
+  // Armed only by a pointerup.
   function armPressTimer(doc, win, handlers) {
     if (!state.pressActive) return;
     if (pressTimer !== null) clearTimeout(pressTimer);
@@ -3974,9 +4658,10 @@ Immediately before `function renderPanel(`, add:
     }, PRESS_FLUSH_MS);
   }
 
+  // The timer is not armed here: a press may last as long as it likes.
   function startPress(doc, win, handlers) {
+    if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
     state.pressActive = true;
-    armPressTimer(doc, win, handlers);
   }
 
   function endPress(doc, win, handlers) {
@@ -4006,10 +4691,15 @@ with
         if (pressed) clearPress();
 ```
 
-In the same listener, replace the thread-link branch's `return;` with `if (pressed) flushAfterPress(doc, win, handlers); return;`, and after the `try { handlers.onAction(act, t); } finally { ... }` line (Task 13) add:
+In the same listener's thread-link branch, replace its `return;` with:
 
 ```js
-        if (pressed) flushAfterPress(doc, win, handlers);
+          // Never redraw inside the click that follows a link: the anchor must
+          // still be there when the browser acts on it. onThreadLink's own
+          // zero-delay redraw usually renders the held change; this covers a
+          // click that does not auto-hide.
+          if (pressed) setTimeout(function () { flushAfterPress(doc, win, handlers); }, 0);
+          return;
 ```
 
 Change the early `if (!act || typeof handlers.onAction !== 'function') return;` to:
@@ -4021,12 +4711,25 @@ Change the early `if (!act || typeof handlers.onAction !== 'function') return;` 
         }
 ```
 
+and after the `try { handlers.onAction(act, t); } finally { ... }` line (Task 13) add:
+
+```js
+        if (pressed) flushAfterPress(doc, win, handlers);
+```
+
 After the `input` listener (Task 12), add:
 
 ```js
       panel.addEventListener('pointerdown', function () { startPress(doc, win, handlers); });
       panel.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); });
       panel.addEventListener('pointercancel', function () { endPress(doc, win, handlers); });
+      // A pointer that lifts outside the panel (a mouse dragged off it) must
+      // still end the press, or redraws would be held forever. This listens to
+      // an event on the window; it reads no Torn markup (ADR 0001).
+      if (!pressWinBound && win && typeof win.addEventListener === 'function') {
+        pressWinBound = true;
+        win.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); }, true);
+      }
 ```
 
 In the `focusout` listener's timeout, after `if (!state.pendingRedraw) return;` add:
@@ -4036,27 +4739,48 @@ In the `focusout` listener's timeout, after `if (!state.pendingRedraw) return;` 
           if (state.pressActive) return;
 ```
 
-In `makeHandlers`, replace `function redraw() { draw(doc, win, handlers, true); }` with:
+- [ ] **Step 6: Hold redraws in `makeHandlers`, and stop forcing background ones**
+
+In `makeHandlers`, insert as the first line of `function redraw() {` (Task 13's version):
 
 ```js
-    function redraw() {
       // #33: while a press that began in the panel is in progress, a redraw
       // would replace the node under the finger and the tap would never arrive
-      // as a click. Hold it; the click, a pointercancel or PRESS_FLUSH_MS
-      // flushes it (spec section 6, dirty inputs).
+      // as a click. Hold it; the click, a pointercancel or the timer after
+      // pointerup flushes it (spec section 6, dirty inputs).
       if (state.pressActive) { state.pendingRedraw = true; return; }
-      draw(doc, win, handlers, true);
+```
+
+After `redraw`, add:
+
+```js
+    // Work that finishes later (a refresh, My posts, deep search, a key check)
+    // lands whenever it lands, maybe while the user is typing. It is not
+    // forced, so renderPanel's caret guard defers it exactly as it defers an
+    // auto refresh (plan review: a forced completion destroyed the only copy
+    // of a half-typed drawer field).
+    function quietRedraw() {
+      if (state.pressActive) { state.pendingRedraw = true; return; }
+      draw(doc, win, handlers, false);
     }
 ```
 
-- [ ] **Step 6: Run, full suite, commit**
+Then switch every promise completion in `makeHandlers` from `redraw()` to `quietRedraw()`:
+- `refresh`: `run.then(function () { if (isForumsPage(win.location)) redraw(); });` becomes `run.then(function () { if (isForumsPage(win.location)) quietRedraw(); });`.
+- `view`: `refreshMine(now).then(function () { if (isForumsPage(win.location)) redraw(); });` becomes `... quietRedraw(); });`.
+- `deep`: inside `runDeepSearch(...).then(function (res) { ... redraw(); });` the `redraw();` becomes `quietRedraw();`.
+- `key-save`: `refreshAll(Date.now()).then(function () { if (isForumsPage(win.location)) redraw(); });` becomes `... quietRedraw(); });`.
 
-Run: `node --test tests/dirty-input.test.js tests/redraw.test.js tests/narrow-focus.test.js tests/auto-hide.test.js && npm test && npm run test:syntax`
-Expected: PASS.
+The synchronous `redraw()` each of these actions makes straight away stays forced: that one is the user's own tap. Check with `grep -n "then(function" torn-forum-command-center.user.js` that no completion inside `makeHandlers` still calls `redraw()`.
+
+- [ ] **Step 7: Run, full suite, commit**
+
+Run: `node --test tests/dirty-input.test.js tests/redraw.test.js tests/narrow-focus.test.js tests/auto-hide.test.js tests/refresh.test.js tests/mine-refresh.test.js tests/key-rejection.test.js && npm test && npm run test:syntax`
+Expected: PASS. The refresh, My posts and key suites still see their redraws: with no caret in the panel, a non-forced draw renders exactly as a forced one.
 
 ```bash
 git add torn-forum-command-center.user.js tests/load-userscript.js tests/dirty-input.test.js
-git commit -m "feat: hold a redraw while a press is in progress so a tap is never lost (#33)"
+git commit -m "feat: hold redraws during a press and keep background redraws behind the caret (#33)"
 ```
 
 ---
@@ -4332,6 +5056,13 @@ In `tests/contrast-audit.mjs`, inside `SCRIPT`:
     const ctl = head.querySelector('.tfcc-head-ctl').getBoundingClientRect();
     if (Math.round(ctl.top) !== Math.round(head.getBoundingClientRect().top)) headBad.push('the buttons wrapped under the logo');
     if (!(tallest > 0)) headBad.push('no header buttons measured');
+    // Expanded, nothing may wrap at all: a logo or chip on a second line makes
+    // the header taller than one button. Collapsed, only the bare count may
+    // wrap under the logo (spec 4.1), so the height check is expanded only.
+    const collapsed = !!head.querySelector('.tfcc-hshow');
+    const headH = head.getBoundingClientRect().height;
+    if (!collapsed && headH > tallest + 1) headBad.push('the expanded header is ' + Math.round(headH)
+      + 'px tall, more than one ' + Math.round(tallest) + 'px row');
   }
 ```
 
@@ -4399,7 +5130,7 @@ Every `apply` string must match the source exactly as Tasks 3 to 15 wrote it; a 
   {
     name: 'focus is never restored after a redraw',
     suite: 'tests/narrow-focus.test.js',
-    apply: (s) => s.replace('if (panel && plan && panel.__tfccHtml !== htmlBefore) restoreFocus(panel, plan);', ''),
+    apply: (s) => s.replace('if (plan) restoreFocus(panel, plan);', ''),
   },
   {
     name: 'the breakpoint loses its hysteresis',
@@ -4512,14 +5243,134 @@ Every `apply` string must match the source exactly as Tasks 3 to 15 wrote it; a 
     apply: (s) => s.replace("'#' + PANEL_ID + '.tfcc-narrow button { min-height: 44px; min-width: 44px; }',",
       "'#' + PANEL_ID + '.tfcc-narrow button { min-height: 40px; min-width: 40px; }',"),
   },
+  // ---- #33, added by the plan review ----------------------------------------
+  {
+    name: 'the no-click flush is armed on pointerdown, so a slow tap loses its target',
+    suite: 'tests/dirty-input.test.js',
+    apply: (s) => s.replace('state.pressActive = true;\n  }', 'state.pressActive = true;\n    armPressTimer(doc, win, handlers);\n  }'),
+  },
+  {
+    name: 'the no-click flush is not 300ms',
+    suite: 'tests/dirty-input.test.js',
+    apply: (s) => s.replace('var PRESS_FLUSH_MS = 300;', 'var PRESS_FLUSH_MS = 3000;'),
+  },
+  {
+    name: 'a thread-link click flushes inside its own dispatch',
+    suite: 'tests/dirty-input.test.js',
+    apply: (s) => s.replace('if (pressed) setTimeout(function () { flushAfterPress(doc, win, handlers); }, 0);',
+      'if (pressed) flushAfterPress(doc, win, handlers);'),
+  },
+  {
+    name: 'a pointerup outside the panel never ends the press',
+    suite: 'tests/dirty-input.test.js',
+    apply: (s) => s.replace("win.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); }, true);", ''),
+  },
+  {
+    name: 'a background completion forces through the caret',
+    suite: 'tests/dirty-input.test.js',
+    apply: (s) => s.replace('draw(doc, win, handlers, false);\n    }', 'draw(doc, win, handlers, true);\n    }'),
+  },
+  {
+    name: 'crossing the breakpoint drops an uncommitted edit',
+    suite: 'tests/narrow-engine.test.js',
+    apply: (s) => s.replace('return { openRowId: null, filtersOpen: false, openInfoId: null, drawerEdit: out.drawerEdit };',
+      'return freshTransient();'),
+  },
+  {
+    name: 'a deferred redraw updates the focus bookkeeping',
+    suite: 'tests/narrow-focus.test.js',
+    apply: (s) => s.replace('var rewrote = !!panel && panel.__tfccHtml !== htmlBefore;', 'var rewrote = !!panel;'),
+  },
+  {
+    name: 'a text field\'s commit redraws at once and pulls focus back into it',
+    suite: 'tests/narrow-focus.test.js',
+    apply: (s) => s.replace('if (state.deferCommit) {', 'if (false) {'),
+  },
+  {
+    name: 'a text field\'s change brings its own focus plan',
+    suite: 'tests/narrow-focus.test.js',
+    apply: (s) => s.replace('if (!text) state.focusIntent = focusPlan(focusTargetOf(t), lastRender);',
+      'state.focusIntent = focusPlan(focusTargetOf(t), lastRender);'),
+  },
+  {
+    name: 'a settings replacement that changes the view skips the reset',
+    suite: 'tests/narrow-state.test.js',
+    apply: (s) => s.replace("if (next.view !== state.settings.view) applyTransient({ type: 'view' });", ''),
+  },
+  {
+    name: 'fitHeader reads the document instead of the panel',
+    suite: 'tests/narrow-focus.test.js',
+    apply: (s) => s.replace("var chip = panel.querySelector('.tfcc-chip');",
+      "var chip = panel.querySelector('.tfcc-chip') || document.querySelector('.tfcc-chip');"),
+  },
+  {
+    name: 'Show is not measured again at the size it gets',
+    suite: 'tests/narrow-runtime.test.js',
+    apply: (s) => s.replace('if (show) { r = headerButtonSize(content, width(chip), width(show), icons); setHeaderSize(panel, r.size); }', ''),
+  },
+  {
+    name: 'the loading header stays wide in a narrow panel',
+    suite: 'tests/narrow-view.test.js',
+    apply: (s) => s.replace('var bareHead = model.narrow ? renderHeadNarrow(model, false) :', 'var bareHead = false ? renderHeadNarrow(model, false) :'),
+  },
+  // One per section 13d audit item (spec table numbers), each caught by the
+  // literal owner map in tests/info.test.js.
+  ...[
+    ['2', "renderInfoButton('catchup', model.openInfoId)"],
+    ['4', "renderInfoButton('mine', model.openInfoId)"],
+    ['8', "renderInfoButton('search', model.openInfoId)"],
+    ['17', "renderInfoButton('settings-budget', model.openInfoId)"],
+    ['18', "renderInfoButton('settings-author', model.openInfoId)"],
+    ['19', "renderInfoButton('settings-rows', model.openInfoId)"],
+    ['20', "renderInfoButton('settings-autohide', model.openInfoId)"],
+    ['21', "renderInfoButton('settings-folders', model.openInfoId)"],
+    ['26', "renderInfoButton('settings-badges', model.openInfoId)"],
+  ].map(([item, call]) => ({
+    name: '13d item ' + item + ' loses its info button',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace(call, "''"),
+  })),
+  {
+    name: '13d item 11: the Drafts reply-box line is long again',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace('No reply box here, so Copy replaces Insert.', 'No reply box was found on this page, so Insert is unavailable.'),
+  },
+  {
+    name: '13d item 13: the key note is long again',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace('Create a <strong>Minimal Access</strong> key on Torn (Settings, API Key).',
+      'This script needs a key. Create a <strong>Minimal Access</strong> key on Torn (Settings, API Key).'),
+  },
+  {
+    name: '13d item 16: the custom-key line is long again',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace("Opens Torn in a new tab with only this script\\'s selections.",
+      "This opens Torn in a new tab with only this script\\'s selections."),
+  },
+  {
+    name: '13d item 23: the backup line is long again',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace('Never includes your API key or the post cache.',
+      'An export carries folders and tags. Never includes your API key or the post cache.'),
+  },
+  {
+    name: '13d item 25: the debug line is long again',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace('Never includes your key, drafts, notes or post text.',
+      'A debug report carries counts. Never includes your key, drafts, notes or post text.'),
+  },
 ```
 
-The "narrow text fields" mutation changes only the textarea rule on purpose; the style test checks each of the three field rules separately, so it must notice. If any entry reports `WEAK`, tighten the test it names, not the mutation.
+Notes for whoever runs this:
+- The "narrow text fields" mutation changes only the textarea rule on purpose; the style test checks each of the three field rules separately, so it must notice.
+- Two entries match a line break plus indentation (`state.pressActive = true;\n  }` in `startPress`, and `draw(doc, win, handlers, false);\n    }` in `quietRedraw`). The source uses LF line endings; if an entry prints `SKIP`, compare the indentation with the code and fix the entry, not the code.
+- The `13d item 16` entry matches the source text, where the apostrophe is written `\'` inside a single-quoted string; in the `.mjs` file that is `\\'` inside a double-quoted string, as above.
+- If any entry reports `WEAK`, tighten the test it names, not the mutation.
 
 - [ ] **Step 2: Run the mutation check, redirected to a file**
 
 Run: `node tests/mutation-check.mjs > "$TMPDIR/mutation.txt" 2>&1; echo exit=$?` then read `$TMPDIR/mutation.txt` with `Read`. **Never** pipe it into `head`.
-Expected: every line `OK`, including the 27 new ones, and `exit=0`. Then `git status --short` must show `torn-forum-command-center.user.js` unchanged and no `.mutation-backup`.
+Expected: every line `OK`, including the 54 new ones, and `exit=0`. Then `git status --short` must show `torn-forum-command-center.user.js` unchanged and no `.mutation-backup`.
 
 If one prints `WEAK`, the test it names passes for the wrong reason: fix the test, not the mutation, and say in the test's comment what it now guards.
 
@@ -4574,7 +5425,7 @@ that began in the panel is in progress, a redraw is held until its click, so a
 commit-on-blur can no longer replace the node under the finger.
 ```
 
-In "## Verification", change "It breaks each of 83 user-visible promises" to the current count, from `grep -c "^    suite:" tests/mutation-check.mjs` (152 if Task 17 added all 27 to main's 125).
+In "## Verification", change "It breaks each of 83 user-visible promises" to the current count, from `grep -c "^    suite:" tests/mutation-check.mjs` (179 if Task 17 added all 54 to main's 125).
 
 - [ ] **Step 2: QA checklist**
 
@@ -4616,9 +5467,11 @@ Walk on Torn PDA, portrait, on the narrowest phone you have, then landscape.
 - [ ] My posts opens with the reaction totals on its first line. On desktop the
       pill is still in the nav, before My posts.
 - [ ] Every info button opens its explanation under it and closes it again.
-      Settings still shows the ToS table, "A Threads refresh is at most 13
-      requests and My posts at most 17; never more than 40 a minute." and both
-      privacy lines without opening anything.
+      Settings still shows the ToS table, the request-budget line and both
+      privacy lines without opening anything. At default settings (Activity
+      lookups per refresh = 10) the budget line reads "A Threads refresh is at
+      most 13 requests and My posts at most 17; never more than 40 a minute.";
+      set the lookups to 4 and it reads 7 and 10.
 - [ ] Android system font at 200%: nothing clips or scrolls sideways; the header
       is still one line.
 ```
@@ -4693,6 +5546,30 @@ Check each commit message's tail on the branch (`git log origin/main..HEAD --for
 | 10 tests list, mutation entries | every task, 17 |
 | 13d info buttons and the audit table | 8 |
 
+## Plan review resolutions
+
+The Codex adversarial review of the first version of this plan (gpt-5.6-sol, high effort) is recorded verbatim at `docs/records/review/2026-10-09-mobile-condense-plan-codex.md`. Verdict: rework. 13 findings plus 2 specific decisions: **11 accepted, 2 modified, 0 rejected**; both specific decisions accepted.
+
+| # | Finding | Verdict | Reason | Task changed |
+|---|---|---|---|---|
+| 1 | Blocker: the 300ms timer starts on `pointerdown`, so a slow press loses its target; the test advanced time by the constant it tested | Accepted | The flush is armed only by `pointerup`, on the panel or (capture phase) on the window, so a press can never hold redraws forever. Tests assert the literal 300, hold the pointer for 1000ms with no redraw, and never advance time by `PRESS_FLUSH_MS` (CLAUDE.md lines 52-55) | 14, 17 |
+| 2 | Blocker: the thread-link branch flushed the held redraw synchronously inside the click | Accepted | The link branch never redraws during dispatch; it schedules the flush with a zero delay, after `onThreadLink`'s own zero-delay redraw (`torn-forum-command-center.user.js:5839-5842`). New test: dirty field, plain thread-link tap, auto-hide | 14, 17 |
+| 3 | Major: crossing the breakpoint cleared `drawerEdit`, and a forced async completion could then destroy the only typed value | Accepted | `drawerEdit` now lives until its field commits (it survives every transient reset and reconciliation, and renders in the wide row too). Every promise completion in `makeHandlers` uses a non-forced `quietRedraw`, so the caret guard defers it. New test: type, rotate, let a refresh complete, blur, value persists | 4, 6, 12, 14, 17 |
+| 4 | Major: the golden held only three complete views; new unscoped wide CSS could pass | Accepted | The golden holds every complete wide view plus loading and error, captured before any code change. The 13d changes are literal `from`/`to` replacements in `tests/wide-13d-diffs.js`, each `from` required exactly once in main's output. Every new rule must contain `.tfcc-narrow` or be one of eight listed 13d selectors | 1, 8, 9, 13 |
+| 5 | Major: `lastRender` updated even when the rewrite was deferred | Accepted | `lastRender` updates only when `renderPanel` actually rewrote the panel. New test: a deferred redraw drops row 2, then a tap on row 2's stale Actions still lands focus on row 3 | 13, 17 |
+| 6 | Major: a text field's `change` captured a plan that pulled focus back into the field after Tab | Accepted | Text fields bring no focus plan. Their commit redraws one tick later from wherever focus landed: Tab lands on the next control, Enter stays in the field. Tests: Tab from tag to note, Tab from note to the next row's Actions, Enter in the filter | 13, 17 |
+| 7 | Major: the info audit iterated production constants | Accepted | `tests/info.test.js` carries the owner's 13d map literally (keys, names, hidden, visible and removed texts) and checks it at 900 and 343px. One mutation per audited item: 9 info buttons and 5 shortened texts | 8, 17 |
+| 8 | Major: the ADR gate began after bootstrap and accepted any `[data-act=` prefix | Accepted | The harness records every `document.querySelector` from the moment the sandbox exists. The runtime test checks an exact whitelist (mount, reply box, and the four `valueOf` controls). A static audit pins every `querySelector` call site in the source | 2, 13, 17 |
+| 9 | Major: `reset-all` replaced the settings without the transient reset | Accepted | Every wholesale settings replacement goes through `replaceSettings` (reset-all, auto-refresh, rows-shown, auto-hide). Reset-all also drops the edit mirror. New tests for reset-all and for replacements that keep the view | 7, 17 |
+| 10 | Major: collapsed 320 was 36.5 in the spec but 38.5 in the plan; Task 16 never checked header height | Modified | Neither number. Recomputed from the 13b algorithm with Show re-measured at each size (55.4 + 0.4 x s, from 13b's own 65px at 24px and the padding clamp): 37 at 320 and 24.5 at 280. The spec line is corrected in this branch with a note. The contrast audit now fails an expanded header taller than one button row | 3, 9, 16; spec 13b |
+| 11 | Minor: loading and fatal headers were not branched | Modified | Branched to the narrow header (scaled logo, the chip's narrow box) but without controls, because main's loading and fatal headers have none (`torn-forum-command-center.user.js:5371-5378`) and fatal keeps its own Try again. `fitHeader` keeps 44px when there are no buttons to fit | 9, 17 |
+| 12 | Minor: the custom-key copy was chosen to fit an old test | Accepted | The owner's words, "Opens Torn in a new tab with only this script's selections.", with `tests/custom-key.test.js` updated to assert that disclosure | 8, 17 |
+| 13 | Minor: the QA budget line hard-coded 13/17 | Accepted | Qualified "at default settings (Activity lookups per refresh = 10)", with the values at 4 lookups | 18 |
+| D1 | The "Public Only" test loosening | Accepted (by the reviewer) | Kept, with a direct assertion on the visible ToS access-level row in `tests/info.test.js` as well as `KEY_HELP_ROW` in `tests/style.test.js` | 8 |
+| D2 | The 300ms press timer | Accepted | The same change as finding 1 | 14 |
+
+**Every intermediate commit stays green.** Checked task by task after the revision. Task 1 leaves `tests/wide-13d-diffs.js` empty, so the full-view comparison holds against main. Each 13d change lands in Task 8 together with its replacement entry and the updated tests (`style.test.js`, `panel.test.js`, `custom-key.test.js`). The `.tfcc-narrow` scoping rule is enforced from Task 1 with the 13d selectors already listed. `.tfcc-sr` is narrow-scoped in Task 9, and the live region is narrow-only. `replaceSettings` (Task 7) needs only `applyTransient` (Task 6). The text-field commit deferral (Task 13) changes only redraws reached through the panel's own `change` listener; handlers called directly in existing suites still redraw at once. If a pre-existing suite dispatches a text-field `change` through the panel and reads the HTML straight away, add `env.advanceTimersBy(0)` before its read: that changes when it looks, not what it asserts. No reordering was needed.
+
 ## Spec ambiguities resolved in this plan
 
 1. **320px header size: 41 or 41.5?** Spec 13b's algorithm (largest size in 0.5px steps that fits) gives 41.5 for C = 270 and a 72px chip; its table rounds to "about 41" from the mockup measurement. The algorithm wins: tests assert 41.5 (Task 3).
@@ -4701,12 +5578,15 @@ Check each commit message's tail on the branch (`git log origin/main..HEAD --for
 4. **What counts as an active filter?** Folder and tag only; Sort is an order and Unread has its own visible toggle (Task 3).
 5. **View heading on desktop.** The spec's heading belongs to the narrow focus rules; adding it to wide would change desktop markup. Wide falls back to the pressed nav cell instead (Task 5, Task 12).
 6. **Background redraws and focus.** Rule 4 ("never move focus") and the table row "refresh removes the open row: if focus was in that row, next row" read together as: a background redraw restores focus only if focus was already inside the panel, and never pulls it in (Task 13).
-7. **Shortened custom-key line.** The spec's wording would break `tests/custom-key.test.js`'s pinned phrase; the plan keeps "only the selections this script uses" in a shortened sentence (Task 8).
+7. **Shortened custom-key line.** The owner's 13d wording, "Opens Torn in a new tab with only this script's selections.", is used as written, and `tests/custom-key.test.js` is updated to assert the same disclosure in those words (Task 8; changed by the plan review).
 8. **Shortened key note vs the key-help test.** The short note no longer says "Public Only"; the test now pins the ToS access-level row for that, and pins the short note for naming only Minimal Access (Task 8).
 9. **Tapping the current view's nav cell.** Treated as no view change, so it does not close an open drawer (Task 7).
-10. **The 300ms press flush.** Re-armed on `pointerup`, so a normal tap's click always arrives first; a long press over 300ms flushes without its click (documented, Task 14).
-11. **The live region.** Rendered inside the panel and announced once, the badge toast's accepted precedent, rather than a node outside the panel (which would be a new insert into Torn's mount). A QA line checks TalkBack really speaks it (Task 13, Task 18).
+10. **The 300ms press flush.** Armed only by `pointerup` (on the panel, or on the window when the pointer lifts elsewhere), so a press may last as long as it likes; 300ms after the lift with no click, the held redraw is flushed (Task 14; changed by the plan review).
+11. **The live region.** Rendered inside the panel and announced once, the badge toast's accepted precedent, rather than a node outside the panel (which would be a new insert into Torn's mount). Narrow only, so desktop markup stays main's. A QA line checks TalkBack really speaks it (Task 13, Task 18).
 12. **Drawers and `aria-controls`.** Every row renders its drawer element, empty and `hidden` while closed, so `aria-controls` always names a real element without duplicating every control per row (Task 12).
+13. **Collapsed header size at 320 and 280.** Spec 13b said 36.5 and "reaches the 24px floor". Its own algorithm, with Show re-measured at each size (55.4 + 0.4 x s, from 13b's 65px at 24px and the padding clamp), gives 37 and 24.5. This is arithmetic, not a decision, so the spec line is corrected in this branch with a note, and the tests assert 37 and 24.5 (Task 9).
+14. **Spec 6, dirty inputs rule 4 ("closing a drawer with an uncommitted tag field discards that text").** The drawer mirror now lives until its field commits (plan review). In practice nothing changes: closing a drawer is a tap, the tap blurs the field, and blur commits it, as today. The mirror only matters when a node is destroyed without a blur (a rotation, a forced redraw), and then keeping the text is the point (Task 4, Task 12, Task 14).
+15. **Which redraws are "background".** Every promise completion in `makeHandlers` (refresh, My posts, deep search, key check) now uses the non-forced `quietRedraw`, so the caret guard defers it like an auto refresh. The synchronous redraw of the tap that started the work stays forced (Task 14).
 
 ## Stop conditions
 
