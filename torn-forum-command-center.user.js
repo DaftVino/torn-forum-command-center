@@ -4534,6 +4534,21 @@
       '  margin-top: var(--tfcc-gap-xs); }',
       '#' + PANEL_ID + ' .tfcc-actions button { font-size: var(--tfcc-text-sm); padding: 1px 6px; }',
       '#' + PANEL_ID + ' .tfcc-note { color: var(--tm-muted); font-size: var(--tfcc-text-sm); }',
+      // #33: anything carrying the hidden attribute stays hidden, whatever a
+      // display rule on it or on the host says.
+      '#' + PANEL_ID + ' [hidden] { display: none !important; }',
+      '#' + PANEL_ID + ' .tfcc-gl { display: block; flex: none; }',
+      // (1,1,1): beats a host "svg * { fill }" rule, as the logo rule does.
+      '#' + PANEL_ID + ' .tfcc-gl path { fill: none; stroke: currentColor; stroke-width: 2;',
+      '  stroke-linecap: round; stroke-linejoin: round; }',
+      '#' + PANEL_ID + ' .tfcc-infobar { display: flex; align-items: center; gap: var(--tfcc-gap-sm);',
+      '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-infobar h4 { margin: 0; }',
+      '#' + PANEL_ID + ' button.tfcc-info { display: inline-flex; align-items: center; justify-content: center;',
+      '  min-width: 44px; min-height: 44px; padding: 0; border-color: var(--tm-border); }',
+      '#' + PANEL_ID + ' button.tfcc-info[aria-expanded="true"] { background: var(--tm-hover); }',
+      '#' + PANEL_ID + ' .tfcc-infotext { border-left: 3px solid var(--tm-accent-text);',
+      '  padding: 2px 0 2px 8px; margin: 0 0 var(--tfcc-gap-sm) 0; }',
       '#' + PANEL_ID + ' .tfcc-error { color: var(--tm-bad-text); font-weight: bold;',
       '  margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-warn { color: var(--tm-warn-text); margin-bottom: var(--tfcc-gap-sm); }',
@@ -4854,6 +4869,42 @@
     return null;
   }
 
+  // Inline ASCII SVG icons (#33). Stroked in currentColor, so they follow the
+  // theme; aria-hidden, because every button that holds one has an aria-label
+  // or visible text.
+  var GLYPHS = Object.freeze({
+    refresh: 'M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5',
+    expand: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5',
+    shrink: 'M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5',
+    up: 'M6 15l6-6 6 6',
+    down: 'M6 9l6 6 6-6',
+    funnel: 'M4 5h16l-6 7v6l-4 2v-8z',
+    more: 'M5.5 12h1M11.5 12h1M17.5 12h1',
+    check: 'M5 12.5l4.5 4.5L19 7.5',
+    info: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5v.5',
+  });
+
+  function glyph(name) {
+    return '<svg class="tfcc-gl" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">'
+      + '<path d="' + GLYPHS[name] + '"/></svg>';
+  }
+
+  // An info button and the explanation it discloses (spec 13d). The text is
+  // always in the markup, so aria-controls names a real element and the tests
+  // that pin the wording keep reading it; only `hidden` follows the state.
+  function renderInfoButton(key, openKey) {
+    var open = openKey === key;
+    return '<button type="button" class="tfcc-info" data-act="info" data-info="' + escapeHtml(key)
+      + '" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="tfcc-info-' + escapeHtml(key)
+      + '" aria-label="' + escapeHtml(INFO_KEYS[key]) + '">' + glyph('info') + '</button>';
+  }
+
+  // html is this script's own text, already escaped where it carries data.
+  function renderInfoText(key, openKey, html) {
+    return '<p class="tfcc-note tfcc-infotext" id="tfcc-info-' + escapeHtml(key) + '"'
+      + (openKey === key ? '' : ' hidden') + '>' + html + '</p>';
+  }
+
   function btn(action, label, extra) {
     return '<button type="button" data-act="' + escapeHtml(action) + '"'
       + (extra || '') + '>' + escapeHtml(label) + '</button>';
@@ -5047,10 +5098,17 @@
   function renderMineView(model) {
     var m = model.mine;
     var out = [];
-    var line = 'Threads you started or posted in.';
-    if (m.fetchedAt) line += ' Updated ' + formatRelativeTime(m.fetchedAt, model.now) + '.';
-    if (m.unchecked) line += ' ' + m.unchecked + ' not checked yet.';
-    out.push('<p class="tfcc-note">' + escapeHtml(line) + '</p>');
+    // Spec 13d item 4: the live status stays visible; the standing
+    // description and the refresh rule go behind info.
+    var status = [];
+    if (m.fetchedAt) status.push('Updated ' + formatRelativeTime(m.fetchedAt, model.now) + '.');
+    if (m.unchecked) status.push(m.unchecked + ' not checked yet.');
+    out.push('<div class="tfcc-infobar">'
+      + (status.length ? '<span class="tfcc-note">' + escapeHtml(status.join(' ')) + '</span>' : '')
+      + renderInfoButton('mine', model.openInfoId) + '</div>');
+    out.push(renderInfoText('mine', model.openInfoId, escapeHtml('Threads you started or posted in. '
+      + 'Opening My posts checks Torn again at most once every ' + Math.round(MINE_TTL_MS / 60000)
+      + ' minutes; Refresh always does.')));
     // The spec's Throttled row (#24): lookups stopped at the limiter, and the
     // rows they did not reach keep saying "not checked yet".
     if (m.throttled) {
@@ -5100,9 +5158,10 @@
       ? formatAbsoluteTime(model.lastCatchUpAt) : 'your first run') + '</span>');
     out.push(btn('markall', 'Mark all read'));
     out.push(btn('catchup-done', 'Set catch-up point to now'));
+    out.push(renderInfoButton('catchup', model.openInfoId));
     out.push('</div>');
-    out.push('<p class="tfcc-note">Marking read here hides a thread from this list. '
-      + 'It cannot clear Torn\'s own new-post counter, which only clears when you open the thread.</p>');
+    out.push(renderInfoText('catchup', model.openInfoId, 'Marking read here hides a thread from this list. '
+      + 'It cannot clear Torn\'s own new-post counter, which only clears when you open the thread.'));
     // Author-only mode (issue #4): threads not yet checked are listed apart,
     // so an unknown never reads as caught up.
     var unchecked = '';
@@ -5150,12 +5209,13 @@
     // and issues no non-API request to Torn at all.
     out.push('<a class="tfcc-linkbtn" href="' + escapeHtml(buildNativeSearchUrl(model.searchQuery, 0))
       + '">Search on Torn</a>');
+    out.push(renderInfoButton('search', model.openInfoId));
     out.push('</div>');
-    out.push('<p class="tfcc-note">Filtering searches titles, authors, forums, your notes and tags. '
+    out.push(renderInfoText('search', model.openInfoId, 'Filtering searches titles, authors, forums, your notes and tags. '
       + 'Searching inside posts fetches up to ' + model.settings.deepSearchPages
       + ' pages for each of the threads currently listed, then keeps them for next time. '
       + 'Search on Torn hands the same query to Torn\'s own forum search, which understands by:player '
-      + 'but never shows you a box for it.</p>');
+      + 'but never shows you a box for it.'));
     if (model.deepBusy && model.deepProgress) {
       out.push('<p class="tfcc-warn">Fetching ' + model.deepProgress.done + ' of '
         + model.deepProgress.total + ' threads.</p>');
@@ -5218,8 +5278,7 @@
       out.push(btn('draft-delete', 'Delete', ' data-id="' + escapeHtml(current) + '"'));
       out.push('</div>');
       if (!model.replyBoxFound) {
-        out.push('<p class="tfcc-note">No reply box was found on this page, so Insert is unavailable. '
-          + 'Copy puts the draft on your clipboard instead.</p>');
+        out.push('<p class="tfcc-note">No reply box here, so Copy replaces Insert.</p>');
       }
       out.push('</div>');
     } else {
@@ -5255,10 +5314,13 @@
     var out = ['<div class="tfcc-section"><h4>Badges</h4>'];
     out.push('<div class="tfcc-kv"><label for="tfcc-badges">Show badges and record progress</label>'
       + '<input id="tfcc-badges" type="checkbox" data-act="badges-toggle"' + (b.enabled ? ' checked' : '') + '></div>');
-    out.push('<p class="tfcc-note">Earned from what you do here: focused visits to threads, finishing Torn days '
-      + 'with Catch up empty, and organising. A visit counts once a Torn day, after 15 seconds with the page in '
-      + 'front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent anywhere, and no request is made. '
-      + 'Turning this off stops recording, and a streak does not survive days with it off.</p>');
+    out.push('<div class="tfcc-infobar"><span class="tfcc-note">Recorded on this device only. No request is made.'
+      + '</span>' + renderInfoButton('settings-badges', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-badges', model.openInfoId, 'Earned from what you do here: focused visits '
+      + 'to threads, finishing Torn days with Catch up empty, and organising. A visit counts once a Torn day, '
+      + 'after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent '
+      + 'anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days '
+      + 'with it off.'));
     if (!b.enabled) { out.push('</div>'); return out.join(''); }
     out.push('<div class="tfcc-badge-row"><button type="button" data-act="badges-catalogue" aria-expanded="'
       + (b.catalogueOpen ? 'true' : 'false') + '">' + (b.catalogueOpen ? 'Hide the list' : 'Show all '
@@ -5295,10 +5357,8 @@
   function renderSettingsView(model) {
     var out = [];
     out.push('<div class="tfcc-section"><h4>Torn API key</h4>');
-    out.push('<p class="tfcc-note">This script needs a key that can read your subscribed threads. On Torn, '
-      + 'go to Settings, API Key, and create a <strong>Minimal Access</strong> key. A '
-      + '<strong>Limited Access</strong> key also works but is not needed. A '
-      + '<strong>Public Only</strong> key does not.</p>');
+    // Spec 13d item 13: the ToS table below states every access level.
+    out.push('<p class="tfcc-note">Create a <strong>Minimal Access</strong> key on Torn (Settings, API Key).</p>');
     // Torn's API terms require this to be stated clearly and visibly wherever
     // the user provides their key, in this table's form. It is rendered here
     // rather than buried in a readme because that is where the terms put it.
@@ -5324,8 +5384,8 @@
     // this one.
     out.push('<div class="tfcc-actions"><a class="tfcc-linkbtn" href="' + escapeHtml(buildCustomKeyUrl())
       + '" target="_blank" rel="noopener noreferrer">Create a custom key on Torn</a></div>');
-    out.push('<p class="tfcc-note">This opens Torn\'s key page in a new tab with only the selections this '
-      + 'script uses. You confirm the key there, then paste it here.</p>');
+    // Spec 13d item 16, the owner's wording.
+    out.push('<p class="tfcc-note">Opens Torn in a new tab with only this script\'s selections.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Refreshing</h4>');
@@ -5343,7 +5403,7 @@
     // The numbers are computed from the constants, so this promise cannot
     // drift from what the code does (CLAUDE.md constraint 7).
     var thumbsAt = function (b) { return Math.min(REACTION_LOOKUPS_PER_RUN, b); };
-    out.push('<p class="tfcc-note">A refresh of Threads makes two requests, plus one for the forum list at '
+    var budgetText = 'A refresh of Threads makes two requests, plus one for the forum list at '
       + 'most once a day. Opening My posts, or refreshing while it is open, makes two requests of its own, '
       + 'at most once every ' + Math.round(MINE_TTL_MS / 60000) + ' minutes unless you press Refresh. '
       + 'Each activity lookup adds one more to either, and only runs for a thread with no recent time. '
@@ -5358,12 +5418,20 @@
       + (2 + DEFAULT_ENRICH_BUDGET + thumbsAt(DEFAULT_ENRICH_BUDGET))
       + '; at the largest setting of ' + MAX_ENRICH_BUDGET + ', ' + (3 + MAX_ENRICH_BUDGET) + ' and '
       + (2 + MAX_ENRICH_BUDGET + thumbsAt(MAX_ENRICH_BUDGET)) + '. '
-      + 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.</p>');
+      + 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.';
+    // CLAUDE.md constraint 7: the headline of the budget stays visible and is
+    // computed from the constants and this user's lookup setting.
+    var budget = model.settings.enrichBudget;
+    out.push('<div class="tfcc-infobar"><span class="tfcc-note">' + escapeHtml('A Threads refresh is at most '
+      + (3 + budget) + ' requests and My posts at most ' + (2 + budget + thumbsAt(budget))
+      + '; never more than ' + REQUESTS_PER_WINDOW + ' a minute.') + '</span>'
+      + renderInfoButton('settings-budget', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-budget', model.openInfoId, budgetText));
     out.push('<div class="tfcc-kv"><label for="tfcc-author">Only flag new posts by the thread author</label>'
       + '<input id="tfcc-author" type="checkbox" data-act="author-only"'
       + (model.settings.authorOnly ? ' checked' : '') + '></div>');
     // Shown whether the setting is on or off, so the limits are read first.
-    out.push('<p class="tfcc-note">With this on, a thread in Threads and Catch up counts as new only when its '
+    var authorText = 'With this on, a thread in Threads and Catch up counts as new only when its '
       + 'author has posted since you last looked. Each activity lookup then reads the thread\'s posts since '
       + 'you last looked, ' + POSTS_PER_PAGE + ' at a time, newest first, instead of its last-post time. '
       + 'Each page is one lookup from the same allowance, so the cost does not change: with your setting of '
@@ -5372,7 +5440,11 @@
       + 'every other thread has had its first. With more new posts than that, a count shows as a minimum '
       + '(N+), or as "not checked (too many new)" when none of the posts read is by the author. Threads not '
       + 'checked yet show "not checked". My posts ignores this setting. Posts from before you started using '
-      + 'this script are not flagged, and edits are not detected.</p>');
+      + 'this script are not flagged, and edits are not detected.';
+    out.push('<div class="tfcc-infobar"><span class="tfcc-note">'
+      + escapeHtml('Costs no extra requests. Some threads may show "not checked".') + '</span>'
+      + renderInfoButton('settings-author', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-author', model.openInfoId, authorText));
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Appearance</h4>');
@@ -5391,12 +5463,14 @@
       }).join('')
       + '</select></div>');
     var cappedNames = CAPPED_VIEWS.map(function (v) { return VIEW_LABELS[v]; });
-    out.push('<p class="tfcc-note">Applies to '
+    out.push('<div class="tfcc-infobar"><span class="tfcc-note">Applies to '
       + escapeHtml(cappedNames.length > 1
         ? cappedNames.slice(0, -1).join(', ') + ' and ' + cappedNames[cappedNames.length - 1]
         : cappedNames.join(''))
-      + '. Search and Drafts always show everything. A capped list says how many it is hiding, '
-      + 'and Show all lifts the cap for that list until the page reloads. The default is 5.</p>');
+      + '.</span>' + renderInfoButton('settings-rows', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-rows', model.openInfoId, 'Search and Drafts always show everything. '
+      + 'A capped list says how many it is hiding, and Show all lifts the cap for that list until the page '
+      + 'reloads. The default is 5.'));
     out.push('<div class="tfcc-kv"><label for="tfcc-hide">Hide Torn\'s own subscribed box</label>'
       + '<input id="tfcc-hide" type="checkbox" data-act="hide-torn-box"'
       + (model.settings.hideTornBox ? ' checked' : '') + '></div>');
@@ -5405,15 +5479,17 @@
       + (model.settings.autosaveDrafts ? ' checked' : '') + '></div>');
     out.push('<div class="tfcc-kv"><label for="tfcc-autohide">Hide the panel when I open a thread</label>'
       + '<input id="tfcc-autohide" type="checkbox" data-act="auto-hide"'
-      + (model.settings.autoHideOnOpen ? ' checked' : '') + '></div>');
-    out.push('<p class="tfcc-note">Only thread links in this panel do this, and only a plain click. '
-      + 'Opening a link in a new tab, or following links on the Torn page itself, leaves the panel '
-      + 'as it is. Press Show to bring it back.</p>');
+      + (model.settings.autoHideOnOpen ? ' checked' : '') + '>'
+      + renderInfoButton('settings-autohide', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-autohide', model.openInfoId, 'Only thread links in this panel do this, '
+      + 'and only a plain click. Opening a link in a new tab, or following links on the Torn page itself, '
+      + 'leaves the panel as it is. Press Show to bring it back.'));
     out.push('</div>');
 
-    out.push('<div class="tfcc-section"><h4>Folders</h4>');
-    out.push('<p class="tfcc-note">A folder can claim a forum, and new subscriptions from that forum '
-      + 'file themselves into it. Filing a thread by hand always wins over a rule.</p>');
+    out.push('<div class="tfcc-section"><div class="tfcc-infobar"><h4>Folders</h4>'
+      + renderInfoButton('settings-folders', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-folders', model.openInfoId, 'A folder can claim a forum, and new '
+      + 'subscriptions from that forum file themselves into it. Filing a thread by hand always wins over a rule.'));
     for (var i = 0; i < model.folders.length; i += 1) {
       var f = model.folders[i];
       out.push('<div class="tfcc-kv"><label>' + escapeHtml(f.name) + '</label>');
@@ -5440,8 +5516,7 @@
     out.push('<div class="tfcc-actions">' + btn('export', 'Copy export string')
       + btn('import', 'Import from clipboard text') + '</div>');
     out.push('<textarea class="tfcc-draft" data-act="import-text" placeholder="Paste an export string here, then press Import"></textarea>');
-    out.push('<p class="tfcc-note">An export carries folders, tags, pins, priorities, notes, read markers '
-      + 'drafts and badges. It never carries your API key or the post cache.</p>');
+    out.push('<p class="tfcc-note">Never includes your API key or the post cache.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Storage</h4>');
@@ -5454,8 +5529,7 @@
       + btn('reset-all', 'Reset everything', ' class="tfcc-danger"')
       + btn('debug', 'Copy debug report')
       + '</div>');
-    out.push('<p class="tfcc-note">A debug report carries the script version, the transport in use, '
-      + 'counts and the last error. It never carries your key, your drafts, your notes or any post text.</p>');
+    out.push('<p class="tfcc-note">Never includes your key, drafts, notes or post text.</p>');
     out.push('</div>');
 
     out.push(renderBadgeCatalogue(model));
@@ -6190,6 +6264,13 @@
           // stale or forged data-view cannot plant state nothing reads.
           var cv = el && el.getAttribute ? el.getAttribute('data-view') : null;
           if (CAPPED_VIEWS.indexOf(cv) !== -1) state.showAll[cv] = state.showAll[cv] !== true;
+          redraw(); return;
+        }
+
+        if (act === 'info') {
+          // Only a known key; a forged one plants no state (spec 13d).
+          var infoKey = el && el.getAttribute ? el.getAttribute('data-info') : null;
+          if (Object.prototype.hasOwnProperty.call(INFO_KEYS, infoKey)) applyTransient({ type: 'info', key: infoKey });
           redraw(); return;
         }
         if (act === 'pin' && id) { state.organizer = togglePin(state.organizer, id); persist('organizer'); recompute(now); redraw(); return; }

@@ -68,6 +68,7 @@ const EXPORT_NAMES = [
   'SORT_MODES', 'SORT_LABELS', 'sortThreads', 'catchUpList', 'catchUpUnchecked', 'checkAuthorPosts',
   'ROWS_SHOWN_OPTIONS', 'CAPPED_VIEWS', 'UNCAPPED_VIEWS', 'VIEW_LABELS', 'capRows', 'renderCapLine',
   // #33: narrow layout
+  'GLYPHS', 'glyph', 'renderInfoButton', 'renderInfoText',
   'groupCatchUp', 'renderedRowIds', 'SEARCH_ROWS_MAX', 'replaceSettings',
   'NARROW_CLASS', 'applyTransient', 'measurePanelWidth', 'setNarrow', 'watchPanelWidth', 'onPanelWidth',
   'VIEW_HEADING_ID', 'focusPlan',

@@ -195,10 +195,9 @@ test('dropdown options carry the panel colours', () => {
 // key with only those two selections is no longer suggested: Torn's docs say a
 // custom key reaches only the default, timestamp and lookup selections unless
 // more are listed, so it would probably fail the forum/* calls.
-const KEY_HELP_NOTE = 'This script needs a key that can read your subscribed threads. On Torn, '
-  + 'go to Settings, API Key, and create a <strong>Minimal Access</strong> key. A '
-  + '<strong>Limited Access</strong> key also works but is not needed. A '
-  + '<strong>Public Only</strong> key does not.';
+// #33 (spec 13d item 13) shortened the note. Every access level is still
+// stated in the access-level row of the ToS table beside it.
+const KEY_HELP_NOTE = 'Create a <strong>Minimal Access</strong> key on Torn (Settings, API Key).';
 const KEY_HELP_ROW = '<tr><th>Access level required</th><td>Minimal Access. Limited Access '
   + 'also works but is not needed. Public Only does not.</td></tr>';
 
@@ -222,7 +221,8 @@ test('the key help names Minimal Access as the required level', () => {
 
   assert.ok(html.includes(KEY_HELP_NOTE), 'the Settings key note wording changed');
   assert.ok(html.includes(KEY_HELP_ROW), 'the access-level row wording changed');
-  requiresMinimal(KEY_HELP_NOTE, 'the Settings key note');
+  assert.match(KEY_HELP_NOTE, /Minimal Access/, 'the short note still names the level to create');
+  assert.doesNotMatch(KEY_HELP_NOTE, /Limited|Custom/, 'and names no other level');
   requiresMinimal(KEY_HELP_ROW, 'the access-level row');
   const section = html.slice(html.indexOf('Torn API key'), html.indexOf('API key</label>'));
   requiresMinimal(section, 'the Settings key section');
