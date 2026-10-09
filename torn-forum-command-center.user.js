@@ -4744,9 +4744,19 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer select { min-height: 32px; min-width: 32px; padding: 4px 8px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer input:not([type="checkbox"]) { min-height: 32px; min-width: 32px;',
       '  padding: 4px 8px; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-btns { display: flex; flex-wrap: nowrap; gap: 8px; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-btns button { display: inline-flex; flex: none; align-items: center;',
-      '  justify-content: center; }',
+      // #43: the row also holds priority, so it is the drawer's widest line.
+      // It never wraps: each target starts at 32px and shrinks toward the
+      // 24px floor only when the row would not fit (about 27px with Mark read
+      // at 320); the gaps are 8px down to a 236px row and close toward 4px
+      // below it (280px), so even there every target keeps 24 x 32.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-btns { display: flex; flex-wrap: nowrap; align-items: center;',
+      '  gap: clamp(4px, calc(4px + (100% - 216px) * 0.2), 8px); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-btns button { display: inline-flex; flex: 0 1 32px; align-items: center;',
+      '  justify-content: center; min-width: 24px; padding: 0; }',
+      // The priority group joins the row as its own items, pushed right.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-dprio { display: contents; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-dprio > :first-child { margin-left: auto; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-dprio .tfcc-prio { flex: none; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer button.tfcc-on { box-shadow: inset 0 -3px 0 currentColor; }',
       // Monochrome, exactly as the thumbs (#30): white on dark, black on light.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-emo { display: block; font-size: 16px; line-height: 1;',
@@ -4755,8 +4765,6 @@
       // #41: the archive icon, in the button's own text colour in both themes.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-archico { display: block; flex: none; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-archico path { fill: currentColor; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-step { display: flex; align-items: center; gap: 8px; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-step span { flex: 1 1 auto; text-align: center; color: var(--tm-meta); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-vh { font-size: var(--tfcc-text); margin: 2px 0 6px 0; }',
       // A narrow info button and the control it explains share one line; at
       // 280px the control's label wraps inside it rather than strand the button.
@@ -5394,7 +5402,6 @@
   function renderDrawer(row, model, inCatchUp) {
     var id = ' data-id="' + escapeHtml(row.id) + '"';
     var edit = model.drawerEdit && model.drawerEdit.id === String(row.id) ? model.drawerEdit : null;
-    var p = toInt(row.priority, 0);
     var out = [];
     // #39: Pin, Draft and Archive are compact emoji buttons on one row, with
     // Mark read beside them outside Catch up.
@@ -5403,11 +5410,10 @@
     if (!inCatchUp) out.push(readButton(row));
     out.push(emojiButton('draft', row.hasDraft ? 'Edit draft' : 'Draft', emojiIcon(DRAWER_EMOJI.draft), row.hasDraft, row.id));
     out.push(emojiButton('archive', row.archived ? 'Unarchive' : 'Archive', ARCHIVE_SVG, row.archived, row.id));
+    // #43: priority in the desktop style (the number, then + and -), right-
+    // aligned on the same row: the wide row's own renderPriority markup.
+    out.push('<span class="tfcc-dprio">' + renderPriority(row) + '</span>');
     out.push('</div>');
-    out.push('<div class="tfcc-step tfcc-wide">'
-      + btn('prio-down', '-', id + ' aria-label="Lower priority"')
-      + '<span>Priority ' + escapeHtml((p > 0 ? '+' : '') + p) + '</span>'
-      + btn('prio-up', '+', id + ' aria-label="Raise priority"') + '</div>');
     out.push(folderSelectHtml(row, model, ' class="tfcc-wide" aria-label="Folder"'));
     out.push('<input type="text" data-act="tag-input"' + id + ' value="'
       + escapeHtml(edit && edit.field === 'tag-input' ? edit.value : '') + '" placeholder="add tag" aria-label="Add tag">');

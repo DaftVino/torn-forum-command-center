@@ -1414,6 +1414,12 @@ const MUTATIONS = [
       'aria-label="Hide the panel" title="Hide the panel">', 'aria-label="Hide the panel">')],
     ['the Filters button loses its hover note', (s) => s.replace(
       "' active') + '\" title=\"Filters\">'", "' active') + '\">'")],
+    ['the drawer loses its inline priority', (s) => s.replace(
+      "    out.push('<span class=\"tfcc-dprio\">' + renderPriority(row) + '</span>');\n", '')],
+    ['the drawer priority is not pushed right', (s) => s.replace(
+      ".tfcc-dprio > :first-child { margin-left: auto; }',", ".tfcc-dprio > :first-child { }',")],
+    ['the drawer row targets shrink below the 24px floor', (s) => s.replace(
+      "  justify-content: center; min-width: 24px; padding: 0; }',", "  justify-content: center; min-width: 0; padding: 0; }',")],
   ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/compact-drawer.test.js', apply })),
 ];
 

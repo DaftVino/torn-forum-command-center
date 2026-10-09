@@ -224,14 +224,38 @@ const SCRIPT = `
   }
   // #39: the drawer's Pin, Draft and Archive (and Mark read) share one row;
   // every drawer target is at least 24px, with 8px between the buttons.
+  // #43: priority (number, + and -) shares that row, right-aligned. The row
+  // never wraps or overflows; its targets are 24px or more; the gaps are 8px
+  // on a row of 236px or more, and close toward 4px only below that (Threads
+  // at 280px). The geometry is reported for each drawer page.
   const drawerBtns = panel.querySelector('.tfcc-drawer-btns');
+  let drawerGeo = '';
   if (drawerBtns) {
     const btns = Array.from(drawerBtns.querySelectorAll('button'));
     const rects = btns.map((b) => b.getBoundingClientRect());
+    const box = drawerBtns.getBoundingClientRect();
     if (new Set(rects.map((r) => Math.round(r.top))).size !== 1) polishBad.push('the drawer buttons wrapped');
+    if (rects.some((r) => r.right > box.right + 0.5)) polishBad.push('the drawer buttons overflow their row');
+    const minGap = box.width >= 236 ? 7.5 : 3.5;
+    const gaps = [];
     for (let i = 1; i < rects.length; i += 1) {
-      if (rects[i].left - rects[i - 1].right < 7.5) polishBad.push('drawer buttons closer than 8px');
+      const g = rects[i].left - rects[i - 1].right;
+      gaps.push(Math.round(g * 10) / 10);
+      if (g < minGap) polishBad.push('drawer buttons closer than ' + Math.round(minGap) + 'px on a ' + Math.round(box.width) + 'px row');
     }
+    const up = drawerBtns.querySelector('[data-act="prio-up"]');
+    const down = drawerBtns.querySelector('[data-act="prio-down"]');
+    const num = drawerBtns.querySelector('.tfcc-prio');
+    if (!up || !down || !num) polishBad.push('the drawer priority group is missing');
+    else {
+      const n = num.getBoundingClientRect();
+      if (!(n.right <= up.getBoundingClientRect().left && up.getBoundingClientRect().right <= down.getBoundingClientRect().left)) {
+        polishBad.push('the drawer priority is not number, +, - in order');
+      }
+      if (Math.abs(down.getBoundingClientRect().right - box.right) > 1) polishBad.push('the drawer priority is not right-aligned');
+    }
+    drawerGeo = 'row ' + Math.round(box.width) + 'px, targets ' + rects.map((r) => Math.round(r.width) + 'x' + Math.round(r.height)).join(' ')
+      + ', gaps ' + gaps.join(' ');
   }
   const drawerTargets = Array.from(panel.querySelectorAll('.tfcc-drawer button, .tfcc-drawer select, .tfcc-drawer input'));
   for (const el of drawerTargets) {
@@ -339,6 +363,7 @@ const SCRIPT = `
     cuWidths: cuWidths,
     cubar: !!cubar,
     drawerBtns: !!drawerBtns,
+    drawerGeo: drawerGeo,
     emos: emos.length,
     navcells: panel.querySelectorAll('.tfcc-navgrid button').length,
     headBad: headBad,
@@ -408,6 +433,7 @@ for (const page of pages) {
     if (!seen.drawerBtns) missing.push('the drawer button row');
     if (!seen.emos) missing.push('the drawer emoji');
     if (!seen.icos) missing.push('the archive icon');
+    if (seen.drawerGeo) console.log(`.. ${page}: drawer ${seen.drawerGeo}`);
   }
   // #41: the clip previews must show the setting doing its job: on cuts the
   // long title and summary, off wraps them, and an open long row is whole.

@@ -196,9 +196,9 @@ test('a control inside the open drawer keeps it open', () => {
   panel.contains = () => true;
   click(env, '[data-act="pin"][data-id="1"]');
   assert.strictEqual(api.state.openRowId, '1', 'Pin acts and the drawer stays');
-  // The drawer's own blank space, and its stepper label, are inside it too.
+  // The drawer's own blank space, and its priority number, are inside it too.
   click(env, '[id="tfcc-act-1"]');
-  click(env, '.tfcc-step');
+  click(env, '.tfcc-prio');
   assert.strictEqual(api.state.openRowId, '1');
 });
 
@@ -413,7 +413,7 @@ test('Pin and Draft are emoji buttons and Archive an icon button, on one row, na
     + ' title="Archive">' + ARCHIVE_SVG_HEAD), 'the archive icon, named Archive');
   assert.ok(!btns[1].includes(BIN), 'no wastebasket');
   assert.match(btns[1], /data-act="read" data-id="7" aria-label="Mark read" title="Mark read"/, 'Mark read shares the row outside Catch up');
-  assert.deepStrictEqual(Array.from(btns[1].matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]), ['pin', 'read', 'draft', 'archive']);
+  assert.deepStrictEqual(Array.from(btns[1].matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]), ['pin', 'read', 'draft', 'archive', 'prio-up', 'prio-down']);
 });
 
 test('the archive icon is a clean inline ASCII SVG drawn in currentColor (#41)', () => {
@@ -481,7 +481,11 @@ test('drawer controls are 32px, never under the 24px floor, 8px apart, and the t
   assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer input:not([type="checkbox"])'), /min-height: 32px;/);
   assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer'), /gap: 8px;/);
   const row = cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer-btns');
-  assert.match(row, /display: flex; flex-wrap: nowrap; gap: 8px;/);
+  assert.match(row, /display: flex; flex-wrap: nowrap;/);
+  // #43: 8px down to a 236px row, closing to 4px at 216px (Threads at 280px).
+  assert.match(row, /gap: clamp\(4px, calc\(4px \+ \(100% - 216px\) \* 0\.2\), 8px\);/);
+  // #43: the row buttons start at 32px and shrink only toward the 24px floor.
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer-btns button'), /flex: 0 1 32px;[\s\S]*min-width: 24px; padding: 0;/);
   // Shorter by padding, never by font: iOS zooms into a field under 16px.
   for (const sel of ['select', 'input:not([type="checkbox"])']) {
     const body = cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer ' + sel);
