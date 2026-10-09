@@ -40,6 +40,9 @@ const D41 = require('./wide-41-diffs');
 // markup entry states how many places it changes; each CSS entry replaces
 // one line of main's stylesheet, required exactly once.
 const D43 = require('./wide-43-diffs');
+// #45: the priority colour, the reorderable folder list and the collapsible
+// Catch up groups, applied after #43 (tests/wide-45-diffs.js).
+const D45 = require('./wide-45-diffs');
 
 function expectedView(view, before43) {
   let html = golden.views[view];
@@ -54,13 +57,18 @@ function expectedView(view, before43) {
     html = d.apply(html);
     assert.deepStrictEqual(d.changed(before, html), d.hits[view] || [], 'item ' + d.item + ' in ' + view);
   }
+  for (const d of D45.literals.filter((x) => x.view === view)) {
+    const n = html.split(d.from).length - 1;
+    assert.strictEqual(n, 1, 'item ' + d.item + ': its "from" occurs ' + n + ' times in ' + view);
+    html = html.replace(d.from, () => d.to);
+  }
   return html;
 }
 
 // Main's stylesheet with the #43 line replacements applied.
 function expectedCss() {
   let out = golden.css.slice();
-  for (const d of D43.css) {
+  for (const d of D43.css.concat(D45.css)) {
     const n = out.filter((line) => line === d.from).length;
     assert.strictEqual(n, d.times || 1, 'item ' + d.item + ': its "from" occurs ' + n + ' times in the main stylesheet');
     out = out.flatMap((line) => (line === d.from ? d.to : [line]));
@@ -152,7 +160,7 @@ test('every new stylesheet rule is scoped to .tfcc-narrow or is a listed 13d or 
     .filter((line) => !old.has(line) && line.indexOf('{') !== -1)
     .map((line) => line.slice(0, line.indexOf('{')).trim())
     .filter((sel) => sel.indexOf('.tfcc-narrow') === -1 && !WIDE_13D_SELECTORS.has(sel) && !WIDE_41_SELECTORS.has(sel)
-      && !D43.selectors.has(sel));
+      && !D43.selectors.has(sel) && !D45.selectors.has(sel));
   assert.deepStrictEqual(stray, [], 'a new rule a wide panel would see');
   for (const sel of WIDE_41_SELECTORS) assert.ok(sel.startsWith('#tfcc-panel.tfcc-clip '), sel);
   // #43: every see-through rule hangs off its setting's class.

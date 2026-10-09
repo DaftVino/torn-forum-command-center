@@ -102,6 +102,7 @@ const SCRIPT = `
   };
 
   const out = [];
+  let prioSeen = 0;
   // #43: the worst ratio seen for each kind of text, for the underlay report:
   // nav labels, meta text (meta lines, notes, post text, explanations) and
   // body text (everything else).
@@ -132,6 +133,9 @@ const SCRIPT = `
       r, el.textContent);
     // Text on a thread row sits on the 75% surface, not straight on the panel.
     if (el.closest('.tfcc-row') && !el.closest('button, select, input')) note('row', r, el.textContent);
+    // #45: the priority number's own blue, measured where it sits (the row's
+    // meta line, the wide title line, the narrow drawer).
+    if (el.classList.contains('tfcc-prio')) { prioSeen += 1; note('prio', r, el.textContent); }
     if (r >= need) return;
 
     out.push({
@@ -472,6 +476,7 @@ const SCRIPT = `
     infoOff: infoOff,
     logo: panel.querySelectorAll('svg.tfcc-logo').length,
     started: panel.querySelectorAll('.tfcc-started').length,
+    prio: prioSeen,
   };
   return JSON.stringify({ rows: out, seen: out.seen });
 })()
@@ -517,7 +522,7 @@ for (const page of pages) {
     for (const [cat, v] of Object.entries(seen.cats || {})) {
       if (!report[key][cat] || v.r < report[key][cat].r) report[key][cat] = Object.assign({ page: u[2] }, v);
     }
-    const line = ['body', 'meta', 'nav', 'icon'].filter((c) => seen.cats && seen.cats[c])
+    const line = ['body', 'meta', 'nav', 'icon', 'prio'].filter((c) => seen.cats && seen.cats[c])
       .map((c) => c + ' ' + seen.cats[c].r).join(', ');
     console.log(`RR ${page}: worst ${line}; ${rows.length} below AA (report only)`);
     if (rows.length) reportBelow += 1;
@@ -528,6 +533,9 @@ for (const page of pages) {
   const missing = [];
   if (!seen.logo) missing.push('the FCC logo');
   if (page.startsWith('mine-') && !seen.started) missing.push('a red "started" tag');
+  // #45: every Threads page, wide and narrow, has a row with a priority, so
+  // its blue number must have been measured.
+  if (/^(threads-|narrow-threads-|clip-)/.test(page) && !seen.prio) missing.push('the blue priority number');
   if (page.startsWith('narrow-') && !page.includes('-collapsed-') && !seen.navcells) missing.push('the narrow nav cells');
   // The narrow header is one row tall, except a collapsed header at 280px,
   // whose count may wrap when even 24px buttons cannot hold it (spec 13b).
@@ -598,11 +606,11 @@ for (const page of pages) {
 // #43: the transparency table, worst case per theme and underlay.
 if (Object.keys(report).length) {
   console.log('\nTranslucent panel, worst contrast per theme and underlay (report only; AA is 4.5 for text, 3 for icons):');
-  console.log('| Theme / underlay | Body text | Meta text | Nav labels | Info icons | Any text on a row (75%) |');
-  console.log('|---|---|---|---|---|---|');
+  console.log('| Theme / underlay | Body text | Meta text | Nav labels | Info icons | Any text on a row (75%) | Priority number |');
+  console.log('|---|---|---|---|---|---|---|');
   for (const key of Object.keys(report).sort()) {
     const c = (k) => (report[key][k] ? report[key][k].r.toFixed(2) + ' (' + report[key][k].page + ')' : '-');
-    console.log('| ' + key + ' | ' + c('body') + ' | ' + c('meta') + ' | ' + c('nav') + ' | ' + c('icon') + ' | ' + c('row') + ' |');
+    console.log('| ' + key + ' | ' + c('body') + ' | ' + c('meta') + ' | ' + c('nav') + ' | ' + c('icon') + ' | ' + c('row') + ' | ' + c('prio') + ' |');
   }
   console.log(reportBelow + ' underlay preview(s) have text below AA; these are reported, not failed.');
 }

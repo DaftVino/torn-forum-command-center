@@ -1540,6 +1540,21 @@ const MUTATIONS = [
     ['a saved note does not show on the Note button', (s) => s.replace(
       "opener('note', 'Note', row.note ? 'Edit note' : 'Add note', !!row.note)", "opener('note', 'Note', 'Add note', false)")],
   ].map(([name, apply]) => ({ name: '#43: ' + name, suite: 'tests/compact-drawer.test.js', apply })),
+  // #45 item 1: the priority number's own blue.
+  ...[
+    ['the priority number falls back to the meta grey', (s) => s.replace(
+      "' .tfcc-prio { flex: none; color: var(--tfcc-prio);", "' .tfcc-prio { flex: none; color: var(--tm-meta);")],
+    ['the dark priority blue is the raw logo blue, under AA', (s) => s.replace(
+      "'  --tfcc-prio: #8db3d9;',", "'  --tfcc-prio: #5c768f;',")],
+    ['the light priority blue is the raw logo blue, under AA', (s) => s.replace(
+      "'  --tfcc-prio: #2e5680;',", "'  --tfcc-prio: #5c768f;',")],
+  ].map(([name, apply]) => ({ name: '#45: ' + name, suite: 'tests/style.test.js', apply })),
+  {
+    name: '#45: the priority colour changes wide CSS outside its listed replacement',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("' .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: var(--tfcc-text-sm);'",
+      "' .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: 11px;'"),
+  },
 ];
 
 let failures = 0;

@@ -532,6 +532,53 @@ test('"started" is red per theme, from its own token, at AA on the row (#30)', (
   assert.match(blockFor('#tfcc-panel .tfcc-tag.tfcc-started'), /color: var\(--tfcc-started\)/);
 });
 
+// #45 (owner): the priority number takes the logo's muted blue (#5C768F),
+// tuned per theme, so it reads apart from the green "N new" beside it and from
+// the grey meta. The logo blue itself is 3.49:1 on dark and 4.22:1 on light,
+// too low for 12px text, so each theme has its own lighter or darker blue.
+test('the priority number is its own blue per theme, at AA, apart from the green and the meta (#45)', () => {
+  const lum = (hex) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const ratio = (a, b) => { const x = lum(a); const y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  // CIELAB (D65), for a perceptual distance between two colours.
+  const lab = (hex) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+    const xyz = [
+      (0.4124 * c[0] + 0.3576 * c[1] + 0.1805 * c[2]) / 0.95047,
+      0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2],
+      (0.0193 * c[0] + 0.1192 * c[1] + 0.9505 * c[2]) / 1.08883,
+    ].map((t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116));
+    return [116 * xyz[1] - 16, 500 * (xyz[0] - xyz[1]), 200 * (xyz[1] - xyz[2])];
+  };
+  const dE = (a, b) => { const x = lab(a); const y = lab(b); return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]); };
+  const token = (block, name) => {
+    const m = new RegExp(name + ':\\s*(#[0-9a-f]{6})', 'i').exec(block);
+    assert.ok(m, name + ' missing');
+    return m[1];
+  };
+  for (const [name, block] of [['dark', blockFor('#tfcc-panel')], ['light', blockFor('#tfcc-panel.tfcc-theme-light')]]) {
+    const blue = token(block, '--tfcc-prio');
+    // The row card, the panel behind it, and the field and drawer fill.
+    for (const bg of ['--tm-bg-2', '--tm-bg', '--tm-bg-3']) {
+      const r = ratio(blue, token(block, bg));
+      assert.ok(r >= 4.5, name + ' priority on ' + bg + ' is ' + r.toFixed(2) + ':1');
+    }
+    // Clearly not the green and not the grey: a large perceptual distance,
+    // and a blue hue (blue the strongest channel, red the weakest).
+    for (const other of ['--tm-good-text', '--tm-meta']) {
+      const d = dE(blue, token(block, other));
+      assert.ok(d >= 20, name + ' priority is only ' + d.toFixed(1) + ' from ' + other);
+    }
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(blue.slice(i, i + 2), 16));
+    assert.ok(b > g && g > r && b - r >= 60, name + ' ' + blue + ' must read as blue');
+  }
+  assert.match(blockFor('#tfcc-panel .tfcc-prio'), /color: var\(--tfcc-prio\)/);
+});
+
 test('a tap on a span inside any panel button lands on the button, so the reactions pill opens My posts (#30)', () => {
   assert.match(css, /#tfcc-panel button \* \{ pointer-events: none; \}/,
     'the click listener reads data-act from ev.target only');

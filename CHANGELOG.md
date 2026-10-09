@@ -76,6 +76,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Changed
 
+- The priority number on a thread row has its own blue, at every width, so it
+  reads apart from the green "N new" beside it (#45). It is the logo's muted
+  blue tuned per theme for text: #8db3d9 on dark (6.91:1 on the row) and
+  #2e5680 on light (6.21:1 on the row).
 - Expand shows every row in Threads, Catch up and My posts, with no
   "Showing N of M" line; Shrink brings the Rows shown cap back. A view you set
   to Show all stays that way. (#43)

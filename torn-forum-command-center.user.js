@@ -4482,6 +4482,10 @@
       '  --tfcc-tier-legend: #c9a2ff; --tfcc-locked: #8a8a8a;',
       // "started" in My posts (#30): 6.2:1 on the row, 7.8:1 on the tag fill.
       '  --tfcc-started: #ff8080;',
+      // #45 (owner): the priority number, the logo's muted blue (#5C768F)
+      // lightened for dark: 6.91:1 on the row, 7.52:1 on the panel. The logo
+      // blue itself is 3.49:1 here, too low for 12px text.
+      '  --tfcc-prio: #8db3d9;',
       // #43 (owner): the "See-through background" setting's two base layers,
       // --tm-bg and --tm-bg-2 with alpha: the panel's own background at 50%
       // and the thread row card at 75%. Dedicated tokens, so no other fill
@@ -4505,6 +4509,9 @@
       '  --tfcc-tier-legend: #6a2fb5; --tfcc-locked: #6e6e6e;',
       // "started" (#30): 6.5:1 on the row, 8.0:1 on the tag fill.
       '  --tfcc-started: #a11414;',
+      // #45: the logo blue darkened for light: 6.21:1 on the row, 6.80:1 on
+      // the panel (the logo blue is 4.22:1 here).
+      '  --tfcc-prio: #2e5680;',
       '  --tfcc-base-bg: rgba(242, 242, 242, 0.5); --tfcc-row-bg: rgba(232, 232, 232, 0.75);',
       '}',
       '#' + FALLBACK_ID + ' { position: fixed; right: 12px; bottom: 12px; z-index: 2147483000;',
@@ -4658,7 +4665,7 @@
       // Inline priority (#30): a number and two small buttons after the title.
       // (1,1,1) beats the generic button rule; flex: none keeps the three on
       // the title's line beside the zero-basis title.
-      '#' + PANEL_ID + ' .tfcc-prio { flex: none; color: var(--tm-meta); font-size: var(--tfcc-text-sm);',
+      '#' + PANEL_ID + ' .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: var(--tfcc-text-sm);',
       '  font-variant-numeric: tabular-nums; }',
       '#' + PANEL_ID + ' button.tfcc-prio-btn { flex: none; font-size: var(--tfcc-text-sm); line-height: 1.2;',
       '  padding: 0 6px; min-width: 22px; }',
