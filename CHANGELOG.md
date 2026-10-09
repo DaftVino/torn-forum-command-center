@@ -76,7 +76,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Narrow view polish (#39). In the narrow layout only:
   - Catch up's "Mark all read", "Set catch-up point to now" and its info
     button share one line. Where the full labels would wrap they shorten to
-    "All read" and "Catch-" up arrow "2" down arrow, measured on the panel's
+    "All read" and "Caught up" (#41; it replaced an arrow label, "Catch-" up
+    arrow "2" down arrow, that confused), measured on the panel's
     own nodes; screen readers keep the full names. At very large text the
     labels wrap inside their buttons instead of the row wrapping.
   - Each row's title, meta line and note are one line with an ellipsis until

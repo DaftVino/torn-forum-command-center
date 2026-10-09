@@ -1277,7 +1277,9 @@ const MUTATIONS = [
     ['the Catch up row is not fitted after a draw', (s) => s.replace('    fitCatchUp(panel || doc.getElementById(PANEL_ID), win);\n', '')],
     ['the Catch up row is not fitted on a resize', (s) => s.replace('{ fitHeader(panel, win); fitCatchUp(panel, win); return; }', '{ fitHeader(panel, win); return; }')],
     ['the Catch up accessible names take the short labels', (s) => s.replace('aria-label="\' + escapeHtml(full) + \'">\'', 'aria-label="\' + escapeHtml(short) + \'">\'')],
-    ['the owner\'s short catch-up label is changed', (s) => s.replace('Catch-' + String.fromCharCode(92) + 'u2191', 'Catch-up')],
+    ['the owner\'s short catch-up label is changed', (s) => s.replace("'Set catch-up point to now', 'Caught up')", "'Set catch-up point to now', 'Catch up')")],
+    ['the short catch-up label goes back to the arrows (#41)', (s) => s.replace("'Set catch-up point to now', 'Caught up')",
+      "'Set catch-up point to now', 'Catch-' + String.fromCharCode(8593) + ' 2 ' + String.fromCharCode(8595))")],
     ['the short Mark all read label is changed', (s) => s.replace("'Mark all read', 'All read')", "'Mark all read', 'Read all')")],
     ['the Catch up row may wrap', (s) => s.replace('.tfcc-cubar { flex-wrap: nowrap;', '.tfcc-cubar { flex-wrap: wrap;')],
     ['the Catch up wrap fallback keeps its labels on one line', (s) => s.replace(

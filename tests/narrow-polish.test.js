@@ -34,7 +34,9 @@ test('narrow Catch up renders both labels; the accessible names stay full', () =
   const html = redraw(env);
   assert.match(html, /<div class="tfcc-bar tfcc-cubar">/);
   assert.match(html, /<button type="button" data-act="markall" aria-label="Mark all read"><span class="tfcc-lfull">Mark all read<\/span><span class="tfcc-lshort" aria-hidden="true">All read<\/span><\/button>/);
-  assert.match(html, /<button type="button" data-act="catchup-done" aria-label="Set catch-up point to now"><span class="tfcc-lfull">Set catch-up point to now<\/span><span class="tfcc-lshort" aria-hidden="true">Catch-\u2191 2 \u2193<\/span><\/button>/);
+  assert.match(html, /<button type="button" data-act="catchup-done" aria-label="Set catch-up point to now"><span class="tfcc-lfull">Set catch-up point to now<\/span><span class="tfcc-lshort" aria-hidden="true">Caught up<\/span><\/button>/);
+  // #41: the owner replaced the arrow label, which confused; none is left.
+  assert.doesNotMatch(html, /\u2191|\u2193|Catch-/);
 });
 
 // Widths at 14px text: full labels 103 and 181, short 70 and 92, the info

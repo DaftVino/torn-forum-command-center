@@ -133,7 +133,7 @@ Walk on Torn PDA, portrait, on the narrowest phone you have, then landscape.
 
 - [ ] Catch up: "Mark all read", "Set catch-up point to now" and the info
       button share one line at 375, 320 and 280px. Where the full labels would
-      wrap they read "All read" and "Catch-" up arrow "2" down arrow. TalkBack
+      wrap they read "All read" and "Caught up" (#41). TalkBack
       still reads "Mark all read" and "Set catch-up point to now". At 200%
       system font the three stay on one row and the labels wrap inside them.
 - [ ] Every list (Threads, Catch up, My posts, Search) shows each row's title,

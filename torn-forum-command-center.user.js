@@ -5597,7 +5597,10 @@
     // Narrow, the info button is grouped with the control it explains, and the
     // three share one line (#39): fitCatchUp picks the label set that fits.
     if (model.narrow) out.push('<span class="tfcc-infogroup">');
-    out.push(model.narrow ? cuButton('catchup-done', 'Set catch-up point to now', 'Catch-\u2191 2 \u2193')
+    // The short label is the owner's "Caught up" (#41), replacing an arrow
+    // label that confused: "All read" marks threads read, "Caught up" moves
+    // the catch-up point to now.
+    out.push(model.narrow ? cuButton('catchup-done', 'Set catch-up point to now', 'Caught up')
       : btn('catchup-done', 'Set catch-up point to now'));
     out.push(renderInfoButton('catchup', model.openInfoId));
     if (model.narrow) out.push('</span>');
