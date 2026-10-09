@@ -1356,24 +1356,21 @@ test('the ResizeObserver watches only the panel, once, across many draws', () =>
   assert.strictEqual(live[0].target, panelOf(env), 'it observes the script\'s own #tfcc-panel and nothing of Torn\'s');
 });
 
-test('crossing into narrow redraws once, and hysteresis holds between 600 and 616', () => {
+test('crossing into narrow flips the class, and hysteresis holds between 600 and 616', () => {
   const { env, api } = bootNarrow({ width: 900, env: { resizeObserver: true } });
   const panel = panelOf(env);
   let before = panel.renderCount;
   env.resize(500);
   assert.strictEqual(api.state.narrow, true);
   assert.strictEqual(panel.classList.contains('tfcc-narrow'), true);
-  assert.strictEqual(panel.renderCount, before + 1, 'one redraw for the crossing');
 
   before = panel.renderCount;
   for (const w of [610, 616, 600, 616, 500]) env.resize(w);
   assert.strictEqual(api.state.narrow, true, 'still narrow inside the band');
-  assert.strictEqual(panel.renderCount, before, 'no redraw while the layout does not change');
 
   env.resize(617);
   assert.strictEqual(api.state.narrow, false);
   assert.strictEqual(panel.classList.contains('tfcc-narrow'), false);
-  assert.strictEqual(panel.renderCount, before + 1);
 });
 
 test('crossing the breakpoint closes the drawer, the filters and the info', () => {
@@ -1400,8 +1397,6 @@ test('crossing the breakpoint while typing defers the markup but closes the tran
   const before = panel.renderCount;
   env.resize(400);
   assert.strictEqual(panel.classList.contains('tfcc-narrow'), true, 'the class flips at once');
-  assert.strictEqual(panel.renderCount, before, 'the markup waits for focus to leave');
-  assert.strictEqual(api.state.pendingRedraw, true);
   assert.strictEqual(api.state.filtersOpen, false);
 });
 
@@ -1429,6 +1424,8 @@ test('measurePanelWidth survives a panel without a rect', () => {
 
 Run: `node --test tests/narrow-runtime.test.js`
 Expected: FAIL: `state.narrow` is undefined and no class is set.
+
+> Amended during implementation: until Task 9 the narrow and wide markup are identical, so renderPanel skips the rewrite and a crossing cannot be seen in `renderCount` or `pendingRedraw`. Those assertions moved to Task 9 ("a crossing redraws once; inside the band nothing redraws; while typing it defers").
 
 - [ ] **Step 5: Add the state fields**
 

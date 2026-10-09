@@ -3414,6 +3414,19 @@
     // never exported: the issue asks for "this session only", and a page load
     // is the only session boundary a userscript can see.
     showAll: {},
+    // #33, all runtime only and reset on reload, like showAll. narrow follows
+    // the panel's own width. The next four are spec section 6's transient
+    // state; focusIntent carries a user action's focus plan into its redraw;
+    // pressActive holds a redraw while a press that began in the panel is in
+    // progress; liveMessage is the polite announcement after Read or Archive.
+    narrow: false,
+    openRowId: null,
+    filtersOpen: false,
+    openInfoId: null,
+    drawerEdit: null,
+    focusIntent: null,
+    pressActive: false,
+    liveMessage: null,
   };
 
   // Anything that makes an in-flight request's answer no longer wanted goes
@@ -3425,6 +3438,18 @@
     state.generation += 1;
     state.refreshing = false;
   }
+
+  function currentTransient() {
+    return { openRowId: state.openRowId, filtersOpen: state.filtersOpen,
+      openInfoId: state.openInfoId, drawerEdit: state.drawerEdit };
+  }
+  function setTransient(t) {
+    state.openRowId = t.openRowId;
+    state.filtersOpen = t.filtersOpen;
+    state.openInfoId = t.openInfoId;
+    state.drawerEdit = t.drawerEdit;
+  }
+  function applyTransient(ev) { setTransient(nextTransient(currentTransient(), ev)); }
 
   // Torn has refused the stored key. Stop using it immediately and remember
   // that across reloads.
@@ -4622,6 +4647,7 @@
       theme: 'dark',
       collapsed: false,
       takeover: false,
+      narrow: state.narrow === true,
       notices: [],
       rows: [],
       now: now,
@@ -4638,6 +4664,7 @@
       theme: 'dark',
       collapsed: false,
       takeover: false,
+      narrow: state.narrow === true,
       notices: [],
       rows: [],
       now: now,
@@ -4682,6 +4709,7 @@
       theme: s.theme,
       collapsed: s.collapsed,
       takeover: s.takeover,
+      narrow: state.narrow === true,
       sort: s.sort,
       unreadOnly: s.unreadOnly,
       folderFilter: s.folderFilter,
@@ -5641,6 +5669,69 @@
     }
   }
 
+  // #33: the class the narrow stylesheet hangs off. On our own element only.
+  var NARROW_CLASS = 'tfcc-narrow';
+
+  // The panel's border-box width, or 0 when it cannot be read. Reads only this
+  // script's #tfcc-panel (the owner's ADR 0001 ruling, spec section 5).
+  function measurePanelWidth(panel) {
+    try {
+      var r = panel && typeof panel.getBoundingClientRect === 'function' ? panel.getBoundingClientRect() : null;
+      return r && typeof r.width === 'number' ? r.width : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Crossing the breakpoint closes every disclosure (spec section 6). The
+  // class itself is written by renderPanel, so it survives a panel rebuilt
+  // from scratch.
+  function setNarrow(next) {
+    state.narrow = next === true;
+    applyTransient({ type: 'breakpoint' });
+  }
+
+  // Called by the ResizeObserver. A change of layout redraws, but not forced:
+  // a caret in the panel still defers the markup (renderPanel's guard). The
+  // class flips at once because renderPanel always writes it.
+  function onPanelWidth(doc, win, panel, handlers, width) {
+    var next = narrowFor(width, state.narrow);
+    if (next === state.narrow) return;
+    setNarrow(next);
+    if (panel && panel.classList) panel.classList.toggle(NARROW_CLASS, state.narrow);
+    draw(doc, win, handlers);
+  }
+
+  var resizeWatch = null;
+
+  // One observer, on the panel this script created, set up beside the
+  // delegated listener. Without ResizeObserver (Chrome < 64, iOS < 13.4) the
+  // per-render measurement in renderPanel is the whole mechanism.
+  function watchPanelWidth(doc, win, panel, handlers) {
+    if (resizeWatch && resizeWatch.panel === panel) return true;
+    if (resizeWatch) {
+      try { resizeWatch.ro.disconnect(); } catch (e) { /* already gone */ }
+      resizeWatch = null;
+    }
+    if (typeof ResizeObserver !== 'function') return false;
+    try {
+      var ro = new ResizeObserver(function (entries) {
+        try {
+          var entry = entries && entries[0];
+          var box = entry && entry.borderBoxSize;
+          box = box && (box[0] || box);
+          var width = box && typeof box.inlineSize === 'number' ? box.inlineSize : measurePanelWidth(panel);
+          onPanelWidth(doc, win, panel, handlers, width);
+        } catch (e2) { /* a resize must never throw onto the page */ }
+      });
+      ro.observe(panel);
+      resizeWatch = { panel: panel, ro: ro };
+      return true;
+    } catch (e3) {
+      return false;
+    }
+  }
+
   function renderPanel(doc, win, model, handlers, force) {
     injectStyleOnce(doc);
     var mount = findMountPoint(doc);
@@ -5662,6 +5753,16 @@
     applyThemeClass(doc, win);
     panel.classList.toggle('tfcc-takeover', !!model.takeover);
 
+    // #33: measured on every render, so the first paint is already right and a
+    // WebView without ResizeObserver still condenses. Our own element only.
+    var measured = narrowFor(measurePanelWidth(panel), state.narrow);
+    if (measured !== state.narrow) {
+      setNarrow(measured);
+      model.narrow = state.narrow;
+      model.openRowId = null; model.filtersOpen = false; model.openInfoId = null;
+    }
+    if (panel.classList) panel.classList.toggle(NARROW_CLASS, state.narrow === true);
+
     var html = panelHtml(model);
 
     // Writing the same string still destroys every node under it, taking the
@@ -5682,6 +5783,7 @@
     // on each render, so per-element listeners would leak on every redraw.
     if (handlers && handlers !== noopHandlers && delegated !== panel) {
       delegated = panel;
+      watchPanelWidth(doc, win, panel, handlers);
       panel.addEventListener('click', function (ev) {
         var t = ev && ev.target;
         // A thread link the panel rendered. The browser follows it; this only
