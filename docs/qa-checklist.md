@@ -115,6 +115,10 @@ time **END**.
       phrase, and a `-negated` term.
 - [ ] Pin, unpin, priority up and down, add a tag, file into a folder, archive
       and unarchive. Each survives a reload.
+- [ ] Priority (#30): the number and the small + and - sit right after the
+      thread title. Tapping + or - changes the number and does not open the
+      thread or hide the panel. At the narrowest PDA width, Pin a thread: Pin
+      becomes Unpin and Archive stays on the same line as the other buttons.
 - [ ] Mark read hides the thread from catch-up. Torn's own counter is unchanged,
       as the panel says.
 - [ ] A thread you unsubscribe from on Torn keeps its notes and tags and shows

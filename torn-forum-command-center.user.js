@@ -4299,6 +4299,13 @@
       '#' + PANEL_ID + ' .tfcc-row-title a { color: var(--tm-text); text-decoration: none; }',
       '#' + PANEL_ID + ' .tfcc-row-title a:hover { text-decoration: underline; }',
       '#' + PANEL_ID + ' .tfcc-pinned { color: var(--tm-warn-text); }',
+      // Inline priority (#30): a number and two small buttons after the title.
+      // (1,1,1) beats the generic button rule; flex: none keeps the three on
+      // the title's line beside the zero-basis title.
+      '#' + PANEL_ID + ' .tfcc-prio { flex: none; color: var(--tm-meta); font-size: var(--tfcc-text-sm);',
+      '  font-variant-numeric: tabular-nums; }',
+      '#' + PANEL_ID + ' button.tfcc-prio-btn { flex: none; font-size: var(--tfcc-text-sm); line-height: 1.2;',
+      '  padding: 0 6px; min-width: 22px; }',
       '#' + PANEL_ID + ' .tfcc-unread { color: var(--tm-good-text); font-weight: bold;',
       '  font-variant-numeric: tabular-nums; }',
       '#' + PANEL_ID + ' .tfcc-meta { color: var(--tm-meta); font-size: var(--tfcc-text-sm);',
@@ -4612,6 +4619,20 @@
     return out.join('');
   }
 
+  // The thread's priority adjustment and its +/- controls (#30). The same
+  // prio-up and prio-down actions as before, so storage and sort are unchanged.
+  function renderPriority(row) {
+    var p = toInt(row.priority, 0);
+    var shown = (p > 0 ? '+' : '') + p;
+    var idAttr = ' data-id="' + escapeHtml(row.id) + '"';
+    return '<span class="tfcc-prio" title="' + escapeHtml('Priority adjustment: ' + shown
+      + '. The Priority sort puts higher first.') + '">' + escapeHtml(shown) + '</span>'
+      + btn('prio-up', '+', idAttr + ' class="tfcc-prio-btn" aria-label="Raise priority"'
+        + ' title="Raise this thread\'s priority by 1"')
+      + btn('prio-down', '-', idAttr + ' class="tfcc-prio-btn" aria-label="Lower priority"'
+        + ' title="Lower this thread\'s priority by 1"');
+  }
+
   function renderRow(row, model) {
     var out = ['<div class="tfcc-row" data-id="' + escapeHtml(row.id) + '">'];
     out.push('<div class="tfcc-row-main">');
@@ -4619,6 +4640,11 @@
     out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '"'
       + threadLinkAttr(row.id) + '>'
       + escapeHtml(row.title) + '</a></span>');
+    // Priority sits beside the title (#30), not in the action row, where two
+    // more buttons wrapped Archive onto a second line once Pin read Unpin.
+    // Siblings of the title span, never inside the marked anchor, so a tap on
+    // them is not a thread click and #8's auto-hide ignores it.
+    out.push(renderPriority(row));
     // Author-only mode (issue #4) never shows Torn's any-poster count, and an
     // unknown is named, never left blank.
     var amode = row.authorState || 'off';
@@ -4660,7 +4686,6 @@
     out.push('<span>' + escapeHtml(row.forumName) + '</span>');
     if (row.authorName) out.push('<span>by ' + escapeHtml(row.authorName) + '</span>');
     if (row.folderName) out.push('<span>' + escapeHtml(row.folderName) + '</span>');
-    if (row.priority !== 0) out.push('<span>priority ' + (row.priority > 0 ? '+' : '') + row.priority + '</span>');
     if (row.hasDraft) out.push('<span class="tfcc-tag">draft</span>');
     for (var i = 0; i < row.tags.length; i += 1) {
       out.push('<span class="tfcc-tag">' + escapeHtml(row.tags[i]) + '</span>');
@@ -4672,8 +4697,6 @@
     out.push('<div class="tfcc-actions">');
     out.push(btn('pin', row.pinned ? 'Unpin' : 'Pin', ' data-id="' + escapeHtml(row.id) + '"'));
     out.push(btn('read', 'Mark read', ' data-id="' + escapeHtml(row.id) + '"'));
-    out.push(btn('prio-up', 'Priority +', ' data-id="' + escapeHtml(row.id) + '"'));
-    out.push(btn('prio-down', 'Priority -', ' data-id="' + escapeHtml(row.id) + '"'));
     out.push('<select data-act="folder" data-id="' + escapeHtml(row.id) + '">');
     out.push('<option value="">Unfiled</option>');
     for (var f = 0; f < model.folders.length; f += 1) {

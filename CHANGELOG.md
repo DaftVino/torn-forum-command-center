@@ -91,6 +91,11 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - The panel header shows the owner's FCC logo in place of the "Forum Command
   Center" text, inline, in its own colour `#5C768F`, one title line tall, with
   "Forum Command Center" as its accessible name. (#30)
+- A thread row's priority moved out of the action row to sit right after the
+  title: the adjustment as a number (0 by default), then small + and -
+  buttons named "Raise priority" and "Lower priority". Pinning a thread no
+  longer wraps Archive onto a second line. Storage and the Priority sort are
+  unchanged, and the meta line no longer repeats the number. (#30)
 
 ### Fixed
 

@@ -36,6 +36,76 @@ test('the loading shell renders before anything is requested', () => {
   assert.match(html, /Forum Command Center/);
 });
 
+// ---- inline priority (#30) ------------------------------------------------
+
+function rowHtml(html, id) {
+  const i = html.indexOf('<div class="tfcc-row" data-id="' + id + '">');
+  assert.ok(i !== -1, 'row ' + id + ' rendered');
+  const next = html.indexOf('<div class="tfcc-row" data-id=', i + 1);
+  return html.slice(i, next === -1 ? undefined : next);
+}
+function actionsOf(row) {
+  const i = row.indexOf('<div class="tfcc-actions">');
+  return row.slice(i, row.indexOf('</div>', i));
+}
+function mainOf(row) {
+  const i = row.indexOf('<div class="tfcc-row-main">');
+  return row.slice(i, row.indexOf('</div>', i));
+}
+
+test('a pinned Threads row keeps its action buttons on one row: priority left the action row (#30)', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1 }, { id: 2 }]);
+  const api = env.exports;
+  api.state.organizer = api.togglePin(api.state.organizer, 1);
+  api.recompute(NOW);
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  for (const id of ['1', '2']) {
+    const actions = actionsOf(rowHtml(html, id));
+    assert.doesNotMatch(actions, /data-act="prio-(up|down)"/, id + ': no priority button in the action row');
+    // Before #30: Pin, Mark read, Priority +, Priority -, Draft, Archive.
+    assert.ok((actions.match(/<button /g) || []).length <= 6 - 2, id + ': two fewer buttons than before');
+    assert.match(actions, /data-act="archive"/, id + ': Archive is still there');
+  }
+  assert.match(actionsOf(rowHtml(html, '1')), />Unpin</, 'precondition: the row is pinned');
+});
+
+test('the priority number and +/- sit right after the thread title, outside the link (#30)', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1 }, { id: 2 }]);
+  const api = env.exports;
+  api.state.organizer = api.setPriority(api.state.organizer, 2, 2);
+  api.recompute(NOW);
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+
+  const zero = mainOf(rowHtml(html, '1'));
+  assert.match(zero, /<\/a><\/span><span class="tfcc-prio"[^>]*>0<\/span><button type="button" data-act="prio-up" data-id="1"[^>]* aria-label="Raise priority"[^>]*>\+<\/button><button type="button" data-act="prio-down" data-id="1"[^>]* aria-label="Lower priority"[^>]*>-<\/button>/);
+  assert.match(zero, /data-act="prio-up"[^>]* title="[^"]+"/, 'the + button has a hover note');
+  assert.match(zero, /data-act="prio-down"[^>]* title="[^"]+"/, 'the - button has a hover note');
+
+  const two = mainOf(rowHtml(html, '2'));
+  assert.match(two, /<span class="tfcc-prio"[^>]*>\+2<\/span>/);
+  assert.doesNotMatch(rowHtml(html, '2'), /priority \+2/, 'the number is not repeated in the meta line');
+  const anchor = /<a [^>]*>[\s\S]*?<\/a>/.exec(two)[0];
+  assert.doesNotMatch(anchor, /data-act=/, 'no control inside the thread link');
+});
+
+test('every view that renders thread rows has the inline priority controls (#30)', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1, unread: 2 }]);
+  const api = env.exports;
+  api.state.searchQuery = 'Thread';
+  api.recompute(NOW);
+  for (const view of ['threads', 'catchup', 'search']) {
+    api.state.settings.view = view;
+    const html = api.panelHtml(api.buildPanelModel(NOW));
+    const main = mainOf(rowHtml(html, '1'));
+    assert.match(main, /data-act="prio-up" data-id="1"/, view);
+    assert.match(main, /data-act="prio-down" data-id="1"/, view);
+    assert.doesNotMatch(actionsOf(rowHtml(html, '1')), /prio-/, view);
+  }
+});
+
 // ---- the header logo (#30) ------------------------------------------------
 
 function headOf(html) {

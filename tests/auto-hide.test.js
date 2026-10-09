@@ -283,6 +283,27 @@ test('controls still dispatch, and a link that is not a thread does not collapse
   assert.strictEqual(env.exports.state.settings.collapsed, false);
 });
 
+test('the inline priority buttons beside a title dispatch and never collapse the panel (#30)', () => {
+  const env = loaded({ autoHideOnOpen: true });
+  const panel = panelOf(env);
+  // The real shape: the buttons are siblings of the title span inside the
+  // row's main line, never inside the marked anchor.
+  const main = env.makeElement('div');
+  main.parentNode = panel;
+  threadLink(env, 5, main);
+  for (const act of ['prio-up', 'prio-up', 'prio-down']) {
+    const b = env.makeElement('button');
+    b.setAttribute('data-act', act);
+    b.setAttribute('data-id', '5');
+    b.parentNode = main;
+    panel.dispatchEvent(click(b));
+  }
+  env.advanceTimersBy(0);
+  assert.strictEqual(env.exports.state.organizer.threads['5'].priority, 1, 'the existing handlers ran');
+  assert.strictEqual(env.exports.state.settings.collapsed, false, 'a priority click is not a thread click');
+  assert.notStrictEqual(storedSettings(env).collapsed, true);
+});
+
 test('clicking the thread you are already on collapses without a hash change', () => {
   // Same href as the current hash: the browser fires no hashchange, so the
   // deferred redraw is the only thing that can draw the collapsed panel.
