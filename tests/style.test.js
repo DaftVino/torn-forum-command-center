@@ -545,3 +545,47 @@ test('the narrow header gaps add up to HB_GAPS, which the header maths assumes (
   assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-logo'), /clamp\(16px, calc\(var\(--tfcc-hb\) \* 0\.545\), 24px\)/);
   assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-pill'), /min-height: min\(28px, var\(--tfcc-hb\)\)/);
 });
+
+test('the v1 nav tokens are the owner\'s values (#33, spec 13f)', () => {
+  const block = blockFor('#tfcc-panel');
+  for (const [k, v] of [['--tfcc-navnum-opacity', '0.14'], ['--tfcc-navnum-opacity-selected', '0.09'],
+    ['--tfcc-navlab-opacity', '0.9'], ['--tfcc-navlab-opacity-selected', '0.96'], ['--tfcc-navnum-size', '40px']]) {
+    assert.ok(block.includes(k + ': ' + v + ';'), k);
+  }
+});
+
+test('every nav label stays at 4.5:1 over the numeral painted on its cell, in both themes (#33)', () => {
+  // The same composite the mockup's in-page script measures: the numeral is
+  // the cell's text colour at the numeral opacity over the cell; the label is
+  // the text colour at the label opacity over that numeral.
+  const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const toHex = (c) => '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+  const mix = (fg, bg, a) => fg.map((v, i) => v * a + bg[i] * (1 - a));
+  const op = (name) => Number(new RegExp(name + ':\\s*([0-9.]+);').exec(blockFor('#tfcc-panel'))[1]);
+  const dark = blockFor('#tfcc-panel');
+  const light = blockFor('#tfcc-panel.tfcc-theme-light');
+  const t = (block, name) => tokenValue(block, name);
+  const states = [];
+  for (const [theme, block] of [['dark', dark], ['light', light]]) {
+    states.push([theme + ' default', t(block, '--tm-text'), t(block, '--tm-bg-3'), false]);
+    states.push([theme + ' selected', t(block, '--tm-text'), t(block, '--tm-good-bg'), true]);
+    states.push([theme + ' My posts', t(block, '--tfcc-mine-text'), t(block, '--tfcc-mine-bg'), false]);
+    states.push([theme + ' My posts selected', t(block, '--tfcc-mine-text'), t(block, '--tfcc-mine-pressed'), true]);
+  }
+  for (const [label, text, cell, selected] of states) {
+    const num = mix(hex(text), hex(cell), op(selected ? '--tfcc-navnum-opacity-selected' : '--tfcc-navnum-opacity'));
+    const lab = mix(hex(text), num, op(selected ? '--tfcc-navlab-opacity-selected' : '--tfcc-navlab-opacity'));
+    const r = ratio(toHex(lab), toHex(num));
+    assert.ok(r >= 4.5, label + ': label over numeral is ' + r.toFixed(2) + ':1');
+  }
+});
+
+test('the numeral takes its colour from the cell and has no outline (#33)', () => {
+  const num = blockFor('#tfcc-panel.tfcc-narrow .tfcc-navnum');
+  assert.doesNotMatch(num, /(^|[^-])color\s*:/, 'no colour of its own: currentColor is the cell\'s text');
+  assert.doesNotMatch(css, /-webkit-text-stroke/, 'an outline is how v2 vanished');
+  assert.match(num, /opacity: var\(--tfcc-navnum-opacity\)/);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-navgrid button[aria-pressed="true"] .tfcc-navnum'),
+    /opacity: var\(--tfcc-navnum-opacity-selected\)/);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-navlab'), /white-space: nowrap/, 'a label never wraps');
+});

@@ -65,3 +65,51 @@ test('the narrow chip wraps its pill in a span, so the 44px box and the 28px pil
   const html = api.panelHtml(api.buildPanelModel(NOW));
   assert.match(html, /<button type="button" class="tfcc-chip" data-act="badges-shelf"[^>]*><span class="tfcc-pill">/);
 });
+
+// ---- nav (spec 4.2, 13f) -----------------------------------------------------
+
+function navOf(html) {
+  const i = html.indexOf('<div class="tfcc-nav tfcc-navgrid">');
+  return i === -1 ? '' : html.slice(i, html.indexOf('</div>', i));
+}
+
+test('the narrow nav is all six views in VIEWS order, with no More and no pill', () => {
+  const { api } = bootNarrow({ env: { gmStore: [['tfcc:key', 'abcdefghij123456']] } });
+  seedRows(api, [{ id: 1, unread: 16 }]);
+  const nav = navOf(api.panelHtml(api.buildPanelModel(NOW)));
+  const views = Array.from(nav.matchAll(/data-view="([a-z]+)"/g), (m) => m[1]);
+  assert.deepStrictEqual(views, ['threads', 'catchup', 'search', 'drafts', 'settings', 'mine']);
+  assert.doesNotMatch(nav, /tfcc-reactions/, 'the pill moves to the top of My posts');
+  assert.match(nav, /data-view="mine" class="tfcc-nav-mine"/);
+});
+
+test('counts are decorative numerals behind one-line labels, carried in each cell\'s name', () => {
+  const { api } = bootNarrow();
+  seedRows(api, [{ id: 1, unread: 10 }, { id: 2, unread: 6 }]);
+  const nav = navOf(api.panelHtml(api.buildPanelModel(NOW)));
+  const model = api.buildPanelModel(NOW);
+  assert.match(nav, new RegExp('data-view="threads" aria-pressed="true" aria-label="Threads, 16 new, '
+    + model.totals.subscribed + ' subscribed"><span class="tfcc-navnum" aria-hidden="true">16</span>'
+    + '<span class="tfcc-navlab">Threads</span></button>'));
+  assert.match(nav, new RegExp('aria-label="Catch up, ' + model.catchUp.length + '"'));
+  assert.match(nav, /aria-label="Drafts, none"><span class="tfcc-navlab">Drafts<\/span>/, 'zero draws no numeral');
+  assert.match(nav, /data-view="search" aria-pressed="false"><span class="tfcc-navlab">Search<\/span>/);
+  assert.match(nav, /data-view="settings" aria-pressed="false"><span class="tfcc-navlab">Settings<\/span>/);
+});
+
+test('a count over 999 shows as 999+', () => {
+  const { api } = bootNarrow();
+  assert.strictEqual(api.navNumeral(999), '999');
+  assert.strictEqual(api.navNumeral(1000), '999+');
+  assert.strictEqual(api.navNumeral(128), '128');
+});
+
+test('narrow My posts opens with the reaction totals, before the status line', () => {
+  const { api } = bootNarrow({ env: { gmStore: [['tfcc:key', 'abcdefghij123456']] } });
+  api.state.mine = api.setKarma(api.freshMine(), 1208, NOW);
+  api.state.settings.view = 'mine';
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  const rx = html.indexOf('<div class="tfcc-rxline"><button type="button" class="tfcc-reactions');
+  assert.ok(rx !== -1, 'the pill markup, reused');
+  assert.ok(rx < html.indexOf('<div class="tfcc-infobar">'), 'it is the first line of the view');
+});

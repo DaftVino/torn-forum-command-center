@@ -4358,6 +4358,10 @@
       '  --tfcc-started: #ff8080;',
       // #33: the narrow header button size; fitHeader overrides it inline.
       '  --tfcc-hb: 44px;',
+      // #33 nav numerals, v1 tint (spec 13f). The same in both themes, because
+      // the colour is the cell's own text colour. contrast is in style.test.js.
+      '  --tfcc-navnum-opacity: 0.14; --tfcc-navnum-opacity-selected: 0.09;',
+      '  --tfcc-navlab-opacity: 0.9; --tfcc-navlab-opacity-selected: 0.96; --tfcc-navnum-size: 40px;',
       '}',
       '#' + PANEL_ID + '.tfcc-theme-light {',
       '  --tm-bg: #f2f2f2; --tm-bg-2: #e8e8e8; --tm-bg-3: #ffffff; --tm-hover: #dcdcdc;',
@@ -4578,6 +4582,26 @@
       '  white-space: nowrap; min-height: min(28px, var(--tfcc-hb)); padding: 2px 8px; border-radius: 14px;',
       '  border: 1px solid var(--tm-border-2); background: var(--tm-bg-3); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-chip.tfcc-compact .tfcc-pill { padding: 1px 4px; gap: 1px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));',
+      '  gap: 6px; margin-bottom: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid button { position: relative; overflow: hidden; display: flex;',
+      '  align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 2px 4px;',
+      '  font-weight: bold; }',
+      // My posts sits in its grid cell; the wide auto margin would push it out.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid button.tfcc-nav-mine { margin-left: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navnum { position: absolute; inset: 0; display: flex; align-items: center;',
+      '  justify-content: center; font-size: var(--tfcc-navnum-size); line-height: 1;',
+      '  font-variant-numeric: tabular-nums; opacity: var(--tfcc-navnum-opacity); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navlab { position: relative; max-width: 100%; white-space: nowrap;',
+      '  overflow: hidden; text-overflow: ellipsis; opacity: var(--tfcc-navlab-opacity); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid button[aria-pressed="true"] { box-shadow: inset 0 -3px 0 currentColor; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid button[aria-pressed="true"] .tfcc-navnum {',
+      '  opacity: var(--tfcc-navnum-opacity-selected); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid button[aria-pressed="true"] .tfcc-navlab {',
+      '  opacity: var(--tfcc-navlab-opacity-selected); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxline { margin-bottom: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxline button.tfcc-reactions { width: 100%; min-width: 44px;',
+      '  min-height: 44px; border-radius: 4px; padding: 0 10px; }',
       '#' + PANEL_ID + ' .tfcc-error { color: var(--tm-bad-text); font-weight: bold;',
       '  margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-warn { color: var(--tm-warn-text); margin-bottom: var(--tfcc-gap-sm); }',
@@ -4940,6 +4964,7 @@
   }
 
   function renderNav(model) {
+    if (model.narrow) return renderNavNarrow(model);
     var out = ['<div class="tfcc-nav">'];
     for (var i = 0; i < VIEWS.length; i += 1) {
       var v = VIEWS[i];
@@ -4953,6 +4978,42 @@
       out.push('<button type="button" data-act="view" data-view="' + v + '"'
         + (v === 'mine' ? ' class="tfcc-nav-mine"' : '') + ' aria-pressed="'
         + (model.view === v ? 'true' : 'false') + '">' + escapeHtml(VIEW_LABELS[v] + count) + '</button>');
+    }
+    out.push('</div>');
+    return out.join('');
+  }
+
+  function navNumeral(n) {
+    var v = toInt(n, 0);
+    return v > 999 ? '999+' : String(v);
+  }
+
+  // The narrow nav (spec 4.2, 13f): a 3 x 2 grid in VIEWS order. A count is a
+  // large decorative numeral behind a one-line label; the number reaches
+  // screen readers through the cell's own name. Zero draws no numeral.
+  function renderNavNarrow(model) {
+    var t = model.totals || { unread: 0, subscribed: 0, drafts: 0 };
+    var counts = {
+      threads: t.unread, catchup: model.catchUp ? model.catchUp.length : 0,
+      drafts: t.drafts, mine: model.mine ? model.mine.unread : 0,
+    };
+    var names = {
+      threads: 'Threads, ' + (t.unread ? formatCount(t.unread) + (model.authorOnly ? ' new by author' : ' new') : 'none new')
+        + ', ' + t.subscribed + ' subscribed',
+      catchup: 'Catch up, ' + (counts.catchup || 'none'),
+      drafts: 'Drafts, ' + (counts.drafts || 'none'),
+      mine: 'My posts, ' + (counts.mine ? counts.mine + ' new' : 'none new'),
+    };
+    var out = ['<div class="tfcc-nav tfcc-navgrid">'];
+    for (var i = 0; i < VIEWS.length; i += 1) {
+      var v = VIEWS[i];
+      var n = toInt(counts[v], 0);
+      out.push('<button type="button" data-act="view" data-view="' + v + '"'
+        + (v === 'mine' ? ' class="tfcc-nav-mine"' : '')
+        + ' aria-pressed="' + (model.view === v ? 'true' : 'false') + '"'
+        + (names[v] ? ' aria-label="' + escapeHtml(names[v]) + '"' : '') + '>'
+        + (n > 0 ? '<span class="tfcc-navnum" aria-hidden="true">' + navNumeral(n) + '</span>' : '')
+        + '<span class="tfcc-navlab">' + escapeHtml(VIEW_LABELS[v]) + '</span></button>');
     }
     out.push('</div>');
     return out.join('');
@@ -5127,6 +5188,12 @@
   function renderMineView(model) {
     var m = model.mine;
     var out = [];
+    // #33 (spec 13c): narrow, the reaction totals are the first line of My
+    // posts, in the existing pill markup. Wide, the pill stays in the nav.
+    if (model.narrow) {
+      var rx = renderReactions(model);
+      if (rx) out.push('<div class="tfcc-rxline">' + rx + '</div>');
+    }
     // Spec 13d item 4: the live status stays visible; the standing
     // description and the refresh rule go behind info.
     var status = [];
