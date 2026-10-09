@@ -7,6 +7,6 @@
 
 - **Major** -- `tests/contrast-audit.mjs:181`: the required contrast is selected with `panel.classList.contains('tfcc-theme-light')`, so Match Torn rendered light is audited as dark and only held to 3:1. This masks the defect above. Use the audit's resolved `light` state instead: `const need = light ? MIN_NORMAL : MIN_LARGE`.
 
-- **Minor** -- `tests/mutation-check.mjs:1125`: changing a flex item from `inline-flex` to `flex` does not make it fill its flex container; flex items are blockified. The “stretches to full width” mutation is killed only by the declaration-level assertion, not by the claimed layout regression. Mutate to `width: 100%` or `flex: 1 1 auto` so the geometry check detects a genuine stretch.
+- **Minor** -- `tests/mutation-check.mjs:1125`: changing a flex item from `inline-flex` to `flex` does not make it fill its flex container; flex items are blockified. The "stretches to full width" mutation is killed only by the declaration-level assertion, not by the claimed layout regression. Mutate to `width: 100%` or `flex: 1 1 auto` so the geometry check detects a genuine stretch.
 
 Verdict: **merge-after-fixes**.
