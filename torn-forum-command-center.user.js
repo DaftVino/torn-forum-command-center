@@ -256,10 +256,20 @@
     Object.freeze({ id: 'faction', name: 'Faction', order: 2, forumIds: Object.freeze([]) }),
   ]);
 
-  // #45: the built-in "Unfiled" group's key in the folder order and in the
-  // collapsed set. Never a folder id: folder-add renames a folder whose slug
-  // would be this.
+  // #45: the keys of the folder order and of the collapsed set. A folder's
+  // key is FOLDER_KEY_PREFIX + its id; built-in Unfiled's is UNFILED_KEY,
+  // which has no prefix, so no folder id can ever produce it. Before #45 a
+  // folder named "Unfiled" got the id "unfiled" (PR #46 review): its key is
+  // "folder:unfiled", a group of its own, and no data is migrated.
   var UNFILED_KEY = 'unfiled';
+  var FOLDER_KEY_PREFIX = 'folder:';
+
+  function folderKey(id) { return FOLDER_KEY_PREFIX + id; }
+
+  // The folder id a key names, or null for Unfiled or anything else.
+  function folderIdOfKey(key) {
+    return typeof key === 'string' && key.indexOf(FOLDER_KEY_PREFIX) === 0 ? key.slice(FOLDER_KEY_PREFIX.length) : null;
+  }
 
   // Torn's acceptable usage terms are explicit: "Multiple requests using invalid
   // keys may result in a temporary IP ban - you must account for this by
@@ -570,7 +580,7 @@
       lastCatchUpAt: toInt(now, 0),
       // #45: where Unfiled sits among the folders (an index into the folder
       // list, 0 to folders.length; folders.length means last), and the groups
-      // collapsed on this device (folder ids and UNFILED_KEY).
+      // collapsed on this device (folder keys and UNFILED_KEY).
       unfiledAt: DEFAULT_FOLDERS.length,
       collapsedFolders: [],
     };
@@ -697,7 +707,8 @@
       for (var c = 0; c < raw.collapsedFolders.length && collapsed.length <= folders.length; c += 1) {
         var key = raw.collapsedFolders[c];
         if (typeof key !== 'string' || collapsed.indexOf(key) !== -1) continue;
-        if (key === UNFILED_KEY || Object.prototype.hasOwnProperty.call(seenFolder, key)) collapsed.push(key);
+        var cid = folderIdOfKey(key);
+        if (key === UNFILED_KEY || (cid !== null && Object.prototype.hasOwnProperty.call(seenFolder, cid))) collapsed.push(key);
       }
     }
     return {
@@ -2418,10 +2429,11 @@
     return clamp(toInt(org ? org.unfiledAt : n, n), 0, n);
   }
 
-  // #45: the one order the user controls: every folder id, with UNFILED_KEY
-  // at its place among them. Settings lists it; Catch up groups by it.
+  // #45: the one order the user controls: every folder's key, with
+  // UNFILED_KEY at its place among them. Settings lists it; Catch up groups
+  // by it.
   function folderOrderKeys(org) {
-    var keys = org.folders.map(function (f) { return f.id; });
+    var keys = org.folders.map(function (f) { return folderKey(f.id); });
     keys.splice(unfiledIndex(org), 0, UNFILED_KEY);
     return keys;
   }
@@ -2435,9 +2447,10 @@
     var folders = [];
     for (var i = 0; i < keys.length; i += 1) {
       if (keys[i] === UNFILED_KEY) { next.unfiledAt = folders.length; continue; }
-      if (!Object.prototype.hasOwnProperty.call(byId, keys[i])) continue;
-      var f = byId[keys[i]];
-      delete byId[keys[i]];
+      var id = folderIdOfKey(keys[i]);
+      if (id === null || !Object.prototype.hasOwnProperty.call(byId, id)) continue;
+      var f = byId[id];
+      delete byId[id];
       f.order = folders.length;
       folders.push(f);
     }
@@ -2597,7 +2610,7 @@
     // #45: Unfiled keeps its place among the folders that remain.
     var gone = org.folders.findIndex(function (f) { return f.id === folderId; });
     if (gone !== -1 && gone < next.unfiledAt) next.unfiledAt -= 1;
-    next.collapsedFolders = next.collapsedFolders.filter(function (k) { return k !== folderId; });
+    next.collapsedFolders = next.collapsedFolders.filter(function (k) { return k !== folderKey(folderId); });
     next.folders = next.folders.filter(function (f) { return f.id !== folderId; });
     var ids = Object.keys(next.threads);
     for (var i = 0; i < ids.length; i += 1) {
@@ -2763,7 +2776,8 @@
       .filter(function (x) { return !!x; })
       .sort(function (a, b) { return a.order - b.order; });
     for (var i = 0; i < listed.length; i += 1) {
-      if (mine.indexOf(listed[i].id) !== -1 && theirs.indexOf(listed[i].id) === -1) theirs.push(listed[i].id);
+      var lk = folderKey(listed[i].id);
+      if (mine.indexOf(lk) !== -1 && theirs.indexOf(lk) === -1) theirs.push(lk);
     }
     var at = clamp(toInt(payload.unfiledAt, theirs.length), 0, theirs.length);
     var keys = theirs.slice();
@@ -5187,12 +5201,13 @@
     var byKey = {};
     for (var i = 0; i < rows.length; i += 1) {
       var fid = rows[i].folderId;
-      var k = fid && Object.prototype.hasOwnProperty.call(names, fid) ? fid : UNFILED_KEY;
+      var k = fid && Object.prototype.hasOwnProperty.call(names, fid) ? folderKey(fid) : UNFILED_KEY;
       (byKey[k] = byKey[k] || []).push(rows[i]);
     }
     return folderOrderKeys(org).filter(function (k) { return Object.prototype.hasOwnProperty.call(byKey, k); })
       .map(function (k) {
-        return { key: k, name: k === UNFILED_KEY ? 'Unfiled' : names[k], rows: byKey[k], collapsed: isFolderCollapsed(org, k) };
+        return { key: k, name: k === UNFILED_KEY ? 'Unfiled' : names[folderIdOfKey(k)], rows: byKey[k],
+          collapsed: isFolderCollapsed(org, k) };
       });
   }
 
@@ -5941,9 +5956,13 @@
   }
 
   // #45: a folder group's rows container id. Folder ids are slugs, but an
-  // imported one may hold anything, so only id-safe characters pass.
+  // imported one may hold anything. Letters, digits and "-" pass; every other
+  // character, "_" included, becomes "_" and four hex digits, so two keys
+  // never share an id (PR #46 review: "ops/a" and "ops?a" did).
   function groupDomId(key) {
-    return 'tfcc-grp-' + String(key).replace(/[^A-Za-z0-9_-]/g, '_');
+    return 'tfcc-grp-' + String(key).replace(/[^A-Za-z0-9-]/g, function (c) {
+      return '_' + ('000' + c.charCodeAt(0).toString(16)).slice(-4);
+    });
   }
 
   // #45: a folder group's heading is a toggle. Its name (and visible text)
@@ -6182,9 +6201,9 @@
 
   // #45: a folder's (or Unfiled's) up or down arrow in Settings. Disabled at
   // the end it cannot pass.
-  function moveButton(f, dir, disabled) {
-    var name = 'Move ' + f.name + ' ' + dir;
-    return '<button type="button" class="tfcc-move" data-act="folder-' + dir + '" data-id="' + escapeHtml(f.id)
+  function moveButton(key, label, dir, disabled) {
+    var name = 'Move ' + label + ' ' + dir;
+    return '<button type="button" class="tfcc-move" data-act="folder-' + dir + '" data-id="' + escapeHtml(key)
       + '" aria-label="' + escapeHtml(name) + '" title="' + escapeHtml(name) + '"' + (disabled ? ' disabled' : '') + '>'
       + glyph(dir) + '</button>';
   }
@@ -6351,9 +6370,9 @@
     model.folders.forEach(function (x) { byId[x.id] = x; });
     for (var i = 0; i < orderKeys.length; i += 1) {
       var unf = orderKeys[i] === UNFILED_KEY;
-      var f = unf ? { id: UNFILED_KEY, name: 'Unfiled' } : byId[orderKeys[i]];
+      var f = unf ? { id: UNFILED_KEY, name: 'Unfiled' } : byId[folderIdOfKey(orderKeys[i])];
       out.push('<div class="tfcc-kv tfcc-forder"><label>' + escapeHtml(f.name) + '</label>');
-      out.push(moveButton(f, 'up', i === 0) + moveButton(f, 'down', i === orderKeys.length - 1));
+      out.push(moveButton(orderKeys[i], f.name, 'up', i === 0) + moveButton(orderKeys[i], f.name, 'down', i === orderKeys.length - 1));
       if (unf) {
         out.push('<span class="tfcc-note">Threads in no folder</span></div>');
         continue;
@@ -7759,11 +7778,8 @@
         if (act === 'folder-add') {
           var name = valueOf('folder-name').trim();
           if (name) {
-            var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40) || ('f' + now);
-            // #45: Unfiled's key is reserved.
-            if (slug === UNFILED_KEY) slug = UNFILED_KEY + '-folder';
             state.organizer = upsertFolder(state.organizer, {
-              id: slug,
+              id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40) || ('f' + now),
               name: name, order: state.organizer.folders.length, forumIds: [],
             });
             persist('organizer'); recompute(now);

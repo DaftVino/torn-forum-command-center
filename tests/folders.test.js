@@ -15,6 +15,9 @@ const { exports: api } = loadUserscript();
 const plain = (x) => JSON.parse(JSON.stringify(x));
 const ids = (o) => Array.from(o.folders, (f) => f.id);
 const order = (o) => { const k = ids(o); k.splice(o.unfiledAt, 0, 'unfiled'); return k; };
+// #45 (PR #46 review): a folder's key in the order and the collapsed set is
+// namespaced, so no folder id, not even "unfiled", can be built-in Unfiled's.
+const K = (id) => 'folder:' + id;
 
 // -- the organizer ----------------------------------------------------------
 
@@ -47,7 +50,8 @@ test('a present but wrong order or collapse field is still damage', () => {
   const cases = {
     'unfiledAt past the end': (o) => { o.unfiledAt = 99; },
     'unfiledAt not a number': (o) => { o.unfiledAt = 'top'; },
-    'collapsedFolders naming no folder': (o) => { o.collapsedFolders = ['ghost']; },
+    'collapsedFolders naming no folder': (o) => { o.collapsedFolders = ['folder:ghost']; },
+    'collapsedFolders holding a bare folder id': (o) => { o.collapsedFolders = ['guides']; },
   };
   for (const name of Object.keys(cases)) {
     const bad = api.freshOrganizer(NOW);
@@ -63,7 +67,7 @@ test('what the organizer normaliser writes with an order, it reads back unchange
   o = api.moveFolder(o, 'unfiled', -1);
   o = api.moveFolder(o, 'unfiled', -1);
   o = api.toggleFolderCollapsed(o, 'unfiled');
-  o = api.toggleFolderCollapsed(o, 'faction');
+  o = api.toggleFolderCollapsed(o, K('faction'));
   const back = api.normaliseOrganizer(JSON.parse(JSON.stringify(o)), NOW);
   assert.deepStrictEqual(plain(back), plain(o));
   assert.deepStrictEqual(order(back), ['guides', 'unfiled', 'scripts', 'faction']);
@@ -72,10 +76,10 @@ test('what the organizer normaliser writes with an order, it reads back unchange
 test('moveFolder swaps with the neighbour, across Unfiled too, and renumbers the order', () => {
   let o = api.freshOrganizer(NOW);
   const before = JSON.stringify(o);
-  o = api.moveFolder(o, 'faction', -1);
+  o = api.moveFolder(o, K('faction'), -1);
   assert.deepStrictEqual(order(o), ['guides', 'faction', 'scripts', 'unfiled']);
   assert.deepStrictEqual(o.folders.map((f) => f.order), [0, 1, 2]);
-  o = api.moveFolder(o, 'scripts', 1);
+  o = api.moveFolder(o, K('scripts'), 1);
   assert.deepStrictEqual(order(o), ['guides', 'faction', 'unfiled', 'scripts'], 'a folder moves past Unfiled');
   o = api.moveFolder(o, 'unfiled', -1);
   o = api.moveFolder(o, 'unfiled', -1);
@@ -85,9 +89,9 @@ test('moveFolder swaps with the neighbour, across Unfiled too, and renumbers the
 
 test('moveFolder at either end, or for an unknown key, returns the organizer it was given', () => {
   const o = api.freshOrganizer(NOW);
-  assert.strictEqual(api.moveFolder(o, 'guides', -1), o, 'the first cannot go up');
+  assert.strictEqual(api.moveFolder(o, K('guides'), -1), o, 'the first cannot go up');
   assert.strictEqual(api.moveFolder(o, 'unfiled', 1), o, 'the last cannot go down');
-  assert.strictEqual(api.moveFolder(o, 'nope', 1), o);
+  assert.strictEqual(api.moveFolder(o, K('nope'), 1), o);
 });
 
 test('a new folder lands above Unfiled when it is last, and at the end otherwise', () => {
@@ -106,7 +110,7 @@ test('a new folder lands above Unfiled when it is last, and at the end otherwise
 test('deleting a folder keeps Unfiled among the folders that remain, and forgets its collapse', () => {
   let o = api.freshOrganizer(NOW);
   o = api.moveFolder(o, 'unfiled', -1); // guides scripts unfiled faction
-  o = api.toggleFolderCollapsed(o, 'guides');
+  o = api.toggleFolderCollapsed(o, K('guides'));
   o = api.deleteFolder(o, 'guides');
   assert.deepStrictEqual(order(o), ['scripts', 'unfiled', 'faction']);
   assert.deepStrictEqual(o.collapsedFolders, []);
@@ -117,11 +121,11 @@ test('deleting a folder keeps Unfiled among the folders that remain, and forgets
 test('toggleFolderCollapsed toggles a folder or Unfiled, and ignores anything else', () => {
   let o = api.freshOrganizer(NOW);
   o = api.toggleFolderCollapsed(o, 'unfiled');
-  o = api.toggleFolderCollapsed(o, 'scripts');
-  assert.deepStrictEqual(o.collapsedFolders, ['unfiled', 'scripts']);
+  o = api.toggleFolderCollapsed(o, K('scripts'));
+  assert.deepStrictEqual(o.collapsedFolders, ['unfiled', K('scripts')]);
   o = api.toggleFolderCollapsed(o, 'unfiled');
-  assert.deepStrictEqual(o.collapsedFolders, ['scripts']);
-  assert.strictEqual(api.toggleFolderCollapsed(o, 'ghost'), o);
+  assert.deepStrictEqual(o.collapsedFolders, [K('scripts')]);
+  assert.strictEqual(api.toggleFolderCollapsed(o, K('ghost')), o);
 });
 
 test('groupCatchUp follows the folder order, with Unfiled where the user put it', () => {
@@ -132,14 +136,14 @@ test('groupCatchUp follows the folder order, with Unfiled where the user put it'
     { id: '4', folderId: 'guides' }, { id: '5', folderId: 'gone' },
   ];
   const keys = (g) => g.map((x) => x.key + ':' + x.rows.map((r) => r.id).join(','));
-  assert.deepStrictEqual(keys(api.groupCatchUp(rows, o)), ['guides:4', 'faction:2', 'aaa:3', 'unfiled:1,5'],
+  assert.deepStrictEqual(keys(api.groupCatchUp(rows, o)), ['folder:guides:4', 'folder:faction:2', 'folder:aaa:3', 'unfiled:1,5'],
     'folder order, not names; an unknown folder is Unfiled');
   o = api.moveFolder(o, 'unfiled', -1);
   o = api.moveFolder(o, 'unfiled', -1);
   o = api.moveFolder(o, 'unfiled', -1);
   o = api.moveFolder(o, 'unfiled', -1);
-  const g = api.groupCatchUp(rows, api.toggleFolderCollapsed(o, 'faction'));
-  assert.deepStrictEqual(keys(g), ['unfiled:1,5', 'guides:4', 'faction:2', 'aaa:3']);
+  const g = api.groupCatchUp(rows, api.toggleFolderCollapsed(o, K('faction')));
+  assert.deepStrictEqual(keys(g), ['unfiled:1,5', 'folder:guides:4', 'folder:faction:2', 'folder:aaa:3']);
   assert.deepStrictEqual(g.map((x) => x.name), ['Unfiled', 'Guides', 'Faction', 'Aardvark']);
   assert.deepStrictEqual(g.map((x) => x.collapsed), [false, false, true, false]);
 });
@@ -149,11 +153,11 @@ test('an export carries the folder order and where Unfiled sits, and not what is
   const a = env.exports;
   let o = a.freshOrganizer(NOW);
   o = a.upsertFolder(o, { id: 'new', name: 'New', order: 3, forumIds: [] });
-  o = a.moveFolder(o, 'new', -1);
-  o = a.moveFolder(o, 'new', -1); // guides new scripts faction unfiled
+  o = a.moveFolder(o, K('new'), -1);
+  o = a.moveFolder(o, K('new'), -1); // guides new scripts faction unfiled
   o = a.moveFolder(o, 'unfiled', -1);
   o = a.moveFolder(o, 'unfiled', -1); // guides new unfiled scripts faction
-  o = a.toggleFolderCollapsed(o, 'guides');
+  o = a.toggleFolderCollapsed(o, K('guides'));
   const text = a.encodeState(o, a.freshDrafts(), env.sandbox.btoa);
   assert.doesNotMatch(a.b64DecodeUtf8(text.slice(a.EXPORT_PREFIX.length), env.sandbox.atob), /collapsed/);
   // Into a fresh device: its three starter folders take the export's order.
@@ -171,7 +175,7 @@ test('an export made before #45 imports with Unfiled last, the local folders abo
   const env = loadUserscript();
   const a = env.exports;
   let src = a.freshOrganizer(NOW);
-  src = a.moveFolder(src, 'faction', -1);
+  src = a.moveFolder(src, K('faction'), -1);
   const text = a.encodeState(src, a.freshDrafts(), env.sandbox.btoa);
   const payload = JSON.parse(a.b64DecodeUtf8(text.slice(a.EXPORT_PREFIX.length), env.sandbox.atob));
   delete payload.unfiledAt;
@@ -194,14 +198,14 @@ test('Settings lists the folders and Unfiled in order, each with up and down arr
   const s = settingsHtml(env);
   const names = [...s.matchAll(/<div class="tfcc-kv tfcc-forder"><label>([^<]*)<\/label>/g)].map((m) => m[1]);
   assert.deepStrictEqual(names, ['Guides', 'Scripts and tools', 'Faction', 'Unfiled']);
-  for (const [key, name] of [['guides', 'Guides'], ['scripts', 'Scripts and tools'], ['faction', 'Faction'], ['unfiled', 'Unfiled']]) {
+  for (const [key, name] of [[K('guides'), 'Guides'], [K('scripts'), 'Scripts and tools'], [K('faction'), 'Faction'], ['unfiled', 'Unfiled']]) {
     for (const dir of ['up', 'down']) {
       const re = new RegExp('<button type="button" class="tfcc-move" data-act="folder-' + dir + '" data-id="' + key
         + '" aria-label="Move ' + name + ' ' + dir + '" title="Move ' + name + ' ' + dir + '"( disabled)?>');
       assert.match(s, re, key + ' ' + dir);
     }
   }
-  assert.match(s, /data-act="folder-up" data-id="guides"[^>]* disabled>/, 'the first cannot go up');
+  assert.match(s, /data-act="folder-up" data-id="folder:guides"[^>]* disabled>/, 'the first cannot go up');
   assert.match(s, /data-act="folder-down" data-id="unfiled"[^>]* disabled>/, 'the last cannot go down');
   assert.strictEqual((s.match(/ disabled>/g) || []).length, 2, 'only those two are disabled');
   // The arrows are icons, drawn as ASCII SVG.
@@ -221,17 +225,6 @@ test('the folder note says folders organise only the threads you follow', () => 
   assert.match(settingsHtml(env), /Folders organise only threads you subscribe to \(and ones you file by hand\); they never add other threads from a forum\./);
 });
 
-test('folder-add never makes a folder whose id is the Unfiled key', () => {
-  // The name field is read from the document, so the harness answers it.
-  const { env, api: a } = bootNarrow({ width: 900, env: { selectors: { '[data-act="folder-name"]': { value: 'Unfiled' } } } });
-  a.state.settings.view = 'settings';
-  redraw(env);
-  click(env, '[data-act="folder-add"]');
-  const added = a.state.organizer.folders[a.state.organizer.folders.length - 1];
-  assert.strictEqual(added.name, 'Unfiled');
-  assert.notStrictEqual(added.id, 'unfiled');
-});
-
 test('an arrow reorders, saves, and drives the Catch up groups and every folder menu', () => {
   const { env, api: a } = bootNarrow({ width: 900 });
   seedRows(a, [{ id: 1, unread: 2 }, { id: 2, unread: 1 }, { id: 3, unread: 4 }]);
@@ -240,8 +233,8 @@ test('an arrow reorders, saves, and drives the Catch up groups and every folder 
   a.recompute(NOW);
   a.state.settings.view = 'settings';
   redraw(env);
-  click(env, '[data-act="folder-up"][data-id="faction"]');
-  click(env, '[data-act="folder-up"][data-id="faction"]');
+  click(env, '[data-act="folder-up"][data-id="folder:faction"]');
+  click(env, '[data-act="folder-up"][data-id="folder:faction"]');
   click(env, '[data-act="folder-up"][data-id="unfiled"]');
   assert.deepStrictEqual(order(a.state.organizer), ['faction', 'guides', 'unfiled', 'scripts']);
   const saved = JSON.parse(env.gmStore.get('tfcc:organizer'));
@@ -263,7 +256,7 @@ test('an arrow reorders, saves, and drives the Catch up groups and every folder 
 test('the folder filter menu follows the order too', () => {
   const { env, api: a } = bootNarrow({ width: 900 });
   seedRows(a, [{ id: 1, unread: 2 }]);
-  a.state.organizer = a.moveFolder(a.state.organizer, 'faction', -1);
+  a.state.organizer = a.moveFolder(a.state.organizer, K('faction'), -1);
   a.state.settings.view = 'threads';
   const html = redraw(env);
   const sel = /<select data-act="folder-filter"[^>]*>([\s\S]*?)<\/select>/.exec(html)[1];
@@ -275,11 +268,11 @@ test('focus stays on the arrow pressed, or moves to the other arrow at an end', 
   const { env, api: a } = bootNarrow({ width: 900 });
   a.state.settings.view = 'settings';
   redraw(env);
-  click(env, '[data-act="folder-down"][data-id="scripts"]');
-  assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['folder-down', 'scripts']);
-  click(env, '[data-act="folder-up"][data-id="faction"]');
-  click(env, '[data-act="folder-up"][data-id="faction"]');
-  assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['folder-down', 'faction'],
+  click(env, '[data-act="folder-down"][data-id="folder:scripts"]');
+  assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['folder-down', 'folder:scripts']);
+  click(env, '[data-act="folder-up"][data-id="folder:faction"]');
+  click(env, '[data-act="folder-up"][data-id="folder:faction"]');
+  assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['folder-down', 'folder:faction'],
     'at the top the up arrow is disabled, so focus goes to down');
 });
 
@@ -298,7 +291,7 @@ for (const [label, width] of [['wide', 900], ['narrow', 343]]) {
   test('a Catch up group heading is a toggle with its count, named and wired (' + label + ')', () => {
     const { env } = catchUpEnv(width);
     const html = redraw(env);
-    const m = /<h4 class="tfcc-grphead"><button type="button" class="tfcc-grp" data-act="group-toggle" data-id="guides" aria-expanded="true" aria-controls="(tfcc-grp-guides)" title="Collapse Guides"><svg class="tfcc-gl"[^>]*><path d="([^"]*)"\/><\/svg><span class="tfcc-grpname">Guides \(1\)<\/span><\/button><\/h4>/.exec(html);
+    const m = /<h4 class="tfcc-grphead"><button type="button" class="tfcc-grp" data-act="group-toggle" data-id="folder:guides" aria-expanded="true" aria-controls="(tfcc-grp-folder_003aguides)" title="Collapse Guides"><svg class="tfcc-gl"[^>]*><path d="([^"]*)"\/><\/svg><span class="tfcc-grpname">Guides \(1\)<\/span><\/button><\/h4>/.exec(html);
     assert.ok(m, 'the Guides heading');
     assert.ok(html.includes('<div class="tfcc-rows" id="' + m[1] + '">'), 'aria-controls names the rows');
     assert.match(html, /data-act="group-toggle" data-id="unfiled" aria-expanded="true"[^>]*title="Collapse Unfiled">[\s\S]*?Unfiled \(2\)/);
@@ -326,10 +319,10 @@ for (const [label, width] of [['wide', 900], ['narrow', 343]]) {
   test('focus stays on the group toggle after it collapses or expands (' + label + ')', () => {
     const { env } = catchUpEnv(width);
     redraw(env);
-    click(env, '[data-act="group-toggle"][data-id="guides"]');
-    assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['group-toggle', 'guides']);
-    click(env, '[data-act="group-toggle"][data-id="guides"]');
-    assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['group-toggle', 'guides']);
+    click(env, '[data-act="group-toggle"][data-id="folder:guides"]');
+    assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['group-toggle', 'folder:guides']);
+    click(env, '[data-act="group-toggle"][data-id="folder:guides"]');
+    assert.deepStrictEqual([lastFocus(env)['data-act'], lastFocus(env)['data-id']], ['group-toggle', 'folder:guides']);
   });
 }
 
@@ -368,4 +361,117 @@ test('a narrow group toggle is a 44px target; a wide one is at least 24px', () =
   const css = api.panelStyleText();
   assert.match(css, /#tfcc-panel\.tfcc-narrow button\.tfcc-grp \{[^}]*min-height: 44px;/);
   assert.match(css, /#tfcc-panel button\.tfcc-grp \{[^}]*min-height: 24px;/);
+});
+
+// -- PR #46 review: a real folder whose id is "unfiled" ------------------------
+// Before #45, adding a folder named "Unfiled" made the id "unfiled". It must
+// stay a folder of its own, apart from built-in Unfiled, everywhere.
+
+function withRealUnfiled() {
+  // What main wrote: a real "unfiled" folder holding thread 7, thread 8 in no
+  // folder, and no #45 fields at all.
+  const o = api.normaliseOrganizer({ folders: [
+    { id: 'guides', name: 'Guides', order: 0, forumIds: [] },
+    { id: 'unfiled', name: 'Unfiled', order: 1, forumIds: [] },
+  ], threads: { 7: { folderId: 'unfiled', pinned: true }, 8: { pinned: true } } }, NOW);
+  delete o.unfiledAt;
+  delete o.collapsedFolders;
+  return o;
+}
+
+test('an old organizer with a real folder "unfiled" loads undamaged, as two separate entries', () => {
+  const env = loadUserscript({ gmStore: [['tfcc:organizer', JSON.stringify(withRealUnfiled())]] });
+  env.exports.loadAll(NOW);
+  assert.doesNotMatch(env.exports.state.notices.map((n) => n.text).join(' '), /Folders and tags were damaged/);
+  const o = env.exports.state.organizer;
+  assert.deepStrictEqual(plain(api.folderOrderKeys(o)), ['folder:guides', 'folder:unfiled', 'unfiled']);
+  assert.strictEqual(o.threads['7'].folderId, 'unfiled', 'no migration: the thread keeps its folder');
+});
+
+test('a real folder "unfiled" and built-in Unfiled group, reorder and collapse apart', () => {
+  let o = api.normaliseOrganizer(withRealUnfiled(), NOW);
+  const rows = [{ id: '7', folderId: 'unfiled' }, { id: '8', folderId: null }];
+  const keys = (g) => g.map((x) => x.key + ':' + x.name + ':' + x.rows.map((r) => r.id).join(','));
+  assert.deepStrictEqual(keys(api.groupCatchUp(rows, o)), ['folder:unfiled:Unfiled:7', 'unfiled:Unfiled:8']);
+  o = api.moveFolder(o, 'unfiled', -1);
+  assert.deepStrictEqual(plain(api.folderOrderKeys(o)), ['folder:guides', 'unfiled', 'folder:unfiled']);
+  assert.deepStrictEqual(plain(ids(o)), ['guides', 'unfiled'], 'moving built-in Unfiled drops no folder');
+  o = api.moveFolder(o, K('unfiled'), -1);
+  o = api.moveFolder(o, K('unfiled'), -1);
+  assert.deepStrictEqual(plain(api.folderOrderKeys(o)), ['folder:unfiled', 'folder:guides', 'unfiled']);
+  o = api.toggleFolderCollapsed(o, K('unfiled'));
+  const g = api.groupCatchUp(rows, o);
+  assert.deepStrictEqual(g.map((x) => x.collapsed), [true, false], 'only the real folder is collapsed');
+  o = api.toggleFolderCollapsed(o, 'unfiled');
+  assert.deepStrictEqual(plain(o.collapsedFolders), ['folder:unfiled', 'unfiled']);
+  o = api.toggleFolderCollapsed(o, K('unfiled'));
+  assert.deepStrictEqual(plain(o.collapsedFolders), ['unfiled']);
+  // Deleting the real folder leaves built-in Unfiled alone.
+  const d = api.deleteFolder(api.toggleFolderCollapsed(o, K('unfiled')), 'unfiled');
+  assert.deepStrictEqual(plain(api.folderOrderKeys(d)), ['folder:guides', 'unfiled']);
+  assert.deepStrictEqual(plain(d.collapsedFolders), ['unfiled']);
+});
+
+test('a real folder "unfiled" renders apart from built-in Unfiled in Settings and Catch up', () => {
+  const { env, api: a } = bootNarrow({ width: 900 });
+  seedRows(a, [{ id: 7, unread: 2 }, { id: 8, unread: 1 }]);
+  a.state.organizer = a.upsertFolder(a.state.organizer, { id: 'unfiled', name: 'Unfiled', order: 3, forumIds: [] });
+  a.state.organizer = a.setFolder(a.state.organizer, '7', 'unfiled');
+  a.recompute(NOW);
+  const s = settingsHtml(env);
+  assert.match(s, /data-act="folder-delete" data-id="unfiled"/, 'the real folder can be deleted');
+  assert.strictEqual((s.match(/data-act="folder-up" data-id="unfiled"/g) || []).length, 1, 'one built-in Unfiled');
+  assert.strictEqual((s.match(/data-act="folder-up" data-id="folder:unfiled"/g) || []).length, 1, 'one real folder');
+  a.state.settings.view = 'catchup';
+  redraw(env);
+  click(env, '[data-act="group-toggle"][data-id="folder:unfiled"]');
+  const html = panelOf(env).innerHTML;
+  assert.match(html, /data-id="folder:unfiled" aria-expanded="false"/);
+  assert.match(html, /data-id="unfiled" aria-expanded="true"/);
+  assert.match(html, /<div class="tfcc-row[^"]*" data-id="8"/, 'built-in Unfiled still shows its row');
+  assert.ok(!/<div class="tfcc-row[^"]*" data-id="7"/.test(html), 'the collapsed real folder hides its row');
+  const domIds = [...html.matchAll(/ id="(tfcc-grp-[^"]*)"/g)].map((m) => m[1]);
+  assert.strictEqual(new Set(domIds).size, domIds.length, 'distinct group ids');
+});
+
+test('an old export with a real folder "unfiled" round-trips with its threads and its place', () => {
+  const env = loadUserscript();
+  const a = env.exports;
+  const old = a.normaliseOrganizer(withRealUnfiled(), NOW);
+  const text = a.encodeState(old, a.freshDrafts(), env.sandbox.btoa);
+  const payload = JSON.parse(a.b64DecodeUtf8(text.slice(a.EXPORT_PREFIX.length), env.sandbox.atob));
+  delete payload.unfiledAt; // as main exported it
+  const oldText = a.EXPORT_PREFIX + a.b64EncodeUtf8(JSON.stringify(payload), env.sandbox.btoa);
+  const out = a.importState(a.freshOrganizer(NOW), a.freshDrafts(), oldText, env.sandbox.atob);
+  assert.ok(out.ok, out.detail);
+  assert.deepStrictEqual(plain(a.folderOrderKeys(out.organizer)),
+    ['folder:guides', 'folder:unfiled', 'folder:scripts', 'folder:faction', 'unfiled']);
+  assert.strictEqual(out.organizer.threads['7'].folderId, 'unfiled');
+  // And a #45 export of a reordered workspace comes back the same.
+  let moved = a.moveFolder(out.organizer, 'unfiled', -1);
+  moved = a.moveFolder(moved, 'unfiled', -1);
+  const back = a.importState(a.freshOrganizer(NOW), a.freshDrafts(), a.encodeState(moved, a.freshDrafts(), env.sandbox.btoa),
+    env.sandbox.atob);
+  assert.deepStrictEqual(plain(a.folderOrderKeys(back.organizer)), plain(a.folderOrderKeys(moved)));
+});
+
+// PR #46 review: a group's DOM id is a collision-free encoding of its key.
+test('two folder ids that differ only in punctuation get different group ids', () => {
+  const { env, api: a } = bootNarrow({ width: 900 });
+  seedRows(a, [{ id: 1, unread: 2 }, { id: 2, unread: 1 }]);
+  a.state.organizer = a.upsertFolder(a.state.organizer, { id: 'ops/a', name: 'Ops slash', order: 3, forumIds: [] });
+  a.state.organizer = a.upsertFolder(a.state.organizer, { id: 'ops?a', name: 'Ops query', order: 4, forumIds: [] });
+  a.state.organizer = a.setFolder(a.state.organizer, '1', 'ops/a');
+  a.state.organizer = a.setFolder(a.state.organizer, '2', 'ops?a');
+  a.recompute(NOW);
+  a.state.settings.view = 'catchup';
+  const html = redraw(env);
+  const ctl = [...html.matchAll(/data-act="group-toggle" data-id="([^"]*)"[^>]*aria-controls="([^"]*)"/g)];
+  const targets = ctl.map((m) => m[2]);
+  assert.strictEqual(targets.length, 2);
+  assert.notStrictEqual(targets[0], targets[1]);
+  for (const t of targets) {
+    assert.match(t, /^tfcc-grp-[A-Za-z0-9_-]+$/, 'id-safe');
+    assert.strictEqual((html.match(new RegExp(' id="' + t + '"', 'g')) || []).length, 1, 'controls exactly one element');
+  }
 });

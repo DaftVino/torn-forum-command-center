@@ -1583,8 +1583,12 @@ const MUTATIONS = [
       "      if (unf) {\n        out.push('<span class=\"tfcc-note\">Threads in no folder</span></div>');\n        continue;\n      }\n", '')],
     ['focus is lost when an arrow reaches its end', (s) => s.replace(
       "          var mAct = atEnd ? (act === 'folder-up' ? 'folder-down' : 'folder-up') : act;", '          var mAct = act;')],
-    ['a folder named Unfiled takes the Unfiled key', (s) => s.replace(
-      '            if (slug === UNFILED_KEY) slug = UNFILED_KEY + \'-folder\';\n', '')],
+    ['a real folder with id "unfiled" collides with built-in Unfiled (PR #46 review)', (s) => s.replace(
+      '  function folderKey(id) { return FOLDER_KEY_PREFIX + id; }', '  function folderKey(id) { return id; }')],
+    ['a collapsed bare folder id loads as if it were a key', (s) => s.replace(
+      '        var cid = folderIdOfKey(key);', '        var cid = folderIdOfKey(key) || key;')],
+    ['group DOM ids collide again (PR #46 review)', (s) => s.replace(
+      "return '_' + ('000' + c.charCodeAt(0).toString(16)).slice(-4);", "return '_';")],
     ['the folder note drops the subscribed-only sentence', (s) => s.replace(
       "      + 'Folders organise only threads you subscribe to (and ones you file by hand); they never add other threads '\n      + 'from a forum. ",
       "      + '")],

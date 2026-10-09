@@ -1506,10 +1506,18 @@ not regenerated).
   the user can reorder, and last is the stable default. A new folder lands
   above Unfiled when Unfiled is last, else at the end; deleting a folder keeps
   Unfiled among the folders that remain.
-- **Collapsed groups:** `organizer.collapsedFolders`, folder ids and
-  `"unfiled"`. Remembered on this device; never exported. A key naming no
-  folder is dropped by the normaliser. A new folder whose name slugs to
-  `unfiled` gets the id `unfiled-folder`, so the key stays Unfiled's.
+- **Keys (PR #46 review).** The order and the collapsed set use keys, not
+  bare ids: a folder's key is `"folder:" + id`, built-in Unfiled's is
+  `"unfiled"`. Before #45 a folder named "Unfiled" got the id `"unfiled"`;
+  its key is `"folder:unfiled"`, so it can never collide with the built-in
+  group, and no data is migrated (threads keep `folderId: "unfiled"`). The
+  Settings arrows and the group toggles carry the key as `data-id`.
+- **Collapsed groups:** `organizer.collapsedFolders`, keys as above.
+  Remembered on this device; never exported. A key naming no folder (or a
+  bare folder id) is dropped by the normaliser.
+- **Group DOM ids** (`aria-controls`) encode the key injectively: letters,
+  digits and `-` pass, every other character becomes `_` and four hex digits
+  (PR #46 review: `ops/a` and `ops?a` used to share one id).
 - **Upgrade.** Both fields are top-level, so `isRecoveredValue` fills them
   when absent: main's organizer loads with no "Folders and tags were damaged"
   notice. A present but wrong value (an index past the end, a key naming no

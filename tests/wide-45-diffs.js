@@ -44,6 +44,8 @@ const UP = 'M6 15l6-6 6 6';
 const DOWN = 'M6 9l6 6 6-6';
 
 // A Settings order arrow: named, titled, disabled at the end it cannot pass.
+// Its data-id is the order key: "folder:" and the folder id, or "unfiled"
+// for built-in Unfiled (PR #46 review: no folder id can collide with it).
 const move = (id, name, dir, disabled) => '<button type="button" class="tfcc-move" data-act="folder-' + dir + '" data-id="'
   + id + '" aria-label="Move ' + name + ' ' + dir + '" title="Move ' + name + ' ' + dir + '"' + (disabled ? ' disabled' : '')
   + '>' + glyph(dir === 'up' ? UP : DOWN) + '</button>';
@@ -79,8 +81,8 @@ const literals = [
   ...FOLDERS.map(([id, name], i) => ({
     item: '45 folder arrows', view: 'settings',
     from: '<div class="tfcc-kv"><label>' + name + '</label><select data-act="folder-forum" data-id="' + id + '">',
-    to: '<div class="tfcc-kv tfcc-forder"><label>' + name + '</label>' + move(id, name, 'up', i === 0)
-      + move(id, name, 'down', false) + '<select data-act="folder-forum" data-id="' + id + '">',
+    to: '<div class="tfcc-kv tfcc-forder"><label>' + name + '</label>' + move('folder:' + id, name, 'up', i === 0)
+      + move('folder:' + id, name, 'down', false) + '<select data-act="folder-forum" data-id="' + id + '">',
   })),
   // ... and Unfiled joins the list, last: arrows (down disabled), no claim,
   //    no rename, no delete.
