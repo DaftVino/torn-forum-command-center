@@ -253,6 +253,37 @@ Mount selection tries an ordered list of containers, accepts one only while it
 is connected, and otherwise creates an owned `#tfcc-fallback-mount`. A wrong
 guess costs placement, never the script.
 
+### The narrow layout and ADR 0001
+
+A panel 600px wide or less condenses (#33). The width is the panel's own, not
+the viewport's: the inline panel sits in Torn's content column, and Expand
+changes its width without changing the viewport. A `ResizeObserver` on
+`#tfcc-panel`, plus a measurement of the same element on every render, sets
+`state.narrow` with 16px of hysteresis (enter at 600, leave above 616), and
+`renderPanel` writes the `tfcc-narrow` class. Without `ResizeObserver` the
+per-render measurement is the whole mechanism. `fitHeader` then sizes the
+header buttons (`--tfcc-hb`, 24 to 44px) from the panel's content width, the
+chip and the Show button, so the header stays on one line.
+
+**The owner's ruling (2026-10-09):** a `ResizeObserver` on the script's own
+`#tfcc-panel`, and measuring nodes inside it, stays within ADR 0001. It is not
+a third DOM access: ADR 0001 confines access to Torn's markup to the mount
+container and the reply textarea, and neither the observer nor `fitHeader`
+reads a Torn node or Torn data. This interprets ADR 0001 and does not reverse
+it, so the ADR is unchanged (repo-standards section 6.3).
+`tests/narrow-focus.test.js` records every `document.querySelector` call to
+keep it that way.
+
+The narrow markup is a branch of each renderer on `model.narrow`; the wide
+markup is main's, byte for byte, and `tests/wide-parity.test.js` compares it
+with a golden captured before #33. The transient view state (the open drawer,
+the open filters, the open explanation, a drawer field's typed value) is a
+pure state machine (`nextTransient`, `reconcileTransient`), reconciled after
+every model build, and focus after a redraw follows `focusPlan`: the same
+control, the next row, the previous row, then the view heading. While a press
+that began in the panel is in progress, a redraw is held until its click, so a
+commit-on-blur can no longer replace the node under the finger.
+
 ### Rendering, and why it is guarded three ways
 
 The panel renders by replacing its own `innerHTML`. That is simple and keeps the
@@ -344,7 +375,7 @@ Node only, no browser. `tests/load-userscript.js` reads the production file,
 injects an export statement in memory only, and runs it in a `vm` context with
 mocked globals. The file on disk is never modified by a test.
 
-`tests/mutation-check.mjs` is run by hand. It breaks each of 83 user-visible
+`tests/mutation-check.mjs` is run by hand. It breaks each of 222 user-visible
 promises in turn and asserts the matching suite notices. It found six tests
 that passed for the wrong reason and is the reason several of them now assert
 absolute values rather than the constant they were testing.
