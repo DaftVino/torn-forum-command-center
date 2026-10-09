@@ -4559,10 +4559,13 @@
       '#' + PANEL_ID + ' .tfcc-gl path { fill: none; stroke: currentColor; stroke-width: 2;',
       '  stroke-linecap: round; stroke-linejoin: round; }',
       '#' + PANEL_ID + ' .tfcc-infobar { display: flex; align-items: center; gap: var(--tfcc-gap-sm);',
-      '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap-sm); }',
+      // nowrap: a long note wraps inside itself, so its info button stays right
+      // after it instead of dropping onto a line of its own (PR #38 review).
+      '  flex-wrap: nowrap; margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-infobar > .tfcc-note { flex: 0 1 auto; min-width: 0; }',
       '#' + PANEL_ID + ' .tfcc-infobar h4 { margin: 0; }',
       '#' + PANEL_ID + ' button.tfcc-info { display: inline-flex; align-items: center; justify-content: center;',
-      '  min-width: 44px; min-height: 44px; padding: 0; border-color: var(--tm-border); }',
+      '  flex: none; min-width: 44px; min-height: 44px; padding: 0; border-color: var(--tm-border); }',
       '#' + PANEL_ID + ' button.tfcc-info[aria-expanded="true"] { background: var(--tm-hover); }',
       '#' + PANEL_ID + ' .tfcc-infotext { border-left: 3px solid var(--tm-accent-text);',
       '  padding: 2px 0 2px 8px; margin: 0 0 var(--tfcc-gap-sm) 0; }',
@@ -4656,6 +4659,12 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-step { display: flex; align-items: center; gap: 6px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-step span { flex: 1 1 auto; text-align: center; color: var(--tm-meta); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-vh { font-size: var(--tfcc-text); margin: 2px 0 6px 0; }',
+      // A narrow info button and the control it explains share one line; at
+      // 280px the control's label wraps inside it rather than strand the button.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-infogroup { display: flex; flex: 1 1 auto; flex-wrap: nowrap;',
+      '  align-items: center; gap: 6px; min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-infogroup > :first-child { flex: 1 1 auto; white-space: normal;',
+      '  justify-content: center; text-align: center; }',
       '#' + PANEL_ID + ' .tfcc-error { color: var(--tm-bad-text); font-weight: bold;',
       '  margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-warn { color: var(--tm-warn-text); margin-bottom: var(--tfcc-gap-sm); }',
@@ -5439,8 +5448,13 @@
         ? formatAbsoluteTime(model.lastCatchUpAt) : 'your first run') + '</span>');
     }
     out.push(btn('markall', 'Mark all read'));
+    // Narrow, the info button is grouped with the control it explains, so it
+    // never wraps onto a line of its own (PR #38 review); Mark all read takes
+    // its own line when the three do not fit.
+    if (model.narrow) out.push('<span class="tfcc-infogroup">');
     out.push(btn('catchup-done', 'Set catch-up point to now'));
     out.push(renderInfoButton('catchup', model.openInfoId));
+    if (model.narrow) out.push('</span>');
     out.push('</div>');
     out.push(renderInfoText('catchup', model.openInfoId, 'Marking read here hides a thread from this list. '
       + 'It cannot clear Torn\'s own new-post counter, which only clears when you open the thread.'));
@@ -5489,9 +5503,11 @@
     // location.href. Both load the same page, but a link makes the request
     // unambiguously the user's own click: the script initiates no navigation
     // and issues no non-API request to Torn at all.
+    if (model.narrow) out.push('<span class="tfcc-infogroup">');
     out.push('<a class="tfcc-linkbtn" href="' + escapeHtml(buildNativeSearchUrl(model.searchQuery, 0))
       + '">Search on Torn</a>');
     out.push(renderInfoButton('search', model.openInfoId));
+    if (model.narrow) out.push('</span>');
     out.push('</div>');
     out.push(renderInfoText('search', model.openInfoId, 'Filtering searches titles, authors, forums, your notes and tags. '
       + 'Searching inside posts fetches up to ' + model.settings.deepSearchPages

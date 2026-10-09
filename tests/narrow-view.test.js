@@ -248,3 +248,27 @@ test('a drawer edit mirror renders the typed value instead of the stored one', (
   api.state.drawerEdit = { id: '7', field: 'note-input', value: 'half typed', selStart: 4, selEnd: 4 };
   assert.match(api.panelHtml(api.buildPanelModel(NOW)), /data-act="note-input" data-id="7" value="half typed"/);
 });
+
+// ---- an info button stays on the line of the control it follows -----------
+
+test('narrow Catch up keeps its info button in one group with "Set catch-up point to now"', () => {
+  const { api } = bootNarrow();
+  api.state.settings.view = 'catchup';
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /<span class="tfcc-infogroup"><button type="button" data-act="catchup-done">Set catch-up point to now<\/button><button type="button" class="tfcc-info" data-act="info" data-info="catchup"/);
+});
+
+test('narrow Search keeps its info button in one group with "Search on Torn"', () => {
+  const { api } = bootNarrow();
+  api.state.settings.view = 'search';
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /<span class="tfcc-infogroup"><a class="tfcc-linkbtn" href="[^"]*">Search on Torn<\/a><button type="button" class="tfcc-info" data-act="info" data-info="search"/);
+});
+
+test('wide Catch up and Search have no info group (desktop markup is main\'s plus 13d)', () => {
+  const { api } = bootNarrow({ width: 900 });
+  for (const view of ['catchup', 'search']) {
+    api.state.settings.view = view;
+    assert.doesNotMatch(api.panelHtml(api.buildPanelModel(NOW)), /tfcc-infogroup/, view);
+  }
+});

@@ -161,7 +161,7 @@ const HOSTILE_HOST_CSS = [
 const raw = env.rawExports;
 const FIT_HEADER_SHIM = [
   'var state = { narrow: true };',
-  ['HB_MAX', 'HB_MIN', 'HB_STEP', 'HB_COMPACT_BELOW', 'HB_GAPS', 'LOGO_ASPECT', 'LOGO_PER_HB', 'LOGO_MIN_PX', 'LOGO_MAX_PX']
+  ['HB_MAX', 'HB_MIN', 'HB_STEP', 'HB_COMPACT_BELOW', 'HB_GAPS', 'HB_COUNT_GAP', 'LOGO_ASPECT', 'LOGO_PER_HB', 'LOGO_MIN_PX', 'LOGO_MAX_PX']
     .map((k) => 'var ' + k + ' = ' + JSON.stringify(raw[k]) + ';').join('\n'),
   String(raw.headerLogoWidth),
   String(raw.headerButtonSize),
@@ -250,6 +250,10 @@ const NARROW_STATES = [
   ['mine', () => { api.state.settings.view = 'mine'; }],
   ['collapsed', () => { api.state.settings.view = 'threads'; api.state.settings.collapsed = true; }],
   ['shelf', () => { api.state.settings.view = 'threads'; api.state.badgeShelfOpen = true; }],
+  // PR #38 review: every view with an info button, so the audit checks each
+  // button sits on the line of the control it follows.
+  ['search', () => { api.state.settings.view = 'search'; }],
+  ['settings', () => { api.state.settings.view = 'settings'; }],
 ];
 for (const [label, setUp] of NARROW_STATES) {
   for (const [vp, panelPx] of [[375, 343], [320, 288], [280, 248]]) {

@@ -637,3 +637,15 @@ test('narrow text fields are 16px or more, so iOS does not zoom (#33)', () => {
     assert.match(blockFor(sel), /font-size: max\(16px, 1em\);/, sel);
   }
 });
+
+test('an info button never wraps away from the text or control it follows (#33, PR review)', () => {
+  const bar = blockFor('#tfcc-panel .tfcc-infobar');
+  assert.match(bar, /flex-wrap: nowrap/, 'a long note wraps inside itself, not under the button');
+  assert.match(blockFor('#tfcc-panel .tfcc-infobar > .tfcc-note'), /flex: 0 1 auto; min-width: 0;/);
+  assert.match(blockFor('#tfcc-panel button.tfcc-info'), /flex: none/);
+  const group = blockFor('#tfcc-panel.tfcc-narrow .tfcc-infogroup');
+  assert.match(group, /display: flex/);
+  assert.match(group, /flex-wrap: nowrap/);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-infogroup > :first-child'), /white-space: normal/,
+    'at 280px the button\'s label wraps inside it rather than dropping the info button');
+});

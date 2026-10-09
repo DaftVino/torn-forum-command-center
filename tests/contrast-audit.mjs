@@ -153,6 +153,7 @@ const SCRIPT = `
   // rounding), and no button is under the 24px floor.
   const head = panel.classList.contains('tfcc-narrow') ? panel.querySelector('.tfcc-head') : null;
   const headBad = [];
+  const headInfo = {};
   if (head) {
     const btns = Array.from(head.querySelectorAll('.tfcc-head-btns button'));
     const tops = new Set(btns.map((b) => Math.round(b.getBoundingClientRect().top)));
@@ -167,16 +168,29 @@ const SCRIPT = `
     if (ctl.top >= idBox.bottom - 1) headBad.push('the buttons wrapped under the logo');
     if (!(tallest > 0)) headBad.push('no header buttons measured');
     // Expanded, nothing may wrap at all: a logo or chip on a second line makes
-    // the header taller than one button. Collapsed, only the bare count may
-    // wrap under the logo (spec 4.1), so the height check is expanded only.
-    const collapsed = !!head.querySelector('.tfcc-hshow');
-    const headH = head.getBoundingClientRect().height;
-    if (!collapsed && headH > tallest + 1) headBad.push('the expanded header is ' + Math.round(headH)
-      + 'px tall, more than one ' + Math.round(tallest) + 'px row');
+    // the header taller than one button. Collapsed, the bare count may wrap
+    // under the logo only when even 24px buttons cannot hold it (spec 13b):
+    // the Node half allows that at 280px only.
+    headInfo.collapsed = !!head.querySelector('.tfcc-hshow');
+    headInfo.height = Math.round(head.getBoundingClientRect().height);
+    headInfo.row = Math.round(tallest);
   }
+  // PR #38 review: an info button sits on the line of the control it follows.
+  const infoOff = [];
+  panel.querySelectorAll('button.tfcc-info').forEach((b) => {
+    const cs = getComputedStyle(b);
+    if (cs.display === 'none' || b.closest('[hidden]')) return;
+    const prev = b.previousElementSibling;
+    if (!prev) return;
+    const r = b.getBoundingClientRect();
+    const p = prev.getBoundingClientRect();
+    if (!(r.top < p.bottom && r.bottom > p.top)) infoOff.push(b.getAttribute('data-info'));
+  });
   out.seen = {
     navcells: panel.querySelectorAll('.tfcc-navgrid button').length,
     headBad: headBad,
+    headInfo: headInfo,
+    infoOff: infoOff,
     logo: panel.querySelectorAll('svg.tfcc-logo').length,
     started: panel.querySelectorAll('.tfcc-started').length,
   };
@@ -216,6 +230,21 @@ for (const page of pages) {
   if (!seen.logo) missing.push('the FCC logo');
   if (page.startsWith('mine-') && !seen.started) missing.push('a red "started" tag');
   if (page.startsWith('narrow-') && !page.includes('-collapsed-') && !seen.navcells) missing.push('the narrow nav cells');
+  // The narrow header is one row tall, except a collapsed header at 280px,
+  // whose count may wrap when even 24px buttons cannot hold it (spec 13b).
+  const hi = seen.headInfo || {};
+  if (page.startsWith('narrow-') && hi.row && hi.height > hi.row + 1 && !(hi.collapsed && page.includes('-280-'))) {
+    seen.headBad = (seen.headBad || []).concat(['the header is ' + hi.height + 'px tall, more than one ' + hi.row + 'px row']);
+  }
+  if (page.startsWith('narrow-') && page.includes('-280-') && hi.collapsed) {
+    console.log(`.. ${page}: collapsed header ${hi.height}px for a ${hi.row}px row (the count may wrap here)`);
+  }
+  // At 320px and up an info button shares the line of the control it follows;
+  // at 280px it may wrap, and the audit says where.
+  if (page.startsWith('narrow-') && (seen.infoOff || []).length) {
+    if (page.includes('-280-')) console.log(`.. ${page}: info button on its own line: ${seen.infoOff.join(', ')}`);
+    else seen.headBad = (seen.headBad || []).concat(['info button off its control\'s line: ' + seen.infoOff.join(', ')]);
+  }
   if (seen.headBad && seen.headBad.length) {
     console.log(`!! ${page}: ${seen.headBad.join('; ')}`);
     failures += seen.headBad.length;

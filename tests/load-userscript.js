@@ -79,7 +79,7 @@ const EXPORT_NAMES = [
   'NARROW_CLASS', 'applyTransient', 'measurePanelWidth', 'setNarrow', 'watchPanelWidth', 'onPanelWidth',
   'VIEW_HEADING_ID', 'focusPlan',
   'INFO_KEYS', 'INFO_KEYS_BY_VIEW', 'TRANSIENT_RESET_EVENTS', 'freshTransient', 'nextTransient', 'reconcileTransient',
-  'NARROW_ENTER_PX', 'NARROW_LEAVE_PX', 'HB_MAX', 'HB_MIN', 'HB_STEP', 'HB_COMPACT_BELOW', 'HB_GAPS', 'LOGO_ASPECT', 'LOGO_PER_HB', 'LOGO_MIN_PX', 'LOGO_MAX_PX', 'narrowFor', 'headerLogoWidth', 'headerButtonSize', 'activeFilterCount',
+  'NARROW_ENTER_PX', 'NARROW_LEAVE_PX', 'HB_MAX', 'HB_MIN', 'HB_STEP', 'HB_COMPACT_BELOW', 'HB_GAPS', 'HB_COUNT_GAP', 'LOGO_ASPECT', 'LOGO_PER_HB', 'LOGO_MIN_PX', 'LOGO_MAX_PX', 'narrowFor', 'headerLogoWidth', 'headerButtonSize', 'activeFilterCount',
   'authorPageStep', 'summariseAuthorPosts', 'AUTHOR_MAX_PAGES', 'authorSinceFor', 'authorStateFor', 'AUTHOR_REASON_TEXT',
   // engine: search
   'parseQuery', 'matchThread', 'matchPost', 'searchMetadata', 'searchPosts',

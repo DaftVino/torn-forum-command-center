@@ -85,6 +85,8 @@ const WIDE_13D_SELECTORS = new Set([
   '#tfcc-panel .tfcc-gl path',
   '#tfcc-panel .tfcc-infobar',
   '#tfcc-panel .tfcc-infobar h4',
+  // PR #38 review: the note in an info bar wraps inside itself.
+  '#tfcc-panel .tfcc-infobar > .tfcc-note',
   '#tfcc-panel button.tfcc-info',
   '#tfcc-panel button.tfcc-info[aria-expanded="true"]',
   '#tfcc-panel .tfcc-infotext',
