@@ -82,6 +82,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   is unchanged at 13. (#10)
 - The custom key link also asks for `user` profile, read only by the karma
   fallback. (#10)
+- **Hide the panel when I open a thread** is now on by default. A settings
+  blob saved without the field turns it on; one that stored it off keeps it
+  off, and neither reports "Settings were damaged". (#30)
 
 ### Fixed
 

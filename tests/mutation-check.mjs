@@ -480,9 +480,20 @@ const MUTATIONS = [
     name: 'the auto-hide setting accepts any truthy value',
     suite: 'tests/auto-hide.test.js',
     apply: (s) => s.replace(
-      'out.autoHideOnOpen = raw.autoHideOnOpen === true;',
-      'out.autoHideOnOpen = !!raw.autoHideOnOpen;',
+      '      ? raw.autoHideOnOpen === true : d.autoHideOnOpen;',
+      '      ? !!raw.autoHideOnOpen : d.autoHideOnOpen;',
     ),
+  },
+  {
+    name: 'auto-hide is off again by default (#30)',
+    suite: 'tests/auto-hide.test.js',
+    apply: (s) => s.replace('      autoHideOnOpen: true,', '      autoHideOnOpen: false,'),
+  },
+  {
+    name: 'a stored false for auto-hide is overridden by the new default (#30)',
+    suite: 'tests/auto-hide.test.js',
+    apply: (s) => s.replace('      ? raw.autoHideOnOpen === true : d.autoHideOnOpen;',
+      '      ? raw.autoHideOnOpen !== false || d.autoHideOnOpen : d.autoHideOnOpen;'),
   },
   {
     name: 'a row link loses its thread marker',

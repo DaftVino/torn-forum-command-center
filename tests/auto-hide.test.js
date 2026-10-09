@@ -25,14 +25,26 @@ function storedSettings(env) {
 
 // ---- storage ---------------------------------------------------------------
 
-test('the setting defaults off and only a real true turns it on', () => {
+test('the setting defaults on (#30), an explicit false stays off, and junk is off', () => {
   const { exports: api } = loadUserscript();
-  assert.strictEqual(api.freshSettings().autoHideOnOpen, false);
+  assert.strictEqual(api.freshSettings().autoHideOnOpen, true);
+  assert.strictEqual(api.normaliseSettings({ v: 1 }).autoHideOnOpen, true, 'an absent field takes the default');
+  assert.strictEqual(api.normaliseSettings({ v: 1, autoHideOnOpen: false }).autoHideOnOpen, false,
+    'a user who turned it off keeps it off');
   for (const bad of ['true', 1, 'yes', null, undefined, {}, []]) {
     assert.strictEqual(api.normaliseSettings({ v: 1, autoHideOnOpen: bad }).autoHideOnOpen, false,
       'corrupt must mean off: ' + JSON.stringify(bad));
   }
   assert.strictEqual(api.normaliseSettings({ v: 1, autoHideOnOpen: true }).autoHideOnOpen, true);
+});
+
+test('an explicit stored false survives a reload now that the default is on', () => {
+  const { exports: api } = loadUserscript();
+  const stored = Object.assign(api.freshSettings(), { autoHideOnOpen: false });
+  const env = loadUserscript({ location: forums(), now: NOW, gmStore: [['tfcc:settings', JSON.stringify(stored)]] });
+  assert.strictEqual(env.exports.state.settings.autoHideOnOpen, false);
+  const notices = env.exports.state.notices.map((n) => n.text).join(' ');
+  assert.doesNotMatch(notices, /Settings were damaged/);
 });
 
 test('the setting round-trips through storage and survives a reload', () => {
@@ -64,7 +76,8 @@ test('a settings blob saved by 0.1.0 is not reported as damaged', () => {
 
   const res = env.exports.loadKey('tfcc:settings', env.exports.normaliseSettings, NOW);
   assert.strictEqual(res.recovered, false);
-  assert.strictEqual(res.value.autoHideOnOpen, false);
+  assert.strictEqual(res.value.autoHideOnOpen, true, 'an absent field takes the new default (#30)');
+  assert.strictEqual(env.exports.state.settings.autoHideOnOpen, true);
 });
 
 test('a setting that is present but invalid is still reported', () => {
@@ -111,7 +124,7 @@ test('auto-hide collapses and leaves takeover only when the setting is on', () =
   // rawExports: the wrapped exports copy return values, and this test is about identity.
   const raw = loadUserscript().rawExports;
 
-  const off = Object.assign(raw.freshSettings(), { takeover: true });
+  const off = Object.assign(raw.freshSettings(), { autoHideOnOpen: false, takeover: true });
   assert.strictEqual(raw.autoHideSettings(off), off, 'off returns the same object, so nothing is written');
 
   const on = Object.assign(raw.freshSettings(), { autoHideOnOpen: true, takeover: true });
@@ -187,6 +200,13 @@ function click(target, extra) {
   return Object.assign({ type: 'click', target }, PLAIN, extra || {});
 }
 
+test('a fresh install collapses on a plain thread click, because the default is on (#30)', () => {
+  const env = loaded(null);
+  const panel = panelOf(env);
+  panel.dispatchEvent(click(threadLink(env, 5, panel)));
+  assert.strictEqual(storedSettings(env).collapsed, true);
+});
+
 test('a plain click on a panel thread link persists collapsed before navigation', () => {
   const env = loaded({ autoHideOnOpen: true });
   const panel = panelOf(env);
@@ -206,7 +226,7 @@ test('a plain click on a panel thread link persists collapsed before navigation'
 });
 
 test('with the setting off a thread link click changes nothing', () => {
-  const env = loaded(null);
+  const env = loaded({ autoHideOnOpen: false });
   const panel = panelOf(env);
   const before = env.gmStore.get('tfcc:settings');
 
@@ -348,10 +368,15 @@ test('the Settings checkbox shows the setting and saves a change', () => {
 
   let html = api.panelHtml(api.buildPanelModel(NOW));
   assert.match(html, /<label for="tfcc-autohide">Hide the panel when I open a thread<\/label>/);
-  assert.match(html, /<input id="tfcc-autohide" type="checkbox" data-act="auto-hide">/, 'unchecked by default');
+  assert.match(html, /<input id="tfcc-autohide" type="checkbox" data-act="auto-hide" checked>/, 'checked by default (#30)');
   assert.match(html, /Only thread links in this panel do this, and only a plain click\./);
 
   const handlers = api.makeHandlers(env.doc, env.win);
+  handlers.onChange('auto-hide', { getAttribute: () => null, checked: false, value: '' });
+  assert.strictEqual(storedSettings(env).autoHideOnOpen, false, 'unticking is saved');
+  html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /<input id="tfcc-autohide" type="checkbox" data-act="auto-hide">/);
+
   handlers.onChange('auto-hide', { getAttribute: () => null, checked: true, value: 'on' });
   assert.strictEqual(api.state.settings.autoHideOnOpen, true);
   assert.strictEqual(storedSettings(env).autoHideOnOpen, true, 'a change the user made must survive a reload');

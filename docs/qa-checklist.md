@@ -88,8 +88,9 @@ time **END**.
 
 ### Hide on opening a thread
 
-- [ ] Settings, tick "Hide the panel when I open a thread". Tap a thread in
-      Threads: the thread opens and the panel shows only its header with Show.
+- [ ] Fresh install: Settings shows "Hide the panel when I open a thread"
+      already ticked (on by default since #30). Tap a thread in Threads: the
+      thread opens and the panel shows only its header with Show.
 - [ ] Reload the thread page: the panel is still collapsed.
 - [ ] Show brings the panel back, and it stays open while you page through the
       thread and follow Torn's own links.
