@@ -169,9 +169,19 @@ const FIT_HEADER_SHIM = [
     + ' else panel.style.setProperty("--tfcc-hb", size + "px"); }',
   String(raw.fitHeader),
   'fitHeader(document.getElementById("tfcc-panel"), window);',
+  // #39: the Catch up row's fit, the same way.
+  ['CU_GAP', 'CU_MODES', 'CU_SHORT_CLASS', 'CU_WRAP_CLASS']
+    .map((k) => 'var ' + k + ' = ' + JSON.stringify(raw[k]) + ';').join('\n'),
+  String(raw.catchUpLabelMode),
+  String(raw.fitCatchUp),
+  'fitCatchUp(document.getElementById("tfcc-panel"), window);',
 ].join('\n');
 
-function page(title, theme, body, width, hostile, narrow) {
+// #39: 200% text, the way spec 4.7 measured it: the panel's two text sizes
+// doubled (an Android WebView's textZoom scales px text too).
+const TEXT_200 = '#tfcc-panel { --tfcc-text: 28px; --tfcc-text-sm: 24px; }';
+
+function page(title, theme, body, width, hostile, narrow, extraCss) {
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8">',
@@ -189,6 +199,7 @@ function page(title, theme, body, width, hostile, narrow) {
     // stylesheet has to win on its own merits rather than on source order.
     hostile ? HOSTILE_HOST_CSS : '',
     css,
+    extraCss || '',
     '</style></head><body><div class="frame">',
     '<p class="label">' + title + '</p>',
     '<div id="tfcc-panel" class="tfcc-theme-' + theme + (narrow ? ' tfcc-narrow' : '') + '">' + body + '</div>',
@@ -254,9 +265,16 @@ const NARROW_STATES = [
   // button sits on the line of the control it follows.
   ['search', () => { api.state.settings.view = 'search'; }],
   ['settings', () => { api.state.settings.view = 'settings'; }],
+  // #39: the Catch up row and an open drawer at 200% text, and a pinned row's
+  // drawer so the "on" state of an emoji button is measured too.
+  ['catchup-200', () => { api.state.settings.view = 'catchup'; }, TEXT_200],
+  ['threads-drawer-200', () => { api.state.settings.view = 'threads'; api.state.openRowId = '16474152'; }, TEXT_200],
+  ['threads-drawer-pinned', () => { api.state.settings.view = 'threads'; api.state.openRowId = '16589908'; }],
 ];
-for (const [label, setUp] of NARROW_STATES) {
+for (const [label, setUp, extraCss] of NARROW_STATES) {
   for (const [vp, panelPx] of [[375, 343], [320, 288], [280, 248]]) {
+    // 200% text is supported at 320px and up (spec 4.7), not at 280.
+    if (extraCss === TEXT_200 && vp === 280) continue;
     for (const theme of ['dark', 'light']) {
       Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false });
       api.state.settings.collapsed = false;
@@ -265,7 +283,7 @@ for (const [label, setUp] of NARROW_STATES) {
       const body = api.panelHtml(api.buildPanelModel(NOW));
       const name = `narrow-${label}-${vp}-${theme}.html`;
       fs.writeFileSync(path.join(outDir, name),
-        page(`narrow ${label} / ${vp}px / ${theme}`, theme, body, panelPx, label === 'threads', true));
+        page(`narrow ${label} / ${vp}px / ${theme}`, theme, body, panelPx, label === 'threads', true, extraCss));
       written.push(name);
     }
   }

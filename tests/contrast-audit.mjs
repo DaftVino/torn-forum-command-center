@@ -186,7 +186,75 @@ const SCRIPT = `
     const p = prev.getBoundingClientRect();
     if (!(r.top < p.bottom && r.bottom > p.top)) infoOff.push(b.getAttribute('data-info'));
   });
+  // #39: the Catch up actions share one line at every width. Their tops match
+  // (the bar stretches its items), so a wrapped control shows as a second top.
+  const polishBad = [];
+  const cubar = panel.classList.contains('tfcc-narrow') ? panel.querySelector('.tfcc-cubar') : null;
+  let cuMode = '';
+  if (cubar) {
+    cuMode = panel.classList.contains('tfcc-cu-wrap') ? 'wrap' : panel.classList.contains('tfcc-cu-short') ? 'short' : 'full';
+    const ctl = ['button[data-act="markall"]', 'button[data-act="catchup-done"]', 'button[data-info="catchup"]']
+      .map((s) => cubar.querySelector(s));
+    if (ctl.some((b) => !b)) polishBad.push('a Catch up control is missing');
+    else {
+      // One line: every control overlaps one horizontal band. (In the wrap
+      // fallback the label buttons grow taller and the info button stays
+      // centred, so their tops differ while they share the row.)
+      const rs = ctl.map((b) => b.getBoundingClientRect());
+      if (!(Math.max(...rs.map((r) => r.top)) < Math.min(...rs.map((r) => r.bottom)))) {
+        polishBad.push('the Catch up actions are not on one line (' + cuMode + ')');
+      }
+      if (rs.some((r, i) => i > 0 && r.left < rs[i - 1].right)) polishBad.push('the Catch up actions overlap');
+      const right = Math.max(...ctl.map((b) => b.getBoundingClientRect().right));
+      if (right > cubar.getBoundingClientRect().right + 1) polishBad.push('the Catch up actions overflow the bar');
+      if (ctl.some((b) => b.getBoundingClientRect().height < 43.5)) polishBad.push('a Catch up action under 44px');
+    }
+  }
+  // #39: the drawer's Pin, Draft and Archive (and Mark read) share one row;
+  // every drawer target is at least 24px, with 8px between the buttons.
+  const drawerBtns = panel.querySelector('.tfcc-drawer-btns');
+  if (drawerBtns) {
+    const btns = Array.from(drawerBtns.querySelectorAll('button'));
+    const rects = btns.map((b) => b.getBoundingClientRect());
+    if (new Set(rects.map((r) => Math.round(r.top))).size !== 1) polishBad.push('the drawer buttons wrapped');
+    for (let i = 1; i < rects.length; i += 1) {
+      if (rects[i].left - rects[i - 1].right < 7.5) polishBad.push('drawer buttons closer than 8px');
+    }
+  }
+  const drawerTargets = Array.from(panel.querySelectorAll('.tfcc-drawer button, .tfcc-drawer select, .tfcc-drawer input'));
+  for (const el of drawerTargets) {
+    const r = el.getBoundingClientRect();
+    if (r.width < 23.5 || r.height < 23.5) {
+      polishBad.push('a drawer target is ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' (' + (el.getAttribute('data-act') || el.tagName) + ')');
+    }
+  }
+  // #39: a closed row's title is one line, its note too.
+  panel.querySelectorAll('.tfcc-narrow .tfcc-row:not(.tfcc-open) .tfcc-row-title a, .tfcc-narrow .tfcc-row:not(.tfcc-open) > .tfcc-note').forEach((el) => {
+    const cs = getComputedStyle(el);
+    const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
+    const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    if (el.getBoundingClientRect().height - pad > lh * 1.5) polishBad.push('a closed row\\'s text takes more than one line');
+  });
+  // #39: the drawer emoji, monochrome per theme with the thumbs' filter, and
+  // the colour that filter paints (white on dark, black on light) at 3:1 or
+  // better against what it sits on (WCAG 1.4.11, a meaningful graphic).
+  const light = panel.classList.contains('tfcc-theme-light');
+  const emos = Array.from(panel.querySelectorAll('.tfcc-emo'));
+  for (const el of emos) {
+    const f = getComputedStyle(el).filter;
+    const want = light ? 'grayscale(1) brightness(0)' : 'grayscale(1) brightness(0) invert(1)';
+    if (f !== want) { polishBad.push('emoji filter is "' + f + '", not "' + want + '"'); continue; }
+    const ink = light ? { r: 0, g: 0, b: 0, a: 1 } : { r: 255, g: 255, b: 255, a: 1 };
+    const r = ratio(ink, effectiveBg(el));
+    if (r < ${MIN_LARGE}) out.push({ tag: 'emoji', cls: 'tfcc-emo', color: light ? 'black' : 'white', bg: 'button',
+      ratio: Math.round(r * 100) / 100, need: ${MIN_LARGE}, text: el.parentElement.getAttribute('aria-label') });
+  }
   out.seen = {
+    polishBad: polishBad,
+    cuMode: cuMode,
+    cubar: !!cubar,
+    drawerBtns: !!drawerBtns,
+    emos: emos.length,
     navcells: panel.querySelectorAll('.tfcc-navgrid button').length,
     headBad: headBad,
     headInfo: headInfo,
@@ -245,6 +313,17 @@ for (const page of pages) {
     if (page.includes('-280-')) console.log(`.. ${page}: info button on its own line: ${seen.infoOff.join(', ')}`);
     else seen.headBad = (seen.headBad || []).concat(['info button off its control\'s line: ' + seen.infoOff.join(', ')]);
   }
+  // #39: every narrow Catch up page has the one-line action row, and every
+  // page with an open drawer has its button row and the emoji.
+  if (page.startsWith('narrow-catchup')) {
+    if (!seen.cubar) missing.push('the Catch up action row');
+    else console.log(`.. ${page}: Catch up labels ${seen.cuMode}`);
+  }
+  if (page.startsWith('narrow-') && page.includes('-drawer')) {
+    if (!seen.drawerBtns) missing.push('the drawer button row');
+    if (!seen.emos) missing.push('the drawer emoji');
+  }
+  if ((seen.polishBad || []).length) seen.headBad = (seen.headBad || []).concat(seen.polishBad);
   if (seen.headBad && seen.headBad.length) {
     console.log(`!! ${page}: ${seen.headBad.join('; ')}`);
     failures += seen.headBad.length;
