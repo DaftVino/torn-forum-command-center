@@ -2257,12 +2257,10 @@
 
   var CUSTOM_KEY_TITLE = 'Forum Command Center';
 
-  // UNVERIFIED. Torn's api.html builds its custom key link in api.js, which
-  // the saved docs/reference copy does not include; the page says only that
-  // the link "will open your settings page in a new tab". This is the format
-  // other Torn tools use. Release is gated on docs/qa-checklist.md comparing it
-  // with a link generated on torn.com/api.html. If Torn's differs, change it
-  // here and nowhere else.
+  // Verified (#45): on 2026-10-09 the owner generated a custom key link on
+  // torn.com and it matched buildCustomKeyUrl() exactly, character for
+  // character. tests/custom-key.test.js pins that string. If Torn ever
+  // changes its format, change it here and nowhere else.
   var CUSTOM_KEY_LINK_BASE = 'https://www.torn.com/preferences.php#tab=api?step=addNewKey';
 
   // A pure function of constants. The user clicks the result and confirms the

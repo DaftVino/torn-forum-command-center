@@ -13,8 +13,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   The user confirms the key on Torn and pastes it back. It is a plain link: the
   script makes no request for it and no key is ever placed in it. A test scans
   every API call site, so a new endpoint fails the suite until its selection is
-  added. The link format is unverified, and release is gated on the QA
-  checklist comparing it with a link generated on torn.com/api.html.
+  added. The link format was verified by the owner on 2026-10-09 (#45): the
+  link Torn generated matched it exactly, and a test now pins that string.
 - Settings, Appearance: **Clip titles and summaries that wrap**, on by default
   (#41). On, each thread row's title and note end in an ellipsis on one line
   instead of wrapping, at every width; on a phone the meta line does too, and

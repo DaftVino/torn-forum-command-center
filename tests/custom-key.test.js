@@ -178,3 +178,11 @@ test('every new-tab anchor in the source is opened without an opener', () => {
   assert.ok(tags.length >= 1);
   for (const t of tags) assert.match(t, /rel="[^"]*\bnoopener\b/, 'missing noopener: ' + t);
 });
+
+// #45: the owner generated a custom key link on torn.com on 2026-10-09 and
+// pasted it; it is this string exactly, so the format is verified.
+test('the custom key link is exactly the one Torn generated for the owner (#45)', () => {
+  assert.strictEqual(api.buildCustomKeyUrl(),
+    'https://www.torn.com/preferences.php#tab=api?step=addNewKey&title=Forum%20Command%20Center'
+    + '&user=forumsubscribedthreads,forumfeed,forumthreads,forumposts,profile&forum=categories,thread,posts');
+});

@@ -22,16 +22,17 @@ script can work with. A **Limited Access** key also works but is not needed.
 
 ## Custom key link (blocks release)
 
-The link format in `CUSTOM_KEY_LINK_BASE` is UNVERIFIED: Torn builds its own
-link in a script the saved API docs do not include. Release is blocked until
-this passes on a signed-in account.
+The link format in `CUSTOM_KEY_LINK_BASE` was verified by the owner on
+2026-10-09 (#45): the link Torn generated matched `buildCustomKeyUrl()`
+exactly, and `tests/custom-key.test.js` pins that string.
 
-- [ ] On torn.com/api.html, generate one custom key link (any selections) and
+- [x] On torn.com/api.html, generate one custom key link (any selections) and
       copy it from the new tab before confirming anything. Compare it with the
       Settings button's link, "Create a custom key on Torn": same page, same
       hash, same parameter names for the step, the title and each section.
       If they differ, fix `CUSTOM_KEY_LINK_BASE` or `buildCustomKeyUrl` and
-      re-run this section.
+      re-run this section. **Verified by the owner, 2026-10-09: an exact
+      match.**
 - [ ] Click the button. Torn's key page opens in a new tab with the name
       "Forum Command Center" and exactly these selections pre-filled: `user`
       forumsubscribedthreads, forumfeed, forumthreads, forumposts, profile; `forum`
@@ -321,9 +322,10 @@ Walk on Torn PDA, portrait, on the narrowest phone you have, then landscape.
 
 Owner checks for the live API (spec "Prerequisite"; all block release):
 
-- [ ] With the **Minimal** key the script asks for, `user/forumthreads` and
+- [x] With the **Minimal** key the script asks for, `user/forumthreads` and
       `user/forumposts` both answer, and note whether `new_posts` is present
-      (the capture used a Limited key).
+      (the capture used a Limited key). **Verified by the owner, 2026-10-09:
+      Minimal Access works.**
 - [ ] With an account that has more than 20 posts: does `limit=100` return
       more than 20 rows? Record the answer under the spec's open question 2.
 - [ ] If possible: a deleted thread, and a thread in a faction or private
