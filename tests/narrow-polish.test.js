@@ -289,6 +289,82 @@ test('the click-away listener is bound once, in the capture phase, and checks on
   assert.doesNotMatch(body, /preventDefault|stopPropagation|querySelector/);
 });
 
+// ---- 4. the compact drawer ------------------------------------------------------
+
+const PIN = '\uD83D\uDCCC';
+const PENCIL = '\u270F\uFE0F';
+const BIN = '\uD83D\uDDD1\uFE0F';
+
+function drawerOf(html, id) {
+  const i = html.indexOf('<div class="tfcc-drawer" id="tfcc-act-' + id + '">');
+  assert.ok(i !== -1, 'drawer ' + id + ' open');
+  return html.slice(i, html.indexOf('</div></div>', i) + 12);
+}
+
+test('Pin, Draft and Archive are emoji buttons on one row, named and hinted in words', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, [{ id: 7, unread: 1 }]);
+  api.state.openRowId = '7';
+  const d = drawerOf(redraw(env), '7');
+  const btns = /<div class="tfcc-drawer-btns tfcc-wide">([\s\S]*?)<\/div>/.exec(d);
+  assert.ok(btns, 'one row of drawer buttons');
+  const emo = (act, label, glyph) => '<button type="button" class="tfcc-emobtn" data-act="' + act + '" data-id="7" aria-label="'
+    + label + '" title="' + label + '"><span class="tfcc-emo" aria-hidden="true">' + glyph + '</span></button>';
+  assert.ok(btns[1].includes(emo('pin', 'Pin', PIN)), 'pin');
+  assert.ok(btns[1].includes(emo('draft', 'Draft', PENCIL)), 'pencil');
+  assert.ok(btns[1].includes(emo('archive', 'Archive', BIN)), 'wastebasket, named Archive');
+  assert.match(btns[1], /data-act="read" data-id="7" aria-label="Mark read"/, 'Mark read shares the row outside Catch up');
+  assert.deepStrictEqual(Array.from(btns[1].matchAll(/data-act="([a-z-]+)"/g), (m) => m[1]), ['pin', 'read', 'draft', 'archive']);
+});
+
+test('the pinned state is marked on the Pin button', () => {
+  const { env, api } = bootNarrow();
+  seedRows(api, [{ id: 7, unread: 1 }]);
+  api.state.organizer = api.togglePin(api.state.organizer, '7');
+  api.recompute(NOW);
+  api.state.openRowId = '7';
+  const d = drawerOf(redraw(env), '7');
+  assert.match(d, /class="tfcc-emobtn tfcc-on" data-act="pin" data-id="7" aria-label="Unpin" title="Unpin"><span class="tfcc-emo" aria-hidden="true">/);
+  assert.match(d, /class="tfcc-emobtn" data-act="draft"/, 'no draft, not on');
+});
+
+test('the emoji are drawn monochrome per theme, with the thumbs\' own filters', () => {
+  const { api } = bootNarrow();
+  const thumbDark = cssRule(api, '#tfcc-panel .tfcc-thumb');
+  const thumbLight = cssRule(api, '#tfcc-panel.tfcc-theme-light .tfcc-thumb');
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-emo'), new RegExp(thumbDark.trim().replace(/[()]/g, '\\$&')));
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow.tfcc-theme-light .tfcc-emo'), new RegExp(thumbLight.trim().replace(/[()]/g, '\\$&')));
+  assert.match(thumbDark, /invert\(1\)/, 'white on dark');
+  assert.doesNotMatch(thumbLight, /invert/, 'black on light');
+});
+
+test('drawer controls are 32px, never under the 24px floor, 8px apart, and the three buttons never wrap', () => {
+  const { api } = bootNarrow();
+  const css = api.panelStyleText();
+  const rules = Array.from(css.matchAll(/(#tfcc-panel\.tfcc-narrow[^{]*\.tfcc-drawer[^{]*)\{([^}]*)\}/g), (m) => [m[1].trim(), m[2]]);
+  assert.ok(rules.length >= 4, 'the drawer has its own rules');
+  for (const [sel, body] of rules) {
+    for (const prop of ['min-height', 'min-width']) {
+      const m = new RegExp('(?:^|[^-])' + prop + ':\\s*([0-9.]+)px').exec(body);
+      if (m) assert.ok(Number(m[1]) >= 24, sel + ' sets ' + prop + ' ' + m[1] + 'px, under 24');
+    }
+  }
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer button'), /min-height: 32px; min-width: 32px;/);
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer select'), /min-height: 32px;/);
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer input:not([type="checkbox"])'), /min-height: 32px;/);
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer'), /gap: 8px;/);
+  const row = cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer-btns');
+  assert.match(row, /display: flex; flex-wrap: nowrap; gap: 8px;/);
+  // Shorter by padding, never by font: iOS zooms into a field under 16px.
+  for (const sel of ['select', 'input:not([type="checkbox"])']) {
+    const body = cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-drawer ' + sel);
+    assert.match(body, /padding: 4px 8px;/, sel);
+    assert.doesNotMatch(body, /font-size/, sel + ' keeps the 16px narrow field size');
+  }
+  // General navigation keeps 44px.
+  assert.match(cssRule(api, '#tfcc-panel.tfcc-narrow .tfcc-row-btns button'), /min-width: 44px; min-height: 44px;/);
+});
+
 // One rule body from the stylesheet, by its exact selector.
 function cssRule(api, sel) {
   const css = api.panelStyleText();

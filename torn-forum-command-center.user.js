@@ -4700,10 +4700,26 @@
       '  justify-content: center; min-width: 44px; min-height: 44px; padding: 0 6px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns button[aria-expanded="true"] { background: var(--tm-hover); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer { display: grid;',
-      '  grid-template-columns: repeat(auto-fit, minmax(7.5em, 1fr)); gap: 6px; margin-top: 6px;',
+      '  grid-template-columns: repeat(auto-fit, minmax(7.5em, 1fr)); gap: 8px; margin-top: 6px;',
       '  padding-top: 8px; border-top: 1px solid var(--tm-border); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer .tfcc-wide { grid-column: 1 / -1; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-step { display: flex; align-items: center; gap: 6px; }',
+      // #39: the drawer is compact. Its controls are 32px (WCAG 2.5.8's floor
+      // is 24px) with 8px between them; navigation outside it keeps 44px.
+      // Fields get shorter by padding, never by font: they stay 16px so iOS
+      // does not zoom.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer button { min-height: 32px; min-width: 32px; padding: 0 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer select { min-height: 32px; min-width: 32px; padding: 4px 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer input:not([type="checkbox"]) { min-height: 32px; min-width: 32px;',
+      '  padding: 4px 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-btns { display: flex; flex-wrap: nowrap; gap: 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer-btns button { display: inline-flex; flex: none; align-items: center;',
+      '  justify-content: center; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer button.tfcc-on { box-shadow: inset 0 -3px 0 currentColor; }',
+      // Monochrome, exactly as the thumbs (#30): white on dark, black on light.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-emo { display: block; font-size: 16px; line-height: 1;',
+      '  filter: grayscale(1) brightness(0) invert(1); }',
+      '#' + PANEL_ID + '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-step { display: flex; align-items: center; gap: 8px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-step span { flex: 1 1 auto; text-align: center; color: var(--tm-meta); }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-vh { font-size: var(--tfcc-text); margin: 2px 0 6px 0; }',
       // A narrow info button and the control it explains share one line; at
@@ -5276,6 +5292,25 @@
       + ' aria-describedby="tfcc-title-' + id + '">' + glyph('check') + '</button>';
   }
 
+  // The drawer's emoji (#39, the owner's choice), as escapes so the source
+  // stays ASCII. Drawn monochrome by the .tfcc-emo filter rules, like the
+  // thumbs. The wastebasket means Archive, which is reversible: the button's
+  // name and hint say Archive (or Unarchive), never Delete.
+  var DRAWER_EMOJI = Object.freeze({
+    pin: '\uD83D\uDCCC',
+    draft: '\u270F\uFE0F',
+    archive: '\uD83D\uDDD1\uFE0F',
+  });
+
+  // A compact drawer button (#39): the emoji is decoration (aria-hidden); the
+  // name and the hint are the words. tfcc-on marks a set state (pinned, a
+  // draft saved, archived), so the state never rests on the name alone.
+  function emojiButton(action, label, emoji, on, rowId) {
+    return '<button type="button" class="tfcc-emobtn' + (on ? ' tfcc-on' : '') + '" data-act="' + escapeHtml(action)
+      + '" data-id="' + escapeHtml(rowId) + '" aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '">'
+      + '<span class="tfcc-emo" aria-hidden="true">' + emoji + '</span></button>';
+  }
+
   // The drawer's controls (spec 4.4): the same data-act values as the wide
   // action row, each at least 44px. Mark read is left out in Catch up, where
   // the row already shows it.
@@ -5284,10 +5319,14 @@
     var edit = model.drawerEdit && model.drawerEdit.id === String(row.id) ? model.drawerEdit : null;
     var p = toInt(row.priority, 0);
     var out = [];
-    out.push(btn('pin', row.pinned ? 'Unpin' : 'Pin', id));
+    // #39: Pin, Draft and Archive are compact emoji buttons on one row, with
+    // Mark read beside them outside Catch up.
+    out.push('<div class="tfcc-drawer-btns tfcc-wide">');
+    out.push(emojiButton('pin', row.pinned ? 'Unpin' : 'Pin', DRAWER_EMOJI.pin, row.pinned, row.id));
     if (!inCatchUp) out.push(readButton(row));
-    out.push(btn('draft', row.hasDraft ? 'Edit draft' : 'Draft', id));
-    out.push(btn('archive', row.archived ? 'Unarchive' : 'Archive', id));
+    out.push(emojiButton('draft', row.hasDraft ? 'Edit draft' : 'Draft', DRAWER_EMOJI.draft, row.hasDraft, row.id));
+    out.push(emojiButton('archive', row.archived ? 'Unarchive' : 'Archive', DRAWER_EMOJI.archive, row.archived, row.id));
+    out.push('</div>');
     out.push('<div class="tfcc-step tfcc-wide">'
       + btn('prio-down', '-', id + ' aria-label="Lower priority"')
       + '<span>Priority ' + escapeHtml((p > 0 ? '+' : '') + p) + '</span>'
