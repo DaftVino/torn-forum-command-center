@@ -39,17 +39,30 @@ function renderedActions() {
   api.state.settings.rowsShown = 3;
 
   const actions = new Set();
-  for (const view of api.VIEWS) {
-    for (const replyBox of [true, false]) {
-      api.state.settings.view = view;
-      api.state.replyBoxFound = replyBox;
-      api.state.searchResults = { mode: 'deep', query: 'thread', posts: [{ threadId: '1', threadTitle: 'Thread 1', postId: 9, authorName: 'x', at: NOW, text: 'cached body' }] };
-      const html = api.panelHtml(api.buildPanelModel(NOW));
-      const re = /data-act="([a-z-]+)"/g;
-      let m;
-      while ((m = re.exec(html))) actions.add(m[1]);
+  // #33: the narrow layout renders controls the wide one does not (filters,
+  // row-more, the drawer), so every view is rendered both ways, with a drawer
+  // and the filters open.
+  for (const narrow of [false, true]) {
+    api.state.narrow = narrow;
+    for (const view of api.VIEWS) {
+      for (const replyBox of [true, false]) {
+        api.state.settings.view = view;
+        api.state.replyBoxFound = replyBox;
+        api.state.searchResults = { mode: 'deep', query: 'thread', posts: [{ threadId: '1', threadTitle: 'Thread 1', postId: 9, authorName: 'x', at: NOW, text: 'cached body' }] };
+        let model = api.buildPanelModel(NOW);
+        if (narrow && model.renderedIds.length) {
+          api.state.openRowId = model.renderedIds[0];
+          api.state.filtersOpen = true;
+          model = api.buildPanelModel(NOW);
+        }
+        const html = api.panelHtml(model);
+        const re = /data-act="([a-z-]+)"/g;
+        let m;
+        while ((m = re.exec(html))) actions.add(m[1]);
+      }
     }
   }
+  api.state.narrow = false;
 
   // Collapsed only ever renders the header, but it renders it, so include it.
   api.state.settings.collapsed = true;
@@ -57,6 +70,12 @@ function renderedActions() {
   const re2 = /data-act="([a-z-]+)"/g;
   let m2;
   while ((m2 = re2.exec(collapsed))) actions.add(m2[1]);
+  api.state.narrow = true;
+  const collapsedNarrow = api.panelHtml(api.buildPanelModel(NOW));
+  const re3 = /data-act="([a-z-]+)"/g;
+  let m3;
+  while ((m3 = re3.exec(collapsedNarrow))) actions.add(m3[1]);
+  api.state.narrow = false;
 
   return { env, actions: [...actions].sort() };
 }

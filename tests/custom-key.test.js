@@ -167,7 +167,10 @@ test('the key section offers the link as a new-tab anchor', () => {
   assert.ok(rel[1].split(/\s+/).indexOf('noreferrer') !== -1, 'rel must include noreferrer');
   const href = /\bhref="([^"]*)"/.exec(tag);
   assert.strictEqual(decodeAttr(href[1]), api.buildCustomKeyUrl());
-  assert.match(section, /only the selections this script uses/);
+  // Spec 13d item 16: the point-of-action disclosure, in the owner's words. It
+  // still says the link opens a new tab and carries nothing but this script's
+  // selections.
+  assert.match(section, /Opens Torn in a new tab with only this script's selections\./);
 });
 
 test('every new-tab anchor in the source is opened without an opener', () => {

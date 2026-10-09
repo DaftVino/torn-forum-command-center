@@ -67,6 +67,19 @@ const EXPORT_NAMES = [
   'ACTIVITY_SOURCES', 'resolveLastActivity', 'unreadFor', 'mergeThreads',
   'SORT_MODES', 'SORT_LABELS', 'sortThreads', 'catchUpList', 'catchUpUnchecked', 'checkAuthorPosts',
   'ROWS_SHOWN_OPTIONS', 'CAPPED_VIEWS', 'UNCAPPED_VIEWS', 'VIEW_LABELS', 'capRows', 'renderCapLine',
+  // #33: narrow layout
+  'PRESS_FLUSH_MS',
+  'restoreFocus', 'renderLive', 'focusTargetOf',
+  'rowHtml', 'renderRowNarrow', 'renderViewHeading',
+  'renderListBarNarrow',
+  'renderNavNarrow', 'navNumeral',
+  'renderHeadNarrow', 'fitHeader',
+  'GLYPHS', 'glyph', 'renderInfoButton', 'renderInfoText',
+  'groupCatchUp', 'renderedRowIds', 'SEARCH_ROWS_MAX', 'replaceSettings',
+  'NARROW_CLASS', 'applyTransient', 'measurePanelWidth', 'setNarrow', 'watchPanelWidth', 'onPanelWidth',
+  'VIEW_HEADING_ID', 'focusPlan',
+  'INFO_KEYS', 'INFO_KEYS_BY_VIEW', 'TRANSIENT_RESET_EVENTS', 'freshTransient', 'nextTransient', 'reconcileTransient',
+  'NARROW_ENTER_PX', 'NARROW_LEAVE_PX', 'HB_MAX', 'HB_MIN', 'HB_STEP', 'HB_COMPACT_BELOW', 'HB_GAPS', 'HB_COUNT_GAP', 'LOGO_ASPECT', 'LOGO_PER_HB', 'LOGO_MIN_PX', 'LOGO_MAX_PX', 'narrowFor', 'headerLogoWidth', 'headerButtonSize', 'activeFilterCount',
   'authorPageStep', 'summariseAuthorPosts', 'AUTHOR_MAX_PAGES', 'authorSinceFor', 'authorStateFor', 'AUTHOR_REASON_TEXT',
   // engine: search
   'parseQuery', 'matchThread', 'matchPost', 'searchMetadata', 'searchPosts',
@@ -179,6 +192,74 @@ function makeSandbox(options = {}) {
   // inside the observed subtree, and the observer schedules another render.
   const observers = [];
 
+  // #33 options. All opt-in; the defaults leave every existing suite alone.
+  let panelWidth = typeof options.panelWidth === 'number' ? options.panelWidth : 0;
+  const focusLog = [];
+  const queryLog = [];
+  const resizeObservers = [];
+
+  // The selector grammar the runtime promises for focus and measurement:
+  // '#id', or an optional tag, then .class parts, then [attr="value"] parts.
+  // Anything else answers null, so a runtime that strays fails its test.
+  function parseSelector(sel) {
+    const s = String(sel || '');
+    if (/^#[A-Za-z0-9_-]+$/.test(s)) return { tag: null, classes: [], attrs: [['id', s.slice(1)]] };
+    const m = /^([a-z][a-z0-9]*)?((?:\.[A-Za-z0-9_-]+)*)((?:\[[a-z-]+="[^"]*"\])*)$/.exec(s);
+    if (!s || !m) return null;
+    const attrs = [];
+    const re = /\[([a-z-]+)="([^"]*)"\]/g;
+    let a;
+    while ((a = re.exec(m[3] || ''))) attrs.push([a[1], a[2]]);
+    return { tag: m[1] || null, classes: (m[2] || '').split('.').filter(Boolean), attrs };
+  }
+
+  function makeStub(tag, attrs) {
+    const classes = new Set(String(attrs.class || '').split(/\s+/).filter(Boolean));
+    const stub = {
+      tagName: tag.toUpperCase(),
+      attributes: attrs,
+      parentNode: null,
+      getAttribute(k) { return Object.prototype.hasOwnProperty.call(attrs, k) ? attrs[k] : null; },
+      classList: {
+        add(c) { classes.add(c); }, remove(c) { classes.delete(c); },
+        contains(c) { return classes.has(c); },
+        toggle(c, on) { if (on === undefined ? !classes.has(c) : on) classes.add(c); else classes.delete(c); },
+      },
+      focus() { focusLog.push(Object.assign({}, attrs)); documentStub.activeElement = stub; },
+      setSelectionRange(a, b) { stub.selection = [a, b]; },
+      getBoundingClientRect() { return { width: options.measure ? options.measure(stub) : 0, height: 0 }; },
+    };
+    return stub;
+  }
+
+  function queryIn(el, sel, all) {
+    const p = parseSelector(sel);
+    if (!p) return all ? [] : null;
+    if (!el._q || el._q.html !== el._innerHTML) el._q = { html: el._innerHTML, nodes: new Map() };
+    const out = [];
+    const tagRe = /<([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g;
+    let m;
+    let index = 0;
+    while ((m = tagRe.exec(el._innerHTML))) {
+      const idx = index;
+      index += 1;
+      const tag = m[1].toLowerCase();
+      const attrs = {};
+      const attrRe = /\s([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:="([^"]*)")?/g;
+      let a;
+      while ((a = attrRe.exec(m[2]))) attrs[a[1]] = a[2] === undefined ? '' : a[2];
+      if (p.tag && p.tag !== tag) continue;
+      const cls = String(attrs.class || '').split(/\s+/);
+      if (!p.classes.every((c) => cls.includes(c))) continue;
+      if (!p.attrs.every(([k, v]) => attrs[k] === v)) continue;
+      let node = el._q.nodes.get(idx);
+      if (!node) { node = makeStub(tag, attrs); el._q.nodes.set(idx, node); }
+      if (!all) return node;
+      out.push(node);
+    }
+    return all ? out : null;
+  }
+
   function notifyObservers(target) {
     for (const o of observers.slice()) {
       if (o.disconnected || !o.options || !o.options.childList) continue;
@@ -194,7 +275,11 @@ function makeSandbox(options = {}) {
   function makeElement(tag) {
     const el = {
       tagName: String(tag || 'div').toUpperCase(),
-      style: {},
+      style: {
+        setProperty(k, v) { this[k] = String(v); },
+        removeProperty(k) { delete this[k]; },
+        getPropertyValue(k) { return Object.prototype.hasOwnProperty.call(this, k) ? this[k] : ''; },
+      },
       dataset: {},
       children: [],
       attributes: {},
@@ -232,8 +317,10 @@ function makeSandbox(options = {}) {
         for (const fn of list.slice()) fn(ev);
         return true;
       },
-      querySelector() { return null; },
-      querySelectorAll() { return []; },
+      querySelector(sel) { return options.htmlQuery ? queryIn(this, sel, false) : null; },
+      querySelectorAll(sel) { return options.htmlQuery ? queryIn(this, sel, true) : []; },
+      getBoundingClientRect() { return { width: this.id === 'tfcc-panel' ? panelWidth : 0, height: 0 }; },
+      get clientWidth() { return this.id === 'tfcc-panel' && panelWidth > 2 ? panelWidth - 2 : 0; },
       focus() { this._focused = true; },
       insertBefore(node, ref) {
         const i = this.children.indexOf(ref);
@@ -271,10 +358,12 @@ function makeSandbox(options = {}) {
     createElement: makeElement,
     createTextNode: (t) => ({ nodeType: 3, textContent: String(t) }),
     querySelector(sel) {
+      queryLog.push(String(sel));
       if (Object.prototype.hasOwnProperty.call(selectorTable, sel)) return selectorTable[sel];
       return null;
     },
     querySelectorAll(sel) {
+      queryLog.push(String(sel));
       const hit = Object.prototype.hasOwnProperty.call(selectorTable, sel) ? selectorTable[sel] : null;
       if (!hit) return [];
       return Array.isArray(hit) ? hit : [hit];
@@ -329,6 +418,10 @@ function makeSandbox(options = {}) {
       if (el === body && table.body) return Object.assign({ getPropertyValue: () => '' }, table.body);
       if (el === documentElement && table.documentElement) {
         return Object.assign({ getPropertyValue: () => '' }, table.documentElement);
+      }
+      if (el && el.id === 'tfcc-panel' && typeof options.panelPadding === 'number') {
+        const p = options.panelPadding + 'px';
+        return { getPropertyValue: () => '', backgroundColor: '', paddingLeft: p, paddingRight: p };
       }
       return { getPropertyValue: () => '', backgroundColor: '' };
     },
@@ -452,11 +545,34 @@ function makeSandbox(options = {}) {
   sandbox.globalThis = sandbox;
   sandbox.self = sandbox;
 
+  if (options.resizeObserver) {
+    const mode = options.resizeObserver;
+    sandbox.ResizeObserver = class FakeResizeObserver {
+      constructor(cb) {
+        if (mode === 'throws') throw new Error('ResizeObserver unavailable');
+        this.cb = cb; this.target = null; this.disconnected = false;
+        resizeObservers.push(this);
+      }
+      observe(target) { this.target = target; this.disconnected = false; }
+      disconnect() { this.disconnected = true; }
+    };
+  }
+  function resize(width) {
+    panelWidth = width;
+    for (const ro of resizeObservers.slice()) {
+      if (ro.disconnected || !ro.target) continue;
+      const entry = { target: ro.target, contentRect: { width: Math.max(0, width - 2) } };
+      if (options.resizeObserver !== 'no-box') entry.borderBoxSize = [{ inlineSize: width, blockSize: 0 }];
+      ro.cb([entry], ro);
+    }
+  }
+
   return {
     sandbox, gmStore, win: windowStub, doc: documentStub, body, head,
     observers, historyCalls, calls, nativeSetterCalls, createdElements,
     makeElement,
     runTimers, advanceTimersBy,
+    resize, resizeObservers, focusLog, queryLog,
     pendingTimerCount: () => timers.size,
     setNow: (ms) => { currentNow = ms; },
     now: () => currentNow,

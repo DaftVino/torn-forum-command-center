@@ -86,6 +86,49 @@ time **END**.
 - [ ] Collapse. Only the header remains, and Show brings it back.
 - [ ] Rotate the device while in takeover mode.
 
+### Narrow view (#33)
+
+Walk on Torn PDA, portrait, on the narrowest phone you have, then landscape.
+
+- [ ] The header is one line: logo, badge chip, then three icon buttons. Nothing
+      wraps at 375, 320 or 280px wide. At 280px the chip's padding tightens.
+- [ ] TalkBack/VoiceOver reads the header buttons as "Refresh", "Expand" and
+      "Hide the panel". Collapsed, the third button shows the word "Show" and
+      the unread count is a bare number read as "16 new".
+- [ ] The nav is a 3 x 2 grid: Threads, Catch up, Search, Drafts, Settings, My
+      posts (light grey, last). Counts are faint large numerals behind the
+      labels; no label wraps. A screen reader reads "Threads, 16 new, 6
+      subscribed".
+- [ ] The first thread row is well up the first screen. Every button outside the
+      header is at least a fingertip (44px) and none overlaps another.
+- [ ] Tapping the filter field does not zoom the page (iOS). Filters opens Sort,
+      Folder and Tag; its number counts the folder and tag filters.
+- [ ] Catch up: the check mark on a row marks it read in one tap, and focus lands
+      on the next row's check mark. The last row's moves focus to the previous
+      row; the only row's moves focus to the "Catch up" heading. TalkBack says
+      "Marked read. N left."
+- [ ] Actions ("...") opens one drawer at a time with Pin, Mark read (not in
+      Catch up), Draft, Archive, the priority stepper, Folder, Add tag and Note.
+- [ ] Type a note in a drawer, then tap another row's Actions without pressing
+      Enter. The note is saved AND the other drawer opens.
+- [ ] Tapping Actions or the check mark never hides the panel. A plain tap on a
+      thread title still opens it and auto-hides (#8), and the drawer is closed
+      when you come back.
+- [ ] Rotate to landscape: past about 616px the wide layout returns and every
+      drawer, filter and explanation closes. Rotate back: narrow again.
+- [ ] Expand, then Shrink: the layout follows the panel's width, not the
+      screen's.
+- [ ] My posts opens with the reaction totals on its first line. On desktop the
+      pill is still in the nav, before My posts.
+- [ ] Every info button opens its explanation under it and closes it again.
+      Settings still shows the ToS table, the request-budget line and both
+      privacy lines without opening anything. At default settings (Activity
+      lookups per refresh = 10) the budget line reads "A Threads refresh is at
+      most 13 requests and My posts at most 17; never more than 40 a minute.";
+      set the lookups to 4 and it reads 7 and 10.
+- [ ] Android system font at 200%: nothing clips or scrolls sideways; the header
+      is still one line.
+
 ### Hide on opening a thread
 
 - [ ] Fresh install: Settings shows "Hide the panel when I open a thread"
@@ -202,8 +245,8 @@ time **END**.
       Light and Match Torn (toggle Torn's own theme while it is open).
 - [ ] It is light grey with dark text in all three, and visibly pressed (bar
       under the label) when open.
-- [ ] At the narrowest PDA width the nav wraps and My posts is still last and
-      reachable.
+- [ ] At the narrowest PDA width the nav is a 3 x 2 grid and My posts is still
+      last and reachable.
 - [ ] Opening it the first time loads your threads; the number of requests in
       the API key log (Torn Settings, API, key log) is at most 17 (12 for My
       posts itself plus up to 5 opening posts for thumbs, #10).
@@ -285,8 +328,8 @@ Torn PDA and desktop (#10).
 - [ ] Reopen My posts within 12 hours: no `forum/<id>/posts` request for a
       thread already checked (key log).
 - [ ] Hover (desktop): the tooltip ends with the subscriber sentence.
-- [ ] Refresh, Expand and Hide stay on the header row at the narrowest PDA
-      width, portrait and landscape; the tracker wraps in its own line.
+- [ ] At the narrowest PDA width the tracker is the first line of My posts; on
+      desktop it stays in the nav, before My posts.
 - [ ] Collapse: the tracker is gone; Show brings it back.
 - [ ] Tapping the tracker opens My posts.
 - [ ] Dark, Light and Match Torn: readable in all three.
@@ -375,7 +418,8 @@ Walk on Torn PDA and on desktop, signed in to a real account.
       `#5C768F` in both themes, and a screen reader names it "Forum Command
       Center".
 - [ ] At the narrowest PDA width, portrait and landscape: Refresh, Expand and
-      Hide stay together and in order; the control group wraps whole.
+      Hide stay together, in order, on the header's one line (#33); they shrink
+      rather than wrap.
 - [ ] Tap the cup itself, and the number: the shelf opens both times.
 - [ ] Open a thread and keep it in front for 15 s: Focused thread visits goes
       up by 1 in the Settings catalogue. Leave after 5 s: it does not.

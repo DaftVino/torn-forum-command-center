@@ -84,10 +84,13 @@ test('the owned fallback is constrained to the viewport in both directions', () 
 });
 
 test('there is a narrow-width rule, because Torn PDA is the primary target', () => {
+  // #33: the viewport query keeps only the fixed fallback mount, which really
+  // is viewport-relative; the panel's own narrow rules hang off .tfcc-narrow.
   assert.match(css, /@media \(max-width: 600px\)/);
-  const mq = css.slice(css.indexOf('@media (max-width: 600px)'));
+  const mq = css.slice(css.indexOf('@media (max-width: 600px)'), css.indexOf('}\n', css.indexOf('@media (max-width: 600px)') + 30) + 2);
   assert.match(mq, /#tfcc-fallback-mount/);
-  assert.match(mq, /flex-basis:\s*100%/, 'label and control should stack rather than clip');
+  assert.doesNotMatch(mq, /#tfcc-panel /, 'panel rules moved under .tfcc-narrow');
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-kv label'), /flex-basis:\s*100%/, 'label and control stack rather than clip');
 });
 
 test('long content wraps instead of forcing the page sideways', () => {
@@ -165,10 +168,9 @@ test('a long title shrinks beside the pin marker instead of wrapping below it', 
   assert.match(block, /overflow-wrap:\s*anywhere/);
 });
 
-test('row controls are tightened on a phone, where the same nine appear per row', () => {
-  const mq = css.slice(css.indexOf('@media (max-width: 600px)'));
-  assert.match(mq, /\.tfcc-actions button \{ padding: 1px 5px; \}/);
-  assert.match(mq, /max-width:\s*46%/, 'a full-width input per row makes the list endless');
+test('narrow rows put their nine controls in a drawer, not a per-row strip (#33)', () => {
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-drawer'), /grid-template-columns: repeat\(auto-fit, minmax\(7\.5em, 1fr\)\)/,
+    'auto-fit, so 200% text reflows to one column');
 });
 
 test('every anchor is coloured, in every state', () => {
@@ -195,10 +197,9 @@ test('dropdown options carry the panel colours', () => {
 // key with only those two selections is no longer suggested: Torn's docs say a
 // custom key reaches only the default, timestamp and lookup selections unless
 // more are listed, so it would probably fail the forum/* calls.
-const KEY_HELP_NOTE = 'This script needs a key that can read your subscribed threads. On Torn, '
-  + 'go to Settings, API Key, and create a <strong>Minimal Access</strong> key. A '
-  + '<strong>Limited Access</strong> key also works but is not needed. A '
-  + '<strong>Public Only</strong> key does not.';
+// #33 (spec 13d item 13) shortened the note. Every access level is still
+// stated in the access-level row of the ToS table beside it.
+const KEY_HELP_NOTE = 'Create a <strong>Minimal Access</strong> key on Torn (Settings, API Key).';
 const KEY_HELP_ROW = '<tr><th>Access level required</th><td>Minimal Access. Limited Access '
   + 'also works but is not needed. Public Only does not.</td></tr>';
 
@@ -222,7 +223,8 @@ test('the key help names Minimal Access as the required level', () => {
 
   assert.ok(html.includes(KEY_HELP_NOTE), 'the Settings key note wording changed');
   assert.ok(html.includes(KEY_HELP_ROW), 'the access-level row wording changed');
-  requiresMinimal(KEY_HELP_NOTE, 'the Settings key note');
+  assert.match(KEY_HELP_NOTE, /Minimal Access/, 'the short note still names the level to create');
+  assert.doesNotMatch(KEY_HELP_NOTE, /Limited|Custom/, 'and names no other level');
   requiresMinimal(KEY_HELP_ROW, 'the access-level row');
   const section = html.slice(html.indexOf('Torn API key'), html.indexOf('API key</label>'));
   requiresMinimal(section, 'the Settings key section');
@@ -531,4 +533,119 @@ test('the header keeps Refresh, Expand and Hide together on the right', () => {
   assert.match(blockFor('#tfcc-panel .tfcc-head-btns'), /flex-wrap: nowrap/);
   assert.doesNotMatch(blockFor('#tfcc-panel .tfcc-logo'), /margin-right: auto/);
   assert.match(blockFor('#tfcc-panel button.tfcc-chip'), /flex: 0 0 auto/);
+});
+
+test('the narrow header gaps add up to HB_GAPS, which the header maths assumes (#33)', () => {
+  const gap = (sel) => Number((/gap: (\d+)px/.exec(blockFor(sel)) || [])[1]);
+  const head = gap('#tfcc-panel.tfcc-narrow .tfcc-head');
+  const id = gap('#tfcc-panel.tfcc-narrow .tfcc-head-id');
+  const btns = gap('#tfcc-panel.tfcc-narrow .tfcc-head-btns');
+  assert.strictEqual(id + head + 2 * btns, api.HB_GAPS);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-head'), /flex-wrap: nowrap/);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-head-ctl'), /flex: none/, 'the buttons never shrink or wrap');
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow button.tfcc-hbtn'), /width: var\(--tfcc-hb\)/);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-logo'), /clamp\(16px, calc\(var\(--tfcc-hb\) \* 0\.545\), 24px\)/);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-pill'), /min-height: min\(28px, var\(--tfcc-hb\)\)/);
+});
+
+test('the v1 nav tokens are the owner\'s values (#33, spec 13f)', () => {
+  const block = blockFor('#tfcc-panel');
+  for (const [k, v] of [['--tfcc-navnum-opacity', '0.14'], ['--tfcc-navnum-opacity-selected', '0.09'],
+    ['--tfcc-navlab-opacity', '0.9'], ['--tfcc-navlab-opacity-selected', '0.96'], ['--tfcc-navnum-size', '40px']]) {
+    assert.ok(block.includes(k + ': ' + v + ';'), k);
+  }
+});
+
+test('every nav label stays at 4.5:1 over the numeral painted on its cell, in both themes (#33)', () => {
+  // The same composite the mockup's in-page script measures: the numeral is
+  // the cell's text colour at the numeral opacity over the cell; the label is
+  // the text colour at the label opacity over that numeral.
+  const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const toHex = (c) => '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+  const mix = (fg, bg, a) => fg.map((v, i) => v * a + bg[i] * (1 - a));
+  const op = (name) => Number(new RegExp(name + ':\\s*([0-9.]+);').exec(blockFor('#tfcc-panel'))[1]);
+  const dark = blockFor('#tfcc-panel');
+  const light = blockFor('#tfcc-panel.tfcc-theme-light');
+  const t = (block, name) => tokenValue(block, name);
+  const states = [];
+  for (const [theme, block] of [['dark', dark], ['light', light]]) {
+    states.push([theme + ' default', t(block, '--tm-text'), t(block, '--tm-bg-3'), false]);
+    states.push([theme + ' selected', t(block, '--tm-text'), t(block, '--tm-good-bg'), true]);
+    states.push([theme + ' My posts', t(block, '--tfcc-mine-text'), t(block, '--tfcc-mine-bg'), false]);
+    states.push([theme + ' My posts selected', t(block, '--tfcc-mine-text'), t(block, '--tfcc-mine-pressed'), true]);
+  }
+  for (const [label, text, cell, selected] of states) {
+    const num = mix(hex(text), hex(cell), op(selected ? '--tfcc-navnum-opacity-selected' : '--tfcc-navnum-opacity'));
+    const lab = mix(hex(text), num, op(selected ? '--tfcc-navlab-opacity-selected' : '--tfcc-navlab-opacity'));
+    const r = ratio(toHex(lab), toHex(num));
+    assert.ok(r >= 4.5, label + ': label over numeral is ' + r.toFixed(2) + ':1');
+  }
+});
+
+test('the numeral takes its colour from the cell and has no outline (#33)', () => {
+  const num = blockFor('#tfcc-panel.tfcc-narrow .tfcc-navnum');
+  assert.doesNotMatch(num, /(^|[^-])color\s*:/, 'no colour of its own: currentColor is the cell\'s text');
+  assert.doesNotMatch(css, /-webkit-text-stroke/, 'an outline is how v2 vanished');
+  assert.match(num, /opacity: var\(--tfcc-navnum-opacity\)/);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-navgrid button[aria-pressed="true"] .tfcc-navnum'),
+    /opacity: var\(--tfcc-navnum-opacity-selected\)/);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-navlab'), /white-space: nowrap/, 'a label never wraps');
+});
+
+// Every narrow rule, as [selector, body].
+function narrowRules() {
+  const out = [];
+  const re = /(#tfcc-panel\.tfcc-narrow[^{]*)\{([^}]*)\}/g;
+  let m;
+  while ((m = re.exec(css))) out.push([m[1].trim(), m[2]]);
+  return out;
+}
+
+test('every narrow control outside the header has a real 44px box (#33, spec principle 4)', () => {
+  for (const sel of ['#tfcc-panel.tfcc-narrow button', '#tfcc-panel.tfcc-narrow select',
+    '#tfcc-panel.tfcc-narrow .tfcc-linkbtn', '#tfcc-panel.tfcc-narrow input:not([type="checkbox"])']) {
+    assert.match(blockFor(sel), /min-height: 44px; min-width: 44px;/, sel);
+  }
+  const headerOrTitle = /tfcc-hbtn|tfcc-hshow|tfcc-chip|tfcc-row-title a/;
+  for (const [sel, body] of narrowRules()) {
+    if (!/button|select|input|tfcc-linkbtn/.test(sel) || headerOrTitle.test(sel)) continue;
+    for (const prop of ['min-height', 'min-width']) {
+      const m = new RegExp(prop + ':\\s*([0-9.]+)px').exec(body);
+      if (m) assert.ok(Number(m[1]) >= 44, sel + ' sets ' + prop + ' ' + m[1] + 'px');
+    }
+  }
+});
+
+test('the header buttons use the scaled size, and only they go below 44px', () => {
+  for (const [sel, body] of narrowRules()) {
+    if (/tfcc-hbtn|tfcc-hshow/.test(sel) && /min-height/.test(body)) assert.match(body, /min-height: var\(--tfcc-hb\)/, sel);
+  }
+});
+
+test('narrow rules use min sizes, no fixed heights, no pseudo-element targets, no motion (#33)', () => {
+  for (const [sel, body] of narrowRules()) {
+    // .tfcc-sr is the visually-hidden pattern (1px by design), not a control.
+    if (!/\.tfcc-sr$/.test(sel)) assert.doesNotMatch(body, /(^|[^-])height:\s*\d/, sel + ' sets a fixed height');
+    assert.doesNotMatch(sel, /::?(after|before)/, sel + ' is a pseudo-element hit area');
+    assert.doesNotMatch(body, /transition|animation/, sel + ' animates');
+  }
+});
+
+test('narrow text fields are 16px or more, so iOS does not zoom (#33)', () => {
+  for (const sel of ['#tfcc-panel.tfcc-narrow input:not([type="checkbox"])', '#tfcc-panel.tfcc-narrow select',
+    '#tfcc-panel.tfcc-narrow textarea']) {
+    assert.match(blockFor(sel), /font-size: max\(16px, 1em\);/, sel);
+  }
+});
+
+test('an info button never wraps away from the text or control it follows (#33, PR review)', () => {
+  const bar = blockFor('#tfcc-panel .tfcc-infobar');
+  assert.match(bar, /flex-wrap: nowrap/, 'a long note wraps inside itself, not under the button');
+  assert.match(blockFor('#tfcc-panel .tfcc-infobar > .tfcc-note'), /flex: 0 1 auto; min-width: 0;/);
+  assert.match(blockFor('#tfcc-panel button.tfcc-info'), /flex: none/);
+  const group = blockFor('#tfcc-panel.tfcc-narrow .tfcc-infogroup');
+  assert.match(group, /display: flex/);
+  assert.match(group, /flex-wrap: nowrap/);
+  assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-infogroup > :first-child'), /white-space: normal/,
+    'at 280px the button\'s label wraps inside it rather than dropping the info button');
 });

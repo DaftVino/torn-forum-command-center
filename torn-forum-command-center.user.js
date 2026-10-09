@@ -183,6 +183,58 @@
     mine: 'My posts',
   });
 
+  // Narrow layout (#33). The panel's own border-box width decides it, with 16px
+  // of hysteresis so a scrollbar appearing cannot flap the layout (spec 5).
+  var NARROW_ENTER_PX = 600;
+  var NARROW_LEAVE_PX = 616;
+  // Narrow header buttons scale between these, in half-pixel steps, so the
+  // header stays on one line (spec 13b). HB_GAPS is the fixed gaps: logo-chip 6,
+  // group 6, and 2 x 4 between the buttons. The narrow header CSS uses exactly
+  // these gaps; tests/style.test.js holds the two together.
+  var HB_MAX = 44;
+  var HB_MIN = 24;
+  var HB_STEP = 0.5;
+  var HB_COMPACT_BELOW = 36;
+  var HB_GAPS = 20;
+  // The collapsed header's bare unread count sits in the logo group, 6px
+  // after the chip (the group's gap). It is part of the one-line solve.
+  var HB_COUNT_GAP = 6;
+  // The logo's viewBox is 106 x 45; its height follows the button size between
+  // 16 and 24px.
+  var LOGO_ASPECT = 106 / 45;
+  var LOGO_PER_HB = 0.545;
+  var LOGO_MIN_PX = 16;
+  var LOGO_MAX_PX = 24;
+
+  // Info buttons (#33, spec 13d): key -> the button's accessible name. The
+  // explanation text always stays in the markup; only its hidden attribute
+  // follows state.openInfoId.
+  var INFO_KEYS = Object.freeze({
+    catchup: 'About Catch up',
+    mine: 'About My posts',
+    search: 'About Search',
+    'settings-budget': 'About the request budget',
+    'settings-author': 'About author-only mode',
+    'settings-rows': 'About Rows shown',
+    'settings-autohide': 'About hiding the panel',
+    'settings-folders': 'About folders',
+    'settings-badges': 'About badges',
+  });
+  var INFO_KEYS_BY_VIEW = Object.freeze({
+    threads: Object.freeze([]),
+    catchup: Object.freeze(['catchup']),
+    search: Object.freeze(['search']),
+    drafts: Object.freeze([]),
+    settings: Object.freeze(['settings-budget', 'settings-author', 'settings-rows', 'settings-autohide',
+      'settings-folders', 'settings-badges']),
+    mine: Object.freeze(['mine']),
+  });
+  // The events that close every disclosure (spec section 6 table).
+  var TRANSIENT_RESET_EVENTS = Object.freeze(['view', 'collapse', 'auto-hide', 'breakpoint']);
+  // The narrow view heading: the focus fallback when a row and both its
+  // neighbours are gone (spec section 6, focus rule 3).
+  var VIEW_HEADING_ID = 'tfcc-vh';
+
   var THEMES = Object.freeze(['dark', 'light', 'match']);
 
   var DEFAULT_FOLDERS = Object.freeze([
@@ -1832,6 +1884,130 @@
     };
   }
 
+  // True when the panel should use the narrow layout. An unknown width (0,
+  // NaN, a failed measurement) keeps whatever layout is current.
+  function narrowFor(width, wasNarrow) {
+    var was = wasNarrow === true;
+    if (typeof width !== 'number' || !(width > 0)) return was;
+    if (width <= NARROW_ENTER_PX) return true;
+    if (width > NARROW_LEAVE_PX) return false;
+    return was;
+  }
+
+  function headerLogoWidth(size) {
+    return Math.min(LOGO_MAX_PX, Math.max(LOGO_MIN_PX, LOGO_PER_HB * size)) * LOGO_ASPECT;
+  }
+
+  // The largest header button size in [HB_MIN, HB_MAX], in HB_STEP steps, that
+  // keeps logo, chip, buttons and the Show label on one line of `content`
+  // pixels. fits is false only when even HB_MIN does not fit; the runtime then
+  // lets the logo-and-chip group wrap, never the buttons (spec 13b, last resort).
+  // countW is the collapsed header's bare unread count (0 when there is none);
+  // it and its HB_COUNT_GAP are part of the line. showW is the Show button at
+  // HB_MIN; showSlope is how much wider it gets per pixel of size (its padding
+  // follows the size), 0 for a fixed width.
+  function headerButtonSize(content, chipW, showW, icons, countW, showSlope) {
+    var c = typeof content === 'number' && isFinite(content) ? content : 0;
+    var chip = typeof chipW === 'number' && chipW > 0 ? chipW : 0;
+    var show = typeof showW === 'number' && showW > 0 ? showW : 0;
+    var count = typeof countW === 'number' && countW > 0 ? countW + HB_COUNT_GAP : 0;
+    var slope = typeof showSlope === 'number' && isFinite(showSlope) ? showSlope : 0;
+    var n = icons === 2 ? 2 : 3;
+    for (var s = HB_MAX; s >= HB_MIN; s -= HB_STEP) {
+      var showAt = show > 0 ? show + slope * (s - HB_MIN) : 0;
+      if (headerLogoWidth(s) + chip + count + n * s + showAt + HB_GAPS <= c) return { size: s, fits: true };
+    }
+    return { size: HB_MIN, fits: false };
+  }
+
+  // The number the narrow Filters button shows: the filters it hides. Sort is
+  // an order and Unread has its own visible toggle, so neither counts.
+  function activeFilterCount(settings) {
+    var s = isPlainObject(settings) ? settings : {};
+    return (s.folderFilter ? 1 : 0) + (s.tagFilter ? 1 : 0);
+  }
+
+  // The panel's transient view state (#33, spec section 6). Never persisted.
+  function freshTransient() {
+    return { openRowId: null, filtersOpen: false, openInfoId: null, drawerEdit: null };
+  }
+
+  // One transition of spec section 6's table. Row actions, refresh, filters and
+  // the cap are identity here: reconcileTransient handles a row they remove.
+  function nextTransient(t, ev) {
+    var cur = isPlainObject(t) ? t : {};
+    var out = {
+      openRowId: typeof cur.openRowId === 'string' && cur.openRowId ? cur.openRowId : null,
+      filtersOpen: cur.filtersOpen === true,
+      openInfoId: typeof cur.openInfoId === 'string' && cur.openInfoId ? cur.openInfoId : null,
+      drawerEdit: isPlainObject(cur.drawerEdit) ? cur.drawerEdit : null,
+    };
+    var type = isPlainObject(ev) ? ev.type : null;
+    // drawerEdit survives every transition: it is the only copy of what was
+    // typed until the field commits, and only that commit clears it.
+    if (TRANSIENT_RESET_EVENTS.indexOf(type) !== -1) {
+      return { openRowId: null, filtersOpen: false, openInfoId: null, drawerEdit: out.drawerEdit };
+    }
+    if (type === 'row-more' && typeof ev.id === 'string' && ev.id) {
+      out.openRowId = out.openRowId === ev.id ? null : ev.id;
+      return out;
+    }
+    if (type === 'filters') { out.filtersOpen = !out.filtersOpen; return out; }
+    if (type === 'info' && Object.prototype.hasOwnProperty.call(INFO_KEYS, ev.key)) {
+      out.openInfoId = out.openInfoId === ev.key ? null : ev.key;
+      return out;
+    }
+    return out;
+  }
+
+  // After every model build: an open row that is not rendered (refreshed,
+  // filtered, capped or archived away) closes, so it cannot reopen by itself
+  // when it returns; an info key the view does not render closes too. An
+  // uncommitted edit is kept (see nextTransient).
+  function reconcileTransient(t, renderedIds, infoKeys) {
+    var out = nextTransient(t, null);
+    var ids = Array.isArray(renderedIds) ? renderedIds : [];
+    var keys = Array.isArray(infoKeys) ? infoKeys : [];
+    if (out.openRowId !== null && ids.indexOf(out.openRowId) === -1) out.openRowId = null;
+    if (out.openInfoId !== null && keys.indexOf(out.openInfoId) === -1) out.openInfoId = null;
+    return out;
+  }
+
+  // An attribute-equals selector part. Quotes and backslashes are dropped, not
+  // escaped: ids and keys are this script's own tokens and never contain them,
+  // so a value that does is forged and must not shape the selector.
+  function attrSel(name, value) {
+    return '[' + name + '="' + String(value).replace(/["\\]/g, '') + '"]';
+  }
+
+  // Where focus goes after a redraw (spec section 6, focus rules). ctx.ids are
+  // the rows rendered before the action, in DOM order, so the successor is
+  // known even when the action removes the row.
+  function focusPlan(target, ctx) {
+    var t = isPlainObject(target) ? target : {};
+    var c = isPlainObject(ctx) ? ctx : {};
+    var ids = Array.isArray(c.ids) ? c.ids : [];
+    var narrow = c.narrow === true;
+    var out = [];
+    if (typeof t.act === 'string' && t.act) {
+      var same = attrSel('data-act', t.act);
+      if (t.id) same += attrSel('data-id', t.id);
+      if (t.view) same += attrSel('data-view', t.view);
+      if (t.info) same += attrSel('data-info', t.info);
+      out.push(same);
+      if (t.id) {
+        var at = ids.indexOf(String(t.id));
+        var equiv = narrow ? (c.view === 'catchup' ? 'read' : 'row-more') : t.act;
+        if (at !== -1) {
+          if (at + 1 < ids.length) out.push(attrSel('data-act', equiv) + attrSel('data-id', ids[at + 1]));
+          if (at > 0) out.push(attrSel('data-act', equiv) + attrSel('data-id', ids[at - 1]));
+        }
+      }
+    }
+    out.push(narrow ? '#' + VIEW_HEADING_ID : attrSel('data-act', 'view') + attrSel('aria-pressed', 'true'));
+    return out;
+  }
+
   // -- query parsing and search --------------------------------------------
 
   var QUERY_PREFIXES = Object.freeze(['by', 'tag', 'folder', 'is']);
@@ -3248,6 +3424,20 @@
     // never exported: the issue asks for "this session only", and a page load
     // is the only session boundary a userscript can see.
     showAll: {},
+    // #33, all runtime only and reset on reload, like showAll. narrow follows
+    // the panel's own width. The next four are spec section 6's transient
+    // state; focusIntent carries a user action's focus plan into its redraw;
+    // pressActive holds a redraw while a press that began in the panel is in
+    // progress; liveMessage is the polite announcement after Read or Archive.
+    narrow: false,
+    openRowId: null,
+    filtersOpen: false,
+    openInfoId: null,
+    drawerEdit: null,
+    focusIntent: null,
+    pressActive: false,
+    deferCommit: false,
+    liveMessage: null,
   };
 
   // Anything that makes an in-flight request's answer no longer wanted goes
@@ -3258,6 +3448,27 @@
   function invalidateInFlight() {
     state.generation += 1;
     state.refreshing = false;
+  }
+
+  function currentTransient() {
+    return { openRowId: state.openRowId, filtersOpen: state.filtersOpen,
+      openInfoId: state.openInfoId, drawerEdit: state.drawerEdit };
+  }
+  function setTransient(t) {
+    state.openRowId = t.openRowId;
+    state.filtersOpen = t.filtersOpen;
+    state.openInfoId = t.openInfoId;
+    state.drawerEdit = t.drawerEdit;
+  }
+  function applyTransient(ev) { setTransient(nextTransient(currentTransient(), ev)); }
+
+  // Every wholesale replacement of state.settings comes through here, so a
+  // replacement that changes the view or collapses the panel closes the
+  // disclosures exactly as the matching user action would (spec section 6).
+  function replaceSettings(next) {
+    if (next.view !== state.settings.view) applyTransient({ type: 'view' });
+    else if (next.collapsed === true && state.settings.collapsed !== true) applyTransient({ type: 'collapse' });
+    state.settings = next;
   }
 
   // Torn has refused the stored key. Stop using it immediately and remember
@@ -4156,6 +4367,12 @@
       '  --tfcc-mine-text: #141414; --tfcc-mine-border: #d9d9d9;',
       // "started" in My posts (#30): 6.2:1 on the row, 7.8:1 on the tag fill.
       '  --tfcc-started: #ff8080;',
+      // #33: the narrow header button size; fitHeader overrides it inline.
+      '  --tfcc-hb: 44px;',
+      // #33 nav numerals, v1 tint (spec 13f). The same in both themes, because
+      // the colour is the cell's own text colour. contrast is in style.test.js.
+      '  --tfcc-navnum-opacity: 0.14; --tfcc-navnum-opacity-selected: 0.09;',
+      '  --tfcc-navlab-opacity: 0.9; --tfcc-navlab-opacity-selected: 0.96; --tfcc-navnum-size: 40px;',
       '}',
       '#' + PANEL_ID + '.tfcc-theme-light {',
       '  --tm-bg: #f2f2f2; --tm-bg-2: #e8e8e8; --tm-bg-3: #ffffff; --tm-hover: #dcdcdc;',
@@ -4334,6 +4551,120 @@
       '  margin-top: var(--tfcc-gap-xs); }',
       '#' + PANEL_ID + ' .tfcc-actions button { font-size: var(--tfcc-text-sm); padding: 1px 6px; }',
       '#' + PANEL_ID + ' .tfcc-note { color: var(--tm-muted); font-size: var(--tfcc-text-sm); }',
+      // #33: anything carrying the hidden attribute stays hidden, whatever a
+      // display rule on it or on the host says.
+      '#' + PANEL_ID + ' [hidden] { display: none !important; }',
+      '#' + PANEL_ID + ' .tfcc-gl { display: block; flex: none; }',
+      // (1,1,1): beats a host "svg * { fill }" rule, as the logo rule does.
+      '#' + PANEL_ID + ' .tfcc-gl path { fill: none; stroke: currentColor; stroke-width: 2;',
+      '  stroke-linecap: round; stroke-linejoin: round; }',
+      '#' + PANEL_ID + ' .tfcc-infobar { display: flex; align-items: center; gap: var(--tfcc-gap-sm);',
+      // nowrap: a long note wraps inside itself, so its info button stays right
+      // after it instead of dropping onto a line of its own (PR #38 review).
+      '  flex-wrap: nowrap; margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-infobar > .tfcc-note { flex: 0 1 auto; min-width: 0; }',
+      '#' + PANEL_ID + ' .tfcc-infobar h4 { margin: 0; }',
+      '#' + PANEL_ID + ' button.tfcc-info { display: inline-flex; align-items: center; justify-content: center;',
+      '  flex: none; min-width: 44px; min-height: 44px; padding: 0; border-color: var(--tm-border); }',
+      '#' + PANEL_ID + ' button.tfcc-info[aria-expanded="true"] { background: var(--tm-hover); }',
+      '#' + PANEL_ID + ' .tfcc-infotext { border-left: 3px solid var(--tm-accent-text);',
+      '  padding: 2px 0 2px 8px; margin: 0 0 var(--tfcc-gap-sm) 0; }',
+      // Narrow only: the collapsed count's name, the view heading and the live
+      // region all render in the narrow layout alone.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;',
+      '  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }',
+      // ---- #33 narrow layout. Every rule below hangs off .tfcc-narrow, so a
+      // wide panel never sees one. ----
+      '#' + PANEL_ID + '.tfcc-narrow { padding: 8px; }',
+      // Every narrow control is a real box of at least 44 x 44 (spec principle
+      // 4). The header buttons override this with --tfcc-hb (spec 13b) at a
+      // higher specificity. Text fields are 16px or more, or iOS zooms the page
+      // when one takes focus. One selector per rule, so each is easy to find.
+      '#' + PANEL_ID + '.tfcc-narrow button { min-height: 44px; min-width: 44px; }',
+      '#' + PANEL_ID + '.tfcc-narrow select { min-height: 44px; min-width: 44px; font-size: max(16px, 1em); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-linkbtn { min-height: 44px; min-width: 44px; display: inline-flex;',
+      '  align-items: center; }',
+      '#' + PANEL_ID + '.tfcc-narrow input:not([type="checkbox"]) { min-height: 44px; min-width: 44px;',
+      '  font-size: max(16px, 1em); }',
+      '#' + PANEL_ID + '.tfcc-narrow textarea { font-size: max(16px, 1em); }',
+      // A checkbox is reached through its 44px label.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-kv label { min-width: 0; flex-basis: 100%; min-height: 44px;',
+      '  display: flex; align-items: center; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-grow { flex-basis: 100%; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-actions { gap: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-cap button { min-height: 44px; }',
+      // The header: one line. These gaps add up to HB_GAPS (20): logo-chip 6,
+      // group 6, and 2 x 4 between the buttons.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-head { gap: 6px; flex-wrap: nowrap; margin-bottom: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-head-id { flex: 0 1 auto; flex-wrap: wrap; gap: 6px; min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-head-ctl { flex: none; flex-wrap: nowrap; gap: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-head-btns { gap: 4px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-logo { height: clamp(16px, calc(var(--tfcc-hb) * 0.545), 24px); }',
+      '#' + PANEL_ID + '.tfcc-narrow button.tfcc-hbtn { display: inline-flex; align-items: center;',
+      '  justify-content: center; width: var(--tfcc-hb); min-width: var(--tfcc-hb); min-height: var(--tfcc-hb); padding: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-hbtn .tfcc-gl { width: clamp(14px, calc(var(--tfcc-hb) * 0.45), 20px);',
+      '  height: auto; }',
+      '#' + PANEL_ID + '.tfcc-narrow button.tfcc-hshow { display: inline-flex; align-items: center; gap: 2px;',
+      '  min-width: var(--tfcc-hb); min-height: var(--tfcc-hb); font-weight: bold;',
+      '  padding: 0 clamp(4px, calc(var(--tfcc-hb) * 0.2), 10px); }',
+      '#' + PANEL_ID + '.tfcc-narrow button.tfcc-chip { min-width: 0; min-height: var(--tfcc-hb); padding: 0;',
+      '  border: 0; border-radius: 0; background: transparent; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-pill { display: inline-flex; align-items: center; gap: 3px;',
+      '  white-space: nowrap; min-height: min(28px, var(--tfcc-hb)); padding: 2px 8px; border-radius: 14px;',
+      '  border: 1px solid var(--tm-border-2); background: var(--tm-bg-3); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-chip.tfcc-compact .tfcc-pill { padding: 1px 4px; gap: 1px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));',
+      '  gap: 6px; margin-bottom: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid button { position: relative; overflow: hidden; display: flex;',
+      '  align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 2px 4px;',
+      '  font-weight: bold; }',
+      // My posts sits in its grid cell; the wide auto margin would push it out.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid button.tfcc-nav-mine { margin-left: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navnum { position: absolute; inset: 0; display: flex; align-items: center;',
+      '  justify-content: center; font-size: var(--tfcc-navnum-size); line-height: 1;',
+      '  font-variant-numeric: tabular-nums; opacity: var(--tfcc-navnum-opacity); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navlab { position: relative; max-width: 100%; white-space: nowrap;',
+      '  overflow: hidden; text-overflow: ellipsis; opacity: var(--tfcc-navlab-opacity); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid button[aria-pressed="true"] { box-shadow: inset 0 -3px 0 currentColor; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid button[aria-pressed="true"] .tfcc-navnum {',
+      '  opacity: var(--tfcc-navnum-opacity-selected); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-navgrid button[aria-pressed="true"] .tfcc-navlab {',
+      '  opacity: var(--tfcc-navlab-opacity-selected); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxline { margin-bottom: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-rxline button.tfcc-reactions { width: 100%; min-width: 44px;',
+      '  min-height: 44px; border-radius: 4px; padding: 0 10px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-filterline { flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-filterline .tfcc-grow { flex: 1 1 8em; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-filterline button { display: inline-flex; align-items: center;',
+      '  justify-content: center; gap: 4px; min-width: 44px; min-height: 44px; padding: 0 8px; white-space: nowrap; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-filtergrid { display: grid;',
+      '  grid-template-columns: repeat(auto-fit, minmax(8em, 1fr)); gap: 6px; margin: 0 0 6px 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row { padding: var(--tfcc-gap-xs) var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t { display: flex; gap: 4px; align-items: flex-start; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title { line-height: 1.35; }',
+      // The whole title band opens the thread: at least 24px (WCAG 2.2 AA).
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-row-title a { display: block; padding: 3px 0; min-height: 24px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-t .tfcc-pinned { padding-top: 3px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 { display: flex; gap: 6px; align-items: flex-start; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-l2 .tfcc-meta { flex: 1 1 0; min-width: 0; margin-top: 0;',
+      '  padding-top: 2px; gap: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns { flex: none; display: inline-flex; gap: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns button { display: inline-flex; align-items: center;',
+      '  justify-content: center; min-width: 44px; min-height: 44px; padding: 0 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-row-btns button[aria-expanded="true"] { background: var(--tm-hover); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer { display: grid;',
+      '  grid-template-columns: repeat(auto-fit, minmax(7.5em, 1fr)); gap: 6px; margin-top: 6px;',
+      '  padding-top: 8px; border-top: 1px solid var(--tm-border); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-drawer .tfcc-wide { grid-column: 1 / -1; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-step { display: flex; align-items: center; gap: 6px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-step span { flex: 1 1 auto; text-align: center; color: var(--tm-meta); }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-vh { font-size: var(--tfcc-text); margin: 2px 0 6px 0; }',
+      // A narrow info button and the control it explains share one line; at
+      // 280px the control's label wraps inside it rather than strand the button.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-infogroup { display: flex; flex: 1 1 auto; flex-wrap: nowrap;',
+      '  align-items: center; gap: 6px; min-width: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-infogroup > :first-child { flex: 1 1 auto; white-space: normal;',
+      '  justify-content: center; text-align: center; }',
       '#' + PANEL_ID + ' .tfcc-error { color: var(--tm-bad-text); font-weight: bold;',
       '  margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' .tfcc-warn { color: var(--tm-warn-text); margin-bottom: var(--tfcc-gap-sm); }',
@@ -4360,18 +4691,12 @@
       // element rule of Torn's is most likely to reach in.
       '  color: var(--tm-text); background: transparent; }',
       '#' + PANEL_ID + ' .tfcc-tos th { color: var(--tm-meta); font-weight: normal; white-space: nowrap; }',
-      // Narrow screens are the primary target: this runs inside Torn PDA.
+      // Narrow screens are the primary target: this runs inside Torn PDA. The
+      // fallback mount is fixed to the viewport, so its offsets stay a viewport
+      // query; everything inside the panel follows the panel's own width
+      // through .tfcc-narrow (#33).
       '@media (max-width: 600px) {',
       '  #' + FALLBACK_ID + ' { right: 4px; bottom: 4px; width: calc(100vw - 8px); }',
-      '  #' + PANEL_ID + ' { padding: 8px; }',
-      '  #' + PANEL_ID + ' .tfcc-kv label { min-width: 0; flex-basis: 100%; }',
-      '  #' + PANEL_ID + ' .tfcc-grow { flex-basis: 100%; }',
-      '  #' + PANEL_ID + ' .tfcc-row { padding: var(--tfcc-gap-xs) var(--tfcc-gap-sm); }',
-      '  #' + PANEL_ID + ' .tfcc-actions { gap: 3px; }',
-      '  #' + PANEL_ID + ' .tfcc-actions button { padding: 1px 5px; }',
-      '  #' + PANEL_ID + ' .tfcc-actions input, #' + PANEL_ID + ' .tfcc-actions select {',
-      '    padding: 1px 4px; font-size: var(--tfcc-text-sm); max-width: 46%; }',
-      '  #' + PANEL_ID + ' .tfcc-meta { gap: var(--tfcc-gap-sm); }',
       '}',
     ].join('\n');
   }
@@ -4456,6 +4781,7 @@
       theme: 'dark',
       collapsed: false,
       takeover: false,
+      narrow: state.narrow === true,
       notices: [],
       rows: [],
       now: now,
@@ -4472,6 +4798,7 @@
       theme: 'dark',
       collapsed: false,
       takeover: false,
+      narrow: state.narrow === true,
       notices: [],
       rows: [],
       now: now,
@@ -4480,6 +4807,32 @@
   }
 
   var noopHandlers = Object.freeze({});
+
+  // Search lists at most this many thread rows.
+  var SEARCH_ROWS_MAX = 50;
+
+  // Catch up groups its shown rows by folder name, sorted. One helper, so the
+  // focus order (renderedRowIds) is always the order the view renders.
+  function groupCatchUp(rows) {
+    var byFolder = {};
+    for (var i = 0; i < rows.length; i += 1) {
+      var k = rows[i].folderName || 'Unfiled';
+      (byFolder[k] = byFolder[k] || []).push(rows[i]);
+    }
+    return Object.keys(byFolder).sort().map(function (name) { return { name: name, rows: byFolder[name] }; });
+  }
+
+  // The thread rows the current view renders, as string ids in DOM order.
+  function renderedRowIds(view, capped, unchecked, rows) {
+    var list = [];
+    if (view === 'threads') list = capped.threads.rows;
+    else if (view === 'mine') list = capped.mine.rows;
+    else if (view === 'catchup') {
+      groupCatchUp(capped.catchup.rows).forEach(function (g) { list = list.concat(g.rows); });
+      list = list.concat(unchecked || []);
+    } else if (view === 'search') list = rows.slice(0, SEARCH_ROWS_MAX);
+    return list.map(function (r) { return String(r.id); });
+  }
 
   function buildPanelModel(now) {
     var s = state.settings;
@@ -4507,7 +4860,17 @@
     var threadsSorted = s.view === 'mine' ? sortThreads(viewRows(rows, 'threads', s, query), s.sort) : sorted;
     var mineSorted = s.view === 'mine' ? sorted : sortThreads(viewRows(mineRows, 'mine', s, query), s.sort);
     var catchUp = catchUpRowsNow();
+    var unchecked = catchUpUncheckedNow();
     var showAll = state.showAll || {};
+    var capped = {
+      threads: capRows(threadsSorted, s.rowsShown, showAll.threads === true),
+      catchup: capRows(catchUp, s.rowsShown, showAll.catchup === true),
+      mine: capRows(mineSorted, s.rowsShown, showAll.mine === true),
+    };
+    // #33, spec section 6: after every model build, an open row or info that
+    // this view does not render closes, and stays closed.
+    var renderedIds = renderedRowIds(s.view, capped, unchecked, sorted);
+    setTransient(reconcileTransient(currentTransient(), renderedIds, INFO_KEYS_BY_VIEW[s.view] || []));
 
     return {
       loading: false,
@@ -4516,6 +4879,14 @@
       theme: s.theme,
       collapsed: s.collapsed,
       takeover: s.takeover,
+      narrow: state.narrow === true,
+      renderedIds: renderedIds,
+      openRowId: state.openRowId,
+      filtersOpen: state.filtersOpen,
+      openInfoId: state.openInfoId,
+      drawerEdit: state.drawerEdit,
+      activeFilters: activeFilterCount(s),
+      live: state.liveMessage && !state.liveMessage.announced ? state.liveMessage.text : null,
       sort: s.sort,
       unreadOnly: s.unreadOnly,
       folderFilter: s.folderFilter,
@@ -4543,12 +4914,8 @@
       badges: badgeModel(now),
       // What the capped views render. model.rows, model.catchUp and model.mine
       // stay whole, so Search and the nav counts are uncapped by construction.
-      capped: {
-        threads: capRows(threadsSorted, s.rowsShown, showAll.threads === true),
-        catchup: capRows(catchUp, s.rowsShown, showAll.catchup === true),
-        mine: capRows(mineSorted, s.rowsShown, showAll.mine === true),
-      },
-      catchUpUnchecked: catchUpUncheckedNow(),
+      capped: capped,
+      catchUpUnchecked: unchecked,
       authorOnly: s.authorOnly === true,
       mine: {
         total: mineAll.length,
@@ -4614,12 +4981,49 @@
     return null;
   }
 
+  // Inline ASCII SVG icons (#33). Stroked in currentColor, so they follow the
+  // theme; aria-hidden, because every button that holds one has an aria-label
+  // or visible text.
+  var GLYPHS = Object.freeze({
+    refresh: 'M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5',
+    expand: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5',
+    shrink: 'M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5',
+    up: 'M6 15l6-6 6 6',
+    down: 'M6 9l6 6 6-6',
+    funnel: 'M4 5h16l-6 7v6l-4 2v-8z',
+    more: 'M5.5 12h1M11.5 12h1M17.5 12h1',
+    check: 'M5 12.5l4.5 4.5L19 7.5',
+    info: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5v.5',
+  });
+
+  function glyph(name) {
+    return '<svg class="tfcc-gl" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">'
+      + '<path d="' + GLYPHS[name] + '"/></svg>';
+  }
+
+  // An info button and the explanation it discloses (spec 13d). The text is
+  // always in the markup, so aria-controls names a real element and the tests
+  // that pin the wording keep reading it; only `hidden` follows the state.
+  function renderInfoButton(key, openKey) {
+    var open = openKey === key;
+    return '<button type="button" class="tfcc-info" data-act="info" data-info="' + escapeHtml(key)
+      + '" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="tfcc-info-' + escapeHtml(key)
+      + '" aria-label="' + escapeHtml(INFO_KEYS[key]) + '">' + glyph('info') + '</button>';
+  }
+
+  // html is this script's own text, already escaped where it carries data.
+  function renderInfoText(key, openKey, html) {
+    return '<p class="tfcc-note tfcc-infotext" id="tfcc-info-' + escapeHtml(key) + '"'
+      + (openKey === key ? '' : ' hidden') + '>' + html + '</p>';
+  }
+
   function btn(action, label, extra) {
     return '<button type="button" data-act="' + escapeHtml(action) + '"'
       + (extra || '') + '>' + escapeHtml(label) + '</button>';
   }
 
   function renderNav(model) {
+    if (model.narrow) return renderNavNarrow(model);
     var out = ['<div class="tfcc-nav">'];
     for (var i = 0; i < VIEWS.length; i += 1) {
       var v = VIEWS[i];
@@ -4633,6 +5037,42 @@
       out.push('<button type="button" data-act="view" data-view="' + v + '"'
         + (v === 'mine' ? ' class="tfcc-nav-mine"' : '') + ' aria-pressed="'
         + (model.view === v ? 'true' : 'false') + '">' + escapeHtml(VIEW_LABELS[v] + count) + '</button>');
+    }
+    out.push('</div>');
+    return out.join('');
+  }
+
+  function navNumeral(n) {
+    var v = toInt(n, 0);
+    return v > 999 ? '999+' : String(v);
+  }
+
+  // The narrow nav (spec 4.2, 13f): a 3 x 2 grid in VIEWS order. A count is a
+  // large decorative numeral behind a one-line label; the number reaches
+  // screen readers through the cell's own name. Zero draws no numeral.
+  function renderNavNarrow(model) {
+    var t = model.totals || { unread: 0, subscribed: 0, drafts: 0 };
+    var counts = {
+      threads: t.unread, catchup: model.catchUp ? model.catchUp.length : 0,
+      drafts: t.drafts, mine: model.mine ? model.mine.unread : 0,
+    };
+    var names = {
+      threads: 'Threads, ' + (t.unread ? formatCount(t.unread) + (model.authorOnly ? ' new by author' : ' new') : 'none new')
+        + ', ' + t.subscribed + ' subscribed',
+      catchup: 'Catch up, ' + (counts.catchup || 'none'),
+      drafts: 'Drafts, ' + (counts.drafts || 'none'),
+      mine: 'My posts, ' + (counts.mine ? counts.mine + ' new' : 'none new'),
+    };
+    var out = ['<div class="tfcc-nav tfcc-navgrid">'];
+    for (var i = 0; i < VIEWS.length; i += 1) {
+      var v = VIEWS[i];
+      var n = toInt(counts[v], 0);
+      out.push('<button type="button" data-act="view" data-view="' + v + '"'
+        + (v === 'mine' ? ' class="tfcc-nav-mine"' : '')
+        + ' aria-pressed="' + (model.view === v ? 'true' : 'false') + '"'
+        + (names[v] ? ' aria-label="' + escapeHtml(names[v]) + '"' : '') + '>'
+        + (n > 0 ? '<span class="tfcc-navnum" aria-hidden="true">' + navNumeral(n) + '</span>' : '')
+        + '<span class="tfcc-navlab">' + escapeHtml(VIEW_LABELS[v]) + '</span></button>');
     }
     out.push('</div>');
     return out.join('');
@@ -4652,18 +5092,10 @@
         + ' title="Lower this thread\'s priority by 1"');
   }
 
-  function renderRow(row, model) {
-    var out = ['<div class="tfcc-row" data-id="' + escapeHtml(row.id) + '">'];
-    out.push('<div class="tfcc-row-main">');
-    if (row.pinned) out.push('<span class="tfcc-pinned" title="Pinned">*</span>');
-    out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '"'
-      + threadLinkAttr(row.id) + '>'
-      + escapeHtml(row.title) + '</a></span>');
-    // Priority sits beside the title (#30), not in the action row, where two
-    // more buttons wrapped Archive onto a second line once Pin read Unpin.
-    // Siblings of the title span, never inside the marked anchor, so a tap on
-    // them is not a thread click and #8's auto-hide ignores it.
-    out.push(renderPriority(row));
+  // The unread count and the per-row status notes. Shared by the wide row
+  // (on the title line) and the narrow row (first in the meta).
+  function rowStatusHtml(row) {
+    var out = [];
     // Author-only mode (issue #4) never shows Torn's any-poster count, and an
     // unknown is named, never left blank.
     var amode = row.authorState || 'off';
@@ -4688,9 +5120,12 @@
     if (row.unreadSource === 'unchecked') out.push('<span class="tfcc-note">not checked yet</span>');
     if (!row.subscribed) out.push('<span class="tfcc-note">not subscribed</span>');
     if (row.isLocked) out.push('<span class="tfcc-note">locked</span>');
-    out.push('</div>');
+    return out.join('');
+  }
 
-    out.push('<div class="tfcc-meta">');
+  // The meta spans. Shared by the wide and the narrow row.
+  function rowMetaHtml(row, model) {
+    var out = [];
     // "started" is red (#30), so a thread you began stands out at a glance.
     if (row.mineRole === 'started') out.push('<span class="tfcc-tag tfcc-started">started</span>');
     else if (row.mineRole) out.push('<span class="tfcc-tag">posted in</span>');
@@ -4711,14 +5146,11 @@
     for (var i = 0; i < row.tags.length; i += 1) {
       out.push('<span class="tfcc-tag">' + escapeHtml(row.tags[i]) + '</span>');
     }
-    out.push('</div>');
+    return out.join('');
+  }
 
-    if (row.note) out.push('<div class="tfcc-note">' + escapeHtml(row.note) + '</div>');
-
-    out.push('<div class="tfcc-actions">');
-    out.push(btn('pin', row.pinned ? 'Unpin' : 'Pin', ' data-id="' + escapeHtml(row.id) + '"'));
-    out.push(btn('read', 'Mark read', ' data-id="' + escapeHtml(row.id) + '"'));
-    out.push('<select data-act="folder" data-id="' + escapeHtml(row.id) + '">');
+  function folderSelectHtml(row, model, extra) {
+    var out = ['<select data-act="folder" data-id="' + escapeHtml(row.id) + '"' + extra + '>'];
     out.push('<option value="">Unfiled</option>');
     for (var f = 0; f < model.folders.length; f += 1) {
       var fo = model.folders[f];
@@ -4726,13 +5158,41 @@
         + (row.folderId === fo.id ? ' selected' : '') + '>' + escapeHtml(fo.name) + '</option>');
     }
     out.push('</select>');
+    return out.join('');
+  }
+
+  function renderRow(row, model) {
+    var out = ['<div class="tfcc-row" data-id="' + escapeHtml(row.id) + '">'];
+    out.push('<div class="tfcc-row-main">');
+    if (row.pinned) out.push('<span class="tfcc-pinned" title="Pinned">*</span>');
+    out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '"'
+      + threadLinkAttr(row.id) + '>'
+      + escapeHtml(row.title) + '</a></span>');
+    // Priority sits beside the title (#30), not in the action row, where two
+    // more buttons wrapped Archive onto a second line once Pin read Unpin.
+    // Siblings of the title span, never inside the marked anchor, so a tap on
+    // them is not a thread click and #8's auto-hide ignores it.
+    out.push(renderPriority(row));
+    out.push(rowStatusHtml(row));
+    out.push('</div>');
+
+    out.push('<div class="tfcc-meta">' + rowMetaHtml(row, model) + '</div>');
+
+    if (row.note) out.push('<div class="tfcc-note">' + escapeHtml(row.note) + '</div>');
+
+    // #33: an uncommitted edit is shown wherever its field renders.
+    var edit = model.drawerEdit && model.drawerEdit.id === String(row.id) ? model.drawerEdit : null;
+    out.push('<div class="tfcc-actions">');
+    out.push(btn('pin', row.pinned ? 'Unpin' : 'Pin', ' data-id="' + escapeHtml(row.id) + '"'));
+    out.push(btn('read', 'Mark read', ' data-id="' + escapeHtml(row.id) + '"'));
+    out.push(folderSelectHtml(row, model, ''));
     out.push('<input type="text" data-act="tag-input" data-id="' + escapeHtml(row.id)
-      + '" placeholder="add tag" size="8">');
+      + '"' + (edit && edit.field === 'tag-input' ? ' value="' + escapeHtml(edit.value) + '"' : '') + ' placeholder="add tag" size="8">');
     // A note is edited in place rather than behind a button, because a button
     // needs somewhere to put the editor and every such place is another piece
     // of view state to get wrong.
     out.push('<input type="text" data-act="note-input" data-id="' + escapeHtml(row.id)
-      + '" value="' + escapeHtml(row.note) + '" placeholder="note" size="14">');
+      + '" value="' + escapeHtml(edit && edit.field === 'note-input' ? edit.value : row.note) + '" placeholder="note" size="14">');
     out.push(btn('draft', row.hasDraft ? 'Edit draft' : 'Draft', ' data-id="' + escapeHtml(row.id) + '"'));
     out.push(btn('archive', row.archived ? 'Unarchive' : 'Archive', ' data-id="' + escapeHtml(row.id) + '"'));
     out.push('</div>');
@@ -4740,37 +5200,151 @@
     return out.join('');
   }
 
-  // The filter bar Threads and My posts share.
-  function renderListBar(model) {
-    var out = ['<div class="tfcc-bar">'];
-    out.push('<input class="tfcc-grow" type="search" data-act="filter" value="'
-      + escapeHtml(model.searchQuery) + '" placeholder="filter: words, by:player, tag:x, is:unread">');
-    out.push('<select data-act="sort">');
+  // The one row renderer the views call (#33).
+  function rowHtml(row, model) {
+    return model.narrow ? renderRowNarrow(row, model) : renderRow(row, model);
+  }
+
+  // Mark read as a check mark (spec 13e): named "Mark read", and described by
+  // the row's title so a screen reader hears which thread.
+  function readButton(row) {
+    var id = escapeHtml(row.id);
+    return '<button type="button" class="tfcc-read" data-act="read" data-id="' + id + '" aria-label="Mark read"'
+      + ' aria-describedby="tfcc-title-' + id + '">' + glyph('check') + '</button>';
+  }
+
+  // The drawer's controls (spec 4.4): the same data-act values as the wide
+  // action row, each at least 44px. Mark read is left out in Catch up, where
+  // the row already shows it.
+  function renderDrawer(row, model, inCatchUp) {
+    var id = ' data-id="' + escapeHtml(row.id) + '"';
+    var edit = model.drawerEdit && model.drawerEdit.id === String(row.id) ? model.drawerEdit : null;
+    var p = toInt(row.priority, 0);
+    var out = [];
+    out.push(btn('pin', row.pinned ? 'Unpin' : 'Pin', id));
+    if (!inCatchUp) out.push(readButton(row));
+    out.push(btn('draft', row.hasDraft ? 'Edit draft' : 'Draft', id));
+    out.push(btn('archive', row.archived ? 'Unarchive' : 'Archive', id));
+    out.push('<div class="tfcc-step tfcc-wide">'
+      + btn('prio-down', '-', id + ' aria-label="Lower priority"')
+      + '<span>Priority ' + escapeHtml((p > 0 ? '+' : '') + p) + '</span>'
+      + btn('prio-up', '+', id + ' aria-label="Raise priority"') + '</div>');
+    out.push(folderSelectHtml(row, model, ' class="tfcc-wide" aria-label="Folder"'));
+    out.push('<input type="text" data-act="tag-input"' + id + ' value="'
+      + escapeHtml(edit && edit.field === 'tag-input' ? edit.value : '') + '" placeholder="add tag" aria-label="Add tag">');
+    out.push('<input type="text" data-act="note-input"' + id + ' value="'
+      + escapeHtml(edit && edit.field === 'note-input' ? edit.value : row.note) + '" placeholder="note" aria-label="Note">');
+    return out.join('');
+  }
+
+  // The narrow row (spec 4.4): the title as a full-width block link, then the
+  // meta with the buttons on the right, then the note and the drawer. Read and
+  // Actions are siblings of the title span, never inside the marked anchor, so
+  // #8's auto-hide never sees them.
+  function renderRowNarrow(row, model) {
+    var id = escapeHtml(row.id);
+    var open = model.openRowId === String(row.id);
+    var inCatchUp = model.view === 'catchup';
+    var p = toInt(row.priority, 0);
+    var out = ['<div class="tfcc-row" data-id="' + id + '">'];
+    out.push('<div class="tfcc-row-t">');
+    if (row.pinned) out.push('<span class="tfcc-pinned" title="Pinned">*</span>');
+    out.push('<span class="tfcc-row-title"><a id="tfcc-title-' + id + '" href="' + escapeHtml(threadUrl(row)) + '"'
+      + threadLinkAttr(row.id) + '>' + escapeHtml(row.title) + '</a></span></div>');
+    out.push('<div class="tfcc-row-l2"><div class="tfcc-meta">' + rowStatusHtml(row)
+      + (p !== 0 ? '<span class="tfcc-prio">' + escapeHtml((p > 0 ? '+' : '') + p) + '</span>' : '')
+      + rowMetaHtml(row, model) + '</div><span class="tfcc-row-btns">');
+    if (inCatchUp) out.push(readButton(row));
+    out.push('<button type="button" data-act="row-more" data-id="' + id + '" aria-expanded="'
+      + (open ? 'true' : 'false') + '" aria-controls="tfcc-act-' + id + '" aria-label="'
+      + escapeHtml('Actions for ' + row.title) + '">' + glyph('more') + '</button>');
+    out.push('</span></div>');
+    if (row.note) out.push('<div class="tfcc-note">' + escapeHtml(row.note) + '</div>');
+    out.push('<div class="tfcc-drawer" id="tfcc-act-' + id + '"'
+      + (open ? '>' + renderDrawer(row, model, inCatchUp) : ' hidden>') + '</div>');
+    out.push('</div>');
+    return out.join('');
+  }
+
+  // The narrow view heading (spec 6, focus rule 3): the focus fallback. Visible
+  // in Catch up, where it carries the catch-up date; visually hidden elsewhere.
+  function renderViewHeading(model) {
+    var catchup = model.view === 'catchup';
+    var since = catchup ? ' <span class="tfcc-note">since ' + escapeHtml(model.lastCatchUpAt
+      ? formatAbsoluteTime(model.lastCatchUpAt) : 'your first run') + '</span>' : '';
+    return '<h3 class="tfcc-vh' + (catchup ? '' : ' tfcc-sr') + '" id="' + VIEW_HEADING_ID + '" tabindex="-1">'
+      + escapeHtml(VIEW_LABELS[model.view] || VIEW_LABELS.threads) + since + '</h3>';
+  }
+
+  // extra goes on the select element; the wide bar passes '' so its markup is
+  // unchanged (tests/wide-parity.test.js).
+  function renderSortSelect(model, extra) {
+    var out = ['<select data-act="sort"' + extra + '>'];
     for (var i = 0; i < SORT_MODES.length; i += 1) {
       out.push('<option value="' + SORT_MODES[i] + '"'
         + (model.sort === SORT_MODES[i] ? ' selected' : '') + '>'
         + escapeHtml(SORT_LABELS[SORT_MODES[i]]) + '</option>');
     }
     out.push('</select>');
-    out.push('<select data-act="folder-filter"><option value="">All folders</option>');
+    return out.join('');
+  }
+
+  function renderFolderFilterSelect(model, extra) {
+    var out = ['<select data-act="folder-filter"' + extra + '><option value="">All folders</option>'];
     for (var f = 0; f < model.folders.length; f += 1) {
       out.push('<option value="' + escapeHtml(model.folders[f].id) + '"'
         + (model.folderFilter === model.folders[f].id ? ' selected' : '') + '>'
         + escapeHtml(model.folders[f].name) + '</option>');
     }
     out.push('</select>');
-    if (model.tags.length) {
-      out.push('<select data-act="tag-filter"><option value="">All tags</option>');
-      for (var t = 0; t < model.tags.length; t += 1) {
-        out.push('<option value="' + escapeHtml(model.tags[t].tag) + '"'
-          + (model.tagFilter === model.tags[t].tag ? ' selected' : '') + '>'
-          + escapeHtml(model.tags[t].tag + ' (' + model.tags[t].count + ')') + '</option>');
-      }
-      out.push('</select>');
+    return out.join('');
+  }
+
+  function renderTagFilterSelect(model, extra) {
+    if (!model.tags.length) return '';
+    var out = ['<select data-act="tag-filter"' + extra + '><option value="">All tags</option>'];
+    for (var t = 0; t < model.tags.length; t += 1) {
+      out.push('<option value="' + escapeHtml(model.tags[t].tag) + '"'
+        + (model.tagFilter === model.tags[t].tag ? ' selected' : '') + '>'
+        + escapeHtml(model.tags[t].tag + ' (' + model.tags[t].count + ')') + '</option>');
     }
+    out.push('</select>');
+    return out.join('');
+  }
+
+  // The filter bar Threads and My posts share.
+  function renderListBar(model) {
+    if (model.narrow) return renderListBarNarrow(model);
+    var out = ['<div class="tfcc-bar">'];
+    out.push('<input class="tfcc-grow" type="search" data-act="filter" value="'
+      + escapeHtml(model.searchQuery) + '" placeholder="filter: words, by:player, tag:x, is:unread">');
+    out.push(renderSortSelect(model, ''));
+    out.push(renderFolderFilterSelect(model, ''));
+    out.push(renderTagFilterSelect(model, ''));
     out.push('<button type="button" data-act="unread-only" aria-pressed="'
       + (model.unreadOnly ? 'true' : 'false') + '">Unread only</button>');
     out.push('</div>');
+    return out.join('');
+  }
+
+  // The narrow filter line (spec 4.3): the field, Unread and Filters on one
+  // line; Sort, Folder and Tag one tap away. The grid is always in the markup
+  // so aria-controls names a real element.
+  function renderListBarNarrow(model) {
+    var active = toInt(model.activeFilters, 0);
+    var out = ['<div class="tfcc-bar tfcc-filterline">'];
+    out.push('<input class="tfcc-grow" type="search" data-act="filter" value="' + escapeHtml(model.searchQuery)
+      + '" placeholder="filter: words, by:player, tag:x" aria-label="Filter threads">');
+    out.push('<button type="button" data-act="unread-only" aria-pressed="'
+      + (model.unreadOnly ? 'true' : 'false') + '">Unread</button>');
+    out.push('<button type="button" data-act="filters" aria-expanded="' + (model.filtersOpen ? 'true' : 'false')
+      + '" aria-controls="tfcc-filters" aria-label="' + escapeHtml('Filters, ' + active + ' active') + '">'
+      + glyph('funnel') + (active ? '<span>' + active + '</span>' : '') + '</button>');
+    out.push('</div>');
+    out.push('<div class="tfcc-filtergrid" id="tfcc-filters"' + (model.filtersOpen ? '' : ' hidden') + '>'
+      + renderSortSelect(model, ' aria-label="Sort"')
+      + renderFolderFilterSelect(model, ' aria-label="Folder filter"')
+      + renderTagFilterSelect(model, ' aria-label="Tag filter"') + '</div>');
     return out.join('');
   }
 
@@ -4797,7 +5371,7 @@
     } else {
       var shown = model.capped[cv].rows;
       out.push('<div class="tfcc-rows">');
-      for (var r = 0; r < shown.length; r += 1) out.push(renderRow(shown[r], model));
+      for (var r = 0; r < shown.length; r += 1) out.push(rowHtml(shown[r], model));
       out.push('</div>');
       out.push(renderCapLine(model.capped[cv], cv));
     }
@@ -4807,10 +5381,23 @@
   function renderMineView(model) {
     var m = model.mine;
     var out = [];
-    var line = 'Threads you started or posted in.';
-    if (m.fetchedAt) line += ' Updated ' + formatRelativeTime(m.fetchedAt, model.now) + '.';
-    if (m.unchecked) line += ' ' + m.unchecked + ' not checked yet.';
-    out.push('<p class="tfcc-note">' + escapeHtml(line) + '</p>');
+    // #33 (spec 13c): narrow, the reaction totals are the first line of My
+    // posts, in the existing pill markup. Wide, the pill stays in the nav.
+    if (model.narrow) {
+      var rx = renderReactions(model);
+      if (rx) out.push('<div class="tfcc-rxline">' + rx + '</div>');
+    }
+    // Spec 13d item 4: the live status stays visible; the standing
+    // description and the refresh rule go behind info.
+    var status = [];
+    if (m.fetchedAt) status.push('Updated ' + formatRelativeTime(m.fetchedAt, model.now) + '.');
+    if (m.unchecked) status.push(m.unchecked + ' not checked yet.');
+    out.push('<div class="tfcc-infobar">'
+      + (status.length ? '<span class="tfcc-note">' + escapeHtml(status.join(' ')) + '</span>' : '')
+      + renderInfoButton('mine', model.openInfoId) + '</div>');
+    out.push(renderInfoText('mine', model.openInfoId, escapeHtml('Threads you started or posted in. '
+      + 'Opening My posts checks Torn again at most once every ' + Math.round(MINE_TTL_MS / 60000)
+      + ' minutes; Refresh always does.')));
     // The spec's Throttled row (#24): lookups stopped at the limiter, and the
     // rows they did not reach keep saying "not checked yet".
     if (m.throttled) {
@@ -4856,13 +5443,21 @@
   function renderCatchUpView(model) {
     var out = [];
     out.push('<div class="tfcc-bar">');
-    out.push('<span class="tfcc-note">Since ' + escapeHtml(model.lastCatchUpAt
-      ? formatAbsoluteTime(model.lastCatchUpAt) : 'your first run') + '</span>');
+    if (!model.narrow) {
+      out.push('<span class="tfcc-note">Since ' + escapeHtml(model.lastCatchUpAt
+        ? formatAbsoluteTime(model.lastCatchUpAt) : 'your first run') + '</span>');
+    }
     out.push(btn('markall', 'Mark all read'));
+    // Narrow, the info button is grouped with the control it explains, so it
+    // never wraps onto a line of its own (PR #38 review); Mark all read takes
+    // its own line when the three do not fit.
+    if (model.narrow) out.push('<span class="tfcc-infogroup">');
     out.push(btn('catchup-done', 'Set catch-up point to now'));
+    out.push(renderInfoButton('catchup', model.openInfoId));
+    if (model.narrow) out.push('</span>');
     out.push('</div>');
-    out.push('<p class="tfcc-note">Marking read here hides a thread from this list. '
-      + 'It cannot clear Torn\'s own new-post counter, which only clears when you open the thread.</p>');
+    out.push(renderInfoText('catchup', model.openInfoId, 'Marking read here hides a thread from this list. '
+      + 'It cannot clear Torn\'s own new-post counter, which only clears when you open the thread.'));
     // Author-only mode (issue #4): threads not yet checked are listed apart,
     // so an unknown never reads as caught up.
     var unchecked = '';
@@ -4870,7 +5465,7 @@
     if (pending.length) {
       var u = ['<div class="tfcc-section"><h4>Not yet checked for author posts (' + pending.length
         + ')</h4><div class="tfcc-rows">'];
-      for (var p = 0; p < pending.length; p += 1) u.push(renderRow(pending[p], model));
+      for (var p = 0; p < pending.length; p += 1) u.push(rowHtml(pending[p], model));
       u.push('</div></div>');
       unchecked = u.join('');
     }
@@ -4882,18 +5477,12 @@
     }
     // Cap the flat, activity-sorted list first, then group what is shown.
     // Capping per folder would show up to N rows times the folder count.
-    var shown = model.capped.catchup.rows;
-    var byFolder = {};
-    for (var i = 0; i < shown.length; i += 1) {
-      var k = shown[i].folderName || 'Unfiled';
-      (byFolder[k] = byFolder[k] || []).push(shown[i]);
-    }
-    var names = Object.keys(byFolder).sort();
-    for (var n = 0; n < names.length; n += 1) {
-      out.push('<div class="tfcc-section"><h4>' + escapeHtml(names[n])
-        + ' (' + byFolder[names[n]].length + ')</h4><div class="tfcc-rows">');
-      for (var j = 0; j < byFolder[names[n]].length; j += 1) {
-        out.push(renderRow(byFolder[names[n]][j], model));
+    var groups = groupCatchUp(model.capped.catchup.rows);
+    for (var n = 0; n < groups.length; n += 1) {
+      out.push('<div class="tfcc-section"><h4>' + escapeHtml(groups[n].name)
+        + ' (' + groups[n].rows.length + ')</h4><div class="tfcc-rows">');
+      for (var j = 0; j < groups[n].rows.length; j += 1) {
+        out.push(rowHtml(groups[n].rows[j], model));
       }
       out.push('</div></div>');
     }
@@ -4914,14 +5503,17 @@
     // location.href. Both load the same page, but a link makes the request
     // unambiguously the user's own click: the script initiates no navigation
     // and issues no non-API request to Torn at all.
+    if (model.narrow) out.push('<span class="tfcc-infogroup">');
     out.push('<a class="tfcc-linkbtn" href="' + escapeHtml(buildNativeSearchUrl(model.searchQuery, 0))
       + '">Search on Torn</a>');
+    out.push(renderInfoButton('search', model.openInfoId));
+    if (model.narrow) out.push('</span>');
     out.push('</div>');
-    out.push('<p class="tfcc-note">Filtering searches titles, authors, forums, your notes and tags. '
+    out.push(renderInfoText('search', model.openInfoId, 'Filtering searches titles, authors, forums, your notes and tags. '
       + 'Searching inside posts fetches up to ' + model.settings.deepSearchPages
       + ' pages for each of the threads currently listed, then keeps them for next time. '
       + 'Search on Torn hands the same query to Torn\'s own forum search, which understands by:player '
-      + 'but never shows you a box for it.</p>');
+      + 'but never shows you a box for it.'));
     if (model.deepBusy && model.deepProgress) {
       out.push('<p class="tfcc-warn">Fetching ' + model.deepProgress.done + ' of '
         + model.deepProgress.total + ' threads.</p>');
@@ -4933,7 +5525,7 @@
     if (!matched.length) out.push('<div class="tfcc-empty">No thread matches.</div>');
     else {
       out.push('<div class="tfcc-rows">');
-      for (var i = 0; i < matched.length && i < 50; i += 1) out.push(renderRow(matched[i], model));
+      for (var i = 0; i < matched.length && i < SEARCH_ROWS_MAX; i += 1) out.push(rowHtml(matched[i], model));
       out.push('</div>');
     }
     out.push('</div>');
@@ -4984,8 +5576,7 @@
       out.push(btn('draft-delete', 'Delete', ' data-id="' + escapeHtml(current) + '"'));
       out.push('</div>');
       if (!model.replyBoxFound) {
-        out.push('<p class="tfcc-note">No reply box was found on this page, so Insert is unavailable. '
-          + 'Copy puts the draft on your clipboard instead.</p>');
+        out.push('<p class="tfcc-note">No reply box here, so Copy replaces Insert.</p>');
       }
       out.push('</div>');
     } else {
@@ -5021,10 +5612,13 @@
     var out = ['<div class="tfcc-section"><h4>Badges</h4>'];
     out.push('<div class="tfcc-kv"><label for="tfcc-badges">Show badges and record progress</label>'
       + '<input id="tfcc-badges" type="checkbox" data-act="badges-toggle"' + (b.enabled ? ' checked' : '') + '></div>');
-    out.push('<p class="tfcc-note">Earned from what you do here: focused visits to threads, finishing Torn days '
-      + 'with Catch up empty, and organising. A visit counts once a Torn day, after 15 seconds with the page in '
-      + 'front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent anywhere, and no request is made. '
-      + 'Turning this off stops recording, and a streak does not survive days with it off.</p>');
+    out.push('<div class="tfcc-infobar"><span class="tfcc-note">Recorded on this device only. No request is made.'
+      + '</span>' + renderInfoButton('settings-badges', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-badges', model.openInfoId, 'Earned from what you do here: focused visits '
+      + 'to threads, finishing Torn days with Catch up empty, and organising. A visit counts once a Torn day, '
+      + 'after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent '
+      + 'anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days '
+      + 'with it off.'));
     if (!b.enabled) { out.push('</div>'); return out.join(''); }
     out.push('<div class="tfcc-badge-row"><button type="button" data-act="badges-catalogue" aria-expanded="'
       + (b.catalogueOpen ? 'true' : 'false') + '">' + (b.catalogueOpen ? 'Hide the list' : 'Show all '
@@ -5061,10 +5655,8 @@
   function renderSettingsView(model) {
     var out = [];
     out.push('<div class="tfcc-section"><h4>Torn API key</h4>');
-    out.push('<p class="tfcc-note">This script needs a key that can read your subscribed threads. On Torn, '
-      + 'go to Settings, API Key, and create a <strong>Minimal Access</strong> key. A '
-      + '<strong>Limited Access</strong> key also works but is not needed. A '
-      + '<strong>Public Only</strong> key does not.</p>');
+    // Spec 13d item 13: the ToS table below states every access level.
+    out.push('<p class="tfcc-note">Create a <strong>Minimal Access</strong> key on Torn (Settings, API Key).</p>');
     // Torn's API terms require this to be stated clearly and visibly wherever
     // the user provides their key, in this table's form. It is rendered here
     // rather than buried in a readme because that is where the terms put it.
@@ -5090,8 +5682,8 @@
     // this one.
     out.push('<div class="tfcc-actions"><a class="tfcc-linkbtn" href="' + escapeHtml(buildCustomKeyUrl())
       + '" target="_blank" rel="noopener noreferrer">Create a custom key on Torn</a></div>');
-    out.push('<p class="tfcc-note">This opens Torn\'s key page in a new tab with only the selections this '
-      + 'script uses. You confirm the key there, then paste it here.</p>');
+    // Spec 13d item 16, the owner's wording.
+    out.push('<p class="tfcc-note">Opens Torn in a new tab with only this script\'s selections.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Refreshing</h4>');
@@ -5109,7 +5701,7 @@
     // The numbers are computed from the constants, so this promise cannot
     // drift from what the code does (CLAUDE.md constraint 7).
     var thumbsAt = function (b) { return Math.min(REACTION_LOOKUPS_PER_RUN, b); };
-    out.push('<p class="tfcc-note">A refresh of Threads makes two requests, plus one for the forum list at '
+    var budgetText = 'A refresh of Threads makes two requests, plus one for the forum list at '
       + 'most once a day. Opening My posts, or refreshing while it is open, makes two requests of its own, '
       + 'at most once every ' + Math.round(MINE_TTL_MS / 60000) + ' minutes unless you press Refresh. '
       + 'Each activity lookup adds one more to either, and only runs for a thread with no recent time. '
@@ -5124,12 +5716,20 @@
       + (2 + DEFAULT_ENRICH_BUDGET + thumbsAt(DEFAULT_ENRICH_BUDGET))
       + '; at the largest setting of ' + MAX_ENRICH_BUDGET + ', ' + (3 + MAX_ENRICH_BUDGET) + ' and '
       + (2 + MAX_ENRICH_BUDGET + thumbsAt(MAX_ENRICH_BUDGET)) + '. '
-      + 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.</p>');
+      + 'The script keeps itself under ' + REQUESTS_PER_WINDOW + ' requests a minute regardless.';
+    // CLAUDE.md constraint 7: the headline of the budget stays visible and is
+    // computed from the constants and this user's lookup setting.
+    var budget = model.settings.enrichBudget;
+    out.push('<div class="tfcc-infobar"><span class="tfcc-note">' + escapeHtml('A Threads refresh is at most '
+      + (3 + budget) + ' requests and My posts at most ' + (2 + budget + thumbsAt(budget))
+      + '; never more than ' + REQUESTS_PER_WINDOW + ' a minute.') + '</span>'
+      + renderInfoButton('settings-budget', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-budget', model.openInfoId, budgetText));
     out.push('<div class="tfcc-kv"><label for="tfcc-author">Only flag new posts by the thread author</label>'
       + '<input id="tfcc-author" type="checkbox" data-act="author-only"'
       + (model.settings.authorOnly ? ' checked' : '') + '></div>');
     // Shown whether the setting is on or off, so the limits are read first.
-    out.push('<p class="tfcc-note">With this on, a thread in Threads and Catch up counts as new only when its '
+    var authorText = 'With this on, a thread in Threads and Catch up counts as new only when its '
       + 'author has posted since you last looked. Each activity lookup then reads the thread\'s posts since '
       + 'you last looked, ' + POSTS_PER_PAGE + ' at a time, newest first, instead of its last-post time. '
       + 'Each page is one lookup from the same allowance, so the cost does not change: with your setting of '
@@ -5138,7 +5738,11 @@
       + 'every other thread has had its first. With more new posts than that, a count shows as a minimum '
       + '(N+), or as "not checked (too many new)" when none of the posts read is by the author. Threads not '
       + 'checked yet show "not checked". My posts ignores this setting. Posts from before you started using '
-      + 'this script are not flagged, and edits are not detected.</p>');
+      + 'this script are not flagged, and edits are not detected.';
+    out.push('<div class="tfcc-infobar"><span class="tfcc-note">'
+      + escapeHtml('Costs no extra requests. Some threads may show "not checked".') + '</span>'
+      + renderInfoButton('settings-author', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-author', model.openInfoId, authorText));
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Appearance</h4>');
@@ -5157,12 +5761,14 @@
       }).join('')
       + '</select></div>');
     var cappedNames = CAPPED_VIEWS.map(function (v) { return VIEW_LABELS[v]; });
-    out.push('<p class="tfcc-note">Applies to '
+    out.push('<div class="tfcc-infobar"><span class="tfcc-note">Applies to '
       + escapeHtml(cappedNames.length > 1
         ? cappedNames.slice(0, -1).join(', ') + ' and ' + cappedNames[cappedNames.length - 1]
         : cappedNames.join(''))
-      + '. Search and Drafts always show everything. A capped list says how many it is hiding, '
-      + 'and Show all lifts the cap for that list until the page reloads. The default is 5.</p>');
+      + '.</span>' + renderInfoButton('settings-rows', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-rows', model.openInfoId, 'Search and Drafts always show everything. '
+      + 'A capped list says how many it is hiding, and Show all lifts the cap for that list until the page '
+      + 'reloads. The default is 5.'));
     out.push('<div class="tfcc-kv"><label for="tfcc-hide">Hide Torn\'s own subscribed box</label>'
       + '<input id="tfcc-hide" type="checkbox" data-act="hide-torn-box"'
       + (model.settings.hideTornBox ? ' checked' : '') + '></div>');
@@ -5171,15 +5777,17 @@
       + (model.settings.autosaveDrafts ? ' checked' : '') + '></div>');
     out.push('<div class="tfcc-kv"><label for="tfcc-autohide">Hide the panel when I open a thread</label>'
       + '<input id="tfcc-autohide" type="checkbox" data-act="auto-hide"'
-      + (model.settings.autoHideOnOpen ? ' checked' : '') + '></div>');
-    out.push('<p class="tfcc-note">Only thread links in this panel do this, and only a plain click. '
-      + 'Opening a link in a new tab, or following links on the Torn page itself, leaves the panel '
-      + 'as it is. Press Show to bring it back.</p>');
+      + (model.settings.autoHideOnOpen ? ' checked' : '') + '>'
+      + renderInfoButton('settings-autohide', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-autohide', model.openInfoId, 'Only thread links in this panel do this, '
+      + 'and only a plain click. Opening a link in a new tab, or following links on the Torn page itself, '
+      + 'leaves the panel as it is. Press Show to bring it back.'));
     out.push('</div>');
 
-    out.push('<div class="tfcc-section"><h4>Folders</h4>');
-    out.push('<p class="tfcc-note">A folder can claim a forum, and new subscriptions from that forum '
-      + 'file themselves into it. Filing a thread by hand always wins over a rule.</p>');
+    out.push('<div class="tfcc-section"><div class="tfcc-infobar"><h4>Folders</h4>'
+      + renderInfoButton('settings-folders', model.openInfoId) + '</div>');
+    out.push(renderInfoText('settings-folders', model.openInfoId, 'A folder can claim a forum, and new '
+      + 'subscriptions from that forum file themselves into it. Filing a thread by hand always wins over a rule.'));
     for (var i = 0; i < model.folders.length; i += 1) {
       var f = model.folders[i];
       out.push('<div class="tfcc-kv"><label>' + escapeHtml(f.name) + '</label>');
@@ -5206,8 +5814,7 @@
     out.push('<div class="tfcc-actions">' + btn('export', 'Copy export string')
       + btn('import', 'Import from clipboard text') + '</div>');
     out.push('<textarea class="tfcc-draft" data-act="import-text" placeholder="Paste an export string here, then press Import"></textarea>');
-    out.push('<p class="tfcc-note">An export carries folders, tags, pins, priorities, notes, read markers '
-      + 'drafts and badges. It never carries your API key or the post cache.</p>');
+    out.push('<p class="tfcc-note">Never includes your API key or the post cache.</p>');
     out.push('</div>');
 
     out.push('<div class="tfcc-section"><h4>Storage</h4>');
@@ -5220,8 +5827,7 @@
       + btn('reset-all', 'Reset everything', ' class="tfcc-danger"')
       + btn('debug', 'Copy debug report')
       + '</div>');
-    out.push('<p class="tfcc-note">A debug report carries the script version, the transport in use, '
-      + 'counts and the last error. It never carries your key, your drafts, your notes or any post text.</p>');
+    out.push('<p class="tfcc-note">Never includes your key, drafts, notes or post text.</p>');
     out.push('</div>');
 
     out.push(renderBadgeCatalogue(model));
@@ -5297,6 +5903,42 @@
     return '<div class="tfcc-head-id">' + LOGO_SVG + renderBadgeChip(model) + '</div>';
   }
 
+  // The narrow header (spec 4.1, 13a, 13b): logo, chip and, when collapsed, a
+  // bare unread count, then Refresh, Expand/Shrink and Hide as icon buttons
+  // that fitHeader sizes. Collapsed, the third button is the visible word Show.
+  function renderHeadNarrow(model) {
+    var count = '';
+    if (model.collapsed && model.totals && model.totals.unread > 0) {
+      var n = formatCount(model.totals.unread);
+      var said = n + (model.authorOnly ? ' new by author' : ' new');
+      // aria-label on a plain span is not reliably read, so the name is a
+      // visually hidden span beside an aria-hidden numeral (spec 13a).
+      count = '<span class="tfcc-badge tfcc-hcount"><span aria-hidden="true">' + escapeHtml(n) + '</span>'
+        + '<span class="tfcc-sr">' + escapeHtml(said) + '</span></span>';
+    }
+    var out = ['<div class="tfcc-head">'];
+    out.push('<div class="tfcc-head-id">' + LOGO_SVG + renderBadgeChip(model) + count + '</div>');
+    out.push('<div class="tfcc-head-ctl"><span class="tfcc-head-btns">');
+    out.push('<button type="button" class="tfcc-hbtn" data-act="refresh" aria-label="'
+      + (model.refreshing ? 'Refreshing" aria-busy="true"' : 'Refresh"') + '>' + glyph('refresh') + '</button>');
+    out.push('<button type="button" class="tfcc-hbtn" data-act="takeover" aria-pressed="'
+      + (model.takeover ? 'true' : 'false') + '" aria-label="' + (model.takeover ? 'Shrink' : 'Expand') + '">'
+      + glyph(model.takeover ? 'shrink' : 'expand') + '</button>');
+    if (model.collapsed) {
+      out.push('<button type="button" class="tfcc-hshow" data-act="collapse">' + glyph('down') + '<span>Show</span></button>');
+    } else {
+      out.push('<button type="button" class="tfcc-hbtn" data-act="collapse" aria-label="Hide the panel">'
+        + glyph('up') + '</button>');
+    }
+    out.push('</span></div></div>');
+    // Spec 13d item 33: a live status, kept, on its own line so the header
+    // stays one line.
+    if (model.authorOnly && model.totals && model.totals.unchecked > 0) {
+      out.push('<p class="tfcc-note">' + model.totals.unchecked + ' not checked</p>');
+    }
+    return out.join('');
+  }
+
   function streakWords(s) {
     return s.current + ' ' + plural(s.current, 'day', 'days');
   }
@@ -5317,9 +5959,12 @@
       parts.push('<span>' + b.streak.current + '</span>');
     }
     label += ' Show badges.';
+    // #33: narrow, the button is as tall as the header buttons and the pill
+    // you see is a child span at most 28px tall (spec 4.1), so nothing overlaps.
+    var inner = model.narrow ? '<span class="tfcc-pill">' + parts.join('') + '</span>' : parts.join('');
     return '<button type="button" class="tfcc-chip" data-act="badges-shelf" aria-expanded="'
       + (b.shelfOpen ? 'true' : 'false') + '" aria-label="' + escapeHtml(label) + '">'
-      + parts.join('') + '</button>';
+      + inner + '</button>';
   }
 
   function renderBadgeBar(value, target) {
@@ -5368,36 +6013,46 @@
   }
 
   function panelHtml(model) {
+    // #33: in a narrow panel this already is the narrow loading and error
+    // header: renderBadgeChip draws the chip's narrow box from model.narrow and
+    // .tfcc-narrow scales the logo. There are no controls to add; main's loading
+    // and fatal headers have none, and fatal keeps its own Try again.
+    var bareHead = '<div class="tfcc-head">' + renderHeadId(model) + '</div>';
     if (model.loading) {
-      return '<div class="tfcc-head">' + renderHeadId(model) + '</div>'
+      return bareHead
         + '<div class="tfcc-empty">Loading your subscribed threads...</div>';
     }
     if (model.fatal) {
-      return '<div class="tfcc-head">' + renderHeadId(model) + '</div>'
+      return bareHead
         + '<div class="tfcc-error">' + escapeHtml(model.fatal.detail) + '</div>'
         + '<div class="tfcc-actions">' + btn('refresh', 'Try again') + '</div>';
     }
 
     var out = [];
-    out.push('<div class="tfcc-head">');
-    out.push(renderHeadId(model));
-    out.push('<div class="tfcc-head-ctl">');
-    if (model.totals.unread > 0) {
-      out.push('<span class="tfcc-badge">' + formatCount(model.totals.unread)
-        + (model.authorOnly ? ' new by author' : ' new') + '</span>');
+    if (model.narrow) {
+      out.push(renderHeadNarrow(model));
+    } else {
+      out.push('<div class="tfcc-head">');
+      out.push(renderHeadId(model));
+      out.push('<div class="tfcc-head-ctl">');
+      if (model.totals.unread > 0) {
+        out.push('<span class="tfcc-badge">' + formatCount(model.totals.unread)
+          + (model.authorOnly ? ' new by author' : ' new') + '</span>');
+      }
+      if (model.authorOnly && model.totals.unchecked > 0) {
+        out.push('<span class="tfcc-note">' + model.totals.unchecked + ' not checked</span>');
+      }
+      out.push('<span class="tfcc-note">' + model.totals.subscribed + ' subscribed</span>');
+      out.push('<span class="tfcc-head-btns">');
+      out.push(btn('refresh', model.refreshing ? 'Refreshing...' : 'Refresh'));
+      out.push('<button type="button" data-act="takeover" aria-pressed="'
+        + (model.takeover ? 'true' : 'false') + '">' + (model.takeover ? 'Shrink' : 'Expand') + '</button>');
+      out.push(btn('collapse', model.collapsed ? 'Show' : 'Hide'));
+      out.push('</span></div></div>');
     }
-    if (model.authorOnly && model.totals.unchecked > 0) {
-      out.push('<span class="tfcc-note">' + model.totals.unchecked + ' not checked</span>');
-    }
-    out.push('<span class="tfcc-note">' + model.totals.subscribed + ' subscribed</span>');
-    out.push('<span class="tfcc-head-btns">');
-    out.push(btn('refresh', model.refreshing ? 'Refreshing...' : 'Refresh'));
-    out.push('<button type="button" data-act="takeover" aria-pressed="'
-      + (model.takeover ? 'true' : 'false') + '">' + (model.takeover ? 'Shrink' : 'Expand') + '</button>');
-    out.push(btn('collapse', model.collapsed ? 'Show' : 'Hide'));
-    out.push('</span></div></div>');
     out.push(renderBadgeShelf(model));
     out.push(renderBadgeToast(model));
+    out.push(renderLive(model));
 
     if (model.collapsed) return out.join('');
 
@@ -5413,6 +6068,7 @@
     }
 
     out.push(renderNav(model));
+    if (model.narrow) out.push(renderViewHeading(model));
 
     if (model.view === 'catchup') out.push(renderCatchUpView(model));
     else if (model.view === 'search') out.push(renderSearchView(model));
@@ -5475,6 +6131,168 @@
     }
   }
 
+  // #33: the class the narrow stylesheet hangs off. On our own element only.
+  var NARROW_CLASS = 'tfcc-narrow';
+
+  // The panel's border-box width, or 0 when it cannot be read. Reads only this
+  // script's #tfcc-panel (the owner's ADR 0001 ruling, spec section 5).
+  function measurePanelWidth(panel) {
+    try {
+      var r = panel && typeof panel.getBoundingClientRect === 'function' ? panel.getBoundingClientRect() : null;
+      return r && typeof r.width === 'number' ? r.width : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Crossing the breakpoint closes every disclosure (spec section 6). The
+  // class itself is written by renderPanel, so it survives a panel rebuilt
+  // from scratch.
+  function setNarrow(next) {
+    state.narrow = next === true;
+    applyTransient({ type: 'breakpoint' });
+  }
+
+  // Called by the ResizeObserver. A change of layout redraws, but not forced:
+  // a caret in the panel still defers the markup (renderPanel's guard). The
+  // class flips at once because renderPanel always writes it.
+  function onPanelWidth(doc, win, panel, handlers, width) {
+    var next = narrowFor(width, state.narrow);
+    if (next === state.narrow) { fitHeader(panel, win); return; }
+    setNarrow(next);
+    if (panel && panel.classList) panel.classList.toggle(NARROW_CLASS, state.narrow);
+    draw(doc, win, handlers);
+    fitHeader(panel, win);
+  }
+
+  var resizeWatch = null;
+
+  // One observer, on the panel this script created, set up beside the
+  // delegated listener. Without ResizeObserver (Chrome < 64, iOS < 13.4) the
+  // per-render measurement in renderPanel is the whole mechanism.
+  function watchPanelWidth(doc, win, panel, handlers) {
+    if (resizeWatch && resizeWatch.panel === panel) return true;
+    if (resizeWatch) {
+      try { resizeWatch.ro.disconnect(); } catch (e) { /* already gone */ }
+      resizeWatch = null;
+    }
+    if (typeof ResizeObserver !== 'function') return false;
+    try {
+      var ro = new ResizeObserver(function (entries) {
+        try {
+          var entry = entries && entries[0];
+          var box = entry && entry.borderBoxSize;
+          box = box && (box[0] || box);
+          var width = box && typeof box.inlineSize === 'number' ? box.inlineSize : measurePanelWidth(panel);
+          onPanelWidth(doc, win, panel, handlers, width);
+        } catch (e2) { /* a resize must never throw onto the page */ }
+      });
+      ro.observe(panel);
+      resizeWatch = { panel: panel, ro: ro };
+      return true;
+    } catch (e3) {
+      return false;
+    }
+  }
+
+  function setHeaderSize(panel, size) {
+    if (!panel.style || typeof panel.style.setProperty !== 'function') return;
+    if (size === null) panel.style.removeProperty('--tfcc-hb');
+    else panel.style.setProperty('--tfcc-hb', size + 'px');
+  }
+
+  // Sizes the narrow header buttons so the header stays on one line (spec
+  // 13b). Reads only nodes inside this script's panel: its content width, the
+  // chip and the Show button. Returns the size it set, or null.
+  function fitHeader(panel, win) {
+    try {
+      if (!panel) return null;
+      if (!state.narrow) { setHeaderSize(panel, null); return null; }
+      var cs = win && typeof win.getComputedStyle === 'function' ? win.getComputedStyle(panel) : null;
+      var pad = cs ? (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) : 0;
+      var content = (panel.clientWidth || 0) - pad;
+      if (!(content > 0)) return null;
+      var chip = panel.querySelector('.tfcc-chip');
+      var show = panel.querySelector('.tfcc-hshow');
+      // The loading and error headers have no buttons: nothing to fit.
+      if (!show && !panel.querySelector('.tfcc-hbtn')) { setHeaderSize(panel, HB_MAX); return HB_MAX; }
+      var icons = show ? 2 : 3;
+      var width = function (el) {
+        var r = el && typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect() : null;
+        return r && typeof r.width === 'number' ? r.width : 0;
+      };
+      // Show's padding follows the size, linearly across HB_MIN-HB_MAX, so it
+      // is measured at both ends and the solve sees its width at every size.
+      var show24 = 0;
+      var slope = 0;
+      if (show) {
+        setHeaderSize(panel, HB_MIN);
+        show24 = width(show);
+        setHeaderSize(panel, HB_MAX);
+        slope = (width(show) - show24) / (HB_MAX - HB_MIN);
+      }
+      // The collapsed bare count (spec 13a) shares the line with the logo.
+      var countW = width(panel.querySelector('.tfcc-hcount'));
+      var solve = function (withCount) {
+        return headerButtonSize(content, width(chip), show24, icons, withCount ? countW : 0, slope);
+      };
+      if (chip && chip.classList) chip.classList.remove('tfcc-compact');
+      var r = solve(true);
+      if (r.size < HB_COMPACT_BELOW && chip && chip.classList) {
+        chip.classList.add('tfcc-compact');
+        r = solve(true);
+      }
+      // Last resort (spec 13b): when even HB_MIN cannot hold the count, the
+      // count wraps under the logo and the buttons are sized without it.
+      if (!r.fits && countW > 0) r = solve(false);
+      setHeaderSize(panel, r.size);
+      return r.size;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // #33, spec section 6 "Dirty inputs": a redraw held while a press that began
+  // in the panel is in progress is flushed by the click, a pointercancel, or
+  // this long after the pointer lifts with no click. Nothing is flushed while
+  // the pointer is still down, so a slow tap keeps its target.
+  var PRESS_FLUSH_MS = 300;
+  var pressTimer = null;
+  var pressWinBound = false;
+
+  function clearPress() {
+    if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
+    state.pressActive = false;
+  }
+
+  function flushAfterPress(doc, win, handlers) {
+    if (state.pendingRedraw && !panelHasEditableFocus(doc)) draw(doc, win, handlers, true);
+  }
+
+  // Armed only by a pointerup.
+  function armPressTimer(doc, win, handlers) {
+    if (!state.pressActive) return;
+    if (pressTimer !== null) clearTimeout(pressTimer);
+    pressTimer = setTimeout(function () {
+      pressTimer = null;
+      if (!state.pressActive) return;
+      clearPress();
+      flushAfterPress(doc, win, handlers);
+    }, PRESS_FLUSH_MS);
+  }
+
+  // The timer is not armed here: a press may last as long as it likes.
+  function startPress(doc, win, handlers) {
+    if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
+    state.pressActive = true;
+  }
+
+  function endPress(doc, win, handlers) {
+    if (!state.pressActive) return;
+    clearPress();
+    flushAfterPress(doc, win, handlers);
+  }
+
   function renderPanel(doc, win, model, handlers, force) {
     injectStyleOnce(doc);
     var mount = findMountPoint(doc);
@@ -5496,6 +6314,16 @@
     applyThemeClass(doc, win);
     panel.classList.toggle('tfcc-takeover', !!model.takeover);
 
+    // #33: measured on every render, so the first paint is already right and a
+    // WebView without ResizeObserver still condenses. Our own element only.
+    var measured = narrowFor(measurePanelWidth(panel), state.narrow);
+    if (measured !== state.narrow) {
+      setNarrow(measured);
+      model.narrow = state.narrow;
+      model.openRowId = null; model.filtersOpen = false; model.openInfoId = null;
+    }
+    if (panel.classList) panel.classList.toggle(NARROW_CLASS, state.narrow === true);
+
     var html = panelHtml(model);
 
     // Writing the same string still destroys every node under it, taking the
@@ -5516,8 +6344,13 @@
     // on each render, so per-element listeners would leak on every redraw.
     if (handlers && handlers !== noopHandlers && delegated !== panel) {
       delegated = panel;
+      watchPanelWidth(doc, win, panel, handlers);
       panel.addEventListener('click', function (ev) {
         var t = ev && ev.target;
+        // The press this click ends is over before its action runs, so the
+        // action's own redraw also renders anything held during the press.
+        var pressed = state.pressActive === true;
+        if (pressed) clearPress();
         // A thread link the panel rendered. The browser follows it; this only
         // gives the auto-hide setting a chance to persist first (issue #8).
         var link = threadLinkOf(t, panel);
@@ -5528,18 +6361,54 @@
               shiftKey: !!ev.shiftKey, altKey: !!ev.altKey, defaultPrevented: !!ev.defaultPrevented,
             });
           }
+          // Never redraw inside the click that follows a link: the anchor must
+          // still be there when the browser acts on it. onThreadLink's own
+          // zero-delay redraw usually renders the held change; this covers a
+          // click that does not auto-hide.
+          if (pressed) setTimeout(function () { flushAfterPress(doc, win, handlers); }, 0);
           return;
         }
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
-        if (!act || typeof handlers.onAction !== 'function') return;
-        handlers.onAction(act, t);
+        if (!act || typeof handlers.onAction !== 'function') {
+          if (pressed) flushAfterPress(doc, win, handlers);
+          return;
+        }
+        // #33: the plan is captured before the action runs, from the rows the
+        // user was looking at, and consumed by the action's own redraw.
+        state.focusIntent = focusPlan(focusTargetOf(t), lastRender);
+        try { handlers.onAction(act, t); } finally { state.focusIntent = null; }
+        if (pressed) flushAfterPress(doc, win, handlers);
       });
       panel.addEventListener('change', function (ev) {
         var t = ev && ev.target;
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
         if (!act || typeof handlers.onChange !== 'function') return;
-        handlers.onChange(act, t);
+        // A text field commits on blur, when the browser still reports it as
+        // focused although focus is already on its way to the next control.
+        // Its commit redraws a tick later, from wherever focus landed, and
+        // never pulls focus back into the field (plan review). A select or a
+        // checkbox keeps focus, so it brings its own plan.
+        var text = isTextField(t);
+        if (!text) state.focusIntent = focusPlan(focusTargetOf(t), lastRender);
+        state.deferCommit = text;
+        try { handlers.onChange(act, t); } finally { state.focusIntent = null; state.deferCommit = false; }
       });
+      panel.addEventListener('input', function (ev) {
+        var t = ev && ev.target;
+        var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+        if (!act || typeof handlers.onInput !== 'function') return;
+        handlers.onInput(act, t);
+      });
+      panel.addEventListener('pointerdown', function () { startPress(doc, win, handlers); });
+      panel.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); });
+      panel.addEventListener('pointercancel', function () { endPress(doc, win, handlers); });
+      // A pointer that lifts outside the panel (a mouse dragged off it) must
+      // still end the press, or redraws would be held forever. This listens to
+      // an event on the window; it reads no Torn markup (ADR 0001).
+      if (!pressWinBound && win && typeof win.addEventListener === 'function') {
+        pressWinBound = true;
+        win.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); }, true);
+      }
       // An update deferred while the user was typing has to arrive eventually.
       // Waiting a tick lets focus settle first, so this does not fire while the
       // caret is simply moving from one field to the next.
@@ -5547,6 +6416,8 @@
         if (!state.pendingRedraw) return;
         setTimeout(function () {
           if (!state.pendingRedraw) return;
+          // A press in progress flushes on its own click (#33).
+          if (state.pressActive) return;
           if (panelHasEditableFocus(doc)) return;
           draw(doc, win, handlers, true);
         }, 0);
@@ -5804,18 +6675,135 @@
     draw(doc, win, handlers);
   }
 
+  // What the last draw rendered, for the focus plan of the next action: the
+  // rows as they were BEFORE the action, so a removed row's successor is known.
+  var lastRender = { ids: [], view: 'threads', narrow: false };
+
+  function focusTargetOf(el) {
+    var get = function (k) { return el && typeof el.getAttribute === 'function' ? el.getAttribute(k) : null; };
+    return { act: get('data-act'), id: get('data-id'), view: get('data-view'), info: get('data-info') };
+  }
+
+  function isTextField(el) {
+    var tag = el && el.tagName ? String(el.tagName).toLowerCase() : '';
+    if (tag === 'textarea') return true;
+    if (tag !== 'input') return false;
+    var type = el.getAttribute ? String(el.getAttribute('type') || 'text').toLowerCase() : 'text';
+    return type !== 'checkbox' && type !== 'radio';
+  }
+
+  // A background redraw restores focus only if it was already inside the
+  // panel (spec section 6, focus rule 4): it never pulls focus in.
+  function focusPlanFromActive(doc) {
+    try {
+      var active = doc.activeElement;
+      var panel = doc.getElementById(PANEL_ID);
+      if (!active || !panel || typeof panel.contains !== 'function' || !panel.contains(active)) return null;
+      return focusPlan(focusTargetOf(active), lastRender);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function restoreSelection(el) {
+    var d = state.drawerEdit;
+    if (!d || typeof el.setSelectionRange !== 'function' || typeof el.getAttribute !== 'function') return;
+    if (el.getAttribute('data-act') !== d.field || el.getAttribute('data-id') !== d.id) return;
+    if (d.selStart === null || d.selEnd === null) return;
+    try { el.setSelectionRange(d.selStart, d.selEnd); } catch (e) { /* not a text field */ }
+  }
+
+  // Tries each selector of the plan inside the panel, in order. Our own nodes
+  // only; the selectors use the grammar in the plan's Global Constraints.
+  function restoreFocus(panel, plan) {
+    if (!panel || !plan || typeof panel.querySelector !== 'function') return null;
+    for (var i = 0; i < plan.length; i += 1) {
+      var el = null;
+      try { el = panel.querySelector(plan[i]); } catch (e) { el = null; }
+      if (el && typeof el.focus === 'function') {
+        // preventScroll: focus returns to our own control without moving the
+        // page. A browser that ignores the option still focuses the element.
+        try { el.focus({ preventScroll: true }); } catch (e2) { continue; }
+        restoreSelection(el);
+        return plan[i];
+      }
+    }
+    return null;
+  }
+
+  function announce(text) { state.liveMessage = { text: text, announced: false }; }
+
+  // One polite live region, rendered with the panel and announced once, the
+  // way the badge toast's role="status" is (spec section 6, focus rule 5).
+  // Narrow only, like the rest of the section 6 machinery: desktop markup
+  // stays main's.
+  function renderLive(model) {
+    if (!model.narrow) return '';
+    if (!model.live) return '';
+    return '<div class="tfcc-sr" role="status" aria-live="polite">' + escapeHtml(model.live) + '</div>';
+  }
+
   function draw(doc, win, handlers, force) {
     var now = Date.now();
     state.route = parseForumRoute(win.location);
     state.replyBoxFound = !!findReplyBox(doc);
     attachAutosave(doc, win);
-    renderPanel(doc, win, buildPanelModel(now), handlers, force);
+    var before = doc.getElementById(PANEL_ID);
+    var htmlBefore = before ? before.__tfccHtml : undefined;
+    // A user action brings its own plan; otherwise follow where focus already is.
+    var plan = state.focusIntent || focusPlanFromActive(doc);
+    var model = buildPanelModel(now);
+    var panel = renderPanel(doc, win, model, handlers, force);
+    // Only a rewrite changes what is on screen. A deferred one (a caret in the
+    // panel) leaves the old rows in the DOM, so lastRender must keep
+    // describing them, or the next action's neighbours would be wrong.
+    var rewrote = !!panel && panel.__tfccHtml !== htmlBefore;
+    if (rewrote) {
+      lastRender = { ids: model.renderedIds || [], view: model.view, narrow: model.narrow === true };
+      // Only a rewrite destroys the focused node; an unchanged panel keeps it.
+      if (plan) restoreFocus(panel, plan);
+    }
     if (state.badgeToast && !state.pendingRedraw) state.badgeToast.announced = true;
+    if (state.liveMessage && !state.pendingRedraw) state.liveMessage.announced = true;
+    // The chip's width changes with its counts and Show replaces Hide, so the
+    // header is re-fitted after every draw, not only on resize.
+    fitHeader(panel || doc.getElementById(PANEL_ID), win);
     state.mounted = true;
   }
 
   function makeHandlers(doc, win) {
-    function redraw() { draw(doc, win, handlers, true); }
+    var commitTimer = null;
+    function redraw() {
+      // #33: while a press that began in the panel is in progress, a redraw
+      // would replace the node under the finger and the tap would never arrive
+      // as a click. Hold it; the click, a pointercancel or the timer after
+      // pointerup flushes it (spec section 6, dirty inputs).
+      if (state.pressActive) { state.pendingRedraw = true; return; }
+      // A text field's commit (state.deferCommit, set by the change listener)
+      // redraws a tick later, once focus has settled: Tab lands on the next
+      // control and the redraw restores focus there; Enter leaves focus in the
+      // field and the redraw restores it there.
+      if (state.deferCommit) {
+        state.pendingRedraw = true;
+        if (commitTimer === null) {
+          commitTimer = setTimeout(function () {
+            commitTimer = null;
+            if (state.pendingRedraw) redraw();
+          }, 0);
+        }
+        return;
+      }
+      draw(doc, win, handlers, true);
+    }
+    // Work that finishes later (a refresh, My posts, deep search, a key check)
+    // lands whenever it lands, maybe while the user is typing. It is not
+    // forced, so renderPanel's caret guard defers it exactly as it defers an
+    // auto refresh (plan review: a forced completion destroyed the only copy
+    // of a half-typed drawer field).
+    function quietRedraw() {
+      if (state.pressActive) { state.pendingRedraw = true; return; }
+      draw(doc, win, handlers, false);
+    }
 
     function idOf(el) { return el && el.getAttribute ? el.getAttribute('data-id') : null; }
 
@@ -5823,6 +6811,13 @@
       var el = null;
       try { el = doc.querySelector('[data-act="' + act + '"]'); } catch (e) { el = null; }
       return el && el.value !== undefined ? String(el.value) : '';
+    }
+
+    // Every way the view changes goes through here, so the disclosures close
+    // with it (spec section 6). Tapping the current view changes nothing.
+    function setView(v) {
+      if (v !== state.settings.view) applyTransient({ type: 'view' });
+      state.settings.view = v;
     }
 
     var handlers = {
@@ -5834,7 +6829,8 @@
         if (next === state.settings) return;
         // The shelf renders in the collapsed header too; hiding the panel closes it.
         state.badgeShelfOpen = false;
-        state.settings = next;
+        // replaceSettings closes the disclosures: the panel collapses (spec 6).
+        replaceSettings(next);
         persist('settings');
         // Deferred: redrawing now would replace the anchor while its click is
         // still being dispatched. It also covers a click on the thread already
@@ -5849,20 +6845,24 @@
           // Refresh refreshes what the user is looking at: My posts runs its own
           // bounded fetch, every other view runs the Threads refresh, never both.
           var run = state.settings.view === 'mine' ? refreshMine(now) : refreshAll(now);
-          run.then(function () { if (isForumsPage(win.location)) redraw(); });
+          run.then(function () { if (isForumsPage(win.location)) quietRedraw(); });
           redraw();
           return;
         }
         if (act === 'view') {
           var v = el.getAttribute('data-view');
-          if (VIEWS.indexOf(v) !== -1) { state.settings.view = v; persist('settings'); }
+          if (VIEWS.indexOf(v) !== -1) { setView(v); persist('settings'); }
           // Opening My posts is the user input that pays for it, once per TTL.
           if (v === 'mine' && isKeyShaped(loadApiKey()) && mineIsDue(state.mine, now, MINE_TTL_MS)) {
-            refreshMine(now).then(function () { if (isForumsPage(win.location)) redraw(); });
+            refreshMine(now).then(function () { if (isForumsPage(win.location)) quietRedraw(); });
           }
           redraw(); return;
         }
-        if (act === 'collapse') { state.settings.collapsed = !state.settings.collapsed; persist('settings'); redraw(); return; }
+        if (act === 'collapse') {
+          state.settings.collapsed = !state.settings.collapsed;
+          applyTransient({ type: state.settings.collapsed ? 'collapse' : 'show' });
+          persist('settings'); redraw(); return;
+        }
         if (act === 'takeover') { state.settings.takeover = !state.settings.takeover; persist('settings'); redraw(); return; }
         if (act === 'unread-only') { state.settings.unreadOnly = !state.settings.unreadOnly; persist('settings'); redraw(); return; }
         if (act === 'rows-toggle') {
@@ -5872,11 +6872,24 @@
           if (CAPPED_VIEWS.indexOf(cv) !== -1) state.showAll[cv] = state.showAll[cv] !== true;
           redraw(); return;
         }
+
+        if (act === 'info') {
+          // Only a known key; a forged one plants no state (spec 13d).
+          var infoKey = el && el.getAttribute ? el.getAttribute('data-info') : null;
+          if (Object.prototype.hasOwnProperty.call(INFO_KEYS, infoKey)) applyTransient({ type: 'info', key: infoKey });
+          redraw(); return;
+        }
+
+        if (act === 'filters') { applyTransient({ type: 'filters' }); redraw(); return; }
+
+        if (act === 'row-more' && id) { applyTransient({ type: 'row-more', id: id }); redraw(); return; }
         if (act === 'pin' && id) { state.organizer = togglePin(state.organizer, id); persist('organizer'); recompute(now); redraw(); return; }
         if (act === 'read' && id) {
           var row = state.rows.filter(function (r) { return r.id === id; })[0];
           state.organizer = markRead(state.organizer, id, row ? row.postsTotal : 0, now);
-          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
+          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now);
+          announce('Marked read.' + (state.settings.view === 'catchup' ? ' ' + catchUpRowsNow().length + ' left.' : ''));
+          redraw(); return;
         }
         if ((act === 'prio-up' || act === 'prio-down') && id) {
           var cur = state.organizer.threads[id] ? state.organizer.threads[id].priority : 0;
@@ -5886,7 +6899,9 @@
         if (act === 'archive' && id) {
           var e = state.organizer.threads[id] || normaliseThreadEntry(null);
           state.organizer.threads[id] = Object.assign({}, e, { archived: !e.archived });
-          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
+          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now);
+          announce(e.archived ? 'Unarchived.' : 'Archived.');
+          redraw(); return;
         }
         if (act === 'markall') {
           for (var i = 0; i < state.rows.length; i += 1) {
@@ -5897,7 +6912,8 @@
             if (state.settings.authorOnly === true && state.rows[i].authorState === 'unchecked') continue;
             state.organizer = markRead(state.organizer, state.rows[i].id, state.rows[i].postsTotal, now);
           }
-          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now); redraw(); return;
+          persist('organizer'); recompute(now); recordBadgeEvent({ type: 'catchup-changed' }, now);
+          announce('Marked all read.'); redraw(); return;
         }
         if (act === 'catchup-done') {
           state.organizer.lastCatchUpAt = now; persist('organizer');
@@ -5913,7 +6929,7 @@
             // Every other fallible action here reports its outcome. Dropping
             // this one made an empty query look identical to a broken feature.
             if (res && !res.ok && res.detail) notice(res.detail, 'warn');
-            redraw();
+            quietRedraw();
           });
           redraw(); return;
         }
@@ -5924,7 +6940,7 @@
           // tried.
           if (res.ok) clearKeyRejection();
           notice(res.ok ? 'Key saved.' : (res.detail || 'That key was not accepted.'), res.ok ? 'info' : 'error');
-          if (res.ok) refreshAll(Date.now()).then(function () { if (isForumsPage(win.location)) redraw(); });
+          if (res.ok) refreshAll(Date.now()).then(function () { if (isForumsPage(win.location)) quietRedraw(); });
           redraw(); return;
         }
         if (act === 'key-clear') {
@@ -5933,7 +6949,7 @@
         }
         if (act === 'draft' && id) {
           state.draftFocusId = id;
-          state.settings.view = 'drafts';
+          setView('drafts');
           persist('settings');
           redraw(); return;
         }
@@ -5996,7 +7012,7 @@
         }
         if (act === 'reset-all') {
           invalidateInFlight();
-          state.settings = freshSettings(); state.organizer = freshOrganizer(now); state.showAll = {};
+          replaceSettings(freshSettings()); state.drawerEdit = null; state.organizer = freshOrganizer(now); state.showAll = {};
           state.drafts = freshDrafts(); state.feed = freshFeed(); state.postCache = freshPostCache();
           state.mine = freshMine(); state.mineError = null; state.mineThrottled = false;
           state.mineDropped = { threads: 0, posts: 0 };
@@ -6013,7 +7029,7 @@
           // Expand too: the shelf shows when collapsed, and Settings does not.
           state.badgeShelfOpen = false; state.badgeCatalogueOpen = true;
           state.settings.collapsed = false;
-          state.settings.view = 'settings'; persist('settings'); redraw(); return;
+          setView('settings'); persist('settings'); redraw(); return;
         }
         if (act === 'badges-catalogue') { state.badgeCatalogueOpen = !state.badgeCatalogueOpen; redraw(); return; }
         if (act === 'badges-toast-dismiss') { state.badgeToast = null; redraw(); return; }
@@ -6037,14 +7053,16 @@
           var noteNext = cloneOrganizer(state.organizer);
           entryOf(noteNext, id).note = safeString(value, 2000);
           state.organizer = noteNext;
+          state.drawerEdit = null;
           persist('organizer'); recompute(now); redraw(); return;
         }
         if (act === 'tag-input' && id && value.trim()) {
           state.organizer = toggleTag(state.organizer, id, value.trim());
+          state.drawerEdit = null;
           persist('organizer'); recompute(now); redraw(); return;
         }
         if (act === 'auto-refresh') {
-          state.settings = normaliseSettings(Object.assign({}, state.settings, { autoRefreshMs: Number(value) }));
+          replaceSettings(normaliseSettings(Object.assign({}, state.settings, { autoRefreshMs: Number(value) })));
           persist('settings');
           // Rescheduling here is the whole point. Setting it up once at startup
           // would mean the choice did nothing until the next page load.
@@ -6054,7 +7072,7 @@
         if (act === 'rows-shown') {
           // Through the normaliser, like auto-refresh, so the select cannot
           // store anything the menu does not offer.
-          state.settings = normaliseSettings(Object.assign({}, state.settings, { rowsShown: Number(value) }));
+          replaceSettings(normaliseSettings(Object.assign({}, state.settings, { rowsShown: Number(value) })));
           // A new cap is a fresh statement of what the user wants; a Show all
           // from before it would silently override it.
           state.showAll = {};
@@ -6098,6 +7116,19 @@
           }
           redraw(); return;
         }
+      },
+      // #33: mirror a drawer field on every keystroke, without a redraw, so a
+      // forced redraw before the commit renders what was typed and restores
+      // the caret (spec section 6, dirty inputs rule 3).
+      onInput: function (act, el) {
+        if (act !== 'note-input' && act !== 'tag-input') return;
+        var id = idOf(el);
+        if (!id) return;
+        var n = function (v) { return typeof v === 'number' && isFinite(v) ? v : null; };
+        state.drawerEdit = {
+          id: id, field: act, value: el && el.value !== undefined ? String(el.value) : '',
+          selStart: n(el && el.selectionStart), selEnd: n(el && el.selectionEnd),
+        };
       },
     };
 

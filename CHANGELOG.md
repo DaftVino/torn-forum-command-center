@@ -98,6 +98,20 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   labelled net and karma are unchanged. (#30)
 - "started" in My posts rows is red, in a shade per theme that meets WCAG AA
   on the row: `#ff8080` on Dark, `#a11414` on Light. (#30)
+- A condensed layout for narrow panels (#33). When the panel itself is 600px
+  wide or less (a phone, or a narrow column), the header is one line of icon
+  buttons that scale between 44px and 24px, the six views are a 3 x 2 grid with
+  their counts drawn faintly behind the labels, and Sort, Folder and Tag sit
+  behind a Filters button. Rows give the title the full width; Catch up has a
+  one-tap check mark to mark a thread read, and every row has an Actions button
+  that opens its Pin, Draft, Archive, priority, folder, tag and note controls.
+  Every control outside the header is at least 44px, text fields are 16px so
+  iOS does not zoom, and focus lands on the next row after a row leaves. On
+  narrow panels the reaction totals open My posts. Desktop is unchanged.
+- Standing explanations in Catch up, My posts, Search and Settings are behind
+  info buttons, at every size (#33). Live status, errors, the API terms table
+  and the privacy lines stay visible; Settings still states the request budget
+  in one visible line.
 
 ### Fixed
 

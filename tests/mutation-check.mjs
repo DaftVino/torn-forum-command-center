@@ -601,7 +601,7 @@ const MUTATIONS = [
   {
     name: 'the Threads cap runs before the sort',
     suite: 'tests/rows-cap.test.js',
-    apply: (s) => s.replace('        threads: capRows(threadsSorted, s.rowsShown,', '        threads: capRows(visible, s.rowsShown,'),
+    apply: (s) => s.replace('      threads: capRows(threadsSorted, s.rowsShown,', '      threads: capRows(visible, s.rowsShown,'),
   },
   {
     name: 'the My posts cap runs before the sort',
@@ -983,6 +983,291 @@ const MUTATIONS = [
   { name: 'catch up: Mark all read stops at the rows cap', suite: 'tests/rows-cap.test.js',
     apply: (s) => s.replace("        if (act === 'markall') {\n          for (var i = 0; i < state.rows.length; i += 1) {",
       "        if (act === 'markall') {\n          for (var i = 0; i < Math.min(state.rows.length, toInt(state.settings.rowsShown, 0) || state.rows.length); i += 1) {") },
+  // ---- #33: condense the narrow mobile view -------------------------------
+  {
+    name: 'Catch up loses its one-tap Read',
+    suite: 'tests/narrow-view.test.js',
+    apply: (s) => s.replace('if (inCatchUp) out.push(readButton(row));', 'if (false) out.push(readButton(row));'),
+  },
+  {
+    name: 'Read is offered twice in Catch up',
+    suite: 'tests/narrow-view.test.js',
+    apply: (s) => s.replace('if (!inCatchUp) out.push(readButton(row));', 'out.push(readButton(row));'),
+  },
+  {
+    name: 'a stale open row is not reconciled',
+    suite: 'tests/narrow-engine.test.js',
+    apply: (s) => s.replace('if (out.openRowId !== null && ids.indexOf(out.openRowId) === -1) out.openRowId = null;', ''),
+  },
+  {
+    name: 'the model build no longer reconciles',
+    suite: 'tests/narrow-state.test.js',
+    apply: (s) => s.replace(
+      'setTransient(reconcileTransient(currentTransient(), renderedIds, INFO_KEYS_BY_VIEW[s.view] || []));', ''),
+  },
+  {
+    name: 'the focus plan skips the next row',
+    suite: 'tests/narrow-engine.test.js',
+    apply: (s) => s.replace('if (at + 1 < ids.length) out.push(', 'if (false) out.push('),
+  },
+  {
+    name: 'focus is never restored after a redraw',
+    suite: 'tests/narrow-focus.test.js',
+    apply: (s) => s.replace('if (plan) restoreFocus(panel, plan);', ''),
+  },
+  {
+    name: 'the breakpoint loses its hysteresis',
+    suite: 'tests/narrow-engine.test.js',
+    apply: (s) => s.replace('if (width > NARROW_LEAVE_PX) return false;', 'if (width > NARROW_ENTER_PX) return false;'),
+  },
+  {
+    name: 'header buttons go under the 24px floor',
+    suite: 'tests/narrow-engine.test.js',
+    apply: (s) => s.replace('for (var s = HB_MAX; s >= HB_MIN; s -= HB_STEP) {', 'for (var s = HB_MAX; s >= 12; s -= HB_STEP) {'),
+  },
+  {
+    name: 'header buttons grow past 44px',
+    suite: 'tests/narrow-engine.test.js',
+    apply: (s) => s.replace('var HB_MAX = 44;', 'var HB_MAX = 48;'),
+  },
+  {
+    name: 'the chip never goes compact',
+    suite: 'tests/narrow-runtime.test.js',
+    apply: (s) => s.replace('if (r.size < HB_COMPACT_BELOW && chip && chip.classList) {', 'if (false) {'),
+  },
+  {
+    name: 'the narrow class never reaches the panel',
+    suite: 'tests/narrow-runtime.test.js',
+    apply: (s) => s.replace("if (panel.classList) panel.classList.toggle(NARROW_CLASS, state.narrow === true);", ''),
+  },
+  {
+    name: 'the ResizeObserver is never set up',
+    suite: 'tests/narrow-runtime.test.js',
+    apply: (s) => s.replace("if (typeof ResizeObserver !== 'function') return false;", 'return false;'),
+  },
+  {
+    name: 'crossing the breakpoint keeps the drawer open',
+    suite: 'tests/narrow-runtime.test.js',
+    apply: (s) => s.replace("applyTransient({ type: 'breakpoint' });", ''),
+  },
+  {
+    name: 'a view change keeps the drawer open',
+    suite: 'tests/narrow-state.test.js',
+    apply: (s) => s.replace("if (v !== state.settings.view) applyTransient({ type: 'view' });", ''),
+  },
+  {
+    name: 'auto-hide leaves the drawer open',
+    suite: 'tests/auto-hide.test.js',
+    apply: (s) => s.replace("else if (next.collapsed === true && state.settings.collapsed !== true) applyTransient({ type: 'collapse' });", ''),
+  },
+  {
+    name: 'a narrow selected nav label loses contrast',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace('--tfcc-navnum-opacity-selected: 0.09;', '--tfcc-navnum-opacity-selected: 0.14;'),
+  },
+  {
+    name: 'the reactions pill returns to the narrow nav',
+    suite: 'tests/narrow-view.test.js',
+    apply: (s) => s.replace("var out = ['<div class=\"tfcc-nav tfcc-navgrid\">'];",
+      "var out = ['<div class=\"tfcc-nav tfcc-navgrid\">' + renderReactions(model)];"),
+  },
+  {
+    name: 'the collapsed count says "16 new" to sighted users',
+    suite: 'tests/narrow-view.test.js',
+    apply: (s) => s.replace(
+      "count = '<span class=\"tfcc-badge tfcc-hcount\"><span aria-hidden=\"true\">' + escapeHtml(n) + '</span>'",
+      "count = '<span class=\"tfcc-badge tfcc-hcount\"><span aria-hidden=\"true\">' + escapeHtml(said) + '</span>'"),
+  },
+  {
+    name: 'wide rows render the narrow markup',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace('return model.narrow ? renderRowNarrow(row, model) : renderRow(row, model);',
+      'return renderRowNarrow(row, model);'),
+  },
+  {
+    name: 'a closed explanation is shown anyway',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace("+ (openKey === key ? '' : ' hidden') + '>' + html + '</p>';", "+ '>' + html + '</p>';"),
+  },
+  {
+    name: 'the visible budget line stops following the setting',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace("+ (3 + budget) + ' requests and My posts at most '", "+ 13 + ' requests and My posts at most '"),
+  },
+  {
+    name: 'the Filters count ignores the tag filter',
+    suite: 'tests/narrow-engine.test.js',
+    apply: (s) => s.replace('return (s.folderFilter ? 1 : 0) + (s.tagFilter ? 1 : 0);', 'return (s.folderFilter ? 1 : 0);'),
+  },
+  {
+    name: 'a press no longer holds the redraw',
+    suite: 'tests/dirty-input.test.js',
+    apply: (s) => s.replace('if (state.pressActive) { state.pendingRedraw = true; return; }', ''),
+  },
+  {
+    name: 'a forced redraw drops what was typed in a drawer',
+    suite: 'tests/dirty-input.test.js',
+    apply: (s) => s.replace("escapeHtml(edit && edit.field === 'note-input' ? edit.value : row.note) + '\" placeholder=\"note\" aria-label=\"Note\">');",
+      "escapeHtml(row.note) + '\" placeholder=\"note\" aria-label=\"Note\">');"),
+  },
+  {
+    name: 'the live region never renders',
+    suite: 'tests/narrow-focus.test.js',
+    apply: (s) => s.replace("if (!model.live) return '';", "return '';"),
+  },
+  {
+    name: 'narrow text fields fall under 16px',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace("'#' + PANEL_ID + '.tfcc-narrow textarea { font-size: max(16px, 1em); }',",
+      "'#' + PANEL_ID + '.tfcc-narrow textarea { font-size: 12px; }',"),
+  },
+  {
+    name: 'narrow controls shrink under 44px',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace("'#' + PANEL_ID + '.tfcc-narrow button { min-height: 44px; min-width: 44px; }',",
+      "'#' + PANEL_ID + '.tfcc-narrow button { min-height: 40px; min-width: 40px; }',"),
+  },
+  // ---- #33, added by the plan review ----------------------------------------
+  {
+    name: 'the no-click flush is armed on pointerdown, so a slow tap loses its target',
+    suite: 'tests/dirty-input.test.js',
+    apply: (s) => s.replace('state.pressActive = true;\n  }', 'state.pressActive = true;\n    armPressTimer(doc, win, handlers);\n  }'),
+  },
+  {
+    name: 'the no-click flush is not 300ms',
+    suite: 'tests/dirty-input.test.js',
+    apply: (s) => s.replace('var PRESS_FLUSH_MS = 300;', 'var PRESS_FLUSH_MS = 3000;'),
+  },
+  {
+    name: 'a thread-link click flushes inside its own dispatch',
+    suite: 'tests/dirty-input.test.js',
+    apply: (s) => s.replace('if (pressed) setTimeout(function () { flushAfterPress(doc, win, handlers); }, 0);',
+      'if (pressed) flushAfterPress(doc, win, handlers);'),
+  },
+  {
+    name: 'a pointerup outside the panel never ends the press',
+    suite: 'tests/dirty-input.test.js',
+    apply: (s) => s.replace("win.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); }, true);", ''),
+  },
+  {
+    name: 'a background completion forces through the caret',
+    suite: 'tests/dirty-input.test.js',
+    apply: (s) => s.replace('draw(doc, win, handlers, false);\n    }', 'draw(doc, win, handlers, true);\n    }'),
+  },
+  {
+    name: 'crossing the breakpoint drops an uncommitted edit',
+    suite: 'tests/narrow-engine.test.js',
+    apply: (s) => s.replace('return { openRowId: null, filtersOpen: false, openInfoId: null, drawerEdit: out.drawerEdit };',
+      'return freshTransient();'),
+  },
+  {
+    name: 'a deferred redraw updates the focus bookkeeping',
+    suite: 'tests/narrow-focus.test.js',
+    apply: (s) => s.replace('var rewrote = !!panel && panel.__tfccHtml !== htmlBefore;', 'var rewrote = !!panel;'),
+  },
+  {
+    name: 'a text field\'s commit redraws at once and pulls focus back into it',
+    suite: 'tests/narrow-focus.test.js',
+    apply: (s) => s.replace('if (state.deferCommit) {', 'if (false) {'),
+  },
+  {
+    name: 'a select\'s change brings no focus plan',
+    suite: 'tests/narrow-focus.test.js',
+    apply: (s) => s.replace('if (!text) state.focusIntent = focusPlan(focusTargetOf(t), lastRender);',
+      'if (false) state.focusIntent = focusPlan(focusTargetOf(t), lastRender);'),
+  },
+  {
+    name: 'a settings replacement that changes the view skips the reset',
+    suite: 'tests/narrow-state.test.js',
+    apply: (s) => s.replace("if (next.view !== state.settings.view) applyTransient({ type: 'view' });", ''),
+  },
+  {
+    name: 'fitHeader reads the document instead of the panel',
+    suite: 'tests/narrow-focus.test.js',
+    apply: (s) => s.replace("var chip = panel.querySelector('.tfcc-chip');",
+      "var chip = panel.querySelector('.tfcc-chip') || document.querySelector('.tfcc-chip');"),
+  },
+  {
+    name: 'Show is measured at one size only',
+    suite: 'tests/narrow-runtime.test.js',
+    apply: (s) => s.replace('slope = (width(show) - show24) / (HB_MAX - HB_MIN);', 'slope = 0;'),
+  },
+  {
+    name: 'an info bar lets its button wrap away from its note',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace("'  flex-wrap: nowrap; margin-bottom: var(--tfcc-gap-sm); }',", "'  flex-wrap: wrap; margin-bottom: var(--tfcc-gap-sm); }',"),
+  },
+  {
+    name: 'narrow Catch up loses the group that keeps its info button on the line',
+    suite: 'tests/narrow-view.test.js',
+    apply: (s) => s.replace("if (model.narrow) out.push('<span class=\"tfcc-infogroup\">');", "if (false) out.push('<span class=\"tfcc-infogroup\">');"),
+  },
+  {
+    name: 'the collapsed count is left out of the header solve',
+    suite: 'tests/narrow-engine.test.js',
+    apply: (s) => s.replace("var count = typeof countW === 'number' && countW > 0 ? countW + HB_COUNT_GAP : 0;", 'var count = 0;'),
+  },
+  {
+    name: 'fitHeader never measures the collapsed count',
+    suite: 'tests/narrow-runtime.test.js',
+    apply: (s) => s.replace("var countW = width(panel.querySelector('.tfcc-hcount'));", 'var countW = 0;'),
+  },
+  {
+    name: 'a count that cannot fit shrinks the buttons instead of wrapping',
+    suite: 'tests/narrow-runtime.test.js',
+    apply: (s) => s.replace('if (!r.fits && countW > 0) r = solve(false);', ''),
+  },
+  {
+    name: 'the narrow chip loses its 44px box',
+    suite: 'tests/narrow-view.test.js',
+    apply: (s) => s.replace("var inner = model.narrow ? '<span class=\"tfcc-pill\">'", "var inner = false ? '<span class=\"tfcc-pill\">'"),
+  },
+  // One per section 13d audit item (spec table numbers), each caught by the
+  // literal owner map in tests/info.test.js.
+  ...[
+    ['2', "renderInfoButton('catchup', model.openInfoId)"],
+    ['4', "renderInfoButton('mine', model.openInfoId)"],
+    ['8', "renderInfoButton('search', model.openInfoId)"],
+    ['17', "renderInfoButton('settings-budget', model.openInfoId)"],
+    ['18', "renderInfoButton('settings-author', model.openInfoId)"],
+    ['19', "renderInfoButton('settings-rows', model.openInfoId)"],
+    ['20', "renderInfoButton('settings-autohide', model.openInfoId)"],
+    ['21', "renderInfoButton('settings-folders', model.openInfoId)"],
+    ['26', "renderInfoButton('settings-badges', model.openInfoId)"],
+  ].map(([item, call]) => ({
+    name: '13d item ' + item + ' loses its info button',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace(call, "''"),
+  })),
+  {
+    name: '13d item 11: the Drafts reply-box line is long again',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace('No reply box here, so Copy replaces Insert.', 'No reply box was found on this page, so Insert is unavailable.'),
+  },
+  {
+    name: '13d item 13: the key note is long again',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace('Create a <strong>Minimal Access</strong> key on Torn (Settings, API Key).',
+      'This script needs a key. Create a <strong>Minimal Access</strong> key on Torn (Settings, API Key).'),
+  },
+  {
+    name: '13d item 16: the custom-key line is long again',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace("Opens Torn in a new tab with only this script\\'s selections.",
+      "This opens Torn in a new tab with only this script\\'s selections."),
+  },
+  {
+    name: '13d item 23: the backup line is long again',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace('Never includes your API key or the post cache.',
+      'An export carries folders and tags. Never includes your API key or the post cache.'),
+  },
+  {
+    name: '13d item 25: the debug line is long again',
+    suite: 'tests/info.test.js',
+    apply: (s) => s.replace('Never includes your key, drafts, notes or post text.',
+      'A debug report carries counts. Never includes your key, drafts, notes or post text.'),
+  },
 ];
 
 let failures = 0;

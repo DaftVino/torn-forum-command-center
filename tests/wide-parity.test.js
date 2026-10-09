@@ -1,0 +1,102 @@
+'use strict';
+
+// Desktop does not change (#33, spec section 7). The golden was captured from
+// main before any #33 code landed; see tests/make-wide-golden.mjs.
+
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const path = require('path');
+const { loadUserscript, FORUMS_LOCATION } = require('./load-userscript');
+const { captureWide } = require('./wide-seed');
+
+const golden = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'wide-golden.json'), 'utf8'));
+
+// The panel-internal rules that left `@media (max-width: 600px)` for
+// `#tfcc-panel.tfcc-narrow` (spec section 5). Only these may disappear.
+const MOVED_OUT_OF_MEDIA = new Set([
+  '  #tfcc-panel { padding: 8px; }',
+  '  #tfcc-panel .tfcc-kv label { min-width: 0; flex-basis: 100%; }',
+  '  #tfcc-panel .tfcc-grow { flex-basis: 100%; }',
+  '  #tfcc-panel .tfcc-row { padding: var(--tfcc-gap-xs) var(--tfcc-gap-sm); }',
+  '  #tfcc-panel .tfcc-actions { gap: 3px; }',
+  '  #tfcc-panel .tfcc-actions button { padding: 1px 5px; }',
+  '  #tfcc-panel .tfcc-actions input, #tfcc-panel .tfcc-actions select {',
+  '    padding: 1px 4px; font-size: var(--tfcc-text-sm); max-width: 46%; }',
+  '  #tfcc-panel .tfcc-meta { gap: var(--tfcc-gap-sm); }',
+]);
+
+// The owner's section 13d changes are the only wide markup changes allowed.
+// Each is one literal replacement, written in the commit that makes it
+// (tests/wide-13d-diffs.js); every `from` must occur exactly once in main's
+// golden, so a stale or widened entry fails here rather than hiding a change.
+const D13 = require('./wide-13d-diffs');
+
+function expectedView(view) {
+  let html = golden.views[view];
+  for (const d of D13.filter((x) => x.view === view)) {
+    const n = html.split(d.from).length - 1;
+    assert.strictEqual(n, 1, '13d item ' + d.item + ': its "from" occurs ' + n + ' times in main\'s ' + view);
+    html = html.replace(d.from, () => d.to);
+  }
+  return html;
+}
+
+test('every complete wide view is main\'s, byte for byte, apart from the listed 13d items', () => {
+  const now = captureWide(loadUserscript, FORUMS_LOCATION);
+  const views = ['threads', 'threadsCapped', 'collapsed', 'catchup', 'mine', 'search', 'drafts', 'settings', 'loading', 'error'];
+  assert.deepStrictEqual(Object.keys(golden.views).sort(), views.slice().sort(), 'the golden holds every view');
+  for (const view of views) assert.strictEqual(now.views[view], expectedView(view), view);
+});
+
+test('the 13d list touches only the views the owner changed', () => {
+  for (const d of D13) assert.ok(['catchup', 'mine', 'search', 'drafts', 'settings'].includes(d.view), d.item);
+});
+
+test('every wide nav and every wide row is byte-identical to main', () => {
+  const now = captureWide(loadUserscript, FORUMS_LOCATION);
+  assert.deepStrictEqual(Object.keys(now.nav).sort(), Object.keys(golden.nav).sort());
+  for (const view of Object.keys(golden.nav)) {
+    assert.strictEqual(now.nav[view], golden.nav[view], 'nav in ' + view);
+    assert.deepStrictEqual(now.rows[view], golden.rows[view], 'rows in ' + view);
+  }
+});
+
+test('no stylesheet line from main was removed or edited, apart from the rules that moved to .tfcc-narrow', () => {
+  // A subsequence check: every old line still appears, in order. New lines
+  // may be inserted anywhere; an edited line shows up as a missing one.
+  const now = captureWide(loadUserscript, FORUMS_LOCATION).css;
+  let at = 0;
+  const missing = [];
+  for (const line of golden.css) {
+    if (MOVED_OUT_OF_MEDIA.has(line)) continue;
+    const found = now.indexOf(line, at);
+    if (found === -1) missing.push(line); else at = found + 1;
+  }
+  assert.deepStrictEqual(missing, [], 'wide CSS lines removed, edited or reordered');
+});
+
+// The only new rules a wide panel may see: the 13d info button, its text, the
+// glyph it draws and the hidden attribute (spec 13d, every size). Everything
+// else #33 adds hangs off .tfcc-narrow.
+const WIDE_13D_SELECTORS = new Set([
+  '#tfcc-panel [hidden]',
+  '#tfcc-panel .tfcc-gl',
+  '#tfcc-panel .tfcc-gl path',
+  '#tfcc-panel .tfcc-infobar',
+  '#tfcc-panel .tfcc-infobar h4',
+  // PR #38 review: the note in an info bar wraps inside itself.
+  '#tfcc-panel .tfcc-infobar > .tfcc-note',
+  '#tfcc-panel button.tfcc-info',
+  '#tfcc-panel button.tfcc-info[aria-expanded="true"]',
+  '#tfcc-panel .tfcc-infotext',
+]);
+
+test('every new stylesheet rule is scoped to .tfcc-narrow or is a listed 13d rule', () => {
+  const old = new Set(golden.css);
+  const stray = captureWide(loadUserscript, FORUMS_LOCATION).css
+    .filter((line) => !old.has(line) && line.indexOf('{') !== -1)
+    .map((line) => line.slice(0, line.indexOf('{')).trim())
+    .filter((sel) => sel.indexOf('.tfcc-narrow') === -1 && !WIDE_13D_SELECTORS.has(sel));
+  assert.deepStrictEqual(stray, [], 'a new rule a wide panel would see');
+});

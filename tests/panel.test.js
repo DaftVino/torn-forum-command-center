@@ -273,7 +273,7 @@ test('the drafts view offers Insert with a reply box and Copy without one', () =
   const html = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
   assert.doesNotMatch(html, /data-act="draft-insert"/);
   assert.match(html, /data-act="draft-copy"/);
-  assert.match(html, /No reply box was found/, 'the user is told why, not left guessing');
+  assert.match(html, /No reply box here, so Copy replaces Insert\./, 'the user is told why, not left guessing');
 });
 
 test('a thread title from Torn is escaped, never rendered as markup', () => {
