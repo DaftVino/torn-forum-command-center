@@ -282,6 +282,28 @@ test('a dirty note popup, then a tap on the sort select: close, keep the text, a
   assert.strictEqual(api.state.pressActive, false);
 });
 
+// #43: the narrow drawer's fields became a popup that saves on Save, so the
+// held commit is proved on the wide row's inline note field.
+test('a dirty text field, then a tap on the sort select: the held commit waits until after the select\'s click', () => {
+  const { env, api } = bootNarrow({ width: 900 });
+  seedRows(api, [{ id: 1, title: 'One' }, { id: 2, title: 'Two' }]);
+  redraw(env);
+  const panel = panelOf(env);
+  const note = panel.querySelector('[data-act="note-input"][data-id="1"]');
+  note.value = 'typed note';
+  const select = panel.querySelector('[data-act="sort"]');
+  const before = panel.renderCount;
+  panel.dispatchEvent({ type: 'pointerdown', target: select });
+  panel.dispatchEvent({ type: 'change', target: note });
+  panel.dispatchEvent({ type: 'pointerup', target: select });
+  click(env, '[data-act="sort"]');
+  assert.strictEqual(panel.renderCount, before, 'the held commit is not flushed inside the select\'s click');
+  env.advanceTimersBy(0);
+  assert.strictEqual(panel.renderCount, before + 1, 'then one redraw for the commit');
+  assert.strictEqual(api.state.organizer.threads['1'].note, 'typed note');
+  assert.strictEqual(api.state.pressActive, false);
+});
+
 test('Unread and a nav cell with a drawer open: each acts and closes the drawer in one redraw', () => {
   for (const [sel, check] of [
     ['[data-act="unread-only"]', (api) => api.state.settings.unreadOnly === true],

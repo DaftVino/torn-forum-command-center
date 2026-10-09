@@ -381,4 +381,3 @@ test('desktop rows keep their inline tag and note fields (#43)', () => {
   assert.match(html, /<input type="text" data-act="note-input" data-id="1" value="" placeholder="note" size="14">/);
   assert.doesNotMatch(html, /data-act="editor/);
 });
-

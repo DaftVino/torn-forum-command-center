@@ -295,8 +295,13 @@ test('the priority text closes with its drawer: the toggle, another row, a tap a
       assert.match(html(), /data-info="priority" aria-expanded="false" aria-controls="tfcc-info-priority"/, 'the new drawer starts closed');
     }
   }
-  // The engine rule on its own: no open drawer, no drawer info.
+  // The engine rules on their own: another row's drawer opening closes it
+  // (whatever path the tap took), and no open drawer means no drawer info.
   const { api } = bootNarrow();
+  assert.strictEqual(api.nextTransient({ openRowId: '1', filtersOpen: false, openInfoId: 'priority', drawerEdit: null },
+    { type: 'row-more', id: '2' }).openInfoId, null);
+  assert.strictEqual(api.nextTransient({ openRowId: '1', filtersOpen: false, openInfoId: 'catchup', drawerEdit: null },
+    { type: 'row-more', id: '2' }).openInfoId, 'catchup', 'a view info is not the drawer\'s');
   assert.strictEqual(api.reconcileTransient({ openRowId: null, filtersOpen: false, openInfoId: 'priority', drawerEdit: null },
     [], ['priority']).openInfoId, null);
 });

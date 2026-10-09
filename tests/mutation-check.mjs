@@ -609,7 +609,7 @@ const MUTATIONS = [
   {
     name: 'the Threads cap runs before the sort',
     suite: 'tests/rows-cap.test.js',
-    apply: (s) => s.replace('      threads: capRows(threadsSorted, s.rowsShown,', '      threads: capRows(visible, s.rowsShown,'),
+    apply: (s) => s.replace('      threads: capRows(threadsSorted, limit,', '      threads: capRows(visible, limit,'),
   },
   {
     name: 'the My posts cap runs before the sort',
@@ -1113,10 +1113,17 @@ const MUTATIONS = [
     apply: (s) => s.replace('if (state.pressActive) { state.pendingRedraw = true; return; }', ''),
   },
   {
-    name: 'a forced redraw drops what was typed in a drawer',
+    // #43: the inline note field is the wide row's; the drawer's is a popup.
+    name: 'a forced redraw drops what was typed in a note field',
     suite: 'tests/dirty-input.test.js',
-    apply: (s) => s.replace("escapeHtml(edit && edit.field === 'note-input' ? edit.value : row.note) + '\" placeholder=\"note\" aria-label=\"Note\">');",
-      "escapeHtml(row.note) + '\" placeholder=\"note\" aria-label=\"Note\">');"),
+    apply: (s) => s.replace("escapeHtml(edit && edit.field === 'note-input' ? edit.value : row.note) + '\" placeholder=\"note\" size=\"14\">');",
+      "escapeHtml(row.note) + '\" placeholder=\"note\" size=\"14\">');"),
+  },
+  {
+    name: '#43: a forced redraw drops what was typed in the drawer popup',
+    suite: 'tests/compact-drawer.test.js',
+    apply: (s) => s.replace("var value = edit && edit.field === mirror ? edit.value : (field === 'note' ? row.note : '');",
+      "var value = field === 'note' ? row.note : '';"),
   },
   {
     name: 'the live region never renders',
@@ -1299,7 +1306,7 @@ const MUTATIONS = [
     // 3. The close toggle and click-away.
     ['the open toggle keeps the more glyph', (s) => s.replace("glyph(open ? 'close' : 'more')", "glyph('more')")],
     ['the open toggle is not named Close actions', (s) => s.replace("(open ? 'Close actions' :", "(open ? 'Actions' :")],
-    ['dismiss no longer closes the drawer', (s) => s.replace("if (type === 'dismiss') { out.openRowId = null; return out; }", '')],
+    ['dismiss no longer closes the drawer', (s) => s.replace("if (type === 'dismiss') { out.openRowId = null; if (drawerInfo) out.openInfoId = null; return out; }", '')],
     ['a tap elsewhere in the panel leaves the drawer open', (s) => s.replace('if (state.openRowId && !insideOpenDrawer(panel, t)) {', 'if (false) {')],
     ['a tap inside the drawer closes it', (s) => s.replace("return !!(drawer && typeof drawer.contains === 'function' && drawer.contains(t));", 'return false;')],
     // PR #40 review, finding 1: the closing redraw, and the press flush, run
@@ -1330,7 +1337,7 @@ const MUTATIONS = [
     ['the drawer emoji stay in colour on dark', (s) => s.replace("      '  filter: grayscale(1) brightness(0) invert(1); }',", "      '  filter: none; }',")],
     ['the drawer emoji stay in colour on light', (s) => s.replace('.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }', '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: none; }')],
     ['drawer buttons go under the 24px floor', (s) => s.replace('.tfcc-drawer button { min-height: 32px; min-width: 32px;', '.tfcc-drawer button { min-height: 20px; min-width: 20px;')],
-    ['the drawer buttons may wrap, 4px apart', (s) => s.replace('.tfcc-drawer-btns { display: flex; flex-wrap: nowrap; gap: 8px; }', '.tfcc-drawer-btns { display: flex; flex-wrap: wrap; gap: 4px; }')],
+    ['the drawer buttons may wrap', (s) => s.replace('.tfcc-drawer-btns { display: flex; flex-wrap: nowrap; align-items: center;', '.tfcc-drawer-btns { display: flex; flex-wrap: wrap; align-items: center;')],
     ['a drawer field is shortened by its font', (s) => s.replace("      '  padding: 4px 8px; }',", "      '  padding: 4px 8px; font-size: 12px; }',")],
   ].map(([name, apply]) => ({ name: '#39: ' + name, suite: 'tests/narrow-polish.test.js', apply })),
   ...[
@@ -1423,7 +1430,7 @@ const MUTATIONS = [
     ['the Filters button loses its hover note', (s) => s.replace(
       "' active') + '\" title=\"Filters\">'", "' active') + '\">'")],
     ['the drawer loses its inline priority', (s) => s.replace(
-      "    out.push('<span class=\"tfcc-dprio\">' + renderPriority(row) + '</span>');\n", '')],
+      "    out.push('<span class=\"tfcc-dprio\">' + renderInfoButton('priority', model.openInfoId) + renderPriority(row) + '</span>');\n", '')],
     ['the drawer priority is not pushed right', (s) => s.replace(
       ".tfcc-dprio > :first-child { margin-left: auto; }',", ".tfcc-dprio > :first-child { }',")],
     ['the drawer row targets shrink below the 24px floor', (s) => s.replace(
