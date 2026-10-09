@@ -227,6 +227,8 @@ console.log('wrote ' + out);
 
 - [ ] **Step 3: Capture the golden on main's code**
 
+> Amended during implementation: the generator escapes non-ASCII characters (the pill's thumb emoji) as `\uXXXX`, so the golden stays ASCII; `JSON.parse` reads back identical strings.
+
 Run: `git diff --quiet origin/main -- torn-forum-command-center.user.js && node tests/make-wide-golden.mjs`
 Expected: `wrote .../tests/fixtures/wide-golden.json`. If the `git diff` guard fails, stop: the golden must come from main's code.
 
