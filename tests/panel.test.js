@@ -141,7 +141,7 @@ test('the header shows the FCC logo, named for assistive tech, in place of the t
   states.collapsed = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
   for (const [name, html] of Object.entries(states)) {
     const head = headOf(html);
-    assert.match(head, /<svg class="tfcc-logo"[^>]* viewBox="0 0 127 66" role="img" aria-label="Forum Command Center"/, name);
+    assert.match(head, /<svg class="tfcc-logo"[^>]* viewBox="10 9 106 45" role="img" aria-label="Forum Command Center"/, name);
     assert.ok(head.includes(env.exports.LOGO_SVG), name + ': the constant is what is injected');
     assert.doesNotMatch(head.replace(/<[^>]*>/g, ''), /Forum Command Center/, name + ': no visible title text');
   }
