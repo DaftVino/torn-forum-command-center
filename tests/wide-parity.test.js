@@ -52,8 +52,7 @@ function expectedView(view, before43) {
   for (const d of D43.markup) {
     const before = html;
     html = d.apply(html);
-    const changed = d.count(before);
-    if (changed === 0) assert.strictEqual(html, before, 'item ' + d.item + ' changed ' + view + ', which it does not name');
+    assert.deepStrictEqual(d.changed(before, html), d.hits[view] || [], 'item ' + d.item + ' in ' + view);
   }
   return html;
 }
@@ -69,18 +68,24 @@ function expectedCss() {
   return out;
 }
 
-test('every #43 markup entry changes exactly the places it names', () => {
+test('every #43 markup entry changes exactly the controls it names, and nothing else', () => {
   const titles = (h) => (h.match(/ title="/g) || []).length;
   for (const d of D43.markup) {
-    let total = 0;
     for (const view of Object.keys(golden.views)) {
       const before = expectedView(view, true);
-      total += d.count(before);
-      assert.strictEqual(titles(d.apply(before)) - titles(before), d.count(before),
-        d.item + ' in ' + view + ': one hover note per place it names');
+      const after = d.apply(before);
+      const want = d.hits[view] || [];
+      assert.deepStrictEqual(d.changed(before, after), want, d.item + ' in ' + view + ': which controls');
+      assert.strictEqual(titles(after) - titles(before), want.length, d.item + ' in ' + view + ': how many');
+      // Outside the named buttons' opening tags the view is untouched.
+      const strip = (h) => h.replace(/<button type="button" class="tfcc-info"[^>]*>/g, '<INFO>');
+      assert.strictEqual(strip(after), strip(before), d.item + ' in ' + view + ': nothing else');
     }
-    assert.ok(total > 0, d.item + ' matches nothing');
+    assert.strictEqual(Object.values(d.hits).flat().length, 10, d.item + ': ten info buttons in all');
   }
+  // An unrelated element naming an info id is left alone.
+  const stray = '<p aria-controls="tfcc-info-catchup" aria-label="About Catch up">x</p>';
+  assert.strictEqual(D43.markup[0].apply(stray), stray);
 });
 
 test('every complete wide view is main\'s, byte for byte, apart from the listed 13d items', () => {

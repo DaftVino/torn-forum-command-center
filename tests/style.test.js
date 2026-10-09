@@ -373,6 +373,17 @@ test('My posts is right-aligned and coloured like every other nav button (#43)',
   }
 });
 
+// PR #44 review: the owner asked for the colour scheme only, so the weight
+// must be whatever the other nav buttons have: normal on wide (no rule sets
+// one), bold on narrow (the .tfcc-navgrid button rule, which My posts shares).
+test('My posts has the same font weight as the other nav buttons, at every width (#43)', () => {
+  const weightRules = Array.from(css.matchAll(/([^\n{}]*\.tfcc-nav[^{]*)\{([^}]*)\}/g))
+    .filter((m) => /font-weight/.test(m[2])).map((m) => m[1].trim());
+  assert.deepStrictEqual(weightRules, ['#tfcc-panel.tfcc-narrow .tfcc-navgrid button'],
+    'one weight rule for the nav, for every narrow cell alike');
+  assert.doesNotMatch(css, /tfcc-nav-mine[^{]*\{[^}]*font-weight/, 'none for My posts alone');
+});
+
 test('the narrow and wide My posts buttons carry only their placement class, so the generic states apply (#43)', () => {
   const env = loadUserscript({ location: require('./load-userscript').FORUMS_LOCATION });
   const api = env.exports;

@@ -322,6 +322,14 @@ const SCRIPT = `
     drawerGeo = 'row ' + Math.round(box.width) + 'px, targets ' + rects.map((r) => Math.round(r.width) + 'x' + Math.round(r.height)).join(' ')
       + ', gaps ' + gaps.join(' ');
   }
+  // #43 (PR #44 review): My posts is set exactly like the other nav buttons:
+  // the same font weight as theirs at this width, whatever that is.
+  const navBtns = Array.from(panel.querySelectorAll('.tfcc-nav button[data-act="view"]'));
+  const mineBtn = navBtns.find((b) => b.getAttribute('data-view') === 'mine');
+  if (mineBtn) {
+    const weights = new Set(navBtns.map((b) => getComputedStyle(b).fontWeight));
+    if (weights.size !== 1) polishBad.push('the nav buttons differ in weight: ' + Array.from(weights).join(' / '));
+  }
   // #43: folder, Tag and Note share one row that never wraps or overflows;
   // the tag or note popup, when open, sits inside the drawer with its field
   // and both buttons inside it.

@@ -536,6 +536,16 @@ const MUTATIONS = [
       "' button.tfcc-nav-mine { margin-left: auto; background: #d9d9d9; color: #141414; }',"),
   },
   {
+    name: '#43: My posts is bold where the other nav buttons are not (PR #44 review)',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace("' button.tfcc-nav-mine { margin-left: auto; }',", "' button.tfcc-nav-mine { margin-left: auto; font-weight: bold; }',"),
+  },
+  {
+    name: '#43: a wide info button misses its listed hover note (PR #44 review)',
+    suite: 'tests/wide-parity.test.js',
+    apply: (s) => s.replace("+ '\" title=\"' + escapeHtml(INFO_KEYS[key]) + '\">'", "+ '\" title=\"' + escapeHtml(key) + '\">'"),
+  },
+  {
     name: '#43: the wide My posts colour leaves the listed replacement',
     suite: 'tests/wide-parity.test.js',
     apply: (s) => s.replace("' button.tfcc-nav-mine { margin-left: auto; }',",

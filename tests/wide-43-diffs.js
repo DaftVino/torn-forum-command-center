@@ -4,9 +4,9 @@
 // after the 13d and #41 lists. The golden is never regenerated; every change
 // a wide panel sees is named here.
 //
-// markup: each entry rewrites a whole view. `count(html)` says how many
-// places it must change in that view, so a widened or stale entry fails
-// rather than hiding a change.
+// markup: each entry rewrites a whole view. `hits` names, per view, exactly
+// which controls it changes (the parity test checks the identities and the
+// number), so a widened or stale entry fails rather than hiding a change.
 //
 // css: each entry replaces a line of main's stylesheet (`from`, required
 // exactly `times` times in the golden, once unless stated) with the lines in
@@ -16,14 +16,31 @@
 
 // 1. Every info button carries a hover note equal to its accessible name, so
 //    no icon-only button in the panel is without a title (#43 item 2). The
-//    wide panel's only icon-only buttons are the info buttons.
-const INFO_NAME = /( aria-controls="tfcc-info-[a-z0-9-]+" aria-label="([^"]*)")>/g;
+//    wide panel's only icon-only buttons are the info buttons. The pattern is
+//    the whole opening tag of an info button (PR #44 review), so nothing else
+//    that names a tfcc-info-* id can take the replacement.
+const INFO_TAG = /(<button type="button" class="tfcc-info" data-act="info" data-info="([a-z0-9-]+)" aria-expanded="(?:true|false)" aria-controls="tfcc-info-\2" aria-label="([^"]*)")>/g;
 
 const markup = [
   {
     item: '43 info button hover note',
-    apply: (html) => html.replace(INFO_NAME, (m, head, name) => head + ' title="' + name + '">'),
-    count: (html) => (html.match(/data-act="info"/g) || []).length,
+    apply: (html) => html.replace(INFO_TAG, (m, head, key, name) => head + ' title="' + name + '">'),
+    // The info keys this changes in each view, in order: main's views with
+    // the 13d and #41 lists applied. Every other view changes nowhere.
+    hits: {
+      catchup: ['catchup'],
+      mine: ['mine'],
+      search: ['search'],
+      settings: ['settings-budget', 'settings-author', 'settings-rows', 'settings-autohide', 'settings-clip',
+        'settings-folders', 'settings-badges'],
+    },
+    // Which keys it really changed in a view: the info buttons whose opening
+    // tag gained the title.
+    changed: (before, after) => {
+      const titled = (h) => Array.from(h.matchAll(/data-act="info" data-info="([a-z0-9-]+)"[^>]* title="[^"]*">/g), (m) => m[1]);
+      const was = titled(before);
+      return titled(after).filter((k, i) => was.indexOf(k) === -1 || i >= was.length);
+    },
   },
 ];
 
@@ -38,6 +55,11 @@ const css = [
   { item: MINE, from: '  --tfcc-mine-text: #141414; --tfcc-mine-border: #5c5c5c;', to: [] },
   { item: MINE, from: '#tfcc-panel button.tfcc-nav-mine { margin-left: auto; background: var(--tfcc-mine-bg);',
     to: ['#tfcc-panel button.tfcc-nav-mine { margin-left: auto; }'] },
+  // Its font-weight: bold goes with it (PR #44 review): the owner asked for
+  // its colours to match, and matching means its weight is the other nav
+  // buttons' too, normal on wide and the narrow grid's bold on narrow, where
+  // every cell already shares one rule. tests/style.test.js and the contrast
+  // audit check the weights are equal.
   { item: MINE, from: '  color: var(--tfcc-mine-text); border-color: var(--tfcc-mine-border); font-weight: bold; }', to: [] },
   { item: MINE, from: '#tfcc-panel button.tfcc-nav-mine:hover { background: var(--tfcc-mine-hover);', to: [] },
   { item: MINE, from: '  color: var(--tfcc-mine-text); }', to: [] },
