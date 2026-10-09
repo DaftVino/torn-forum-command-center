@@ -156,7 +156,22 @@ const HOSTILE_HOST_CSS = [
   'svg, svg * { fill: #000; color: #000; }',
 ].join('\n');
 
-function page(title, theme, body, width, hostile) {
+// The real functions, by source text, with the constants and the one state
+// field they read. A preview that drifted from the runtime would prove nothing.
+const raw = env.rawExports;
+const FIT_HEADER_SHIM = [
+  'var state = { narrow: true };',
+  ['HB_MAX', 'HB_MIN', 'HB_STEP', 'HB_COMPACT_BELOW', 'HB_GAPS', 'LOGO_ASPECT', 'LOGO_PER_HB', 'LOGO_MIN_PX', 'LOGO_MAX_PX']
+    .map((k) => 'var ' + k + ' = ' + JSON.stringify(raw[k]) + ';').join('\n'),
+  String(raw.headerLogoWidth),
+  String(raw.headerButtonSize),
+  'function setHeaderSize(panel, size) { if (size === null) panel.style.removeProperty("--tfcc-hb");'
+    + ' else panel.style.setProperty("--tfcc-hb", size + "px"); }',
+  String(raw.fitHeader),
+  'fitHeader(document.getElementById("tfcc-panel"), window);',
+].join('\n');
+
+function page(title, theme, body, width, hostile, narrow) {
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8">',
@@ -176,7 +191,10 @@ function page(title, theme, body, width, hostile) {
     css,
     '</style></head><body><div class="frame">',
     '<p class="label">' + title + '</p>',
-    '<div id="tfcc-panel" class="tfcc-theme-' + theme + '">' + body + '</div>',
+    '<div id="tfcc-panel" class="tfcc-theme-' + theme + (narrow ? ' tfcc-narrow' : '') + '">' + body + '</div>',
+    // #33: the production fitHeader and headerButtonSize, verbatim, so the
+    // preview's header is sized exactly as the script sizes it.
+    narrow ? '<script>' + FIT_HEADER_SHIM + '</script>' : '',
     '</div></body></html>',
   ].join('\n');
 }
@@ -218,6 +236,39 @@ fs.writeFileSync(path.join(outDir, 'threads-capped-narrow.html'),
   page('threads / rows shown 3 / narrow 375px', 'dark', cappedNarrow, 375));
 written.push('threads-capped-narrow.html');
 api.state.settings.rowsShown = 0;
+
+// #33: the condensed layout. Panel widths are the spec's: a 375, 320 and
+// 280px phone inside a 16px gutter. Each state in dark and light.
+api.state.narrow = true;
+const NARROW_STATES = [
+  ['threads', () => { api.state.settings.view = 'threads'; }],
+  ['threads-drawer', () => { api.state.settings.view = 'threads'; api.state.openRowId = '16474152'; }],
+  ['catchup', () => { api.state.settings.view = 'catchup'; }],
+  ['catchup-info-drawer', () => { api.state.settings.view = 'catchup'; api.state.openInfoId = 'catchup';
+    api.state.openRowId = '16474152'; }],
+  ['filters', () => { api.state.settings.view = 'threads'; api.state.filtersOpen = true; }],
+  ['mine', () => { api.state.settings.view = 'mine'; }],
+  ['collapsed', () => { api.state.settings.view = 'threads'; api.state.settings.collapsed = true; }],
+  ['shelf', () => { api.state.settings.view = 'threads'; api.state.badgeShelfOpen = true; }],
+];
+for (const [label, setUp] of NARROW_STATES) {
+  for (const [vp, panelPx] of [[375, 343], [320, 288], [280, 248]]) {
+    for (const theme of ['dark', 'light']) {
+      Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false });
+      api.state.settings.collapsed = false;
+      api.state.settings.theme = theme;
+      setUp();
+      const body = api.panelHtml(api.buildPanelModel(NOW));
+      const name = `narrow-${label}-${vp}-${theme}.html`;
+      fs.writeFileSync(path.join(outDir, name),
+        page(`narrow ${label} / ${vp}px / ${theme}`, theme, body, panelPx, label === 'threads', true));
+      written.push(name);
+    }
+  }
+}
+api.state.narrow = false;
+Object.assign(api.state, { openRowId: null, filtersOpen: false, openInfoId: null, badgeShelfOpen: false });
+api.state.settings.collapsed = false;
 
 // Badges (issue #9). Match Torn applies one of the two theme classes, so dark
 // and light cover it; both are rendered here under the hostile host too.

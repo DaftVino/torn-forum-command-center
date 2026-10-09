@@ -82,6 +82,9 @@ const SCRIPT = `
     // for the contrast of a child that sets its own colour.
     const own = Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim());
     if (!own) return;
+    // #33: the nav numeral is decorative (aria-hidden) and below 3:1 by the
+    // owner's choice; the label over it is measured below instead.
+    if (el.closest('.tfcc-navnum')) return;
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') return;
 
@@ -128,7 +131,52 @@ const SCRIPT = `
   });
   // #30: the elements this audit must have measured, so a preview that stops
   // rendering them fails rather than passing by omission.
+  // #33, spec 13f: every nav label at 4.5:1 or better over the numeral painted
+  // on its cell (or over the cell, where there is no numeral), composited
+  // exactly as the mockup's in-page script does.
+  const mix = (fg, bg, a) => ({ r: fg.r * a + bg.r * (1 - a), g: fg.g * a + bg.g * (1 - a), b: fg.b * a + bg.b * (1 - a), a: 1 });
+  panel.querySelectorAll('.tfcc-navgrid button').forEach((cell) => {
+    const lab = cell.querySelector('.tfcc-navlab');
+    if (!lab) return;
+    const fg = parse(getComputedStyle(cell).color);
+    const bg = effectiveBg(cell);
+    const numEl = cell.querySelector('.tfcc-navnum');
+    const under = numEl ? mix(fg, bg, parseFloat(getComputedStyle(numEl).opacity)) : bg;
+    const label = mix(fg, under, parseFloat(getComputedStyle(lab).opacity));
+    const r = ratio(label, under);
+    if (r >= ${MIN_NORMAL}) return;
+    out.push({ tag: 'nav', cls: 'tfcc-navlab', color: 'composited', bg: 'numeral', ratio: Math.round(r * 100) / 100,
+      need: ${MIN_NORMAL}, text: lab.textContent });
+  });
+  // #33, spec 13b: the narrow header stays on one line. Every header button
+  // shares one top, the header is no taller than a button (plus a pixel of
+  // rounding), and no button is under the 24px floor.
+  const head = panel.classList.contains('tfcc-narrow') ? panel.querySelector('.tfcc-head') : null;
+  const headBad = [];
+  if (head) {
+    const btns = Array.from(head.querySelectorAll('.tfcc-head-btns button'));
+    const tops = new Set(btns.map((b) => Math.round(b.getBoundingClientRect().top)));
+    const tallest = Math.max(...btns.map((b) => b.getBoundingClientRect().height));
+    if (tops.size !== 1) headBad.push('header buttons on ' + tops.size + ' lines');
+    if (btns.some((b) => b.getBoundingClientRect().width < 23.5)) headBad.push('a header button under 24px');
+    const ctl = head.querySelector('.tfcc-head-ctl').getBoundingClientRect();
+    // The buttons share the logo group's line: they start above its bottom.
+    // (Collapsed, the bare count may wrap inside that group, which makes it
+    // taller and centres the buttons lower; that is allowed, spec 4.1.)
+    const idBox = head.querySelector('.tfcc-head-id').getBoundingClientRect();
+    if (ctl.top >= idBox.bottom - 1) headBad.push('the buttons wrapped under the logo');
+    if (!(tallest > 0)) headBad.push('no header buttons measured');
+    // Expanded, nothing may wrap at all: a logo or chip on a second line makes
+    // the header taller than one button. Collapsed, only the bare count may
+    // wrap under the logo (spec 4.1), so the height check is expanded only.
+    const collapsed = !!head.querySelector('.tfcc-hshow');
+    const headH = head.getBoundingClientRect().height;
+    if (!collapsed && headH > tallest + 1) headBad.push('the expanded header is ' + Math.round(headH)
+      + 'px tall, more than one ' + Math.round(tallest) + 'px row');
+  }
   out.seen = {
+    navcells: panel.querySelectorAll('.tfcc-navgrid button').length,
+    headBad: headBad,
     logo: panel.querySelectorAll('svg.tfcc-logo').length,
     started: panel.querySelectorAll('.tfcc-started').length,
   };
@@ -167,6 +215,11 @@ for (const page of pages) {
   const missing = [];
   if (!seen.logo) missing.push('the FCC logo');
   if (page.startsWith('mine-') && !seen.started) missing.push('a red "started" tag');
+  if (page.startsWith('narrow-') && !page.includes('-collapsed-') && !seen.navcells) missing.push('the narrow nav cells');
+  if (seen.headBad && seen.headBad.length) {
+    console.log(`!! ${page}: ${seen.headBad.join('; ')}`);
+    failures += seen.headBad.length;
+  }
   if (missing.length) {
     console.log(`?? ${page}: nothing measured for ${missing.join(', ')}`);
     failures += 1;

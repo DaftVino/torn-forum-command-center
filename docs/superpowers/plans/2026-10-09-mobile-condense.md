@@ -5078,7 +5078,11 @@ In `tests/contrast-audit.mjs`, inside `SCRIPT`:
     if (tops.size !== 1) headBad.push('header buttons on ' + tops.size + ' lines');
     if (btns.some((b) => b.getBoundingClientRect().width < 23.5)) headBad.push('a header button under 24px');
     const ctl = head.querySelector('.tfcc-head-ctl').getBoundingClientRect();
-    if (Math.round(ctl.top) !== Math.round(head.getBoundingClientRect().top)) headBad.push('the buttons wrapped under the logo');
+    // The buttons share the logo group's line: they start above its bottom.
+    // (Collapsed, the bare count may wrap inside that group, which makes it
+    // taller and centres the buttons lower; that is allowed, spec 4.1.)
+    const idBox = head.querySelector('.tfcc-head-id').getBoundingClientRect();
+    if (ctl.top >= idBox.bottom - 1) headBad.push('the buttons wrapped under the logo');
     if (!(tallest > 0)) headBad.push('no header buttons measured');
     // Expanded, nothing may wrap at all: a logo or chip on a second line makes
     // the header taller than one button. Collapsed, only the bare count may
@@ -5099,6 +5103,8 @@ In `tests/contrast-audit.mjs`, inside `SCRIPT`:
     failures += seen.headBad.length;
   }
 ```
+
+> Amended during implementation: the "buttons wrapped" check compares the buttons with the bottom of the logo group, not the header's top, because the collapsed count may wrap inside that group (spec 4.1) and the centred buttons then sit lower without wrapping.
 
 - [ ] **Step 4: Run them**
 
