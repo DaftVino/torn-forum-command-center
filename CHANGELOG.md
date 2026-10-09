@@ -15,8 +15,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   every API call site, so a new endpoint fails the suite until its selection is
   added. The link format is unverified, and release is gated on the QA
   checklist comparing it with a link generated on torn.com/api.html.
-- Settings, Appearance: **Hide the panel when I open a thread**, off by
-  default. A plain click on a thread link in the panel (Threads, Catch up,
+- Settings, Appearance: **Hide the panel when I open a thread**, on by
+  default (#30). A plain click on a thread link in the panel (Threads, Catch up,
   Search, Drafts, and My posts) collapses the panel and leaves Expand, then the
   thread opens. Show brings it back. New-tab clicks and Torn's own links leave
   the panel alone. (#8)
@@ -29,7 +29,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   the script sees them, cleared by Mark read or by your own post, and
   labelled as a local count. A thread not yet looked up says so. (#2)
 - A Rows shown setting in Settings: 3, 5, 10, 20, 30 or All. The default is
-  All, so nothing changes until you pick one. It caps Threads, Catch up and
+  5 (#30). It caps Threads, Catch up and
   My posts after every filter and the sort. A capped list says "Showing 10 of
   42" and offers Show all, which lasts until the page reloads. Search and
   Drafts always show everything, and the nav counts still count every
@@ -82,6 +82,22 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   is unchanged at 13. (#10)
 - The custom key link also asks for `user` profile, read only by the karma
   fallback. (#10)
+- The panel header shows the owner's FCC logo in place of the "Forum Command
+  Center" text, inline, in its own colour `#5C768F`, one title line tall, with
+  "Forum Command Center" as its accessible name. (#30)
+- A thread row's priority moved out of the action row to sit right after the
+  title: the adjustment as a number (0 by default), then small + and -
+  buttons named "Raise priority" and "Lower priority". Pinning a thread no
+  longer wraps Archive onto a second line. Storage and the Priority sort are
+  unchanged, and the meta line no longer repeats the number. (#30)
+- The reactions pill moved from its own row into the nav row, right before My
+  posts, which it still opens. It drops the "Your threads:" label and shows
+  thumbs-up and thumbs-down emoji in place of the words "up" and "down",
+  drawn black on the light theme and white on the dark one. Screen readers
+  still hear "up" and "down", and the hover notes, the "-" for unknown, the
+  labelled net and karma are unchanged. (#30)
+- "started" in My posts rows is red, in a shade per theme that meets WCAG AA
+  on the row: `#ff8080` on Dark, `#a11414` on Light. (#30)
 
 ### Fixed
 

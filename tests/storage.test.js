@@ -227,10 +227,13 @@ test('a corrupt My posts cache resets only itself', () => {
   assert.deepStrictEqual(api.loadKey(api.STORAGE_KEYS.organizer, api.normaliseOrganizer, 0).value, org);
 });
 
-test('rows shown defaults to All, so an existing user sees no change', () => {
+test('rows shown defaults to 5 (#30), and 5 is on the menu', () => {
   const { exports: api } = loadUserscript();
-  assert.strictEqual(api.freshSettings().rowsShown, 0);
-  assert.strictEqual(api.normaliseSettings({ v: 1 }).rowsShown, 0, 'an absent field is All');
+  assert.ok(api.ROWS_SHOWN_OPTIONS.indexOf(5) !== -1, '5 must be a menu option');
+  assert.strictEqual(api.freshSettings().rowsShown, 5);
+  assert.strictEqual(api.normaliseSettings({ v: 1 }).rowsShown, 5, 'an absent field takes the default');
+  assert.strictEqual(api.normaliseSettings({ v: 1, rowsShown: 0 }).rowsShown, 0, 'a stored All is kept');
+  assert.strictEqual(api.normaliseSettings({ v: 1, rowsShown: 20 }).rowsShown, 20, 'a stored 20 is kept');
 });
 
 test('rows shown keeps every value on the menu', () => {
@@ -270,7 +273,7 @@ test('a settings blob saved before rows shown existed is not reported as damaged
   const env = loadUserscript({ gmStore: [['tfcc:settings', JSON.stringify(old)]] });
   const res = env.exports.loadKey('tfcc:settings', env.exports.normaliseSettings, NOW);
   assert.strictEqual(res.recovered, false);
-  assert.strictEqual(res.value.rowsShown, 0, 'the default is filled in');
+  assert.strictEqual(res.value.rowsShown, 5, 'the default is filled in');
   assert.strictEqual(res.value.theme, 'light', 'every stored value is kept');
 
   env.exports.loadAll(NOW);

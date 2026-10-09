@@ -36,6 +36,127 @@ test('the loading shell renders before anything is requested', () => {
   assert.match(html, /Forum Command Center/);
 });
 
+// ---- inline priority (#30) ------------------------------------------------
+
+function rowHtml(html, id) {
+  const i = html.indexOf('<div class="tfcc-row" data-id="' + id + '">');
+  assert.ok(i !== -1, 'row ' + id + ' rendered');
+  const next = html.indexOf('<div class="tfcc-row" data-id=', i + 1);
+  return html.slice(i, next === -1 ? undefined : next);
+}
+function actionsOf(row) {
+  const i = row.indexOf('<div class="tfcc-actions">');
+  return row.slice(i, row.indexOf('</div>', i));
+}
+function mainOf(row) {
+  const i = row.indexOf('<div class="tfcc-row-main">');
+  return row.slice(i, row.indexOf('</div>', i));
+}
+
+test('a pinned Threads row keeps its action buttons on one row: priority left the action row (#30)', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1 }, { id: 2 }]);
+  const api = env.exports;
+  api.state.organizer = api.togglePin(api.state.organizer, 1);
+  api.recompute(NOW);
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  for (const id of ['1', '2']) {
+    const actions = actionsOf(rowHtml(html, id));
+    assert.doesNotMatch(actions, /data-act="prio-(up|down)"/, id + ': no priority button in the action row');
+    // Before #30: Pin, Mark read, Priority +, Priority -, Draft, Archive.
+    assert.ok((actions.match(/<button /g) || []).length <= 6 - 2, id + ': two fewer buttons than before');
+    assert.match(actions, /data-act="archive"/, id + ': Archive is still there');
+  }
+  assert.match(actionsOf(rowHtml(html, '1')), />Unpin</, 'precondition: the row is pinned');
+});
+
+test('the priority number and +/- sit right after the thread title, outside the link (#30)', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1 }, { id: 2 }]);
+  const api = env.exports;
+  api.state.organizer = api.setPriority(api.state.organizer, 2, 2);
+  api.recompute(NOW);
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+
+  const zero = mainOf(rowHtml(html, '1'));
+  assert.match(zero, /<\/a><\/span><span class="tfcc-prio"[^>]*>0<\/span><button type="button" data-act="prio-up" data-id="1"[^>]* aria-label="Raise priority"[^>]*>\+<\/button><button type="button" data-act="prio-down" data-id="1"[^>]* aria-label="Lower priority"[^>]*>-<\/button>/);
+  assert.match(zero, /data-act="prio-up"[^>]* title="[^"]+"/, 'the + button has a hover note');
+  assert.match(zero, /data-act="prio-down"[^>]* title="[^"]+"/, 'the - button has a hover note');
+
+  const two = mainOf(rowHtml(html, '2'));
+  assert.match(two, /<span class="tfcc-prio"[^>]*>\+2<\/span>/);
+  assert.doesNotMatch(rowHtml(html, '2'), /priority \+2/, 'the number is not repeated in the meta line');
+  const anchor = /<a [^>]*>[\s\S]*?<\/a>/.exec(two)[0];
+  assert.doesNotMatch(anchor, /data-act=/, 'no control inside the thread link');
+});
+
+test('every view that renders thread rows has the inline priority controls (#30)', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1, unread: 2 }]);
+  const api = env.exports;
+  api.state.searchQuery = 'Thread';
+  api.recompute(NOW);
+  for (const view of ['threads', 'catchup', 'search']) {
+    api.state.settings.view = view;
+    const html = api.panelHtml(api.buildPanelModel(NOW));
+    const main = mainOf(rowHtml(html, '1'));
+    assert.match(main, /data-act="prio-up" data-id="1"/, view);
+    assert.match(main, /data-act="prio-down" data-id="1"/, view);
+    assert.doesNotMatch(actionsOf(rowHtml(html, '1')), /prio-/, view);
+  }
+});
+
+// ---- "started" in red (#30) -----------------------------------------------
+
+test('My posts marks "started" with its own red class, and "posted in" without it (#30)', () => {
+  const env = loadUserscript({ location: forums(), gmStore: KEY_STORE });
+  seed(env, []);
+  const api = env.exports;
+  const posted = api.freshMineThread(61, NOW);
+  posted.posted = true;
+  posted.title = 'Posted';
+  withMine(env, [startedRec(api, 60, null, 'Started'), posted]);
+  api.state.settings.view = 'mine';
+  const html = htmlOf(env);
+  assert.match(html, /<span class="tfcc-tag tfcc-started">started<\/span>/);
+  assert.match(html, /<span class="tfcc-tag">posted in<\/span>/);
+});
+
+// ---- the header logo (#30) ------------------------------------------------
+
+function headOf(html) {
+  const i = html.indexOf('<div class="tfcc-head-id">');
+  return html.slice(i, html.indexOf('</div>', i));
+}
+
+test('the header shows the FCC logo, named for assistive tech, in place of the title text', () => {
+  const env = loadUserscript({ location: forums() });
+  seed(env, [{ id: 1 }]);
+  const states = {
+    open: env.exports.panelHtml(env.exports.buildPanelModel(NOW)),
+    loading: env.exports.panelHtml(env.exports.loadingModel(NOW)),
+    fatal: env.exports.panelHtml(env.exports.errorModel('x', 'broken', NOW)),
+  };
+  env.exports.state.settings.collapsed = true;
+  states.collapsed = env.exports.panelHtml(env.exports.buildPanelModel(NOW));
+  for (const [name, html] of Object.entries(states)) {
+    const head = headOf(html);
+    assert.match(head, /<svg class="tfcc-logo"[^>]* viewBox="10 9 106 45" role="img" aria-label="Forum Command Center"/, name);
+    assert.ok(head.includes(env.exports.LOGO_SVG), name + ': the constant is what is injected');
+    assert.doesNotMatch(head.replace(/<[^>]*>/g, ''), /Forum Command Center/, name + ': no visible title text');
+  }
+});
+
+test('the logo carries no fixed id, no labelledby and no <title>, and keeps the owner colour', () => {
+  const { exports: api } = loadUserscript();
+  const svg = api.LOGO_SVG;
+  assert.doesNotMatch(svg, /\sid=/, 'a fixed id would collide on Torn\'s page');
+  assert.doesNotMatch(svg, /aria-labelledby/);
+  assert.doesNotMatch(svg, /<title/);
+  assert.match(svg, /fill="#5C768F"/);
+  assert.strictEqual((svg.match(/<path /g) || []).length, 3, 'F, C and C');
+});
+
 test('a fatal error renders a named message and a way out', () => {
   const env = loadUserscript();
   const html = env.exports.panelHtml(env.exports.errorModel('torn', 'That API key is not valid.', NOW));
@@ -522,27 +643,60 @@ function bootPanel() {
   return env;
 }
 
-test('the reactions line sits under the header row, never inside it', () => {
+const visibleText = (html) => html.replace(/<[^>]*>/g, '');
+
+// The pill's thumbs (#30): the owner's emoji, written as escapes so the
+// files stay ASCII, hidden from assistive tech (the aria-label speaks them).
+const UP = '\uD83D\uDC4D';
+const DOWN = '\uD83D\uDC4E';
+const T_UP = '<span class="tfcc-thumb" aria-hidden="true">' + UP + '</span>';
+const T_DOWN = '<span class="tfcc-thumb" aria-hidden="true">' + DOWN + '</span>';
+const has = (html, text) => assert.ok(html.includes(text), 'expected: ' + text);
+const PILL_OPEN = '<button type="button" class="tfcc-reactions';
+function pillOf(html) {
+  const i = html.indexOf(PILL_OPEN);
+  return i === -1 ? '' : html.slice(i, html.indexOf('</button>', i) + '</button>'.length);
+}
+
+test('the reactions pill sits in the nav row, immediately before My posts (#30)', () => {
   const env = bootPanel();
   withMine(env, [startedRec(env.exports, 1, TH(34, 5))]);
   const html = htmlOf(env);
-  const sub = html.indexOf('<div class="tfcc-subhead">');
-  assert.ok(sub > html.indexOf('<div class="tfcc-head">'));
-  const head = html.slice(html.indexOf('<div class="tfcc-head">'), sub);
+  assert.doesNotMatch(html, /tfcc-subhead/, 'no separate row any more');
+  const navStart = html.indexOf('<div class="tfcc-nav">');
+  const navEnd = html.indexOf('</div>', navStart);
+  const pill = html.indexOf(PILL_OPEN);
+  assert.ok(pill > navStart && pill < navEnd, 'the pill is inside the nav row');
+  const after = html.slice(html.indexOf('</button>', pill) + '</button>'.length);
+  assert.match(after, /^<button type="button" data-act="view" data-view="mine" class="tfcc-nav-mine"/,
+    'My posts follows the pill directly');
+  const head = html.slice(html.indexOf('<div class="tfcc-head">'), navStart);
   assert.doesNotMatch(head, /tfcc-reactions/);
-  assert.match(head, /data-act="collapse"/, 'the subhead starts after the whole header row');
-  assert.match(html, /Your threads: <span class="tfcc-rx">34<\/span> up, <span class="tfcc-rx">5<\/span> down /);
+  has(html, '<span class="tfcc-rx">34</span> ' + T_UP + ' <span class="tfcc-rx">5</span> ' + T_DOWN + ' ');
+});
+
+test('the pill has no "Your threads:" label and no up/down words, but still speaks them (#30)', () => {
+  const env = bootPanel();
+  withMine(env, [startedRec(env.exports, 1, TH(34, 5))]);
+  const pill = pillOf(htmlOf(env));
+  const visible = visibleText(pill);
+  assert.doesNotMatch(visible, /Your threads/);
+  assert.doesNotMatch(visible, /\b(up|down)\b/);
+  assert.ok(visible.includes(UP) && visible.includes(DOWN), 'the emoji are drawn');
+  assert.strictEqual((pill.match(/class="tfcc-thumb" aria-hidden="true"/g) || []).length, 2);
+  assert.match(pill, /aria-label="[^"]*34 up, 5 down/, 'the words live in the aria-label');
+  assert.match(pill, / title="[^"]+"/, 'the hover note stays');
 });
 
 test('unknown renders "-", never 0', () => {
   const env = bootPanel();
   withMine(env, [], 0);
   let html = htmlOf(env);
-  assert.match(html, /Your threads: <span class="tfcc-rx">-<\/span> up, <span class="tfcc-rx">-<\/span> down/);
+  has(html, '<span class="tfcc-rx">-</span> ' + T_UP + ' <span class="tfcc-rx">-</span> ' + T_DOWN);
   assert.doesNotMatch(html, /<span class="tfcc-rx">0<\/span>/);
   withMine(env, [startedRec(env.exports, 1)]);
   html = htmlOf(env);
-  assert.match(html, /<span class="tfcc-rx">-<\/span> up/);
+  has(html, '<span class="tfcc-rx">-</span> ' + T_UP);
   assert.match(html, /has not reported thumbs or a rating/);
 });
 
@@ -550,17 +704,18 @@ test('net is labelled, never split, and named as Torn\'s', () => {
   const env = bootPanel();
   withMine(env, [startedRec(env.exports, 1, NET(12))]);
   let html = htmlOf(env);
-  assert.match(html, /Your threads: net <span class="tfcc-rx">\+12<\/span> /);
-  assert.doesNotMatch(html, / up, /);
+  assert.match(pillOf(html), /data-view="mine" title="[^"]*" aria-label="[^"]*">net <span class="tfcc-rx">\+12<\/span> /);
+  assert.doesNotMatch(html, /tfcc-thumb/);
   withMine(env, [startedRec(env.exports, 1, TH(4, 1)), startedRec(env.exports, 2, NET(-3))]);
   html = htmlOf(env);
-  assert.match(html, /<span class="tfcc-rx">4<\/span> up, <span class="tfcc-rx">1<\/span> down, net <span class="tfcc-rx">-3<\/span> on 1 more/);
+  has(html, '<span class="tfcc-rx">4</span> ' + T_UP + ' <span class="tfcc-rx">1</span> ' + T_DOWN
+    + ', net <span class="tfcc-rx">-3</span> on 1 more');
 });
 
 test('known zeros render 0', () => {
   const env = bootPanel();
   withMine(env, [startedRec(env.exports, 1, TH(0, 0))]);
-  assert.match(htmlOf(env), /<span class="tfcc-rx">0<\/span> up, <span class="tfcc-rx">0<\/span> down/);
+  has(htmlOf(env), '<span class="tfcc-rx">0</span> ' + T_UP + ' <span class="tfcc-rx">0</span> ' + T_DOWN);
 });
 
 test('every tooltip says subscribers cannot be shown', () => {
@@ -576,21 +731,22 @@ test('stale figures carry a visible age, not just a colour', () => {
   withMine(env, [startedRec(env.exports, 1, TH(1, 1, NOW - 3 * 24 * 3600000))]);
   const html = htmlOf(env);
   assert.match(html, /class="tfcc-reactions tfcc-stale"/);
-  assert.match(html, /down \(3d ago\) /);
+  has(html, T_DOWN + ' (3d ago) ');
 });
 
 test('hidden when collapsed, without a key, and when you started nothing', () => {
   const env = bootPanel();
   withMine(env, [startedRec(env.exports, 1, TH(1, 1))]);
+  assert.match(htmlOf(env), /tfcc-reactions/, 'precondition: shown when open');
   env.exports.state.settings.collapsed = true;
-  assert.doesNotMatch(htmlOf(env), /tfcc-subhead/);
+  assert.doesNotMatch(htmlOf(env), /tfcc-reactions/);
   env.exports.state.settings.collapsed = false;
   withMine(env, [], NOW);
-  assert.doesNotMatch(htmlOf(env), /tfcc-subhead/, 'empty is not unknown');
+  assert.doesNotMatch(htmlOf(env), /tfcc-reactions/, 'empty is not unknown');
   const nokey = loadUserscript({ location: forums() });
   seed(nokey, [{ id: 1 }]);
   withMine(nokey, [startedRec(nokey.exports, 1, TH(1, 1))]);
-  assert.doesNotMatch(htmlOf(nokey), /tfcc-subhead/);
+  assert.doesNotMatch(htmlOf(nokey), /tfcc-reactions/);
 });
 
 test('tapping the line opens My posts through the existing view action', () => {
@@ -599,7 +755,6 @@ test('tapping the line opens My posts through the existing view action', () => {
   assert.match(htmlOf(env), /<button type="button" class="tfcc-reactions" data-act="view" data-view="mine"/);
 });
 
-const visibleText = (html) => html.replace(/<[^>]*>/g, '');
 
 function withKarma(env, karma) {
   const api = env.exports;
@@ -612,10 +767,10 @@ test('karma follows the thumbs as the icon and a number, with an aria-label and 
   withMine(env, [startedRec(env.exports, 1, TH(34, 5))]);
   withKarma(env, 1208);
   const html = htmlOf(env);
-  assert.match(html, /<span class="tfcc-rx">5<\/span> down <span class="tfcc-karma" role="group" aria-label="Karma" title="Karma: 1,208\. Likes and dislikes on your forum posts, never below 0; some posts do not count\.">/);
+  has(html, '<span class="tfcc-rx">5</span> ' + T_DOWN + ' <span class="tfcc-karma" role="group" aria-label="Karma" title="Karma: 1,208. Likes and dislikes on your forum posts, never below 0; some posts do not count.">');
   assert.ok(html.includes(env.exports.KARMA_ICON_SVG), 'the icon constant is what is injected');
   assert.match(html, /<span class="tfcc-rx">1,208<\/span><\/span><\/button>/);
-  assert.ok(html.indexOf('tfcc-karma') > html.indexOf('down'), 'karma follows thumbs up and down');
+  assert.ok(html.indexOf('tfcc-karma') > html.indexOf(T_DOWN), 'karma follows thumbs up and down');
   assert.doesNotMatch(visibleText(html), /karma/i, 'the word is never visible text');
   assert.match(html, /class="tfcc-reactions"[^>]*aria-label="[^"]*Karma: 1,208\./, 'the button speaks it too');
 });
@@ -638,10 +793,11 @@ test('unknown karma shows "-", never 0, and a real 0 shows 0', () => {
 test('with no threads started, known karma is shown alone; unknown stays hidden', () => {
   const env = bootPanel();
   withMine(env, [], NOW);
-  assert.doesNotMatch(htmlOf(env), /tfcc-subhead/, 'nothing to say yet');
+  assert.doesNotMatch(htmlOf(env), /tfcc-reactions/, 'nothing to say yet');
   withKarma(env, 1208);
   const html = htmlOf(env);
-  assert.match(html, /<div class="tfcc-subhead"><button type="button" class="tfcc-reactions" data-act="view" data-view="mine"/);
+  assert.match(html, /<button type="button" class="tfcc-reactions" data-act="view" data-view="mine"/);
+  assert.doesNotMatch(pillOf(html), /tfcc-thumb/, 'karma alone draws no thumbs');
   assert.doesNotMatch(visibleText(html), /Your threads/);
   assert.match(html, /<span class="tfcc-rx">1,208<\/span>/);
   assert.doesNotMatch(visibleText(html), /karma/i);
@@ -674,8 +830,8 @@ test('author-only mode (#4) changes neither the reactions line nor the My posts 
   api.state.settings.authorOnly = true;
   api.recompute(NOW);
   const on = htmlOf(env);
-  const sub = (h) => h.slice(h.indexOf('<div class="tfcc-subhead">'), h.indexOf('</div>', h.indexOf('<div class="tfcc-subhead">')));
-  assert.strictEqual(sub(on), sub(off));
+  assert.ok(pillOf(on), 'precondition: the pill rendered');
+  assert.strictEqual(pillOf(on), pillOf(off));
   assert.match(on, /<span class="tfcc-note">12 up, 3 down<\/span>/);
   assert.match(on, /<span class="tfcc-note" title="[^"]*">net \+9<\/span>/);
 });
@@ -684,6 +840,6 @@ test('the karma line is also present before My posts has loaded, as "-"', () => 
   const env = bootPanel();
   withMine(env, [], 0);
   const html = htmlOf(env);
-  assert.match(html, /Your threads: <span class="tfcc-rx">-<\/span> up, <span class="tfcc-rx">-<\/span> down <span class="tfcc-karma"/);
+  has(html, '<span class="tfcc-rx">-</span> ' + T_UP + ' <span class="tfcc-rx">-</span> ' + T_DOWN + ' <span class="tfcc-karma"');
   assert.match(html, /<span class="tfcc-rx">-<\/span><\/span>/);
 });

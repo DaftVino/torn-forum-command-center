@@ -101,6 +101,23 @@
     + 'M 648 511 L 686 551 L 548 686 L 511 648 Z '
     + 'M 451 413 L 587 548 L 551 587 L 413 452 Z'
     + '"/></svg>';
+  // The owner's FCC logo (#30), in place of the header's title text. No id,
+  // no aria-labelledby and no <title>: a fixed id would collide on Torn's page,
+  // so the accessible name is an aria-label. The fill is the owner's colour;
+  // the .tfcc-logo rules repeat it so a host "svg * { fill }" cannot win.
+  // The viewBox is cropped to the letters (x 10-116, y 9-54 of the original
+  // 127x66 art), so the drawn edges, not blank margin, meet the chip height.
+  // Sized by height in the stylesheet; the width follows the viewBox. No
+  // xmlns: the HTML parser places an inline svg in its namespace itself.
+  var LOGO_SVG = '<svg class="tfcc-logo" width="66" height="28"'
+    + ' viewBox="10 9 106 45" role="img" aria-label="Forum Command Center" focusable="false">'
+    + '<g fill="#5C768F">'
+    + '<path d="M10 20 21 10h22l-5 10H21v6h15l-5 10H21v17H10Z"/>'
+    + '<path d="M79 16l-7 7c-2.9-2.8-6.7-4-10.5-4-6.6 0-11 5.2-11 12.5s4.4 12.5 11 12.5c3.8 0 7.6-1.2 10.5-4'
+    + 'l7 7c-4.7 4.6-10.8 7-17.5 7C49 54 40 44.4 40 31.5S49 9 61.5 9C68.2 9 74.3 11.4 79 16Z"/>'
+    + '<path d="M116 16l-7 7c-2.9-2.8-6.7-4-10.5-4-6.6 0-11 5.2-11 12.5S91.9 44 98.5 44c3.8 0 7.6-1.2 10.5-4'
+    + 'l7 7c-4.7 4.6-10.8 7-17.5 7C86 54 77 44.4 77 31.5S86 9 98.5 9c6.7 0 12.8 2.4 17.5 7Z"/>'
+    + '</g></svg>';
   var DEEP_SEARCH_MAX_PAGES = 5;
   var DEEP_SEARCH_MAX_THREADS = 10;
   var POSTS_PER_PAGE = 20;
@@ -375,16 +392,16 @@
       // Issue #4. Off by default: flag a thread as new only when its author
       // posts. Applies to Threads and Catch up; My posts ignores it.
       authorOnly: false,
-      // Issue #8. Off by default: an existing user sees no change.
-      autoHideOnOpen: false,
+      // Issue #8, on by default since #30. A stored false is kept.
+      autoHideOnOpen: true,
       // The Torn error code that condemned the stored key, or 0. Persisted on
       // purpose: a userscript reloads on every navigation, so a rejection held
       // only in memory would spend one request per page view on a dead key,
       // which is the exact pattern the IP ban exists for.
       keyRejected: 0,
       deepSearchPages: DEEP_SEARCH_MAX_PAGES,
-      // 0 is All. See ROWS_SHOWN_OPTIONS.
-      rowsShown: 0,
+      // 0 is All. See ROWS_SHOWN_OPTIONS. 5 since #30; a stored value is kept.
+      rowsShown: 5,
       // Issue #9. On by default; Settings has the off switch.
       badges: true,
     };
@@ -406,7 +423,10 @@
     out.autosaveDrafts = raw.autosaveDrafts !== false;
     out.hideTornBox = raw.hideTornBox === true;
     out.authorOnly = raw.authorOnly === true;
-    out.autoHideOnOpen = raw.autoHideOnOpen === true;
+    // Absent takes the default (on, #30); present means only a real true, so
+    // a corrupt value never starts collapsing the panel.
+    out.autoHideOnOpen = Object.prototype.hasOwnProperty.call(raw, 'autoHideOnOpen')
+      ? raw.autoHideOnOpen === true : d.autoHideOnOpen;
     out.badges = raw.badges !== false;
     out.keyRejected = KEY_REJECTED_CODES.indexOf(toInt(raw.keyRejected, 0)) === -1
       ? 0 : toInt(raw.keyRejected, 0);
@@ -417,9 +437,12 @@
     out.enrichBudget = clamp(toInt(raw.enrichBudget, DEFAULT_ENRICH_BUDGET), 0, MAX_ENRICH_BUDGET);
     out.deepSearchPages = clamp(toInt(raw.deepSearchPages, DEEP_SEARCH_MAX_PAGES), 1, DEEP_SEARCH_MAX_PAGES);
     // Strict on type: toInt would floor 10.5 to 10 and accept "10", and the
-    // menu wrote neither. Anything off the menu is All, never an error.
-    out.rowsShown = typeof raw.rowsShown === 'number' && ROWS_SHOWN_OPTIONS.indexOf(raw.rowsShown) !== -1
-      ? raw.rowsShown : 0;
+    // menu wrote neither. Absent takes the default (#30); anything present but
+    // off the menu is All, so a corrupt value never hides rows.
+    if (Object.prototype.hasOwnProperty.call(raw, 'rowsShown')) {
+      out.rowsShown = typeof raw.rowsShown === 'number' && ROWS_SHOWN_OPTIONS.indexOf(raw.rowsShown) !== -1
+        ? raw.rowsShown : 0;
+    }
     return out;
   }
 
@@ -4131,6 +4154,8 @@
       '  --tfcc-tier-legend: #c9a2ff; --tfcc-locked: #8a8a8a;',
       '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
       '  --tfcc-mine-text: #141414; --tfcc-mine-border: #d9d9d9;',
+      // "started" in My posts (#30): 6.2:1 on the row, 7.8:1 on the tag fill.
+      '  --tfcc-started: #ff8080;',
       '}',
       '#' + PANEL_ID + '.tfcc-theme-light {',
       '  --tm-bg: #f2f2f2; --tm-bg-2: #e8e8e8; --tm-bg-3: #ffffff; --tm-hover: #dcdcdc;',
@@ -4144,6 +4169,8 @@
       // grey fill on the light panel is not itself a visible boundary.
       '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
       '  --tfcc-mine-text: #141414; --tfcc-mine-border: #5c5c5c;',
+      // "started" (#30): 6.5:1 on the row, 8.0:1 on the tag fill.
+      '  --tfcc-started: #a11414;',
       '}',
       '#' + FALLBACK_ID + ' { position: fixed; right: 12px; bottom: 12px; z-index: 2147483000;',
       '  box-sizing: border-box; width: min(960px, calc(100vw - 24px)); max-width: calc(100vw - 24px);',
@@ -4169,7 +4196,13 @@
       '  overflow-y: auto; overflow-x: hidden; padding: 12px; }',
       '#' + PANEL_ID + ' .tfcc-head { display: flex; align-items: center; gap: var(--tfcc-gap);',
       '  flex-wrap: wrap; margin-bottom: var(--tfcc-gap); }',
-      '#' + PANEL_ID + ' .tfcc-title { font-weight: bold; }',
+      // The logo (#30) stands where the bold title text stood: as tall as the
+      // badge chip beside it (28px), its width from the viewBox. The fill
+      // is pinned here as well as on the element, because a host rule beats a
+      // presentation attribute. Contrast is in tests/contrast-audit.mjs.
+      '#' + PANEL_ID + ' .tfcc-logo { display: block; flex: none; height: 28px; width: auto;',
+      '  color: #5c768f; }',
+      '#' + PANEL_ID + ' .tfcc-logo path { fill: currentColor; }',
       // Title group left, control group right. The buttons are one nowrap unit,
       // so at 320-360 px the control group wraps onto its own line WHOLE and
       // Refresh, Expand and Hide stay together, in order.
@@ -4209,15 +4242,26 @@
       '  border: 1px solid var(--tm-border-2); border-radius: 4px; padding: 3px 8px; }',
       '#' + PANEL_ID + ' option { background: var(--tm-bg-3); color: var(--tm-text); }',
       '#' + PANEL_ID + ' button { cursor: pointer; }',
+      // The click listener reads data-act from ev.target alone, so a tap on a
+      // span or icon inside a button (the reactions pill's numbers and thumbs)
+      // must land on the button itself (#30).
+      '#' + PANEL_ID + ' button * { pointer-events: none; }',
       '#' + PANEL_ID + ' button:hover { background: var(--tm-hover); }',
       // Thread reactions (#10). (1,1,1) beats the generic button rule (1,0,1);
       // :hover at (1,2,1) beats the generic button:hover (1,1,1).
-      '#' + PANEL_ID + ' .tfcc-subhead { display: flex; flex-wrap: wrap; gap: var(--tfcc-gap-sm);',
-      '  margin-bottom: var(--tfcc-gap); }',
       '#' + PANEL_ID + ' button.tfcc-reactions { font-size: var(--tfcc-text-sm); padding: 0 8px;',
       '  border-radius: 10px; background: var(--tm-bg-3); color: var(--tm-meta);',
       '  border: 1px solid var(--tm-border); white-space: normal; text-align: left; max-width: 100%; }',
       '#' + PANEL_ID + ' button.tfcc-reactions:hover { background: var(--tm-hover); }',
+      // In the nav row (#30) the pill takes the auto margin, so it and My posts
+      // group on the right; My posts then sits flush beside it. (1,2,1) beats
+      // the button.tfcc-nav-mine margin at (1,1,1).
+      '#' + PANEL_ID + ' .tfcc-nav button.tfcc-reactions { margin-left: auto; }',
+      '#' + PANEL_ID + ' .tfcc-nav .tfcc-reactions + button.tfcc-nav-mine { margin-left: 0; }',
+      // The thumbs (#30) drawn in one colour: white on the dark panel (the
+      // default tokens are dark), black on the light one.
+      '#' + PANEL_ID + ' .tfcc-thumb { filter: grayscale(1) brightness(0) invert(1); }',
+      '#' + PANEL_ID + '.tfcc-theme-light .tfcc-thumb { filter: grayscale(1) brightness(0); }',
       '#' + PANEL_ID + ' .tfcc-rx { color: var(--tm-text); font-weight: bold; font-variant-numeric: tabular-nums; }',
       '#' + PANEL_ID + ' .tfcc-karma { display: inline-flex; align-items: center; gap: 0.25em;',
       '  white-space: nowrap; color: var(--tm-text); }',
@@ -4272,12 +4316,20 @@
       '#' + PANEL_ID + ' .tfcc-row-title a { color: var(--tm-text); text-decoration: none; }',
       '#' + PANEL_ID + ' .tfcc-row-title a:hover { text-decoration: underline; }',
       '#' + PANEL_ID + ' .tfcc-pinned { color: var(--tm-warn-text); }',
+      // Inline priority (#30): a number and two small buttons after the title.
+      // (1,1,1) beats the generic button rule; flex: none keeps the three on
+      // the title's line beside the zero-basis title.
+      '#' + PANEL_ID + ' .tfcc-prio { flex: none; color: var(--tm-meta); font-size: var(--tfcc-text-sm);',
+      '  font-variant-numeric: tabular-nums; }',
+      '#' + PANEL_ID + ' button.tfcc-prio-btn { flex: none; font-size: var(--tfcc-text-sm); line-height: 1.2;',
+      '  padding: 0 6px; min-width: 22px; }',
       '#' + PANEL_ID + ' .tfcc-unread { color: var(--tm-good-text); font-weight: bold;',
       '  font-variant-numeric: tabular-nums; }',
       '#' + PANEL_ID + ' .tfcc-meta { color: var(--tm-meta); font-size: var(--tfcc-text-sm);',
       '  display: flex; gap: var(--tfcc-gap); flex-wrap: wrap; margin-top: 2px; }',
       '#' + PANEL_ID + ' .tfcc-tag { background: var(--tm-bg-3); border: 1px solid var(--tm-border);',
       '  border-radius: 3px; padding: 0 5px; font-size: var(--tfcc-text-sm); }',
+      '#' + PANEL_ID + ' .tfcc-tag.tfcc-started { color: var(--tfcc-started); font-weight: bold; }',
       '#' + PANEL_ID + ' .tfcc-actions { display: flex; gap: var(--tfcc-gap-xs); flex-wrap: wrap;',
       '  margin-top: var(--tfcc-gap-xs); }',
       '#' + PANEL_ID + ' .tfcc-actions button { font-size: var(--tfcc-text-sm); padding: 1px 6px; }',
@@ -4576,13 +4628,28 @@
       if (v === 'drafts' && model.totals.drafts) count = ' (' + model.totals.drafts + ')';
       if (v === 'mine' && model.mine && model.mine.unread) count = ' (' + model.mine.unread + ')';
       // My posts is last in VIEWS and right-aligned by its class (see the
-      // .tfcc-nav-mine rules), so it needs no special case in this loop.
+      // .tfcc-nav-mine rules). The reactions pill (#30) goes right before it.
+      if (v === 'mine') out.push(renderReactions(model));
       out.push('<button type="button" data-act="view" data-view="' + v + '"'
         + (v === 'mine' ? ' class="tfcc-nav-mine"' : '') + ' aria-pressed="'
         + (model.view === v ? 'true' : 'false') + '">' + escapeHtml(VIEW_LABELS[v] + count) + '</button>');
     }
     out.push('</div>');
     return out.join('');
+  }
+
+  // The thread's priority adjustment and its +/- controls (#30). The same
+  // prio-up and prio-down actions as before, so storage and sort are unchanged.
+  function renderPriority(row) {
+    var p = toInt(row.priority, 0);
+    var shown = (p > 0 ? '+' : '') + p;
+    var idAttr = ' data-id="' + escapeHtml(row.id) + '"';
+    return '<span class="tfcc-prio" title="' + escapeHtml('Priority adjustment: ' + shown
+      + '. The Priority sort puts higher first.') + '">' + escapeHtml(shown) + '</span>'
+      + btn('prio-up', '+', idAttr + ' class="tfcc-prio-btn" aria-label="Raise priority"'
+        + ' title="Raise this thread\'s priority by 1"')
+      + btn('prio-down', '-', idAttr + ' class="tfcc-prio-btn" aria-label="Lower priority"'
+        + ' title="Lower this thread\'s priority by 1"');
   }
 
   function renderRow(row, model) {
@@ -4592,6 +4659,11 @@
     out.push('<span class="tfcc-row-title"><a href="' + escapeHtml(threadUrl(row)) + '"'
       + threadLinkAttr(row.id) + '>'
       + escapeHtml(row.title) + '</a></span>');
+    // Priority sits beside the title (#30), not in the action row, where two
+    // more buttons wrapped Archive onto a second line once Pin read Unpin.
+    // Siblings of the title span, never inside the marked anchor, so a tap on
+    // them is not a thread click and #8's auto-hide ignores it.
+    out.push(renderPriority(row));
     // Author-only mode (issue #4) never shows Torn's any-poster count, and an
     // unknown is named, never left blank.
     var amode = row.authorState || 'off';
@@ -4619,7 +4691,9 @@
     out.push('</div>');
 
     out.push('<div class="tfcc-meta">');
-    if (row.mineRole) out.push('<span class="tfcc-tag">' + (row.mineRole === 'started' ? 'started' : 'posted in') + '</span>');
+    // "started" is red (#30), so a thread you began stands out at a glance.
+    if (row.mineRole === 'started') out.push('<span class="tfcc-tag tfcc-started">started</span>');
+    else if (row.mineRole) out.push('<span class="tfcc-tag">posted in</span>');
     if (row.mineRole === 'started') {
       if (row.up !== null && row.down !== null) {
         out.push('<span class="tfcc-note">' + formatCount(row.up) + ' up, ' + formatCount(row.down) + ' down</span>');
@@ -4633,7 +4707,6 @@
     out.push('<span>' + escapeHtml(row.forumName) + '</span>');
     if (row.authorName) out.push('<span>by ' + escapeHtml(row.authorName) + '</span>');
     if (row.folderName) out.push('<span>' + escapeHtml(row.folderName) + '</span>');
-    if (row.priority !== 0) out.push('<span>priority ' + (row.priority > 0 ? '+' : '') + row.priority + '</span>');
     if (row.hasDraft) out.push('<span class="tfcc-tag">draft</span>');
     for (var i = 0; i < row.tags.length; i += 1) {
       out.push('<span class="tfcc-tag">' + escapeHtml(row.tags[i]) + '</span>');
@@ -4645,8 +4718,6 @@
     out.push('<div class="tfcc-actions">');
     out.push(btn('pin', row.pinned ? 'Unpin' : 'Pin', ' data-id="' + escapeHtml(row.id) + '"'));
     out.push(btn('read', 'Mark read', ' data-id="' + escapeHtml(row.id) + '"'));
-    out.push(btn('prio-up', 'Priority +', ' data-id="' + escapeHtml(row.id) + '"'));
-    out.push(btn('prio-down', 'Priority -', ' data-id="' + escapeHtml(row.id) + '"'));
     out.push('<select data-act="folder" data-id="' + escapeHtml(row.id) + '">');
     out.push('<option value="">Unfiled</option>');
     for (var f = 0; f < model.folders.length; f += 1) {
@@ -5091,7 +5162,7 @@
         ? cappedNames.slice(0, -1).join(', ') + ' and ' + cappedNames[cappedNames.length - 1]
         : cappedNames.join(''))
       + '. Search and Drafts always show everything. A capped list says how many it is hiding, '
-      + 'and Show all lifts the cap for that list until the page reloads.</p>');
+      + 'and Show all lifts the cap for that list until the page reloads. The default is 5.</p>');
     out.push('<div class="tfcc-kv"><label for="tfcc-hide">Hide Torn\'s own subscribed box</label>'
       + '<input id="tfcc-hide" type="checkbox" data-act="hide-torn-box"'
       + (model.settings.hideTornBox ? ' checked' : '') + '></div>');
@@ -5172,11 +5243,22 @@
       + KARMA_ICON_SVG + '<span class="tfcc-rx">' + escapeHtml(n) + '</span></span>';
   }
 
-  // The thread reactions line (#10). Its own block under .tfcc-head, never in
-  // it: the header row belongs to the title, #9's badges and Refresh, Expand
-  // and Hide. Rendered after the collapsed early return, so hidden when
-  // collapsed. Up and down are real topic-post sums; net is labelled. Karma
-  // follows them; with no started threads and a known karma, it stands alone.
+  // The thumbs in the reactions pill (#30). The owner asked for these emoji,
+  // which overrides the ASCII-SVG icon convention for this pill only. They are
+  // escapes so the source stays ASCII (Torn PDA rewrites typographic
+  // characters), aria-hidden because the pill's aria-label says "up" and
+  // "down", and drawn monochrome by the .tfcc-thumb filter rules.
+  var THUMB_UP = '\uD83D\uDC4D';
+  var THUMB_DOWN = '\uD83D\uDC4E';
+  function thumb(glyph) {
+    return '<span class="tfcc-thumb" aria-hidden="true">' + glyph + '</span>';
+  }
+
+  // The thread reactions pill (#10). Since #30 it sits in the nav row, right
+  // before My posts, because it opens My posts; renderNav places it. The nav is
+  // drawn after the collapsed early return, so it is hidden when collapsed. Up
+  // and down are real topic-post sums; net is labelled. Karma follows them;
+  // with no started threads and a known karma, it stands alone.
   function renderReactions(model) {
     var r = model.reactions;
     if (!model.hasKey || !r) return '';
@@ -5190,14 +5272,14 @@
     if (r.state !== 'empty') {
       if (known && r.thumbThreads > 0) {
         var more = r.netThreads > 0 ? ', net ' + formatSigned(r.net) + ' on ' + r.netThreads + ' more' : '';
-        parts = rx(formatCount(r.up)) + ' up, ' + rx(formatCount(r.down)) + ' down'
+        parts = rx(formatCount(r.up)) + ' ' + thumb(THUMB_UP) + ' ' + rx(formatCount(r.down)) + ' ' + thumb(THUMB_DOWN)
           + (r.netThreads > 0 ? ', net ' + rx(formatSigned(r.net)) + ' on ' + r.netThreads + ' more' : '');
         spoken = formatCount(r.up) + ' up, ' + formatCount(r.down) + ' down' + more;
       } else if (known) {
         parts = 'net ' + rx(formatSigned(r.net));
         spoken = 'net ' + formatSigned(r.net);
       } else {
-        parts = rx('-') + ' up, ' + rx('-') + ' down';
+        parts = rx('-') + ' ' + thumb(THUMB_UP) + ' ' + rx('-') + ' ' + thumb(THUMB_DOWN);
         spoken = 'thumbs unknown';
       }
     }
@@ -5205,15 +5287,14 @@
     var title = reactionsTitle(r, model.now, MINE_PAGE_LIMIT);
     var said = (r.state === 'empty' ? '' : 'Your threads: ' + spoken + age + '. ')
       + 'Karma: ' + (karma === null ? 'unknown' : formatKarma(karma)) + '. ';
-    var lead = r.state === 'empty' ? '' : 'Your threads: ' + parts + escapeHtml(age) + ' ';
-    return '<div class="tfcc-subhead"><button type="button" class="tfcc-reactions' + (stale ? ' tfcc-stale' : '')
+    var lead = r.state === 'empty' ? '' : parts + escapeHtml(age) + ' ';
+    return '<button type="button" class="tfcc-reactions' + (stale ? ' tfcc-stale' : '')
       + '" data-act="view" data-view="mine" title="' + escapeHtml(title) + '" aria-label="'
-      + escapeHtml(said + title) + '">' + lead + renderKarma(karma) + '</button></div>';
+      + escapeHtml(said + title) + '">' + lead + renderKarma(karma) + '</button>';
   }
 
   function renderHeadId(model) {
-    return '<div class="tfcc-head-id"><span class="tfcc-title">Forum Command Center</span>'
-      + renderBadgeChip(model) + '</div>';
+    return '<div class="tfcc-head-id">' + LOGO_SVG + renderBadgeChip(model) + '</div>';
   }
 
   function streakWords(s) {
@@ -5319,7 +5400,6 @@
     out.push(renderBadgeToast(model));
 
     if (model.collapsed) return out.join('');
-    out.push(renderReactions(model));
 
     for (var n = 0; n < model.notices.length; n += 1) {
       out.push('<div class="tfcc-' + (model.notices[n].kind === 'error' ? 'error' : 'warn') + '">'

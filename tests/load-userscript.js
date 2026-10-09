@@ -95,7 +95,7 @@ const EXPORT_NAMES = [
   'enrichReactions', 'REACTIONS_STALE_MS', 'TOPIC_TTL_MS', 'REACTION_LOOKUPS_PER_RUN', 'TOPIC_POST_PARAMS',
   // forum karma (#10)
   'karmaFromAuthors', 'karmaFromProfile', 'setKarma', 'karmaFallbackDue', 'formatKarma', 'readKarmaProfile',
-  'KARMA_TTL_MS', 'KARMA_ICON_SVG',
+  'KARMA_TTL_MS', 'KARMA_ICON_SVG', 'LOGO_SVG',
   // engine: share
   'EXPORT_PREFIX', 'encodeState', 'decodeState', 'importState',
   // runtime: lifecycle

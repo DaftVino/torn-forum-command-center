@@ -126,7 +126,13 @@ const SCRIPT = `
       text: el.parentElement ? (el.parentElement.getAttribute('aria-label') || '') : '',
     });
   });
-  return JSON.stringify(out);
+  // #30: the elements this audit must have measured, so a preview that stops
+  // rendering them fails rather than passing by omission.
+  out.seen = {
+    logo: panel.querySelectorAll('svg.tfcc-logo').length,
+    started: panel.querySelectorAll('.tfcc-started').length,
+  };
+  return JSON.stringify({ rows: out, seen: out.seen });
 })()
 `;
 
@@ -151,6 +157,18 @@ for (const page of pages) {
   }
   if (rows.error) {
     console.log(`?? ${page}: ${rows.error}`);
+    failures += 1;
+    continue;
+  }
+  const seen = rows.seen || {};
+  rows = rows.rows;
+  // Every preview has the header logo (#30), and every My posts preview has a
+  // started row whose red "started" (#30) must have been measured.
+  const missing = [];
+  if (!seen.logo) missing.push('the FCC logo');
+  if (page.startsWith('mine-') && !seen.started) missing.push('a red "started" tag');
+  if (missing.length) {
+    console.log(`?? ${page}: nothing measured for ${missing.join(', ')}`);
     failures += 1;
     continue;
   }

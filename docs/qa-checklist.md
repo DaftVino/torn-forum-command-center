@@ -88,8 +88,9 @@ time **END**.
 
 ### Hide on opening a thread
 
-- [ ] Settings, tick "Hide the panel when I open a thread". Tap a thread in
-      Threads: the thread opens and the panel shows only its header with Show.
+- [ ] Fresh install: Settings shows "Hide the panel when I open a thread"
+      already ticked (on by default since #30). Tap a thread in Threads: the
+      thread opens and the panel shows only its header with Show.
 - [ ] Reload the thread page: the panel is still collapsed.
 - [ ] Show brings the panel back, and it stays open while you page through the
       thread and follow Torn's own links.
@@ -114,10 +115,17 @@ time **END**.
       phrase, and a `-negated` term.
 - [ ] Pin, unpin, priority up and down, add a tag, file into a folder, archive
       and unarchive. Each survives a reload.
+- [ ] Priority (#30): the number and the small + and - sit right after the
+      thread title. Tapping + or - changes the number and does not open the
+      thread or hide the panel. Pin a thread on desktop and at the narrowest
+      PDA width: Pin becomes Unpin and the row is no taller than an unpinned
+      row beside it.
 - [ ] Mark read hides the thread from catch-up. Torn's own counter is unchanged,
       as the panel says.
 - [ ] A thread you unsubscribe from on Torn keeps its notes and tags and shows
       as not subscribed after the next refresh.
+- [ ] Fresh install: Settings, Rows shown reads 5 (the default since #30), and
+      a list longer than five says "Showing 5 of N".
 - [ ] Settings, Rows shown, 3. Threads shows three rows and "Showing 3 of N"
       with Show all. Show all lists every row. Show 3 only caps the list again.
 - [ ] With Rows shown at 3, pin four threads. Threads shows three pinned rows.
@@ -260,7 +268,8 @@ Owner checks for the live API (spec "Prerequisite"; all block release):
 Torn PDA and desktop (#10).
 
 - [ ] Fresh install, before opening My posts: the line reads
-      `Your threads: - up, - down`, never 0.
+      `- (thumbs up) - (thumbs down)` in the nav row, just before My posts,
+      never 0. The thumbs are white on Dark and black on Light (#30).
 - [ ] Open My posts. API key log: at most 17 requests for that open, and the
       `forum/<id>/posts` ones are only for threads you started.
 - [ ] Pick a thread you started with visible thumbs. On Torn's thread page
@@ -360,8 +369,11 @@ Walk on Torn PDA and on desktop, signed in to a real account.
 
 - [ ] Upgrade from the previous release: no "were damaged" notice, and no
       badges appear until you do something (no backfill).
-- [ ] The cup chip sits right after "Forum Command Center" in Dark, Light and
+- [ ] The cup chip sits right after the FCC logo in Dark, Light and
       Match Torn (toggle Torn's own theme while it is open).
+- [ ] The FCC logo (#30) is crisp, about one text line tall, in its blue-grey
+      `#5C768F` in both themes, and a screen reader names it "Forum Command
+      Center".
 - [ ] At the narrowest PDA width, portrait and landscape: Refresh, Expand and
       Hide stay together and in order; the control group wraps whole.
 - [ ] Tap the cup itself, and the number: the shelf opens both times.

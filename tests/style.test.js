@@ -389,8 +389,9 @@ test('every My posts colour token is set in both theme blocks, to the agreed val
   for (const [k, v] of Object.entries(light)) assert.ok(lightBlock.indexOf('--tfcc-mine-' + k + ': ' + v) !== -1, 'light ' + k);
 });
 
-test('the reactions pill is its own line and wraps rather than overflowing', () => {
-  assert.match(blockFor('#tfcc-panel .tfcc-subhead'), /flex-wrap: wrap/);
+test('the reactions pill sits in the wrapping nav row and wraps rather than overflowing', () => {
+  assert.match(blockFor('#tfcc-panel .tfcc-nav'), /flex-wrap: wrap/);
+  assert.ok(!css.includes('.tfcc-subhead'), 'the separate row is gone (#30)');
   const pill = blockFor('#tfcc-panel button.tfcc-reactions');
   assert.match(pill, /white-space: normal/);
   assert.match(pill, /max-width: 100%/);
@@ -466,9 +467,68 @@ test('the toast moves only when the user allows motion', () => {
   assert.strictEqual(css.split('tfcc-fade-in 160ms').length, 2, 'the animation is applied in one place only');
 });
 
+test('the logo is sized by height to the badge chip and keeps #5C768F against a host svg rule (#30)', () => {
+  const block = blockFor('#tfcc-panel .tfcc-logo');
+  assert.match(block, /height: 28px/, 'the badge chip height (min-height 28px, border-box)');
+  assert.match(blockFor('#tfcc-panel button.tfcc-chip'), /min-height: 28px/, 'the chip it matches is still 28px');
+  assert.match(block, /width: auto/, 'width follows the viewBox');
+  assert.match(block, /color: #5c768f/i);
+  assert.match(css, /#tfcc-panel \.tfcc-logo path \{ fill: currentColor; \}/,
+    'a host "svg * { fill }" rule must not repaint it');
+});
+
+test('the pill and My posts group on the right of the nav row (#30)', () => {
+  assert.match(blockFor('#tfcc-panel .tfcc-nav button.tfcc-reactions'), /margin-left: auto/);
+  assert.match(blockFor('#tfcc-panel .tfcc-nav .tfcc-reactions + button.tfcc-nav-mine'), /margin-left: 0/);
+});
+
+test('the thumbs are monochrome: black on light, white on dark (#30)', () => {
+  const dark = blockFor('#tfcc-panel .tfcc-thumb');
+  assert.match(dark, /filter: grayscale\(1\) brightness\(0\) invert\(1\)/);
+  const light = blockFor('#tfcc-panel.tfcc-theme-light .tfcc-thumb');
+  assert.match(light, /filter: grayscale\(1\) brightness\(0\);/);
+  assert.doesNotMatch(light, /invert/);
+  assert.ok(css.indexOf('#tfcc-panel.tfcc-theme-light .tfcc-thumb {') > css.indexOf('#tfcc-panel .tfcc-thumb {'),
+    'the light rule comes later and out-ranks the dark one');
+});
+
+// Measured against both the row (--tm-bg-2) and the tag fill it sits on
+// (--tm-bg-3): dark #ff8080 is 6.2:1 and 7.8:1, light #a11414 is 6.5:1 and
+// 8.0:1. WCAG AA for this 12px text is 4.5:1.
+test('"started" is red per theme, from its own token, at AA on the row (#30)', () => {
+  const lum = (hex) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const ratio = (a, b) => { const x = lum(a); const y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const token = (block, name) => {
+    const m = new RegExp(name + ':\\s*(#[0-9a-f]{6})', 'i').exec(block);
+    assert.ok(m, name + ' missing');
+    return m[1];
+  };
+  const dark = blockFor('#tfcc-panel');
+  const light = blockFor('#tfcc-panel.tfcc-theme-light');
+  for (const [name, block] of [['dark', dark], ['light', light]]) {
+    const red = token(block, '--tfcc-started');
+    for (const bg of ['--tm-bg-2', '--tm-bg-3']) {
+      const r = ratio(red, token(block, bg));
+      assert.ok(r >= 4.5, name + ' started on ' + bg + ' is ' + r.toFixed(2) + ':1');
+    }
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(red.slice(i, i + 2), 16));
+    assert.ok(r > g * 1.5 && r > b * 1.5, name + ' ' + red + ' must read as red');
+  }
+  assert.match(blockFor('#tfcc-panel .tfcc-tag.tfcc-started'), /color: var\(--tfcc-started\)/);
+});
+
+test('a tap on a span inside any panel button lands on the button, so the reactions pill opens My posts (#30)', () => {
+  assert.match(css, /#tfcc-panel button \* \{ pointer-events: none; \}/,
+    'the click listener reads data-act from ev.target only');
+});
+
 test('the header keeps Refresh, Expand and Hide together on the right', () => {
   assert.match(blockFor('#tfcc-panel .tfcc-head-ctl'), /margin-left: auto/);
   assert.match(blockFor('#tfcc-panel .tfcc-head-btns'), /flex-wrap: nowrap/);
-  assert.doesNotMatch(blockFor('#tfcc-panel .tfcc-title'), /margin-right: auto/);
+  assert.doesNotMatch(blockFor('#tfcc-panel .tfcc-logo'), /margin-right: auto/);
   assert.match(blockFor('#tfcc-panel button.tfcc-chip'), /flex: 0 0 auto/);
 });

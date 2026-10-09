@@ -334,6 +334,15 @@ test('the Settings view offers the menu and names the capped views', () => {
   assert.match(html, /<option value="10" selected>10<\/option>/);
   assert.match(html, /Applies to Threads, Catch up and My posts\./);
   assert.match(html, /Search and Drafts always show everything/);
+  assert.match(html, /The default is 5\./, 'the note names the default (#30)');
+});
+
+test('a fresh install shows 5 selected in the Rows shown menu (#30)', () => {
+  const { api } = boot();
+  api.state.settings = api.freshSettings();
+  api.state.settings.view = 'settings';
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /<option value="5" selected>5<\/option>/);
 });
 
 test('the nav still reads its labels after VIEW_LABELS moved out of renderNav', () => {
