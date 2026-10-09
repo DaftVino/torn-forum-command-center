@@ -491,6 +491,35 @@ test('the thumbs are monochrome: black on light, white on dark (#30)', () => {
     'the light rule comes later and out-ranks the dark one');
 });
 
+// Measured against both the row (--tm-bg-2) and the tag fill it sits on
+// (--tm-bg-3): dark #ff8080 is 6.2:1 and 7.8:1, light #a11414 is 6.5:1 and
+// 8.0:1. WCAG AA for this 12px text is 4.5:1.
+test('"started" is red per theme, from its own token, at AA on the row (#30)', () => {
+  const lum = (hex) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const ratio = (a, b) => { const x = lum(a); const y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const token = (block, name) => {
+    const m = new RegExp(name + ':\\s*(#[0-9a-f]{6})', 'i').exec(block);
+    assert.ok(m, name + ' missing');
+    return m[1];
+  };
+  const dark = blockFor('#tfcc-panel');
+  const light = blockFor('#tfcc-panel.tfcc-theme-light');
+  for (const [name, block] of [['dark', dark], ['light', light]]) {
+    const red = token(block, '--tfcc-started');
+    for (const bg of ['--tm-bg-2', '--tm-bg-3']) {
+      const r = ratio(red, token(block, bg));
+      assert.ok(r >= 4.5, name + ' started on ' + bg + ' is ' + r.toFixed(2) + ':1');
+    }
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(red.slice(i, i + 2), 16));
+    assert.ok(r > g * 1.5 && r > b * 1.5, name + ' ' + red + ' must read as red');
+  }
+  assert.match(blockFor('#tfcc-panel .tfcc-tag.tfcc-started'), /color: var\(--tfcc-started\)/);
+});
+
 test('the header keeps Refresh, Expand and Hide together on the right', () => {
   assert.match(blockFor('#tfcc-panel .tfcc-head-ctl'), /margin-left: auto/);
   assert.match(blockFor('#tfcc-panel .tfcc-head-btns'), /flex-wrap: nowrap/);

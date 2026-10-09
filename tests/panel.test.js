@@ -106,6 +106,22 @@ test('every view that renders thread rows has the inline priority controls (#30)
   }
 });
 
+// ---- "started" in red (#30) -----------------------------------------------
+
+test('My posts marks "started" with its own red class, and "posted in" without it (#30)', () => {
+  const env = loadUserscript({ location: forums(), gmStore: KEY_STORE });
+  seed(env, []);
+  const api = env.exports;
+  const posted = api.freshMineThread(61, NOW);
+  posted.posted = true;
+  posted.title = 'Posted';
+  withMine(env, [startedRec(api, 60, null, 'Started'), posted]);
+  api.state.settings.view = 'mine';
+  const html = htmlOf(env);
+  assert.match(html, /<span class="tfcc-tag tfcc-started">started<\/span>/);
+  assert.match(html, /<span class="tfcc-tag">posted in<\/span>/);
+});
+
 // ---- the header logo (#30) ------------------------------------------------
 
 function headOf(html) {

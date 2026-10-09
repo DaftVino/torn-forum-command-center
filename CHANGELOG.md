@@ -102,6 +102,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   drawn black on the light theme and white on the dark one. Screen readers
   still hear "up" and "down", and the hover notes, the "-" for unknown, the
   labelled net and karma are unchanged. (#30)
+- "started" in My posts rows is red, in a shade per theme that meets WCAG AA
+  on the row: `#ff8080` on Dark, `#a11414` on Light. (#30)
 
 ### Fixed
 

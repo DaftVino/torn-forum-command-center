@@ -4152,6 +4152,8 @@
       '  --tfcc-tier-legend: #c9a2ff; --tfcc-locked: #8a8a8a;',
       '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
       '  --tfcc-mine-text: #141414; --tfcc-mine-border: #d9d9d9;',
+      // "started" in My posts (#30): 6.2:1 on the row, 7.8:1 on the tag fill.
+      '  --tfcc-started: #ff8080;',
       '}',
       '#' + PANEL_ID + '.tfcc-theme-light {',
       '  --tm-bg: #f2f2f2; --tm-bg-2: #e8e8e8; --tm-bg-3: #ffffff; --tm-hover: #dcdcdc;',
@@ -4165,6 +4167,8 @@
       // grey fill on the light panel is not itself a visible boundary.
       '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;',
       '  --tfcc-mine-text: #141414; --tfcc-mine-border: #5c5c5c;',
+      // "started" (#30): 6.5:1 on the row, 8.0:1 on the tag fill.
+      '  --tfcc-started: #a11414;',
       '}',
       '#' + FALLBACK_ID + ' { position: fixed; right: 12px; bottom: 12px; z-index: 2147483000;',
       '  box-sizing: border-box; width: min(960px, calc(100vw - 24px)); max-width: calc(100vw - 24px);',
@@ -4319,6 +4323,7 @@
       '  display: flex; gap: var(--tfcc-gap); flex-wrap: wrap; margin-top: 2px; }',
       '#' + PANEL_ID + ' .tfcc-tag { background: var(--tm-bg-3); border: 1px solid var(--tm-border);',
       '  border-radius: 3px; padding: 0 5px; font-size: var(--tfcc-text-sm); }',
+      '#' + PANEL_ID + ' .tfcc-tag.tfcc-started { color: var(--tfcc-started); font-weight: bold; }',
       '#' + PANEL_ID + ' .tfcc-actions { display: flex; gap: var(--tfcc-gap-xs); flex-wrap: wrap;',
       '  margin-top: var(--tfcc-gap-xs); }',
       '#' + PANEL_ID + ' .tfcc-actions button { font-size: var(--tfcc-text-sm); padding: 1px 6px; }',
@@ -4680,7 +4685,9 @@
     out.push('</div>');
 
     out.push('<div class="tfcc-meta">');
-    if (row.mineRole) out.push('<span class="tfcc-tag">' + (row.mineRole === 'started' ? 'started' : 'posted in') + '</span>');
+    // "started" is red (#30), so a thread you began stands out at a glance.
+    if (row.mineRole === 'started') out.push('<span class="tfcc-tag tfcc-started">started</span>');
+    else if (row.mineRole) out.push('<span class="tfcc-tag">posted in</span>');
     if (row.mineRole === 'started') {
       if (row.up !== null && row.down !== null) {
         out.push('<span class="tfcc-note">' + formatCount(row.up) + ' up, ' + formatCount(row.down) + ' down</span>');
