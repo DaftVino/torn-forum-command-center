@@ -104,3 +104,85 @@ test('activeFilterCount counts the folder and tag filters only', () => {
   assert.strictEqual(api.activeFilterCount({ sort: 'title', unreadOnly: true }), 0, 'sort and Unread are not filters behind the button');
   assert.strictEqual(api.activeFilterCount(null), 0);
 });
+
+// ---- the transient state machine (spec section 6) -------------------------
+
+const OPEN = { openRowId: 'A', filtersOpen: true, openInfoId: 'catchup', drawerEdit: { id: 'A', field: 'note-input', value: 'x', selStart: 1, selEnd: 1 } };
+
+test('Actions on row A opens A, and again closes it', () => {
+  const a = api.nextTransient(api.freshTransient(), { type: 'row-more', id: 'A' });
+  assert.strictEqual(a.openRowId, 'A');
+  const closed = api.nextTransient(a, { type: 'row-more', id: 'A' });
+  assert.strictEqual(closed.openRowId, null);
+});
+
+test('Actions on row B while A is open opens B and keeps A\'s uncommitted edit', () => {
+  const b = api.nextTransient(OPEN, { type: 'row-more', id: 'B' });
+  assert.strictEqual(b.openRowId, 'B');
+  assert.deepStrictEqual(b.drawerEdit, OPEN.drawerEdit, 'the mirror lives until its field commits');
+  assert.strictEqual(b.filtersOpen, true, 'filters are unchanged');
+  assert.strictEqual(b.openInfoId, 'catchup', 'info is unchanged by row actions');
+});
+
+test('Filters toggles and touches nothing else', () => {
+  const t = api.nextTransient(OPEN, { type: 'filters' });
+  assert.strictEqual(t.filtersOpen, false);
+  assert.strictEqual(t.openRowId, 'A');
+});
+
+test('an info button toggles its own key, one open at a time', () => {
+  const t = api.nextTransient(api.freshTransient(), { type: 'info', key: 'catchup' });
+  assert.strictEqual(t.openInfoId, 'catchup');
+  assert.strictEqual(api.nextTransient(t, { type: 'info', key: 'catchup' }).openInfoId, null);
+  assert.strictEqual(api.nextTransient(t, { type: 'info', key: 'settings-budget' }).openInfoId, 'settings-budget');
+  assert.strictEqual(api.nextTransient(t, { type: 'info', key: 'not-a-key' }).openInfoId, 'catchup', 'an unknown key changes nothing');
+});
+
+test('a view change, Hide, auto-hide and the breakpoint close every disclosure but keep an uncommitted edit', () => {
+  // The mirror is the only copy of what was typed until the field commits on
+  // blur; a rotation or a redraw in between must not lose it (plan review).
+  for (const type of ['view', 'collapse', 'auto-hide', 'breakpoint']) {
+    assert.deepStrictEqual(api.nextTransient(OPEN, { type }),
+      { openRowId: null, filtersOpen: false, openInfoId: null, drawerEdit: OPEN.drawerEdit }, type);
+  }
+  assert.deepStrictEqual(api.nextTransient(api.freshTransient(), { type: 'view' }), api.freshTransient());
+});
+
+test('Show, refresh, filter, cap and row actions leave the transients alone', () => {
+  for (const type of ['show', 'refresh', 'filter', 'cap', 'pin', 'prio', 'read', 'archive', 'route', undefined]) {
+    assert.deepStrictEqual(api.nextTransient(OPEN, { type }), OPEN, String(type));
+  }
+  assert.deepStrictEqual(api.nextTransient(OPEN, null), OPEN);
+});
+
+test('nextTransient normalises a damaged input', () => {
+  assert.deepStrictEqual(api.nextTransient(null, null), api.freshTransient());
+  assert.deepStrictEqual(api.nextTransient({ openRowId: 5, filtersOpen: 'yes', openInfoId: {}, drawerEdit: 'x' }, null),
+    api.freshTransient());
+});
+
+test('reconcileTransient clears an open row that is not rendered', () => {
+  const t = api.reconcileTransient(OPEN, ['B', 'C'], ['catchup']);
+  assert.strictEqual(t.openRowId, null);
+  assert.deepStrictEqual(t.drawerEdit, OPEN.drawerEdit, 'an uncommitted edit outlives its drawer');
+  assert.strictEqual(t.openInfoId, 'catchup');
+  assert.strictEqual(t.filtersOpen, true);
+});
+
+test('reconcileTransient keeps an open row that is still rendered', () => {
+  assert.deepStrictEqual(api.reconcileTransient(OPEN, ['A', 'B'], ['catchup']), OPEN);
+});
+
+test('reconcileTransient clears an info key the view does not render', () => {
+  assert.strictEqual(api.reconcileTransient(OPEN, ['A'], []).openInfoId, null);
+  assert.strictEqual(api.reconcileTransient(OPEN, ['A'], api.INFO_KEYS_BY_VIEW.settings).openInfoId, null);
+});
+
+test('every view has an info key list, and every listed key has a name', () => {
+  for (const v of api.VIEWS) {
+    assert.ok(Array.isArray(api.INFO_KEYS_BY_VIEW[v]), v);
+    for (const k of api.INFO_KEYS_BY_VIEW[v]) assert.match(api.INFO_KEYS[k], /^About /, k);
+  }
+  const listed = [].concat(...api.VIEWS.map((v) => api.INFO_KEYS_BY_VIEW[v]));
+  assert.deepStrictEqual(listed.slice().sort(), Object.keys(api.INFO_KEYS).sort(), 'no key is orphaned or listed twice');
+});

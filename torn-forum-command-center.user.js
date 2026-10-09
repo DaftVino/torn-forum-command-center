@@ -203,6 +203,32 @@
   var LOGO_MIN_PX = 16;
   var LOGO_MAX_PX = 24;
 
+  // Info buttons (#33, spec 13d): key -> the button's accessible name. The
+  // explanation text always stays in the markup; only its hidden attribute
+  // follows state.openInfoId.
+  var INFO_KEYS = Object.freeze({
+    catchup: 'About Catch up',
+    mine: 'About My posts',
+    search: 'About Search',
+    'settings-budget': 'About the request budget',
+    'settings-author': 'About author-only mode',
+    'settings-rows': 'About Rows shown',
+    'settings-autohide': 'About hiding the panel',
+    'settings-folders': 'About folders',
+    'settings-badges': 'About badges',
+  });
+  var INFO_KEYS_BY_VIEW = Object.freeze({
+    threads: Object.freeze([]),
+    catchup: Object.freeze(['catchup']),
+    search: Object.freeze(['search']),
+    drafts: Object.freeze([]),
+    settings: Object.freeze(['settings-budget', 'settings-author', 'settings-rows', 'settings-autohide',
+      'settings-folders', 'settings-badges']),
+    mine: Object.freeze(['mine']),
+  });
+  // The events that close every disclosure (spec section 6 table).
+  var TRANSIENT_RESET_EVENTS = Object.freeze(['view', 'collapse', 'auto-hide', 'breakpoint']);
+
   var THEMES = Object.freeze(['dark', 'light', 'match']);
 
   var DEFAULT_FOLDERS = Object.freeze([
@@ -1886,6 +1912,52 @@
   function activeFilterCount(settings) {
     var s = isPlainObject(settings) ? settings : {};
     return (s.folderFilter ? 1 : 0) + (s.tagFilter ? 1 : 0);
+  }
+
+  // The panel's transient view state (#33, spec section 6). Never persisted.
+  function freshTransient() {
+    return { openRowId: null, filtersOpen: false, openInfoId: null, drawerEdit: null };
+  }
+
+  // One transition of spec section 6's table. Row actions, refresh, filters and
+  // the cap are identity here: reconcileTransient handles a row they remove.
+  function nextTransient(t, ev) {
+    var cur = isPlainObject(t) ? t : {};
+    var out = {
+      openRowId: typeof cur.openRowId === 'string' && cur.openRowId ? cur.openRowId : null,
+      filtersOpen: cur.filtersOpen === true,
+      openInfoId: typeof cur.openInfoId === 'string' && cur.openInfoId ? cur.openInfoId : null,
+      drawerEdit: isPlainObject(cur.drawerEdit) ? cur.drawerEdit : null,
+    };
+    var type = isPlainObject(ev) ? ev.type : null;
+    // drawerEdit survives every transition: it is the only copy of what was
+    // typed until the field commits, and only that commit clears it.
+    if (TRANSIENT_RESET_EVENTS.indexOf(type) !== -1) {
+      return { openRowId: null, filtersOpen: false, openInfoId: null, drawerEdit: out.drawerEdit };
+    }
+    if (type === 'row-more' && typeof ev.id === 'string' && ev.id) {
+      out.openRowId = out.openRowId === ev.id ? null : ev.id;
+      return out;
+    }
+    if (type === 'filters') { out.filtersOpen = !out.filtersOpen; return out; }
+    if (type === 'info' && Object.prototype.hasOwnProperty.call(INFO_KEYS, ev.key)) {
+      out.openInfoId = out.openInfoId === ev.key ? null : ev.key;
+      return out;
+    }
+    return out;
+  }
+
+  // After every model build: an open row that is not rendered (refreshed,
+  // filtered, capped or archived away) closes, so it cannot reopen by itself
+  // when it returns; an info key the view does not render closes too. An
+  // uncommitted edit is kept (see nextTransient).
+  function reconcileTransient(t, renderedIds, infoKeys) {
+    var out = nextTransient(t, null);
+    var ids = Array.isArray(renderedIds) ? renderedIds : [];
+    var keys = Array.isArray(infoKeys) ? infoKeys : [];
+    if (out.openRowId !== null && ids.indexOf(out.openRowId) === -1) out.openRowId = null;
+    if (out.openInfoId !== null && keys.indexOf(out.openInfoId) === -1) out.openInfoId = null;
+    return out;
   }
 
   // -- query parsing and search --------------------------------------------
