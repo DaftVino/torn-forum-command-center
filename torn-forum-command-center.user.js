@@ -3465,6 +3465,477 @@
       + paths.map(function (d) { return '<path d="' + d + '"/>'; }).join('') + '</svg>';
   }
 
+  // ---- #58 editor constants ----------------------------------------------
+  var DRAFT_LANGS = Object.freeze(['md', 'html', 'text']);
+  var TORN_COLORS = Object.freeze([
+    Object.freeze({ name: 'red', light: '#f03e3e', dark: '#ff8787' }),
+    Object.freeze({ name: 'pink', light: '#d6336c', dark: '#faa2c1' }),
+    Object.freeze({ name: 'grape', light: '#ae3ec9', dark: '#e599f7' }),
+    Object.freeze({ name: 'violet', light: '#7048e8', dark: '#d0bfff' }),
+    Object.freeze({ name: 'indigo', light: '#4263eb', dark: '#bac8ff' }),
+    Object.freeze({ name: 'blue', light: '#1c7ed6', dark: '#a5d8ff' }),
+    Object.freeze({ name: 'cyan', light: '#1098ad', dark: '#99e9f2' }),
+    Object.freeze({ name: 'teal', light: '#0ca678', dark: '#63e6be' }),
+    Object.freeze({ name: 'green', light: '#37b24d', dark: '#8ce99a' }),
+    Object.freeze({ name: 'lime', light: '#66a80f', dark: '#a9e34b' }),
+    Object.freeze({ name: 'yellow', light: '#e67700', dark: '#ffd43b' }),
+    Object.freeze({ name: 'orange', light: '#d9480f', dark: '#ffa94d' }),
+    Object.freeze({ name: 'gray1', light: '#333333', dark: '#ffffff' }),
+    Object.freeze({ name: 'gray2', light: '#666666', dark: '#dddddd' }),
+    Object.freeze({ name: 'gray3', light: '#999999', dark: '#aaaaaa' }),
+    Object.freeze({ name: 'gray4', light: '#cccccc', dark: '#888888' }),
+    Object.freeze({ name: 'gray5', light: '#ffffff', dark: '#000000' }),
+  ]);
+  var TORN_COLOR_NAMES = Object.freeze(TORN_COLORS.map(function (c) { return c.name; }));
+  var TORN_EMOJI = Object.freeze(['angel', 'angry', 'authority', 'beard', 'beaten_up', 'blushing',
+    'bored_sleepy', 'confused', 'cool', 'cry', 'disappointed', 'dizzy', 'evil', 'grin', 'hushed',
+    'kissing', 'laughing', 'love_chemistry', 'money', 'moustache', 'mugger_masked', 'nerd', 'party',
+    'pirate', 'sick', 'smiley', 'tired', 'tongue', 'wink', 'zip_mouth']);
+  var FONT_SIZE_MIN = 8;
+  var FONT_SIZE_MAX = 36;
+  var SIZE_PICKS = Object.freeze([10, 12, 14, 16, 18, 20, 24]);
+  var HEADING_PX = Object.freeze({ 1: 24, 2: 18, 3: 16 });
+  var PASTE_MARKER = '<!-- x-tinymce/html -->';
+  var EDITOR_BG = Object.freeze({ light: '#ffffff', dark: '#111111' });
+  // A security bound, never reached by a real draft: the source is capped at
+  // DRAFT_MAX_CHARS (20000), and the largest expansion found is an empty
+  // one-cell table per three characters ("|", newline, newline), about 38
+  // times. A test pins the bound with the worst inputs found.
+  var CLEAN_MAX_CHARS = 1000000;
+  var URL_MAX_CHARS = 2000;
+
+  // ---- HTML tokenizer ------------------------------------------------------
+
+  var NAMED_ENTITIES = Object.freeze({
+    amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', rsquo: '\u2019', lsquo: '\u2018',
+    rdquo: '\u201d', ldquo: '\u201c', ndash: '\u2013', mdash: '\u2014', hellip: '\u2026',
+    copy: '\u00a9', reg: '\u00ae', trade: '\u2122', bull: '\u2022', middot: '\u00b7',
+  });
+
+  function decodeEntities(s) {
+    return String(s).replace(/&(#[xX][0-9a-fA-F]{1,6}|#[0-9]{1,7}|[a-zA-Z]{2,8});/g, function (all, e) {
+      if (e.charAt(0) === '#') {
+        var hex = e.charAt(1) === 'x' || e.charAt(1) === 'X';
+        var cp = hex ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+        return cp > 0 && cp <= 0x10ffff && !(cp >= 0xd800 && cp <= 0xdfff) ? String.fromCodePoint(cp) : all;
+      }
+      return Object.prototype.hasOwnProperty.call(NAMED_ENTITIES, e) ? NAMED_ENTITIES[e] : all;
+    });
+  }
+
+  var VOID_TAGS = Object.freeze({ br: true, img: true, hr: true, input: true, meta: true, link: true, wbr: true });
+  var RAW_TEXT_TAGS = Object.freeze({ script: true, style: true, textarea: true, title: true });
+
+  function isSpaceChar(c) { return c === ' ' || c === '\n' || c === '\t' || c === '\r' || c === '\f'; }
+
+  // One forward pass. Every loop advances, and nothing rescans the input, so a
+  // hostile 100000-character draft costs one pass.
+  function tokenizeHtml(html) {
+    var s = String(html || '').slice(0, CLEAN_MAX_CHARS);
+    var lower = s.toLowerCase();
+    var out = [];
+    var n = s.length;
+    var i = 0;
+    var textStart = 0;
+    function flush(to) {
+      if (to > textStart) out.push({ type: 'text', text: decodeEntities(s.slice(textStart, to)), pos: textStart });
+    }
+    while (i < n) {
+      if (s.charAt(i) !== '<') { i += 1; continue; }
+      if (s.substr(i, 4) === '<!--') {
+        flush(i);
+        var endC = s.indexOf('-->', i + 4);
+        i = endC === -1 ? n : endC + 3;
+        textStart = i;
+        continue;
+      }
+      var m = /^<(\/?)([a-zA-Z][a-zA-Z0-9]{0,15})/.exec(s.slice(i, i + 18));
+      if (!m) { i += 1; continue; }
+      flush(i);
+      var start = i;
+      var j = i + m[0].length;
+      var attrs = {};
+      var selfClose = false;
+      while (j < n) {
+        while (j < n && isSpaceChar(s.charAt(j))) j += 1;
+        var ch = s.charAt(j);
+        if (ch === '>') { j += 1; break; }
+        if (ch === '/') { selfClose = true; j += 1; continue; }
+        var nameStart = j;
+        while (j < n && !isSpaceChar(s.charAt(j)) && '=>/'.indexOf(s.charAt(j)) === -1) j += 1;
+        var name = s.slice(nameStart, j).toLowerCase();
+        if (!name) { j += 1; continue; }
+        while (j < n && isSpaceChar(s.charAt(j))) j += 1;
+        var val = '';
+        if (s.charAt(j) === '=') {
+          j += 1;
+          while (j < n && isSpaceChar(s.charAt(j))) j += 1;
+          var q = s.charAt(j);
+          if (q === '"' || q === "'") {
+            var close = s.indexOf(q, j + 1);
+            if (close === -1) close = n;
+            val = s.slice(j + 1, close);
+            j = close + 1;
+          } else {
+            var vs = j;
+            while (j < n && !isSpaceChar(s.charAt(j)) && s.charAt(j) !== '>') j += 1;
+            val = s.slice(vs, j);
+          }
+        }
+        if (!Object.prototype.hasOwnProperty.call(attrs, name)) attrs[name] = decodeEntities(val);
+      }
+      var tag = m[2].toLowerCase();
+      if (m[1]) {
+        out.push({ type: 'close', tag: tag, pos: start });
+      } else {
+        out.push({ type: 'open', tag: tag, attrs: attrs, selfClose: selfClose || VOID_TAGS[tag] === true, pos: start });
+        if (RAW_TEXT_TAGS[tag] && !selfClose) {
+          var endTag = lower.indexOf('</' + tag, j);
+          var stop = endTag === -1 ? n : endTag;
+          if (stop > j) out.push({ type: 'text', text: s.slice(j, stop), raw: true, pos: j });
+          j = stop;
+        }
+      }
+      i = j;
+      textStart = j;
+    }
+    flush(n);
+    return out;
+  }
+
+  // ---- the cleaner -----------------------------------------------------------
+
+  var STYLE_ORDER = Object.freeze(['text-align', 'color', 'font-size', 'text-decoration', 'width', 'height']);
+  var SPAN_PROPS = Object.freeze(['color', 'font-size', 'text-decoration']);
+  var DROP_WITH_CONTENT = Object.freeze({
+    script: true, style: true, iframe: true, object: true, embed: true, template: true, noscript: true,
+    title: true, textarea: true, head: true, svg: true, math: true, select: true, button: true,
+  });
+  var BLOCK_TAGS = Object.freeze({ p: true, ul: true, ol: true, blockquote: true, table: true });
+  var HEADING_TAGS = Object.freeze({ h1: 24, h2: 18, h3: 16, h4: 16, h5: 16, h6: 16 });
+
+  function cssValue(prop, v) {
+    var val = String(v || '').trim().toLowerCase();
+    if (prop === 'text-align') return /^(left|center|right|justify)$/.test(val) ? val : null;
+    if (prop === 'text-decoration') return /^(underline|line-through)$/.test(val) ? val : null;
+    if (prop === 'font-size') {
+      var px = /^([0-9]{1,2})px$/.exec(val);
+      var n = px ? parseInt(px[1], 10) : 0;
+      return n >= FONT_SIZE_MIN && n <= FONT_SIZE_MAX ? n + 'px' : null;
+    }
+    if (prop === 'color') {
+      var v2 = /^var\(--te-text-color-([a-z0-9]+)\)$/.exec(val.replace(/\s+/g, ''));
+      if (v2) return TORN_COLOR_NAMES.indexOf(v2[1]) !== -1 ? 'var(--te-text-color-' + v2[1] + ')' : null;
+      return /^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(val) ? val : null;
+    }
+    if (prop === 'width' || prop === 'height') return /^[0-9]{1,4}(\.[0-9]{1,4})?(px|%)$/.test(val) ? val : null;
+    return null;
+  }
+
+  function pickStyle(styleText, allowed) {
+    var out = {};
+    var parts = String(styleText || '').split(';');
+    for (var i = 0; i < parts.length && i < 40; i += 1) {
+      var k = parts[i].indexOf(':');
+      if (k === -1) continue;
+      var prop = parts[i].slice(0, k).trim().toLowerCase();
+      if (allowed.indexOf(prop) === -1) continue;
+      var v = cssValue(prop, parts[i].slice(k + 1));
+      if (v !== null) out[prop] = v;
+    }
+    return out;
+  }
+
+  function styleAttr(style) {
+    var parts = [];
+    for (var i = 0; i < STYLE_ORDER.length; i += 1) {
+      if (Object.prototype.hasOwnProperty.call(style || {}, STYLE_ORDER[i])) {
+        parts.push(STYLE_ORDER[i] + ': ' + style[STYLE_ORDER[i]] + ';');
+      }
+    }
+    return parts.length ? ' style="' + parts.join(' ') + '"' : '';
+  }
+
+  function safeHref(v) {
+    var u = String(v || '').trim();
+    return u.length <= URL_MAX_CHARS && /^https?:\/\/[^\s<>"'`]+$/i.test(u) ? u : '';
+  }
+
+  function emojiFromSrc(v) {
+    var m = /^\/images\/emotions\/svg\/([a-z_]{2,20})\.svg$/.exec(String(v || ''));
+    return m && TORN_EMOJI.indexOf(m[1]) !== -1 ? m[1] : '';
+  }
+
+  function safeImgSrc(v) {
+    var u = String(v || '').trim();
+    if (emojiFromSrc(u)) return u;
+    return u.length <= URL_MAX_CHARS && /^https:\/\/[^\s<>"'`]+$/i.test(u) ? u : '';
+  }
+
+  // The element an input tag becomes, or null to unwrap it (its text is kept).
+  function cleanElementFor(tag, attrs) {
+    var el = function (t, extra) {
+      var node = { tag: t, from: tag, style: {}, children: [] };
+      return Object.assign(node, extra || {});
+    };
+    switch (tag) {
+      case 'p': return el('p', { style: pickStyle(attrs.style, ['text-align']) });
+      case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6':
+        return el('p', { style: pickStyle(attrs.style, ['text-align']), heading: HEADING_TAGS[tag] });
+      case 'br': return el('br');
+      case 'span': return el('span', { style: pickStyle(attrs.style, SPAN_PROPS) });
+      case 'b': case 'strong': return el('strong');
+      case 'i': case 'em': return el('em');
+      case 's': case 'strike': case 'del': return el('span', { style: { 'text-decoration': 'line-through' } });
+      case 'u': case 'ins': return el('span', { style: { 'text-decoration': 'underline' } });
+      case 'ul': case 'ol': case 'li': case 'blockquote': case 'thead': case 'tbody': case 'tfoot':
+        return el(tag);
+      case 'tr': return el('tr', { style: pickStyle(attrs.style, ['height']) });
+      case 'table': case 'th': case 'td':
+        return el(tag, { style: pickStyle(attrs.style, ['width', 'height', 'text-align']) });
+      case 'a': {
+        var href = safeHref(attrs.href);
+        return href ? el('a', { href: href }) : null;
+      }
+      case 'img': {
+        var src = safeImgSrc(attrs.src);
+        return src ? el('img', { src: src, alt: safeString(attrs.alt || '', 200) }) : null;
+      }
+      default: return null;
+    }
+  }
+
+  // Pops the stack down to (and including) the nearest element named in
+  // `closes`, unless one named in `stops` comes first.
+  function closeUpTo(stack, closes, stops) {
+    for (var k = stack.length - 1; k > 0; k -= 1) {
+      var t = stack[k].tag;
+      if (closes.indexOf(t) !== -1) { stack.length = k; return; }
+      if (stops.indexOf(t) !== -1) return;
+    }
+  }
+
+  function buildCleanTree(tokens) {
+    var root = { tag: '#root', from: '#root', style: {}, children: [] };
+    var stack = [root];
+    var skip = null;
+    var skipDepth = 0;
+    for (var i = 0; i < tokens.length; i += 1) {
+      var tok = tokens[i];
+      if (skip) {
+        if (tok.type === 'open' && tok.tag === skip && !tok.selfClose) skipDepth += 1;
+        else if (tok.type === 'close' && tok.tag === skip) { skipDepth -= 1; if (!skipDepth) skip = null; }
+        continue;
+      }
+      var top = stack[stack.length - 1];
+      if (tok.type === 'text') {
+        if (!tok.raw) top.children.push({ text: tok.text });
+        continue;
+      }
+      if (tok.type === 'open') {
+        // TinyMCE's own bookkeeping: "all" goes with its content, any other
+        // bogus element is unwrapped (its content is the player's).
+        var bogus = tok.attrs['data-mce-bogus'];
+        if (bogus === 'all' || DROP_WITH_CONTENT[tok.tag]) {
+          if (!tok.selfClose) { skip = tok.tag; skipDepth = 1; }
+          continue;
+        }
+        var node = bogus !== undefined ? null : cleanElementFor(tok.tag, tok.attrs);
+        if (!node) {
+          // Unwrapped, but still a container: a ghost shares its parent's
+          // children, so its close tag ends what was opened inside it.
+          if (!tok.selfClose && !VOID_TAGS[tok.tag]) {
+            stack.push({ tag: '#ghost', from: tok.tag, style: {}, children: top.children });
+          }
+          continue;
+        }
+        if (BLOCK_TAGS[node.tag]) closeUpTo(stack, ['p'], ['li', 'td', 'th', 'blockquote']);
+        if (node.tag === 'li') closeUpTo(stack, ['li'], ['ul', 'ol']);
+        if (node.tag === 'td' || node.tag === 'th') closeUpTo(stack, ['td', 'th'], ['tr', 'table']);
+        if (node.tag === 'tr') closeUpTo(stack, ['tr'], ['tbody', 'thead', 'tfoot', 'table']);
+        stack[stack.length - 1].children.push(node);
+        if (!tok.selfClose && node.tag !== 'br' && node.tag !== 'img') stack.push(node);
+        continue;
+      }
+      // A close tag ends the nearest open element that came from that tag.
+      for (var k = stack.length - 1; k > 0; k -= 1) {
+        if (stack[k].from === tok.tag) { stack.length = k; break; }
+      }
+    }
+    return root;
+  }
+
+  function escText(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\u00a0/g, '&nbsp;');
+  }
+
+  function escAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function isBlankText(node) { return node && node.text !== undefined && /^[ \t\r\n\f]*$/.test(node.text); }
+
+  // Drops whitespace-only text at both ends and trims the edge text nodes.
+  // Only ordinary spaces: a non-breaking space is content.
+  function trimEdges(children) {
+    var list = children.slice();
+    while (list.length && isBlankText(list[0])) list.shift();
+    while (list.length && isBlankText(list[list.length - 1])) list.pop();
+    if (list.length && list[0].text !== undefined) list[0] = { text: list[0].text.replace(/^[ \t\r\n\f]+/, '') };
+    var last = list.length - 1;
+    if (last >= 0 && list[last].text !== undefined) list[last] = { text: list[last].text.replace(/[ \t\r\n\f]+$/, '') };
+    return list;
+  }
+
+  function serInline(children) {
+    var out = '';
+    for (var i = 0; i < children.length; i += 1) {
+      var c = children[i];
+      if (c.text !== undefined) { out += escText(c.text.replace(/[ \t\r\n\f]+/g, ' ')); continue; }
+      if (c.tag === 'br') { out += '<br>'; continue; }
+      if (c.tag === 'img') {
+        out += '<img src="' + escAttr(c.src) + '"' + (c.alt ? ' alt="' + escAttr(c.alt) + '"' : '') + '>';
+        continue;
+      }
+      var inner = serInline(c.children);
+      if (c.tag === 'a') {
+        out += '<a href="' + escAttr(c.href) + '" target="_blank" rel="noopener">' + (inner || escText(c.href)) + '</a>';
+        continue;
+      }
+      if (inner === '') continue;
+      if (c.tag === 'strong' || c.tag === 'em') { out += '<' + c.tag + '>' + inner + '</' + c.tag + '>'; continue; }
+      if (c.tag === 'span') {
+        // One property per span, outermost first, so equal content serialises
+        // equally however the input grouped its styles.
+        for (var p = SPAN_PROPS.length - 1; p >= 0; p -= 1) {
+          var prop = SPAN_PROPS[p];
+          if (Object.prototype.hasOwnProperty.call(c.style, prop)) {
+            inner = '<span style="' + prop + ': ' + c.style[prop] + ';">' + inner + '</span>';
+          }
+        }
+        out += inner;
+        continue;
+      }
+      out += inner; // a block or a table part inside inline content: its text
+    }
+    return out;
+  }
+
+  function isBlankInline(html) {
+    return html.replace(/&nbsp;|<br>|[ \t\r\n\f]/g, '') === '';
+  }
+
+  function serParagraph(node) {
+    var inner = serInline(trimEdges(node.children));
+    if (isBlankInline(inner)) inner = '&nbsp;';
+    else if (node.heading) inner = '<span style="font-size: ' + node.heading + 'px;"><strong>' + inner + '</strong></span>';
+    return '<p' + styleAttr(node.style) + '>' + inner + '</p>';
+  }
+
+  // Content that may mix blocks and inline runs, unwrapped (li, td, th).
+  function serMixed(children) {
+    var out = '';
+    var run = [];
+    var flushRun = function () { if (run.length) out += serInline(trimEdges(run)); run = []; };
+    for (var i = 0; i < children.length; i += 1) {
+      var c = children[i];
+      if (c.tag && BLOCK_TAGS[c.tag]) { flushRun(); out += serBlock(c); } else run.push(c);
+    }
+    flushRun();
+    return out;
+  }
+
+  // Block content (root, blockquote): inline runs become paragraphs.
+  function serBlocks(children, sep) {
+    var out = [];
+    var run = [];
+    var flushRun = function () {
+      var t = trimEdges(run);
+      run = [];
+      if (!t.length) return;
+      out.push(serParagraph({ tag: 'p', style: {}, children: t }));
+    };
+    for (var i = 0; i < children.length; i += 1) {
+      var c = children[i];
+      if (c.tag && BLOCK_TAGS[c.tag]) { flushRun(); var b = serBlock(c); if (b) out.push(b); continue; }
+      if (c.tag === 'li' || c.tag === 'tr' || c.tag === 'td' || c.tag === 'th'
+        || c.tag === 'thead' || c.tag === 'tbody' || c.tag === 'tfoot') {
+        flushRun();
+        var inner = serBlocks(c.children, sep);
+        if (inner) out.push(inner);
+        continue;
+      }
+      run.push(c);
+    }
+    flushRun();
+    return out.join(sep || '');
+  }
+
+  function tableRows(node) {
+    var rows = [];
+    for (var i = 0; i < node.children.length; i += 1) {
+      var c = node.children[i];
+      if (c.tag === 'tr') rows.push(c);
+      else if (c.tag === 'thead' || c.tag === 'tbody' || c.tag === 'tfoot') rows = rows.concat(tableRows(c));
+    }
+    return rows;
+  }
+
+  function serRow(row) {
+    var cells = '';
+    for (var i = 0; i < row.children.length; i += 1) {
+      var c = row.children[i];
+      if (c.tag === 'td' || c.tag === 'th') {
+        cells += '<' + c.tag + styleAttr(c.style) + '>' + serMixed(trimEdges(c.children)) + '</' + c.tag + '>';
+      } else if (!isBlankText(c)) {
+        cells += '<td>' + serMixed(trimEdges([c])) + '</td>';
+      }
+    }
+    return cells ? '<tr' + styleAttr(row.style) + '>' + cells + '</tr>' : '';
+  }
+
+  function serBlock(node) {
+    if (node.tag === 'p') return serParagraph(node);
+    if (node.tag === 'blockquote') {
+      var q = serBlocks(node.children);
+      return q ? '<blockquote>' + q + '</blockquote>' : '';
+    }
+    if (node.tag === 'ul' || node.tag === 'ol') {
+      var items = '';
+      var loose = [];
+      var flushLoose = function () {
+        var t = trimEdges(loose);
+        loose = [];
+        if (t.length) items += '<li>' + serMixed(t) + '</li>';
+      };
+      for (var i = 0; i < node.children.length; i += 1) {
+        var c = node.children[i];
+        if (c.tag === 'li') { flushLoose(); items += '<li>' + serMixed(trimEdges(c.children)) + '</li>'; } else loose.push(c);
+      }
+      flushLoose();
+      return items ? '<' + node.tag + '>' + items + '</' + node.tag + '>' : '';
+    }
+    if (node.tag === 'table') {
+      var rows = tableRows(node).map(serRow).join('');
+      return rows ? '<div><div><div class="table-wrap"><table' + styleAttr(node.style) + '><tbody>'
+        + rows + '</tbody></table></div></div></div>' : '';
+    }
+    return '';
+  }
+
+  // The one allowlist. Preview, Insert, Copy, mode switching and autosave all
+  // pass through it, and its output is canonical: cleaning twice changes
+  // nothing, so equal posts compare equal.
+  function cleanTornHtml(html) {
+    return serBlocks(buildCleanTree(tokenizeHtml(html)).children);
+  }
+
+  // The same post laid out one block per line, for editing in HTML mode. The
+  // cleaner drops the whitespace between blocks, so this round-trips.
+  function htmlSource(clean) {
+    return serBlocks(buildCleanTree(tokenizeHtml(clean)).children, '\n');
+  }
+
   // ---- ENGINE END ------------------------------------------------------
 
   // -- storage runtime -----------------------------------------------------
