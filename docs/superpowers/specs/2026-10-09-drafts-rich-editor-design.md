@@ -37,7 +37,7 @@ box.
   - In **Text** the toolbar is hidden.
 - **Preview** renders the post as Torn will, using Torn's measured colours for
   either theme.
-  - A light/dark switch sits beside the pill.
+  - A light/dark switch sits in the Preview bar, not beside the pill.
   - It defaults to the panel's resolved theme.
   - **Tapping a paragraph** in Preview returns to the source mode with the caret
     at that paragraph.
@@ -142,7 +142,8 @@ are proven to survive a save. `<h*>` is not proven.
   the image fixer would produce a source over 20000, the panel refuses with a
   notice, and the draft is unchanged:
   "That would make this draft N characters, over the 20000 limit. Shorten it,
-  or keep it in Markdown."
+  or keep it as it is."
+- Typing or pasting at the 20000 limit shows a one-time notice.
 - Autosave skips a Torn-editor body whose HTML source is over the limit, so it
   never stores a truncated post.
 - Nothing is ever silently cut.

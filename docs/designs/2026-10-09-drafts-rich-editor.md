@@ -142,3 +142,33 @@ guards 420 of 420 promises.
 **Next phase.** This brief: research Torn's forum editor, then brainstorm, spec,
 plan and build the Drafts rich editor (#58). The read manifest is in
 `docs/designs/next-session-prompt.md`.
+
+### 2026-10-10 -- Drafts rich editor built (#58); docs and verification done
+
+**What shipped (on `feat/58-drafts-editor`, not yet merged).**
+- The Drafts editor: Text, MD, HTML and Preview modes with lossless
+  conversion; a toolbar; the image link fixer; free drafts; the Default editor
+  setting; size limits that refuse rather than cut.
+- Insert and autosave now use Torn's reply editor (#60) through one marked
+  paste event, per ADR 0002 (Accepted, which amends ADR 0001's access point).
+- `npm test` went from 1023 to 1114 tests. The mutation check guards 440 of
+  440 promises.
+- No version bump; the CHANGELOG entry is under `[Unreleased]`.
+
+**What was discovered.**
+- Built differently from the plan: the mode pill and emoji tabs use class
+  `tfcc-modes`, the pane `tfcc-draft-editor`; the Preview light/dark switch is in
+  the Preview bar; the over-limit notice ends "or keep it as it is"; typing or
+  pasting at the limit shows a one-time notice; Markdown links percent-encode
+  parentheses and spaces; image links refuse unsafe hosts and percent-encode
+  parentheses. The spec is amended for the first three.
+- forum-post.md had one hex colour (#5C768F); it is now
+  `var(--te-text-color-gray2)`, the nearest of Torn's variables.
+
+**What is still open (owner QA, blocks the release).** Spec section 9 items 1 to
+6, now in `docs/qa-checklist.md` under "Drafts editor (#58)": live Insert and
+Post on a reply and a new thread; Torn PDA; Copy then paste; v0.2.2 data loads
+clean; 320px in PDA; fixed image links (Drive, Dropbox, Imgur JPG and GIF,
+GitHub, Gyazo). README screenshots of the editor are not taken.
+
+PR: to be opened.

@@ -1,16 +1,16 @@
 <p style="text-align:center"><img src="{{BANNER_URL}}" alt="Forum Command Center"></p>
 
-<p style="text-align:center"><span style="font-size: 18px; color:#5C768F"><strong>Torn Forum Command Center</strong></span></p>
+<p style="text-align:center"><span style="font-size: 18px; color: var(--te-text-color-gray2)"><strong>Torn Forum Command Center</strong></span></p>
 
 <p style="text-align:center"><em>Your followed threads, gathered into one calm, organised workspace.</em></p>
 
-<p><span style="font-size: 16px; color:#5C768F"><strong>What it is</strong></span></p>
+<p><span style="font-size: 16px; color: var(--te-text-color-gray2)"><strong>What it is</strong></span></p>
 
 <p>Torn's subscribed-threads box is useful, but tiny. Forum Command Center turns it into a full workspace on the forums page, where you can organise the threads you follow, see what has changed, save reply drafts and find an old discussion without digging through tabs.</p>
 
 <p>FCC reads Torn's official API with a <strong>Minimal Access</strong> key. It never posts, replies, votes, subscribes, unsubscribes or changes anything on your account. Your folders, tags, notes, drafts and settings stay on your device.</p>
 
-<p><span style="font-size: 16px; color:#5C768F"><strong>Who it is for</strong></span></p>
+<p><span style="font-size: 16px; color: var(--te-text-color-gray2)"><strong>Who it is for</strong></span></p>
 
 <ul>
 <li><strong>A faction leader</strong> follows guides, planning threads and faction discussions, then separates them into folders instead of keeping one long list.</li>
@@ -20,7 +20,7 @@
 <li><strong>A Torn PDA player</strong> gets a narrow layout designed around a small screen, with compact navigation and row actions that remain within the panel.</li>
 </ul>
 
-<p><span style="font-size: 16px; color:#5C768F"><strong>Quick start</strong></span></p>
+<p><span style="font-size: 16px; color: var(--te-text-color-gray2)"><strong>Quick start</strong></span></p>
 
 <ol>
 <li><strong><a href="https://greasyfork.org/en/scripts/599453-torn-forum-command-center">Install Forum Command Center</a></strong> in Tampermonkey or Torn PDA.</li>
@@ -32,20 +32,20 @@
 
 <p>The pre-filled selections are <strong>user:</strong> forumsubscribedthreads, forumfeed, forumthreads, forumposts, profile; <strong>forum:</strong> categories, thread, posts.</p>
 
-<p><span style="font-size: 16px; color:#5C768F"><strong>Feature tour</strong></span></p>
+<p><span style="font-size: 16px; color: var(--te-text-color-gray2)"><strong>Feature tour</strong></span></p>
 
-<p><span style="color:#5C768F"><strong>Views</strong></span></p>
+<p><span style="color: var(--te-text-color-gray2)"><strong>Views</strong></span></p>
 
 <ul>
 <li><strong>Threads</strong> is the main workspace for subscribed and manually organised threads.</li>
 <li><strong>Catch up</strong> gathers threads with new activity and groups them by folder.</li>
 <li><strong>My posts</strong> shows threads you started or posted in, including ones you do not follow.</li>
 <li><strong>Search</strong> searches thread details and, when requested, post bodies.</li>
-<li><strong>Drafts</strong> collects saved replies and helps put them back into Torn's reply box.</li>
+<li><strong>Drafts</strong> is a post editor: collects saved replies and posts that belong to no thread, and helps put them back into Torn's reply box.</li>
 <li><strong>Settings</strong> controls the key, refreshing, appearance, folders, backup, storage and badges.</li>
 </ul>
 
-<p><span style="color:#5C768F"><strong>Folders and personal organisation</strong></span></p>
+<p><span style="color: var(--te-text-color-gray2)"><strong>Folders and personal organisation</strong></span></p>
 
 <ul>
 <li>Create folders, reorder them and move the built-in <strong>Unfiled</strong> group wherever it suits you.</li>
@@ -55,7 +55,7 @@
 <li>Add tags and private notes, pin important threads, adjust personal priority, or archive a thread without deleting its local work.</li>
 </ul>
 
-<p><span style="color:#5C768F"><strong>New, read and caught up</strong></span></p>
+<p><span style="color: var(--te-text-color-gray2)"><strong>New, read and caught up</strong></span></p>
 
 <ul>
 <li>FCC shows Torn's unread count where Torn supplies one and keeps a local dismissal layer for Mark read.</li>
@@ -64,7 +64,7 @@
 <li>The Rows shown setting caps Threads, Catch up and My posts after filtering and sorting. Search and Drafts remain uncapped, while Expand shows every row in the capped views.</li>
 </ul>
 
-<p><span style="color:#5C768F"><strong>Appearance and everyday flow</strong></span></p>
+<p><span style="color: var(--te-text-color-gray2)"><strong>Appearance and everyday flow</strong></span></p>
 
 <ul>
 <li>FCC can hide itself when you open one of its thread links, leaving a small header with Show.</li>
@@ -73,7 +73,7 @@
 <li>Match Torn is the default theme; Dark and Light are a tap away in Settings.</li>
 </ul>
 
-<p><span style="color:#5C768F"><strong>Made for narrow screens</strong></span></p>
+<p><span style="color: var(--te-text-color-gray2)"><strong>Made for narrow screens</strong></span></p>
 
 <ul>
 <li>The header becomes one line of scaling icon buttons, and view counts sit decoratively behind the navigation labels while remaining available to screen readers.</li>
@@ -82,7 +82,7 @@
 <li>Catch up keeps its read action close to each row, and the compact layout is based on the panel's width rather than merely the phone's width.</li>
 </ul>
 
-<p><span style="color:#5C768F"><strong>Your threads, reactions and badges</strong></span></p>
+<p><span style="color: var(--te-text-color-gray2)"><strong>Your threads, reactions and badges</strong></span></p>
 
 <ul>
 <li>My posts tracks threads you started and threads you posted in. Started threads use Torn's supplied unread figure where available; other posted-in threads use a clearly labelled local count.</li>
@@ -91,10 +91,13 @@
 <li>Streaks advance by TCT (UTC) day. Badges are earned locally and make no request of their own.</li>
 </ul>
 
-<p><span style="color:#5C768F"><strong>Drafts, search and safekeeping</strong></span></p>
+<p><span style="color: var(--te-text-color-gray2)"><strong>Drafts, search and safekeeping</strong></span></p>
 
 <ul>
 <li>Reply drafts stay on your device. Reply-box autosave is on by default and can be disabled in Settings.</li>
+<li>The Drafts editor has Text, Markdown, HTML and Preview modes, a toolbar for bold, italic, underline, strike, Torn's text colours, size, alignment, quote, link, image, table and emoji, and a Preview that shows the post the way Torn will in its light or dark theme. Switching modes converts the draft without losing anything.</li>
+<li>Paste a Google Drive, Dropbox, GitHub, Giphy, Gyazo, Imgur or Reddit image link and the editor rewrites it into a link Torn can show.</li>
+<li>Free drafts are not tied to a thread, which suits a new thread's opening post. The Default editor setting picks the mode new drafts open in.</li>
 <li>Insert places a saved draft into Torn's reply box when it is available. If FCC cannot find the box, it offers Copy and explains why.</li>
 <li>Search covers titles, authors, forums, tags and notes. Deep search can fetch post bodies for chosen threads, cache them locally and combine text with filters such as author, folder, tag, unread, pinned or draft.</li>
 <li>Search on Torn passes the query to Torn's own forum search as an ordinary link.</li>
@@ -103,7 +106,7 @@
 <li>Auto refresh is optional and off by default. When enabled, it pauses while the page is hidden or the window is unfocused.</li>
 </ul>
 
-<p><span style="font-size: 16px; color:#5C768F"><strong>Privacy, safety and Torn's rules</strong></span></p>
+<p><span style="font-size: 16px; color: var(--te-text-color-gray2)"><strong>Privacy, safety and Torn's rules</strong></span></p>
 
 <ul>
 <li>FCC asks for <strong>Minimal Access</strong>. The key is stored on this device, masked in the panel, stripped from errors and debug reports, and never included in an export.</li>
@@ -113,7 +116,7 @@
 <li>FCC never automates gameplay. It does not post, reply, vote, subscribe, navigate on its own or submit a form. You remain the person who opens threads and presses Torn's Post button.</li>
 </ul>
 
-<p><span style="font-size: 16px; color:#5C768F"><strong>Screenshots</strong></span></p>
+<p><span style="font-size: 16px; color: var(--te-text-color-gray2)"><strong>Screenshots</strong></span></p>
 
 <p style="text-align:center"><img src="{{SHOT_THREADS_URL}}" alt="Forum Command Center Threads view"></p>
 <p style="text-align:center"><em>The main Threads workspace: followed discussions, filters and personal organisation in one place.</em></p>
@@ -127,8 +130,8 @@
 <p style="text-align:center"><img src="{{SHOT_SETTINGS_URL}}" alt="Forum Command Center Settings view"></p>
 <p style="text-align:center"><em>Settings keeps the key disclosure, appearance, folders, backup and local badges together.</em></p>
 
-<p><span style="font-size: 16px; color:#5C768F"><strong>Feedback is welcome</strong></span></p>
+<p><span style="font-size: 16px; color: var(--te-text-color-gray2)"><strong>Feedback is welcome</strong></span></p>
 
 <p>If something feels awkward, a count looks wrong, or you have an idea that would make the forum workspace calmer and more useful, please say so. Bug reports, Torn PDA observations and feature suggestions are all welcome.</p>
 
-<p style="text-align:center"><span style="color:#5C768F"><strong>Follow the conversations you care about. Let FCC keep the desk tidy.</strong></span></p>
+<p style="text-align:center"><span style="color: var(--te-text-color-gray2)"><strong>Follow the conversations you care about. Let FCC keep the desk tidy.</strong></span></p>

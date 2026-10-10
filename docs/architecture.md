@@ -31,7 +31,8 @@ single current forums selector: every real selector that surfaced
 rewrite.
 
 So no data path touches Torn's markup. DOM access exists in exactly two places,
-choosing a mount container and finding the reply textarea, and both degrade
+choosing a mount container and finding the reply box (Torn's editor body, `#editor-wrapper
+.editor-content.mce-content-body`, as amended by ADR 0002), and both degrade
 visibly rather than failing silently.
 
 The panel's own markup is not one of those places and is not a data path. Its
@@ -272,7 +273,7 @@ one line hangs off that class, so the setting is one switch at every width.
 **The owner's ruling (2026-10-09):** a `ResizeObserver` on the script's own
 `#tfcc-panel`, and measuring nodes inside it, stays within ADR 0001. It is not
 a third DOM access: ADR 0001 confines access to Torn's markup to the mount
-container and the reply textarea, and neither the observer nor `fitHeader`
+container and the reply box, and neither the observer nor `fitHeader`
 reads a Torn node or Torn data. This interprets ADR 0001 and does not reverse
 it, so the ADR is unchanged (repo-standards section 6.3).
 `tests/narrow-focus.test.js` records every `document.querySelector` call to

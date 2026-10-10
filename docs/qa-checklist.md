@@ -534,6 +534,24 @@ Walk on Torn PDA and on desktop, signed in to a real account.
 - [ ] Export, Reset folders and tags, Import: every claim comes back.
 - [ ] On a desktop, Settings looks as before, apart from the chips.
 
+## Drafts editor (#58)
+
+- [ ] 1. Insert a Markdown draft with every construct into a reply and a new
+      thread. Press Post in the owner's test thread, then confirm the
+      published post matches Preview. This settles what Torn keeps on save:
+      quote; strike; italic; cell alignment; `table-wrap`.
+- [ ] 2. The same Insert in Torn PDA (Android, and iOS if available). The
+      synthetic paste must work in PDA's webview, otherwise the panel offers
+      Copy.
+- [ ] 3. Copy, then paste into Torn's editor: the styles survive.
+- [ ] 4. Old drafts and settings from v0.2.2 load with no damage notice.
+- [ ] 5. At 320px in PDA, the pill, toolbar, More drawer and pickers fit, with
+      44px targets.
+- [ ] 6. Fixed image links render after Post. Check each of these: a Drive
+      file; a Dropbox file; an Imgur single image, as a JPG and as a GIF; a
+      GitHub image; a Gyazo screenshot. A host that fails is moved to "not
+      derivable" before release.
+
 ## Sign-off
 
 Release is blocked until every box above is ticked on the same build, on a real

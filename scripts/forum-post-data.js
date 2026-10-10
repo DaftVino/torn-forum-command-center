@@ -287,8 +287,8 @@ function verifyLinks(html) {
 }
 
 function verifyViews(html, facts) {
-  const startMarker = '<span style="color:#5C768F"><strong>Views</strong></span>';
-  const endMarker = '<span style="color:#5C768F"><strong>Folders and personal organisation</strong></span>';
+  const startMarker = '<span style="color: var(--te-text-color-gray2)"><strong>Views</strong></span>';
+  const endMarker = '<span style="color: var(--te-text-color-gray2)"><strong>Folders and personal organisation</strong></span>';
   const start = html.indexOf(startMarker);
   const end = html.indexOf(endMarker, start + startMarker.length);
   if (start < 0 || end < 0) throw new Error('could not isolate the Views feature block');

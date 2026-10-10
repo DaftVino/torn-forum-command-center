@@ -1,6 +1,7 @@
 # ADR 0001: Read the Torn API for all data, and require an API key
 
 **Status:** Accepted
+**Amended by:** ADR 0002 (the reply-box access point)
 **Date:** 2026-08-07
 
 ## Context

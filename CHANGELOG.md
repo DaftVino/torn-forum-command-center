@@ -4,6 +4,37 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+
+- Drafts is now a post editor (#58).
+  - **Modes:** Text, Markdown, HTML and Preview, switched with a pill.
+    Switching converts the draft without losing anything. Preview shows the
+    post the way Torn will, in its light or dark theme, and tapping a
+    paragraph jumps back to it.
+  - **Toolbar:** bold, italic, underline, strike, Torn's 17 text colours or a
+    custom colour, size, alignment, quote, link, image, table, emoji (Torn's
+    own and Unicode) and a Markdown help card. On a narrow panel it shows B,
+    I, U, Colour, Link and More, and wraps to two rows at 320px.
+  - **Image link fixer:** paste a Google Drive, Dropbox, GitHub, Giphy,
+    Gyazo, Imgur or Reddit link, and the editor rewrites it into a link Torn
+    can show. Hosts that cannot be rewritten get a one-line how-to. Image
+    links to unsafe hosts are refused.
+  - **Free drafts:** drafts not tied to a thread, such as a new thread's
+    opening post.
+  - **Default editor setting** for new drafts.
+  - A draft over the 20000 character limit is never cut. An action that
+    would pass it is refused with a notice, and typing or pasting at the
+    limit shows a one-time notice.
+
+### Fixed
+
+- Insert into reply box now reaches Torn's reply editor. It had been writing
+  into a hidden Report reason box since Torn's editor change (#60). Insert
+  adds to what is already in the editor and never replaces it, and you
+  still press Post yourself.
+- Autosave reads Torn's editor again, and never overwrites a draft you
+  wrote in the panel.
+
 ## [0.2.2] - 2026-10-09
 
 ### Changed

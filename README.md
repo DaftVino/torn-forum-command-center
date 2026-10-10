@@ -66,6 +66,59 @@ FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or auto
 - Queries support bare words, quoted phrases, author, tag, folder, unread, pinned, and draft filters, with negation.
 - **Search on Torn** sends the query to Torn's own forum search through an ordinary link.
 
+### The Drafts editor
+
+Drafts is a post editor. Drafts stay on the device, and you press Torn's Post
+button yourself.
+
+- **Modes.** A pill switches between Text, MD (Markdown), HTML and Preview,
+  one pane at a time. Switching converts the draft without losing anything. A
+  draft over 20000 characters is never cut: an action that would pass the
+  limit is refused with a notice.
+- **Preview** shows the post the way Torn will, in Torn's light or dark theme
+  (the switch is in the Preview bar). Tapping a paragraph returns to the source
+  mode at that paragraph. Images in Preview stay as placeholders until you tap
+  Show images, so the panel does not contact image hosts on its own.
+- **Toolbar.** Bold, italic, underline, strike, Torn's 17 text colours or a
+  custom colour, size, alignment, quote, link, image, table, emoji (Torn's own
+  and Unicode) and a Markdown help card. On a narrow panel it shows B, I, U,
+  Colour, Link and More, and wraps to two rows at 320px.
+- **Markdown marks.**
+
+| You type | You get |
+|---|---|
+| `**bold**` | bold |
+| `*italic*` | italic |
+| `++underline++` | underline |
+| `~~strike~~` | strike through |
+| `{red}text{/}` | a Torn colour (red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange, gray1 to gray5) |
+| `{#ff8800}text{/}` | any colour |
+| `{18}text{/}` | text size, 8 to 36 |
+| `# Title` | a big bold line (`##` and `###` are smaller) |
+| `:::center` | centre the lines up to the next `:::` |
+| `> text` | a quote |
+| `- item` | a list (`1.` for numbers) |
+| `[text](link address)` | a link (https only) |
+| `![description](image link)` | an image |
+| `:grin:` | a Torn emoji |
+| `\| a \| b \|` | a table row; a `---` row under the first makes it a header |
+| `\*` | a literal mark character |
+
+- **Free drafts.** **+ New draft** creates a named draft tied to no thread,
+  such as a new thread's opening post. All drafts lists both kinds.
+- **Insert and Copy.** Insert into reply box adds the formatted post to the end
+  of Torn's editor and never replaces what is already there. If the editor
+  cannot be found, FCC offers Copy. Copy puts the formatted post on the
+  clipboard; pasted into Torn's editor it keeps its styles.
+- **Image link fixer.** Paste a Google Drive, Dropbox, GitHub, Giphy, Gyazo,
+  Imgur or Reddit link and the editor rewrites it into a link Torn can show.
+  Google Photos, OneDrive, ImgBB, Postimages, Imgur albums, Lightshot and Tenor
+  cannot be rewritten, so the editor says how to copy the direct image address.
+  Discord links expire and plain http links are refused, and unsafe hosts are
+  refused.
+- **Default editor.** Settings, Drafts, Default editor: Markdown (the default),
+  HTML or Text. It applies to new drafts only.
+
 ### Reactions, karma, and badges
 
 - My posts checks the opening posts of started threads for thumbs up and thumbs down.
