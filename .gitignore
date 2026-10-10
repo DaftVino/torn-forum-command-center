@@ -20,3 +20,4 @@ preview/
 
 # gstack browse audit log
 .gstack/
+mutation.log

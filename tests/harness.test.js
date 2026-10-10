@@ -108,3 +108,26 @@ test('style.setProperty and getComputedStyle padding are available', () => {
   assert.strictEqual(panel.style.getPropertyValue('--tfcc-hb'), '');
   assert.strictEqual(env.win.getComputedStyle(panel).paddingLeft, '8px');
 });
+
+test('#58: the harness models paste, selection and clipboard', () => {
+  const env = loadUserscript();
+  const w = env.sandbox.window;
+  const dt = new w.DataTransfer();
+  dt.setData('text/html', '<p>x</p>');
+  assert.strictEqual(dt.getData('text/html'), '<p>x</p>');
+  const ev = new w.ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+  assert.strictEqual(ev.clipboardData, dt);
+  const box = env.makeElement('div');
+  box.addEventListener('paste', (e) => e.preventDefault());
+  assert.strictEqual(box.dispatchEvent(ev), false, 'a prevented event reports false');
+  const range = env.doc.createRange();
+  range.selectNodeContents(box);
+  range.collapse(false);
+  const sel = w.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  assert.deepStrictEqual(env.selectionLog.map((x) => x.op), ['selectNodeContents', 'collapse', 'removeAllRanges', 'addRange']);
+  w.navigator.clipboard.writeText('t');
+  w.navigator.clipboard.write([new w.ClipboardItem({ 'text/plain': new w.Blob(['p'], { type: 'text/plain' }) })]);
+  assert.deepStrictEqual(env.clipboardLog.map((x) => x.op), ['writeText', 'write']);
+});

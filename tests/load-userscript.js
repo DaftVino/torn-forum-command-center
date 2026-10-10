@@ -345,7 +345,7 @@ function makeSandbox(options = {}) {
       dispatchEvent(ev) {
         const list = (this._listeners && this._listeners[ev && ev.type]) || [];
         for (const fn of list.slice()) fn(ev);
-        return true;
+        return !(ev && ev.defaultPrevented);
       },
       querySelector(sel) { return options.htmlQuery ? queryIn(this, sel, false) : null; },
       querySelectorAll(sel) { return options.htmlQuery ? queryIn(this, sel, true) : []; },
@@ -387,6 +387,10 @@ function makeSandbox(options = {}) {
     body,
     createElement: makeElement,
     createTextNode: (t) => ({ nodeType: 3, textContent: String(t) }),
+    createRange: () => ({
+      selectNodeContents(n) { selectionLog.push({ op: 'selectNodeContents', node: n }); },
+      collapse(toStart) { selectionLog.push({ op: 'collapse', toStart }); },
+    }),
     querySelector(sel) {
       queryLog.push(String(sel));
       if (Object.prototype.hasOwnProperty.call(selectorTable, sel)) return selectorTable[sel];
@@ -418,6 +422,9 @@ function makeSandbox(options = {}) {
     replaceState(...a) { historyCalls.push(['replaceState', a]); },
   };
 
+  const selectionLog = [];
+  const clipboardLog = [];
+
   const windowStub = {
     location: Object.assign({}, DEFAULT_LOCATION, options.location || {}),
     history: historyStub,
@@ -439,6 +446,33 @@ function makeSandbox(options = {}) {
     HTMLInputElement: function HTMLInputElement() {},
     Event: class FakeEvent {
       constructor(type, init) { this.type = type; this.bubbles = !!(init && init.bubbles); }
+    },
+    DataTransfer: class FakeDataTransfer {
+      constructor() { this._d = {}; }
+      setData(type, v) { this._d[type] = String(v); }
+      getData(type) { return Object.prototype.hasOwnProperty.call(this._d, type) ? this._d[type] : ''; }
+    },
+    ClipboardEvent: class FakeClipboardEvent {
+      constructor(type, init) {
+        this.type = type;
+        this.bubbles = !!(init && init.bubbles);
+        this.cancelable = !!(init && init.cancelable);
+        this.clipboardData = (init && init.clipboardData) || null;
+        this.defaultPrevented = false;
+      }
+      preventDefault() { if (this.cancelable) this.defaultPrevented = true; }
+    },
+    ClipboardItem: class FakeClipboardItem { constructor(map) { this.types = Object.keys(map); this.map = map; } },
+    Blob: class FakeBlob { constructor(parts, opts) { this.parts = parts; this.type = (opts && opts.type) || ''; } },
+    getSelection: () => ({
+      removeAllRanges() { selectionLog.push({ op: 'removeAllRanges' }); },
+      addRange(r) { selectionLog.push({ op: 'addRange', range: r }); },
+    }),
+    navigator: {
+      clipboard: {
+        writeText(t) { clipboardLog.push({ op: 'writeText', text: t }); return Promise.resolve(); },
+        write(items) { clipboardLog.push({ op: 'write', items }); return Promise.resolve(); },
+      },
     },
     // Controllable, because resolveTheme now measures what the page paints
     // rather than guessing at a class name. `computedStyles` maps a stub
@@ -599,7 +633,7 @@ function makeSandbox(options = {}) {
 
   return {
     sandbox, gmStore, win: windowStub, doc: documentStub, body, head,
-    observers, historyCalls, calls, nativeSetterCalls, createdElements,
+    observers, historyCalls, calls, nativeSetterCalls, selectionLog, clipboardLog, createdElements,
     makeElement,
     runTimers, advanceTimersBy,
     resize, resizeObservers, focusLog, queryLog,
