@@ -66,10 +66,12 @@ test('C2: the Markdown key lists the marks, the space after #, and Not supported
   const html = redraw(env);
   assert.match(html, /<table class="tfcc-key">/);
   for (const s of ['**bold**', '++underline++', '~~strike~~', '{red}text{/}', '{#ff8800}text{/}', '{18}text{/}',
-    ':::center', '&gt; text', '| a | b |', '[text](link)', '![alt](image link)', ':grin:', '17 Torn colors, e.g. {red}']) {
+    ':::center / left / right', '&gt; text', '| a | b |', '[text](link)', '![alt](image link)', ':grin:', '17 Torn colors, e.g. {red}']) {
     assert.ok(html.includes(s), s);
   }
   assert.match(html, /the space after # is required/);
+  assert.ok(html.includes('<code>\\*</code>'), 'the escape row shows a backslash');
+  assert.ok(html.includes('backslash: show a mark as text (e.g. \\*)'));
   assert.match(html, /Not supported<\/code><\/td><td>code blocks, nested lists, #### and smaller, _underscores_, horizontal rules/);
   assert.ok(!html.includes('<blockquote>'), 'not the HTML key');
 });

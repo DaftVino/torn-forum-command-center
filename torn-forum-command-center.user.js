@@ -6989,7 +6989,7 @@
       '#' + PANEL_ID + ' .tfcc-swatch { display: block; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--tm-border); }',
       '#' + PANEL_ID + ' .tfcc-img-check { display: block; max-width: 100%; max-height: 160px; margin: 4px 0; }',
       '#' + PANEL_ID + ' .tfcc-key { border-collapse: collapse; width: 100%; }',
-      '#' + PANEL_ID + ' .tfcc-key th, #' + PANEL_ID + ' .tfcc-key td { border: 1px solid var(--tm-border); padding: 2px 6px; text-align: left; vertical-align: top; }',
+      '#' + PANEL_ID + ' .tfcc-key th, #' + PANEL_ID + ' .tfcc-key td { border: 1px solid var(--tm-border); padding: 2px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools button, #' + PANEL_ID + '.tfcc-narrow .tfcc-modes button { min-width: 44px; min-height: 44px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools { gap: 8px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-draft, #' + PANEL_ID + '.tfcc-narrow .tfcc-picker input { font-size: 16px; }',
@@ -8180,10 +8180,10 @@
     ['# Title, ## Title, ### Title', 'headings (the space after # is required)'],
     ['**bold**', 'bold'], ['*italic*', 'italic'], ['++underline++', 'underline'], ['~~strike~~', 'strike through'],
     ['{red}text{/}', '17 Torn colors, e.g. {red}'], ['{#ff8800}text{/}', 'any hex color'],
-    ['{18}text{/}', 'size 8 to 36'], [':::center ... :::', 'centered lines'],
+    ['{18}text{/}', 'size 8 to 36'], [':::center / left / right ... :::', 'aligned lines'],
     ['> text', 'quote'], ['- item / 1. item', 'bullet / numbered list'],
     ['| a | b |', 'table row (a --- row makes the header)'],
-    ['[text](link)', 'link'], ['![alt](image link)', 'image'], [':grin:', 'Torn emoji'], ['\*', 'a literal mark'],
+    ['[text](link)', 'link'], ['![alt](image link)', 'image'], [':grin:', 'Torn emoji'], ['\\*', 'backslash: show a mark as text (e.g. \\*)'],
     ['Not supported', 'code blocks, nested lists, #### and smaller, _underscores_, horizontal rules'],
   ]);
 

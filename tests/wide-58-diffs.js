@@ -110,7 +110,7 @@ const inserted = [
   '#tfcc-panel .tfcc-swatch { display: block; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--tm-border); }',
   '#tfcc-panel .tfcc-img-check { display: block; max-width: 100%; max-height: 160px; margin: 4px 0; }',
   '#tfcc-panel .tfcc-key { border-collapse: collapse; width: 100%; }',
-  '#tfcc-panel .tfcc-key th, #tfcc-panel .tfcc-key td { border: 1px solid var(--tm-border); padding: 2px 6px; text-align: left; vertical-align: top; }',
+  '#tfcc-panel .tfcc-key th, #tfcc-panel .tfcc-key td { border: 1px solid var(--tm-border); padding: 2px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }',
 ];
 
 module.exports = { literals, inserted };
