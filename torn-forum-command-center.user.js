@@ -229,6 +229,8 @@
     'settings-badges': 'About badges',
     // #43: in the open narrow row's drawer, before the priority number.
     priority: 'About priority',
+    // #58 C4: the Drafts editor.
+    'drafts-editor': 'About drafts',
   });
   // #43: info keys that live in the open row's drawer. One shared key: only
   // the open drawer renders it, and it closes whenever that drawer does.
@@ -237,7 +239,7 @@
     threads: Object.freeze(['priority']),
     catchup: Object.freeze(['catchup', 'priority']),
     search: Object.freeze(['search']),
-    drafts: Object.freeze([]),
+    drafts: Object.freeze(['drafts-editor']),
     settings: Object.freeze(['settings-budget', 'settings-author', 'settings-rows', 'settings-autohide',
       'settings-clip', 'settings-seethrough', 'settings-folders', 'settings-badges']),
     mine: Object.freeze(['mine']),
@@ -6986,7 +6988,8 @@
       '#' + PANEL_ID + ' .tfcc-swatches, #' + PANEL_ID + ' .tfcc-emoji { display: flex; flex-wrap: wrap; gap: 4px; }',
       '#' + PANEL_ID + ' .tfcc-swatch { display: block; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--tm-border); }',
       '#' + PANEL_ID + ' .tfcc-img-check { display: block; max-width: 100%; max-height: 160px; margin: 4px 0; }',
-      '#' + PANEL_ID + ' .tfcc-help dt { margin-top: 4px; }',
+      '#' + PANEL_ID + ' .tfcc-key { border-collapse: collapse; width: 100%; }',
+      '#' + PANEL_ID + ' .tfcc-key th, #' + PANEL_ID + ' .tfcc-key td { border: 1px solid var(--tm-border); padding: 2px 6px; text-align: left; vertical-align: top; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools button, #' + PANEL_ID + '.tfcc-narrow .tfcc-modes button { min-width: 44px; min-height: 44px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools { gap: 8px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-draft, #' + PANEL_ID + '.tfcc-narrow .tfcc-picker input { font-size: 16px; }',
@@ -8117,8 +8120,17 @@
     ['ed-picker', 'data-picker="table"', 'Table', 'Insert table', false],
     ['ed-picker', 'data-picker="emoji"', 'Emoji', 'Insert emoji', false],
     ['ed-fix-images', '', 'Fix image links', 'Fix image links in this draft', false],
-    ['ed-picker', 'data-picker="help"', '?', 'Markdown marks', false],
+    ['ed-picker', 'data-picker="help"', '?', 'Markdown help', false],
   ]);
+
+  // C1: the help button reads X while the key is open, and says which key
+  // it opens (Markdown or HTML) while it is closed.
+  function isHelpTool(t) { return t[2] === '?'; }
+
+  function helpToolFor(t, e) {
+    if (e.picker === 'help') return [t[0], t[1], 'X', 'Close help', t[4]];
+    return [t[0], t[1], t[2], e.lang === 'html' ? 'HTML help' : 'Markdown help', t[4]];
+  }
 
   function toolButton(t, disabled) {
     return '<button type="button" data-act="' + t[0] + '"' + (t[1] ? ' ' + t[1] : '') + ' aria-label="' + escapeHtml(t[3])
@@ -8133,7 +8145,10 @@
     for (var i = 0; i < EDITOR_TOOLS.length; i += 1) {
       var t = EDITOR_TOOLS[i];
       if (model.narrow && !t[4]) continue;
-      if (t[2] === '?' && e.lang !== 'md') continue;
+      if (isHelpTool(t)) {
+        if (e.lang === 'text') continue;
+        t = helpToolFor(t, e);
+      }
       out.push(toolButton(t, disabled));
     }
     if (model.narrow) {
@@ -8144,7 +8159,13 @@
     if (model.narrow && e.moreOpen && !disabled) {
       out.push('<div class="tfcc-tools tfcc-tools-more">');
       for (var k = 0; k < EDITOR_TOOLS.length; k += 1) {
-        if (!EDITOR_TOOLS[k][4] && !(EDITOR_TOOLS[k][2] === '?' && e.lang !== 'md')) out.push(toolButton(EDITOR_TOOLS[k], false));
+        var mt = EDITOR_TOOLS[k];
+        if (mt[4]) continue;
+        if (isHelpTool(mt)) {
+          if (e.lang === 'text') continue;
+          mt = helpToolFor(mt, e);
+        }
+        out.push(toolButton(mt, false));
       }
       out.push('</div>');
     }
@@ -8152,17 +8173,40 @@
     return out.join('');
   }
 
-  var MD_HELP = Object.freeze([
+  // C2/C3: the help is a key, not a lesson: what you type, what you get.
+  // Players are assumed to know Markdown and HTML. No literal URLs here:
+  // read-only.test.js audits every http(s) host in the source.
+  var MD_KEY = Object.freeze([
+    ['# Title, ## Title, ### Title', 'headings (the space after # is required)'],
     ['**bold**', 'bold'], ['*italic*', 'italic'], ['++underline++', 'underline'], ['~~strike~~', 'strike through'],
-    ['{red}text{/}', 'a Torn color (red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange, gray1 to gray5)'],
-    ['{#ff8800}text{/}', 'any color'], ['{18}text{/}', 'text size, 8 to 36'], ['# Title', 'a big bold line (## and ### are smaller)'],
-    [':::center', 'centre the lines up to the next :::'], ['> text', 'a quote'], ['- item', 'a list (1. for numbers)'],
-    // No literal URLs here: read-only.test.js audits every http(s) host in the source.
-    ['[text](link address)', 'a link (https only)'], ['![description](image link)', 'an image'], [':grin:', 'a Torn emoji'],
-    ['| a | b |', 'a table row; a --- row under the first makes it a header'], ['\\*', 'a literal mark character'],
+    ['{red}text{/}', '17 Torn colors, e.g. {red}'], ['{#ff8800}text{/}', 'any hex color'],
+    ['{18}text{/}', 'size 8 to 36'], [':::center ... :::', 'centered lines'],
+    ['> text', 'quote'], ['- item / 1. item', 'bullet / numbered list'],
+    ['| a | b |', 'table row (a --- row makes the header)'],
+    ['[text](link)', 'link'], ['![alt](image link)', 'image'], [':grin:', 'Torn emoji'], ['\*', 'a literal mark'],
+    ['Not supported', 'code blocks, nested lists, #### and smaller, _underscores_, horizontal rules'],
   ]);
 
-  function pickerClose() { return btn('ed-picker-close', 'Cancel'); }
+  var HTML_KEY = Object.freeze([
+    ['<p>text</p>', 'paragraph'], ['<strong> / <em>', 'bold / italic'],
+    ['<span style="text-decoration: underline">', 'underline (line-through: strike)'],
+    ['<span style="color: var(--te-text-color-red)">', 'Torn color (or a #hex value)'],
+    ['<span style="font-size: 18px">', 'text size'], ['<p style="text-align: center">', 'centered'],
+    ['<blockquote><p>', 'quote'], ['<ul> / <ol> + <li>', 'bullet / numbered list'],
+    ['<table><tr><th> / <td>', 'table'], ['<a href="...">', 'link'], ['<img src="..." alt="...">', 'image'],
+    ['<img src="/images/emotions/svg/grin.svg">', 'Torn emoji'],
+    ['Everything else', 'is stripped when posting'],
+  ]);
+
+  function renderKey(lang) {
+    var rows = lang === 'html' ? HTML_KEY : MD_KEY;
+    var out = ['<table class="tfcc-key"><thead><tr><th scope="col">You type</th><th scope="col">You get</th></tr></thead><tbody>'];
+    rows.forEach(function (h) { out.push('<tr><td><code>' + escapeHtml(h[0]) + '</code></td><td>' + escapeHtml(h[1]) + '</td></tr>'); });
+    out.push('</tbody></table>');
+    return out.join('');
+  }
+
+  function pickerClose(picker) { return btn('ed-picker-close', picker === 'help' ? 'Close' : 'Cancel'); }
 
   function renderPicker(model) {
     var e = model.editor;
@@ -8234,13 +8278,16 @@
       }
       out.push('</div><p class="tfcc-note">More emoji: press Win + . (Windows) or Ctrl + Cmd + Space (Mac) while typing.</p>');
     } else if (e.picker === 'help') {
-      out.push('<dl class="tfcc-help">');
-      MD_HELP.forEach(function (h) { out.push('<dt><code>' + escapeHtml(h[0]) + '</code></dt><dd>' + escapeHtml(h[1]) + '</dd>'); });
-      out.push('</dl>');
+      out.push(renderKey(e.lang));
     }
-    out.push('<div class="tfcc-actions">' + pickerClose() + '</div></div>');
+    out.push('<div class="tfcc-actions">' + pickerClose(e.picker) + '</div></div>');
     return out.join('');
   }
+
+  // C4: what drafts are and what each button does. Plain text, no data.
+  var DRAFTS_INFO = 'A draft belongs to one thread, or is a free draft you can use for anything, such as a new thread. '
+    + 'Save keeps it on this device only. Insert puts the post at the end of the reply box on Torn, and you still press Post yourself. '
+    + 'Copy is for anywhere else. What you type in the reply box on Torn is also autosaved here as an HTML draft.';
 
   function renderEditorPane(model) {
     var e = model.editor;
@@ -8250,10 +8297,11 @@
     if (isFree) {
       out.push('<label class="tfcc-note" for="tfcc-ed-name">Draft name</label>'
         + '<input id="tfcc-ed-name" type="text" maxlength="80" data-act="ed-name" data-id="' + escapeHtml(key)
-        + '" value="' + escapeHtml(e.name) + '">');
+        + '" value="' + escapeHtml(e.name) + '">' + renderInfoButton('drafts-editor', model.openInfoId));
     } else {
-      out.push('<h4>Draft for this thread</h4>');
+      out.push('<h4>Draft for this thread ' + renderInfoButton('drafts-editor', model.openInfoId) + '</h4>');
     }
+    out.push(renderInfoText('drafts-editor', model.openInfoId, DRAFTS_INFO));
     out.push(renderModePill(e));
     if (e.confirmText) {
       out.push('<div class="tfcc-confirm" role="alert"><p class="tfcc-note">Plain text drops the formatting. Switch anyway?</p>'

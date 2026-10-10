@@ -32,7 +32,8 @@ const OWNER_13D = {
     visible: ['Cached posts:'],
   },
   drafts: {
-    info: {},
+    info: { 'drafts-editor': 'About drafts' },
+    hidden: ['Save keeps it on this device only.'],
     visible: ['No reply box here, so Copy replaces Insert.'],
     gone: ['No reply box was found'],
   },

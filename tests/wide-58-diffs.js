@@ -29,7 +29,15 @@ const literals = [
     item: '58 drafts editor pane', view: 'drafts',
     from: '<div class="tfcc-section"><h4>Draft for this thread</h4>'
       + '<textarea class="tfcc-draft" data-act="draft-text" data-id="101">',
-    to: '<div class="tfcc-section tfcc-draft-editor"><h4>Draft for this thread</h4>'
+    to: '<div class="tfcc-section tfcc-draft-editor"><h4>Draft for this thread '
+      + '<button type="button" class="tfcc-info" data-act="info" data-info="drafts-editor" aria-expanded="false" '
+      + 'aria-controls="tfcc-info-drafts-editor" aria-label="About drafts" title="About drafts">'
+      + '<svg class="tfcc-gl" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">'
+      + '<path d="M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5v.5"/></svg></button></h4>'
+      + '<p class="tfcc-note tfcc-infotext" id="tfcc-info-drafts-editor" hidden>'
+      + 'A draft belongs to one thread, or is a free draft you can use for anything, such as a new thread. '
+      + 'Save keeps it on this device only. Insert puts the post at the end of the reply box on Torn, and you still press Post yourself. '
+      + 'Copy is for anywhere else. What you type in the reply box on Torn is also autosaved here as an HTML draft.</p>'
       + '<div class="tfcc-modes" role="group" aria-label="Editor mode">'
       + '<button type="button" data-act="ed-mode" data-mode="text" aria-pressed="true">Text</button>'
       + '<button type="button" data-act="ed-mode" data-mode="md" aria-pressed="false">MD</button>'
@@ -101,7 +109,8 @@ const inserted = [
   '#tfcc-panel .tfcc-swatches, #tfcc-panel .tfcc-emoji { display: flex; flex-wrap: wrap; gap: 4px; }',
   '#tfcc-panel .tfcc-swatch { display: block; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--tm-border); }',
   '#tfcc-panel .tfcc-img-check { display: block; max-width: 100%; max-height: 160px; margin: 4px 0; }',
-  '#tfcc-panel .tfcc-help dt { margin-top: 4px; }',
+  '#tfcc-panel .tfcc-key { border-collapse: collapse; width: 100%; }',
+  '#tfcc-panel .tfcc-key th, #tfcc-panel .tfcc-key td { border: 1px solid var(--tm-border); padding: 2px 6px; text-align: left; vertical-align: top; }',
 ];
 
 module.exports = { literals, inserted };
