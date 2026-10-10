@@ -3951,6 +3951,299 @@
     return serBlocks(buildCleanTree(tokenizeHtml(clean)).children, '\n');
   }
 
+  // ---- Markdown to HTML ------------------------------------------------------
+
+  var MD_ESCAPABLE = '\\*+~{}[]()!:<>&|#-._`';
+  var MD_PAIRS = Object.freeze([['**', 'strong'], ['++', 'u'], ['~~', 's'], ['*', 'em']]);
+
+  function mdWrap(kind, inner) {
+    if (kind === 'strong' || kind === 'em') return '<' + kind + '>' + inner + '</' + kind + '>';
+    return '<span style="text-decoration: ' + (kind === 'u' ? 'underline' : 'line-through') + ';">' + inner + '</span>';
+  }
+
+  function isEscaped(s, j) {
+    var count = 0;
+    for (var k = j - 1; k >= 0 && s.charAt(k) === '\\'; k -= 1) count += 1;
+    return count % 2 === 1;
+  }
+
+  function findMdClose(s, d, from) {
+    var j = s.indexOf(d, from);
+    while (j !== -1) {
+      var ok = !isEscaped(s, j);
+      if (ok && d === '*' && (s.charAt(j + 1) === '*' || s.charAt(j - 1) === '*')) ok = false;
+      if (ok) return j;
+      j = s.indexOf(d, j + 1);
+    }
+    return -1;
+  }
+
+  function mdOpener(s, i) {
+    var m = /^\{(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z][a-z0-9]{1,6}|[0-9]{1,2})\}/.exec(s.slice(i, i + 10));
+    if (!m) return null;
+    var v = m[1];
+    var style = null;
+    if (v.charAt(0) === '#') style = 'color: ' + v.toLowerCase() + ';';
+    else if (/^[0-9]/.test(v)) {
+      var n = parseInt(v, 10);
+      if (n >= FONT_SIZE_MIN && n <= FONT_SIZE_MAX) style = 'font-size: ' + n + 'px;';
+    } else if (TORN_COLOR_NAMES.indexOf(v) !== -1) style = 'color: var(--te-text-color-' + v + ');';
+    return style ? { open: '<span style="' + style + '">', end: i + m[0].length } : null;
+  }
+
+  // Every {opener} paired with its {/} in one pass, innermost first, the way
+  // brackets match. An opener left without a closer is literal text.
+  function mdBracePairs(s) {
+    var pairs = {};
+    var open = [];
+    var k = 0;
+    while (k < s.length) {
+      if (s.charAt(k) === '{' && !isEscaped(s, k)) {
+        if (s.substr(k, 3) === '{/}') {
+          if (open.length) pairs[open.pop()] = k;
+          k += 3;
+          continue;
+        }
+        var o = mdOpener(s, k);
+        if (o) { open.push(k); k = o.end; continue; }
+      }
+      k += 1;
+    }
+    return pairs;
+  }
+
+  function mdLink(s, i, to) {
+    var j = i + 1;
+    while (j < to && (s.charAt(j) !== ']' || isEscaped(s, j))) j += 1;
+    if (j >= to || s.charAt(j + 1) !== '(') return null;
+    var k = s.indexOf(')', j + 2);
+    if (k === -1 || k >= to) return null;
+    return { text: s.slice(i + 1, j), textEnd: j, url: s.slice(j + 2, k).trim(), end: k + 1 };
+  }
+
+  var MD_MAX_DEPTH = 16;
+
+  // Renders s[from, to) of one line. ctx carries the line's brace pairs; depth
+  // caps nesting, so a hostile draft cannot exhaust the stack.
+  function mdInlineRange(s, from, to, ctx, depth) {
+    var out = '';
+    var i = from;
+    var n = to;
+    var deep = depth >= MD_MAX_DEPTH;
+    while (i < n) {
+      var c = s.charAt(i);
+      if (c === '\\' && i + 1 < n && MD_ESCAPABLE.indexOf(s.charAt(i + 1)) !== -1) {
+        out += escText(s.charAt(i + 1));
+        i += 2;
+        continue;
+      }
+      var matched = false;
+      for (var p = 0; p < MD_PAIRS.length; p += 1) {
+        var d = MD_PAIRS[p][0];
+        if (deep || s.substr(i, d.length) !== d) continue;
+        if (d === '*' && s.charAt(i + 1) === '*') continue;
+        var j = findMdClose(s, d, i + d.length);
+        if (j > i + d.length && j + d.length <= n) {
+          out += mdWrap(MD_PAIRS[p][1], mdInlineRange(s, i + d.length, j, ctx, depth + 1));
+          i = j + d.length;
+          matched = true;
+        }
+        break;
+      }
+      if (matched) continue;
+      if (c === '{' && !deep && Object.prototype.hasOwnProperty.call(ctx.pairs, i)) {
+        var o = mdOpener(s, i);
+        var close = ctx.pairs[i];
+        if (o && close > o.end && close + 3 <= n) {
+          out += o.open + mdInlineRange(s, o.end, close, ctx, depth + 1) + '</span>';
+          i = close + 3;
+          continue;
+        }
+      }
+      if (c === '!' && s.charAt(i + 1) === '[') {
+        var im = mdLink(s, i + 1, n);
+        if (im && safeImgSrc(im.url)) {
+          out += '<img src="' + escAttr(im.url) + '"' + (im.text ? ' alt="' + escAttr(im.text) + '"' : '') + '>';
+          i = im.end;
+          continue;
+        }
+        if (im) {
+          // An image whose source is not allowed stays literal text, not a link.
+          out += '![';
+          i += 2;
+          continue;
+        }
+      }
+      if (c === '[') {
+        var ln = deep ? null : mdLink(s, i, n);
+        if (ln && safeHref(ln.url)) {
+          out += '<a href="' + escAttr(ln.url) + '">' + mdInlineRange(s, i + 1, ln.textEnd, ctx, depth + 1) + '</a>';
+          i = ln.end;
+          continue;
+        }
+      }
+      if (c === ':') {
+        var em = /^:([a-z_]{2,20}):/.exec(s.slice(i, Math.min(n, i + 23)));
+        if (em && TORN_EMOJI.indexOf(em[1]) !== -1) {
+          out += '<img src="/images/emotions/svg/' + em[1] + '.svg">';
+          i += em[0].length;
+          continue;
+        }
+      }
+      if (c === '<') {
+        if (s.substr(i, 4) === '<!--') {
+          var ce = s.indexOf('-->', i + 4);
+          i = ce === -1 || ce + 3 > n ? n : ce + 3;
+          continue;
+        }
+        if (/^<\/?[a-zA-Z]/.test(s.slice(i, i + 3))) {
+          var gt = s.indexOf('>', i);
+          if (gt !== -1 && gt < n) {
+            var rawTag = s.slice(i, gt + 1);
+            if (/^<img/i.test(rawTag) && cleanTornHtml(rawTag) === '') {
+              // The cleaner would drop this image; drop it here too and absorb
+              // the doubled space it leaves behind.
+              i = gt + 1;
+              if (out.slice(-1) === ' ' && s.charAt(i) === ' ') i += 1;
+              continue;
+            }
+            out += rawTag;
+            i = gt + 1;
+            continue;
+          }
+        }
+        out += '&lt;';
+        i += 1;
+        continue;
+      }
+      if (c === '&') {
+        var ent = /^&(#[xX][0-9a-fA-F]{1,6}|#[0-9]{1,7}|[a-zA-Z]{2,8});/.exec(s.slice(i, Math.min(n, i + 12)));
+        if (ent) { out += ent[0]; i += ent[0].length; continue; }
+        out += '&amp;';
+        i += 1;
+        continue;
+      }
+      if (c === '>') { out += '&gt;'; i += 1; continue; }
+      if (c === '\u00a0') { out += '&nbsp;'; i += 1; continue; }
+      out += c;
+      i += 1;
+    }
+    return out;
+  }
+
+  function mdInline(s) {
+    var line = String(s);
+    return mdInlineRange(line, 0, line.length, { pairs: mdBracePairs(line) }, 0);
+  }
+
+  function splitCells(line) {
+    var t = line.trim();
+    if (t.charAt(0) === '|') t = t.slice(1);
+    if (t.charAt(t.length - 1) === '|' && !isEscaped(t, t.length - 1)) t = t.slice(0, -1);
+    var cells = [];
+    var cur = '';
+    for (var i = 0; i < t.length; i += 1) {
+      var ch = t.charAt(i);
+      if (ch === '\\' && t.charAt(i + 1) === '|') { cur += '\\|'; i += 1; continue; }
+      if (ch === '|') { cells.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
+    }
+    cells.push(cur.trim());
+    return cells;
+  }
+
+  function delimiterAligns(line) {
+    if (line.indexOf('-') === -1) return null;
+    var cells = splitCells(line);
+    var aligns = [];
+    for (var i = 0; i < cells.length; i += 1) {
+      var m = /^(:?)-+(:?)$/.exec(cells[i]);
+      if (!m) return null;
+      aligns.push(m[1] && m[2] ? 'center' : m[2] ? 'right' : m[1] ? 'left' : '');
+    }
+    return aligns;
+  }
+
+  function mdTableCell(tag, text, align) {
+    return '<' + tag + (align ? ' style="text-align: ' + align + ';"' : '') + '>' + mdInline(text) + '</' + tag + '>';
+  }
+
+  var BLOCK_HTML_LINE = /^\s*<(p|div|table|blockquote|ul|ol|h[1-6])\b/i;
+
+  // Markdown source to blocks, each with the line it starts on, so Preview can
+  // send a tap back to its source line.
+  function mdBlocks(md) {
+    var src = String(md || '');
+    if (src === '') return [];
+    var lines = src.replace(/\r\n?/g, '\n').split('\n');
+    var out = [];
+    var align = null;
+    var i = 0;
+    var alignAttr = function () { return align ? ' style="text-align: ' + align + ';"' : ''; };
+    while (i < lines.length) {
+      var line = lines[i];
+      var start = i;
+      var fence = /^:::[ \t]*(left|center|right|justify)[ \t]*$/i.exec(line);
+      if (fence) { align = fence[1].toLowerCase(); i += 1; continue; }
+      if (align && /^:::[ \t]*$/.test(line)) { align = null; i += 1; continue; }
+      var trimmed = line.trim();
+      if (trimmed.charAt(0) === '|') {
+        var aligns = i + 1 < lines.length ? delimiterAligns(lines[i + 1]) : null;
+        var header = splitCells(line);
+        var rows = '';
+        if (aligns && aligns.length === header.length) {
+          rows += '<tr>' + header.map(function (h, k) { return mdTableCell('th', h, aligns[k]); }).join('') + '</tr>';
+          i += 2;
+        } else {
+          aligns = [];
+        }
+        while (i < lines.length && lines[i].trim().charAt(0) === '|') {
+          var cells = splitCells(lines[i]);
+          rows += '<tr>' + cells.map(function (h, k) { return mdTableCell('td', h, aligns[k] || ''); }).join('') + '</tr>';
+          i += 1;
+        }
+        out.push({ line: start, html: '<table><tbody>' + rows + '</tbody></table>' });
+        continue;
+      }
+      if (/^[ \t]*>/.test(line)) {
+        var quote = '';
+        while (i < lines.length && /^[ \t]*>/.test(lines[i])) {
+          var q = lines[i].replace(/^[ \t]*>[ \t]?/, '');
+          quote += q.trim() === '' ? '<p>&nbsp;</p>' : '<p>' + mdInline(q) + '</p>';
+          i += 1;
+        }
+        out.push({ line: start, html: '<blockquote>' + quote + '</blockquote>' });
+        continue;
+      }
+      var listKind = /^[ \t]*[-*+][ \t]+/.test(line) ? 'ul' : /^[ \t]*[0-9]{1,9}[.)][ \t]+/.test(line) ? 'ol' : null;
+      if (listKind) {
+        var re = listKind === 'ul' ? /^[ \t]*[-*+][ \t]+/ : /^[ \t]*[0-9]{1,9}[.)][ \t]+/;
+        var items = '';
+        while (i < lines.length && re.test(lines[i])) {
+          items += '<li>' + mdInline(lines[i].replace(re, '')) + '</li>';
+          i += 1;
+        }
+        out.push({ line: start, html: '<' + listKind + '>' + items + '</' + listKind + '>' });
+        continue;
+      }
+      i += 1;
+      var h = /^(#{1,3})[ \t]+(.*)$/.exec(line);
+      if (h && h[2].trim()) {
+        out.push({ line: start, html: '<p' + alignAttr() + '><span style="font-size: ' + HEADING_PX[h[1].length]
+          + 'px;"><strong>' + mdInline(h[2]) + '</strong></span></p>' });
+        continue;
+      }
+      if (BLOCK_HTML_LINE.test(line)) { out.push({ line: start, html: line }); continue; }
+      out.push({ line: start, html: '<p' + alignAttr() + '>' + (trimmed === '' ? '&nbsp;' : mdInline(line)) + '</p>' });
+    }
+    return out.map(function (b) { return { line: b.line, html: cleanTornHtml(b.html) }; })
+      .filter(function (b) { return b.html !== ''; });
+  }
+
+  function mdToHtml(md) {
+    return mdBlocks(md).map(function (b) { return b.html; }).join('');
+  }
+
   // ---- ENGINE END ------------------------------------------------------
 
   // -- storage runtime -----------------------------------------------------

@@ -130,6 +130,7 @@ const EXPORT_NAMES = [
   // #58: Drafts rich editor
   'TORN_COLORS', 'TORN_COLOR_NAMES', 'TORN_EMOJI', 'DRAFT_LANGS', 'FONT_SIZE_MIN', 'FONT_SIZE_MAX',
   'SIZE_PICKS', 'HEADING_PX', 'PASTE_MARKER', 'EDITOR_BG', 'CLEAN_MAX_CHARS', 'URL_MAX_CHARS',
+  'mdInline', 'mdBlocks', 'mdToHtml', 'MD_ESCAPABLE',
   'decodeEntities', 'tokenizeHtml', 'cleanTornHtml', 'htmlSource', 'safeHref', 'safeImgSrc', 'emojiFromSrc',
   // formatting
   'formatRelativeTime', 'formatAbsoluteTime', 'formatCount', 'formatBytes', 'plural', 'escapeHtml',
