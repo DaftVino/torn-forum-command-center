@@ -213,3 +213,135 @@ test('the mount selector list is ordered most specific first', () => {
   assert.strictEqual(api.MOUNT_SELECTORS[0], '#forums-page-wrap');
   assert.ok(api.MOUNT_SELECTORS.length >= 3, 'one guess is not a fallback strategy');
 });
+
+// ---- one status message at a time (#58) ----------------------------------
+
+test('a new notice replaces the previous one; an info in a new action replaces an ordinary error', () => {
+  const env = loadUserscript({ location: forums() });
+  const api = env.exports;
+  api.state.notices = [];
+  api.notice('first', 'warn');
+  api.notice('boom', 'error');
+  assert.strictEqual(api.state.notices.map((n) => n.text).join('|'), 'boom');
+  api.notice('all fine', 'info');
+  assert.strictEqual(api.state.notices.map((n) => n.text).join('|'), 'all fine');
+  assert.strictEqual(api.state.notices.length, 1);
+});
+
+// ---- a failed write is never hidden by its own action's success ---------
+
+const NOW = 1700000000000;
+const THREAD = forums({ hash: '#/p=threads&f=1&t=42&b=0&a=0' });
+const el = (attrs) => ({ getAttribute: (k) => (attrs[k] === undefined ? null : attrs[k]) });
+const shown = (api) => api.state.notices.map((n) => n.kind + ':' + n.text).join('|');
+
+test('an info after a failed write in the same action is dropped; the next action may replace the error', () => {
+  const env = loadUserscript({ location: forums(), gmWriteErrors: new Set(['tfcc:postcache']) });
+  const api = env.exports;
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onAction('clear-cache', el({ 'data-act': 'clear-cache' }));
+  assert.strictEqual(api.state.notices.length, 1);
+  assert.strictEqual(api.state.notices[0].kind, 'error', shown(api));
+  assert.doesNotMatch(shown(api), /Post cache cleared/);
+  // A later, unrelated action that saves fine says so over the old error.
+  h.onAction('key-clear', el({ 'data-act': 'key-clear' }));
+  assert.match(shown(api), /^info:Key cleared\.$/);
+});
+
+test('a warning after a failed write in the same action still replaces it', () => {
+  const env = loadUserscript({ location: forums(), gmWriteErrors: new Set(['tfcc:postcache']) });
+  const api = env.exports;
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onAction('clear-cache', el({ 'data-act': 'clear-cache' }));
+  api.notice('a warning', 'warn');
+  assert.match(shown(api), /^warn:a warning$/);
+});
+
+test('Fix image links that cannot save keeps the error, not "Fixed 1 image link"', () => {
+  const env = loadUserscript({ location: THREAD, now: NOW, gmWriteErrors: new Set(['tfcc:drafts']) });
+  const api = env.exports;
+  api.state.route = api.parseForumRoute(env.win.location);
+  api.state.settings.view = 'drafts';
+  api.state.drafts = api.saveDraft(api.freshDrafts(), 42, '![a](https://imgur.com/AbC12dE)', NOW, 'T', 'md');
+  api.panelHtml(api.buildPanelModel(NOW));
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onAction('ed-fix-all', el({ 'data-act': 'ed-fix-all' }));
+  assert.notStrictEqual(api.state.editor.text, '![a](https://imgur.com/AbC12dE)', 'the fix was made');
+  assert.strictEqual(api.state.notices.length, 1);
+  assert.strictEqual(api.state.notices[0].kind, 'error', shown(api));
+  assert.doesNotMatch(shown(api), /Fixed/);
+});
+
+test('an Import that cannot save keeps the error, not "Imported ..."', () => {
+  const env = loadUserscript({ location: forums(), gmWriteErrors: new Set(['tfcc:organizer']) });
+  const api = env.exports;
+  let o = api.freshOrganizer(NOW);
+  o = api.upsertFolder(o, { id: 'mine', name: 'My folder', order: 5, forumIds: [] });
+  const text = api.encodeState(o, api.freshDrafts(), env.sandbox.btoa);
+  const q = env.doc.querySelector;
+  env.doc.querySelector = (sel) => (sel === '[data-act="import-text"]' ? { value: text } : q.call(env.doc, sel));
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onAction('import', el({ 'data-act': 'import' }));
+  assert.ok(api.state.organizer.folders.some((f) => f.id === 'mine'), 'the import was applied in memory');
+  assert.strictEqual(api.state.notices.length, 1);
+  assert.strictEqual(api.state.notices[0].kind, 'error', shown(api));
+  assert.doesNotMatch(shown(api), /Imported/);
+});
+
+test('Insert after a save that failed keeps the error, not "Post inserted"', () => {
+  const env = loadUserscript({ location: THREAD, now: NOW, gmWriteErrors: new Set(['tfcc:drafts']) });
+  const api = env.exports;
+  api.state.route = api.parseForumRoute(env.win.location);
+  api.state.settings.view = 'drafts';
+  api.panelHtml(api.buildPanelModel(NOW));
+  // A visible TinyMCE body that accepts the marked paste, so Insert succeeds.
+  const box = env.makeElement('div');
+  box.getBoundingClientRect = () => ({ width: 600, height: 160 });
+  box.innerHTML = '<p><br data-mce-bogus="1"></p>';
+  box.addEventListener('paste', (ev) => {
+    const html = ev.clipboardData.getData('text/html');
+    ev.preventDefault();
+    box.innerHTML += html.slice('<!-- x-tinymce/html -->'.length);
+  });
+  env.doc.querySelectorAll = (sel) => (/mce-content-body/.test(sel) ? [box] : []);
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onInput('draft-text', Object.assign(el({ 'data-act': 'draft-text', 'data-id': '42' }), { value: 'words', selectionStart: 5, selectionEnd: 5 }));
+  h.onAction('draft-insert', el({ 'data-act': 'draft-insert', 'data-id': '42' }));
+  assert.match(box.innerHTML, /words/, 'the insert itself happened');
+  assert.strictEqual(api.state.notices.length, 1);
+  assert.strictEqual(api.state.notices[0].kind, 'error', shown(api));
+  assert.doesNotMatch(shown(api), /Post inserted/);
+});
+
+test('a panel view change clears the notice; tapping the current view keeps it', () => {
+  const env = loadUserscript({ location: forums() });
+  const api = env.exports;
+  const h = api.makeHandlers(env.doc, env.win);
+  api.state.settings.view = 'threads';
+  api.notice('stale words', 'warn');
+  h.onAction('view', el({ 'data-act': 'view', 'data-view': 'threads' }));
+  assert.strictEqual(api.state.notices.length, 1, 'same view');
+  h.onAction('view', el({ 'data-act': 'view', 'data-view': 'settings' }));
+  assert.strictEqual(api.state.settings.view, 'settings');
+  assert.strictEqual(api.state.notices.length, 0, 'another view');
+});
+
+test('navigating to another thread clears the notice, a re-sync of the same route keeps it', () => {
+  const env = loadUserscript({ location: forums({ hash: '#/p=threads&f=1&t=1' }) });
+  const api = env.exports;
+  api.notice('stale words', 'warn');
+  api.syncToRoute(env.doc, env.win);
+  assert.strictEqual(api.state.notices.length, 1, 'same route');
+  env.win.location.hash = '#/p=threads&f=1&t=2';
+  api.syncToRoute(env.doc, env.win);
+  assert.strictEqual(api.state.notices.length, 0, 'another thread');
+});
+
+test('leaving the forums page clears the notice', () => {
+  const env = loadUserscript({ location: forums() });
+  const api = env.exports;
+  api.notice('stale words', 'error');
+  env.win.location.pathname = '/index.php';
+  api.syncToRoute(env.doc, env.win);
+  assert.strictEqual(api.state.notices.length, 0);
+});

@@ -13,7 +13,7 @@ forum post without ever writing HTML.
 
 The owner's starting ideas, explicitly "just the starting ideas":
 
-- text colours: Torn's standard colours, plus custom colours as an option;
+- text colors: Torn's standard colors, plus custom colors as an option;
 - tables that align correctly when posted;
 - links;
 - alignment;
@@ -29,11 +29,11 @@ experience in any way it can, building on what Drafts already does.
 
 `docs/reference/torn-forum-post-sample.html` is a real published post, supplied
 by the owner, whose tables Torn renders correctly. Its header comment lists the
-conventions it shows. The most consequential is that colours are Torn editor
+conventions it shows. The most consequential is that colors are Torn editor
 variables (`var(--te-text-color-green)`), not hex. The `--te-` prefix suggests
 Torn's forum uses a rich text editor rather than a plain textarea.
 
-`docs/forum-post.md`, FCC's own post from #49, uses hex colours and bare
+`docs/forum-post.md`, FCC's own post from #49, uses hex colors and bare
 `<table>` markup. It has not been posted yet, and the research may show it
 needs Torn's conventions too.
 
@@ -48,13 +48,13 @@ needs Torn's conventions too.
    - Answer this from the owner's own browser and DevTools, never from
      automation (see Constraints).
 2. **What does Torn keep, and what does it strip?** Which tags and inline
-   styles survive posting: colour variables against hex, font sizes,
+   styles survive posting: color variables against hex, font sizes,
    alignment, tables, `blockquote` or a quote class, `img`, links. Is there an
    allowlist?
 3. **How do images work?** Is there a required host or a proxy format? This is
    what "convert the https to the proper format" refers to; establish what the
    proper format is.
-4. **What is the full set of colour variables?** The sample uses
+4. **What is the full set of color variables?** The sample uses
    `--te-text-color-green`, `-blue` and `-red`. List them all, and how they look
    in Torn's light and dark modes.
 5. **Does Torn PDA's posting flow differ?**
@@ -142,3 +142,33 @@ guards 420 of 420 promises.
 **Next phase.** This brief: research Torn's forum editor, then brainstorm, spec,
 plan and build the Drafts rich editor (#58). The read manifest is in
 `docs/designs/next-session-prompt.md`.
+
+### 2026-10-10 -- Drafts rich editor built (#58); docs and verification done
+
+**What shipped (on `feat/58-drafts-editor`, not yet merged).**
+- The Drafts editor: Text, MD, HTML and Preview modes with lossless
+  conversion; a toolbar; the image link fixer; free drafts; the Default editor
+  setting; size limits that refuse rather than cut.
+- Insert and autosave now use Torn's reply editor (#60) through one marked
+  paste event, per ADR 0002 (Accepted, which amends ADR 0001's access point).
+- `npm test` went from 1023 to 1114 tests. The mutation check guards 440 of
+  440 promises.
+- No version bump; the CHANGELOG entry is under `[Unreleased]`.
+
+**What was discovered.**
+- Built differently from the plan: the mode pill and emoji tabs use class
+  `tfcc-modes`, the pane `tfcc-draft-editor`; the Preview light/dark switch is in
+  the Preview bar; the over-limit notice ends "or keep it as it is"; typing or
+  pasting at the limit shows a one-time notice; Markdown links percent-encode
+  parentheses and spaces; image links refuse unsafe hosts and percent-encode
+  parentheses. The spec is amended for the first three.
+- forum-post.md had one hex color (#5C768F); it is now
+  `var(--te-text-color-gray2)`, the nearest of Torn's variables.
+
+**What is still open (owner QA, blocks the release).** Spec section 9 items 1 to
+6, now in `docs/qa-checklist.md` under "Drafts editor (#58)": live Insert and
+Post on a reply and a new thread; Torn PDA; Copy then paste; v0.2.2 data loads
+clean; 320px in PDA; fixed image links (Drive, Dropbox, Imgur JPG and GIF,
+GitHub, Gyazo). README screenshots of the editor are not taken.
+
+PR: to be opened.

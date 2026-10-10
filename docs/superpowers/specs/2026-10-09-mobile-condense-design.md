@@ -372,7 +372,7 @@ The 320px file adds a 200% text frame and four frames at 280px.
 - **Counts are a decorative numeral behind the label: variant v1 tint, the
   owner's choice (section 13f).**
   - Each count is a large numeral, centred and nearly the cell's height, drawn
-    in the label colour at 14% opacity (9% on the selected cell).
+    in the label color at 14% opacity (9% on the selected cell).
   - The label sits on top at 90% opacity (96% selected), always on one line,
     so a cell never wraps.
   - A count of 0 draws no numeral. Search and Settings have none.
@@ -662,9 +662,9 @@ contract:
 - The cap line and Show all. The button becomes 44px.
 - The Search, Drafts and Settings views' content. Narrow screens give their
   controls a 44px minimum and 16px input text.
-- The colour tokens, both themes and the focus ring. The nav count badges reuse
+- The color tokens, both themes and the focus ring. The nav count badges reuse
   the `.tfcc-badge` pair (`--tm-good-bg` on `--tm-text`), and the Read button
-  uses the existing button colours.
+  uses the existing button colors.
 
 ## 8. Accessibility
 
@@ -688,7 +688,7 @@ contract:
   drawer.
 - **No hover, no `title` dependence:** every `title` duplicates visible text or
   an aria-label. A touch WebView never shows `title`.
-- **Contrast:** only existing colour pairs are used. `render-preview` gains
+- **Contrast:** only existing color pairs are used. `render-preview` gains
   narrow 320/375 Threads and Catch up previews (dark and light, with a drawer
   open) so `contrast-audit.mjs` measures them.
 - **Nav labels over the v1 numeral:** every cell state stays at 4.5:1 or
@@ -1012,7 +1012,7 @@ the rules-compliance principle "stated where it happens".
 ### 13f. Nav counts as a numeral behind the label: decided, v1 tint
 
 **Decision (owner, 2026-10-09): v1 tint.** The numeral is drawn in the
-label's colour at 14% (9% on the selected cell), behind a label at 90%
+label's color at 14% (9% on the selected cell), behind a label at 90%
 opacity (96% selected).
 
 **The owner accepts the trade-off.** The numeral is decorative: it measures
@@ -1037,8 +1037,8 @@ state uses 9% and 96%, not 14% and 90%. At 14% and 90% it measured 4.14:1
 and failed.
 
 **Tokens for the implementer to copy exactly.** Add these on `#tfcc-panel`.
-They are the same in both themes, because the colour follows the cell's own
-text colour:
+They are the same in both themes, because the color follows the cell's own
+text color:
 
 ```
 --tfcc-navnum-opacity: 0.14;            /* numeral, default cell        */
@@ -1048,13 +1048,13 @@ text colour:
 --tfcc-navnum-size: 40px;               /* numeral font size            */
 ```
 
-**The numeral's colour** is `currentColor`, the cell's text colour: `--tm-text`
+**The numeral's color** is `currentColor`, the cell's text color: `--tm-text`
 for most cells, and `--tfcc-mine-text` for My posts. The `#tfcc-panel *
 { color: inherit }` reset must not turn it transparent. Give the numeral no
-colour of its own, and do not use `-webkit-text-stroke`; that is how v2's
+color of its own, and do not use `-webkit-text-stroke`; that is how v2's
 outline vanished in the first build.
 
-**Composited numeral colours**, for reference and for the audit's
+**Composited numeral colors**, for reference and for the audit's
 expectations:
 
 | Cell | Dark | Light |
@@ -1065,7 +1065,7 @@ expectations:
 | My posts, selected | about #a2a2a2 on #b0b0b0 | about #a2a2a2 on #b0b0b0 |
 
 **`tests/contrast-audit.mjs`** gains a check for every nav cell state in both
-themes. It composites the label (colour times opacity) over the numeral
+themes. It composites the label (color times opacity) over the numeral
 painted on the cell, and asserts at least 4.5:1, the same calculation as the
 mockup's in-page script. A change to any of the tokens above that drops a
 state below 4.5:1 fails the audit.
@@ -1086,7 +1086,7 @@ and 280px. Each block shows:
 - My posts selected, with Catch up at 104.
 
 The ratios under each block are computed in the page from the browser's own
-computed colours and opacities.
+computed colors and opacities.
 
 **States, the same in all variants.**
 - **No count** (Search, Settings): the label alone, centred.
@@ -1094,7 +1094,7 @@ computed colours and opacities.
   "0" would draw the eye to nothing. "No numeral means nothing new" reads at a
   glance, and the accessible name still says "Drafts, none".
 - **Selected:** the existing pressed fill plus a 3px inset bar under the
-  label, so selection never depends on colour alone. My posts keeps its #30
+  label, so selection never depends on color alone. My posts keeps its #30
   light-grey pressed style and bar.
 - **Large counts:** 3-digit counts (128, 104) fit inside a 72px cell at 280px.
   Long labels ("My posts", "Catch up") fit on one line at 280px. None of
@@ -1111,25 +1111,25 @@ computed colours and opacities.
   fail as a count.
 
 **Measured worst cases.** These are the same at 375, 320 and 280, since width
-does not change the colours. "Raw" means the label against the numeral
+does not change the colors. "Raw" means the label against the numeral
 painted on the cell, with no halo credit.
 
 | Variant | Treatment | Dark: label | Dark: numeral | Light: label | Light: numeral | Verdict |
 |---|---|---|---|---|---|---|
-| v1 tint | Numeral in the label colour at 14% (9% on the selected cell). Label at 90% (96% selected) | 4.98:1 (selected Threads) | **1.18:1** | 6.84:1 | **1.18:1** | The label passes, but the count is barely visible: it fails as information |
+| v1 tint | Numeral in the label color at 14% (9% on the selected cell). Label at 90% (96% selected) | 4.98:1 (selected Threads) | **1.18:1** | 6.84:1 | **1.18:1** | The label passes, but the count is barely visible: it fails as information |
 | v2 ghost | Numeral as a 1.5px outline at 45%. Solid label | **2.46:1** | **2.50:1** | **3.40:1** | **2.50:1** | Fails both: the outline crosses the label's strokes |
-| v3 halo | Numeral in the unread green at 35% (label colour at 10% on the selected cell). Label at 92% with a soft, blurred halo | 4.62:1 | **1.07:1** | 6.32:1 | **1.20:1** | The label passes, but the count is not legible |
-| **v4 legible** | Numeral solid at 3:1 or better against the cell, a colour per cell state. Solid label with a crisp 1.5px halo in the cell colour (eight zero-blur text-shadows) | **6.44:1** against its halo (2.47:1 raw) | **3.26:1** | **8.49:1** against its halo (2.47:1 raw) | **3.36:1** | **Passes both** |
+| v3 halo | Numeral in the unread green at 35% (label color at 10% on the selected cell). Label at 92% with a soft, blurred halo | 4.62:1 | **1.07:1** | 6.32:1 | **1.20:1** | The label passes, but the count is not legible |
+| **v4 legible** | Numeral solid at 3:1 or better against the cell, a color per cell state. Solid label with a crisp 1.5px halo in the cell color (eight zero-blur text-shadows) | **6.44:1** against its halo (2.47:1 raw) | **3.26:1** | **8.49:1** against its halo (2.47:1 raw) | **3.36:1** | **Passes both** |
 
 **Why v4 can pass.** A dark label over a mid-grey numeral can never reach 4.5:1
 when that numeral also reaches 3:1 against a light cell: the measured raw
 ratio is 2.47:1. v4 does not mix the two. The halo puts the cell's own
-colour around every label stroke, so the label's adjacent pixels are the cell
+color around every label stroke, so the label's adjacent pixels are the cell
 (6.44:1 and 8.49:1), and the numeral shows only between letters and around
 the label. The halo has zero blur so that the claim holds. v3's blurred halo
 is partly transparent, so it gets no credit.
 
-**v4's numeral colours, per cell state:**
+**v4's numeral colors, per cell state:**
 
 | Cell | Dark theme | Light theme |
 |---|---|---|
@@ -1167,8 +1167,8 @@ how they were applied:
 | Truncate with an ellipsis and offer the full text (`truncation-strategy`) | One line with an ellipsis; the row's toggle is the expand. The text is never removed, so screen readers read it whole |
 | Prefer wrapping as text grows (`dynamic-type`) | At 200% text the Catch up labels wrap inside their buttons rather than the row wrapping; truncated rows still expand on open |
 | Icon-only buttons need labels (`aria-labels`) | Every emoji and the X are `aria-hidden`; the buttons are named in words ("Pin" / "Unpin", "Draft" / "Edit draft", "Archive" / "Unarchive", "Close actions"), with a matching `title` on the emoji buttons |
-| No emoji as icons (`no-emoji-icons`) | Overridden by the owner's choice of emoji. The risks it names (font-dependent colour, no theming) are handled by drawing them monochrome with the thumbs' filter (white on dark, black on light), measured at 3:1 or better in `tests/contrast-audit.mjs` |
-| State not by colour or label alone (`state-clarity`, `color-not-only`) | A set state (pinned, a draft saved, archived) also draws a 3px inset bar under its button, like a selected nav cell |
+| No emoji as icons (`no-emoji-icons`) | Overridden by the owner's choice of emoji. The risks it names (font-dependent color, no theming) are handled by drawing them monochrome with the thumbs' filter (white on dark, black on light), measured at 3:1 or better in `tests/contrast-audit.mjs` |
+| State not by color or label alone (`state-clarity`, `color-not-only`) | A set state (pinned, a draft saved, archived) also draws a 3px inset bar under its button, like a selected nav cell |
 | A visible close (`modal-escape`) | The open row's "..." becomes an X; a tap anywhere else closes it too |
 | 16px fields so iOS does not zoom (`readable-font-size`) | Drawer fields are shorter by padding (4px 8px) only; their text stays at the narrow 16px |
 
@@ -1284,7 +1284,7 @@ how they were applied:
   glyph that reads as archive, not delete: UXWing's "archive files" icon (a
   box with a down arrow), inlined as one ASCII SVG path (`ARCHIVE_SVG`,
   class `tfcc-archico`, 18 x 18 by its attributes, `aria-hidden`, no id, no
-  xmlns). It is filled with `currentColor`, the button's text colour, so it
+  xmlns). It is filled with `currentColor`, the button's text color, so it
   is monochrome in both themes without the emoji filter, and the contrast
   audit measures its fill against the button at 3:1 or better. UXWing's
   licence allows commercial use without attribution; it is quoted beside the
@@ -1413,7 +1413,7 @@ change desktop too, deliberately, each as a listed replacement in
   open; only Save and Cancel clear it. Wide rows keep their inline fields,
   which keep the commit-on-change press-hold rules (`tests/dirty-input.test.js`
   now proves those on the wide row).
-- **My posts colour.** It uses every nav button's colours at every width: the
+- **My posts color.** It uses every nav button's colors at every width: the
   normal fill, and the selected fill only while it is the view. Its rule keeps
   only its placement; its hover and pressed rules and its five tokens are
   gone. Its weight is the other nav buttons' (PR #44 review): normal on wide,
@@ -1421,7 +1421,7 @@ change desktop too, deliberately, each as a listed replacement in
   shares one rule. The contrast audit checks the weights are equal.
 - **Bare info icons.** Every info button keeps its 44px target (32px inside
   the drawer), its focus ring and every attribute, with a transparent fill and
-  border. Hover and open tint the icon in the accent colour. The audit
+  border. Hover and open tint the icon in the accent color. The audit
   measures the icon and the tint at 3:1 or better against what they sit on.
 - **See-through background (owner decision, after the first PR review).** A
   setting, Settings > Appearance, after the clip setting: "See-through
@@ -1441,7 +1441,7 @@ change desktop too, deliberately, each as a listed replacement in
     toast, the tag and note popup, info panels. The shelf and toast share
     `--tm-bg-2` with the rows, which is why the row has its own token. A test
     checks every background line of main's stylesheet is still there.
-  - Alpha on the colour, never `opacity`, so text and controls stay opaque.
+  - Alpha on the color, never `opacity`, so text and controls stay opaque.
   - A 6px backdrop blur (prefixed for WebKit) rides the same class. It evens
     out a busy page but cannot help a plain one, so contrast is measured
     without it.
@@ -1472,13 +1472,13 @@ change desktop too, deliberately, each as a listed replacement in
   written, so Shrink restores the cap, and a view set to Show all stays so.
   The nav counts are unchanged.
 
-### 14g. Priority colour, folder order, collapsible groups (#45)
+### 14g. Priority color, folder order, collapsible groups (#45)
 
 The owner's feedback after #43. Every change applies at every width; the wide
 changes are listed replacements in `tests/wide-45-diffs.js` (the golden was
 not regenerated).
 
-- **Priority colour.** The priority number (`.tfcc-prio`: the wide row's
+- **Priority color.** The priority number (`.tfcc-prio`: the wide row's
   title line, the narrow meta line and the drawer) has its own token,
   `--tfcc-prio`, instead of the meta grey. It starts from the logo's muted
   blue `#5C768F`, which is 3.49:1 on the dark panel and 4.22:1 on the light
@@ -1534,7 +1534,7 @@ not regenerated).
   has no forum claim, no delete and no rename; it reads "Threads in no
   folder". Focus stays on the arrow pressed, or moves to the other arrow when
   the move reaches an end. The folder note (owner rewrite) says what a folder
-  is, how to use one and why it helps: folders organise only threads you
+  is, how to use one and why it helps: folders organize only threads you
   subscribe to (and ones you file by hand) and never add others; add one,
   optionally claim a forum (`applyAutoAssign`), or file from the row's folder
   menu, a hand filing winning over a claim; the arrows set the order, Unfiled

@@ -214,7 +214,7 @@ function mineSnap(threads) {
   return s;
 }
 
-test('My posts threads become rows with a role, outside Threads unless subscribed or organised', () => {
+test('My posts threads become rows with a role, outside Threads unless subscribed or organized', () => {
   const rows = api.mergeThreads({
     subscribed: [sub(1)],
     organizer: org({ 3: { pinned: true }, 4: { lastSeenTotal: 2, lastVisitedAt: NOW } }),

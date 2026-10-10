@@ -38,7 +38,7 @@ test('the base tokens are --tm-bg at 50% and --tm-bg-2 at 75%, in both themes', 
     for (const [name, base, alpha] of [['--tfcc-base-bg', '--tm-bg', 0.5], ['--tfcc-row-bg', '--tm-bg-2', 0.75]]) {
       const m = /^rgba\((\d+), (\d+), (\d+), ([0-9.]+)\)$/.exec(token(block, name));
       assert.ok(m, sel + ' ' + name + ' is rgba');
-      assert.deepStrictEqual([+m[1], +m[2], +m[3]], hex(token(block, base)), sel + ' ' + name + ' is ' + base + "'s colour");
+      assert.deepStrictEqual([+m[1], +m[2], +m[3]], hex(token(block, base)), sel + ' ' + name + ' is ' + base + "'s color");
       assert.strictEqual(+m[4], alpha, sel + ' ' + name);
     }
   }
@@ -83,7 +83,7 @@ test('every control, pill and other fill is unchanged from main', () => {
   assert.ok(fills.length > 15, 'main has its fills');
   const now = css.split('\n');
   for (const line of fills) {
-    if (/tfcc-mine/.test(line)) continue; // the My posts colour (#43 item 4), listed in wide-43-diffs
+    if (/tfcc-mine/.test(line)) continue; // the My posts color (#43 item 4), listed in wide-43-diffs
     assert.ok(now.includes(line), 'unchanged: ' + line.trim());
   }
   // The controls' and pills' own rules name only solid tokens.

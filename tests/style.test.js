@@ -28,13 +28,13 @@ test('every custom property the stylesheet uses is also defined', () => {
   assert.deepStrictEqual(missing, [], 'undefined custom properties: ' + missing.join(', '));
 });
 
-test('the light theme overrides every colour the dark theme sets', () => {
+test('the light theme overrides every color the dark theme sets', () => {
   // A half-overridden theme is worse than one theme: it produces dark text on a
   // dark panel for whichever token was forgotten.
   const dark = blockFor('#tfcc-panel');
   const light = blockFor('#tfcc-panel.tfcc-theme-light');
 
-  const colourTokens = (block) => {
+  const colorTokens = (block) => {
     const out = new Set();
     const re = /(--tm-[a-z0-9-]+)\s*:/g;
     let m;
@@ -42,7 +42,7 @@ test('the light theme overrides every colour the dark theme sets', () => {
     return out;
   };
 
-  const missing = [...colourTokens(dark)].filter((t) => !colourTokens(light).has(t));
+  const missing = [...colorTokens(dark)].filter((t) => !colorTokens(light).has(t));
   assert.deepStrictEqual(missing, [], 'the light theme does not override: ' + missing.join(', '));
 });
 
@@ -51,7 +51,7 @@ test('no rule paints black text, which would be invisible on the dark panel', ()
   assert.deepStrictEqual(offenders, []);
 });
 
-test('form controls inherit the panel colours rather than the browser defaults', () => {
+test('form controls inherit the panel colors rather than the browser defaults', () => {
   // Without this, Torn's dark page gets a white input with white text in it.
   const controls = css.slice(css.indexOf('#tfcc-panel button, #tfcc-panel select'));
   assert.match(controls, /color:\s*var\(--tm-text\)/);
@@ -173,7 +173,7 @@ test('narrow rows put their nine controls in a drawer, not a per-row strip (#33)
     'auto-fit, so 200% text reflows to one column');
 });
 
-test('every anchor is coloured, in every state', () => {
+test('every anchor is colored, in every state', () => {
   // An unstyled link falls back to the browser default rgb(0, 0, 238), which is
   // all but black against the dark panel, and :visited falls back to purple,
   // which is worse. Only .tfcc-row-title a used to be styled, so the links in
@@ -185,7 +185,7 @@ test('every anchor is coloured, in every state', () => {
   assert.match(css, /#tfcc-panel \.tfcc-linkbtn, #tfcc-panel \.tfcc-linkbtn:visited \{/);
 });
 
-test('dropdown options carry the panel colours', () => {
+test('dropdown options carry the panel colors', () => {
   // The popup is drawn by the OS on some platforms and defaults to black on
   // white regardless of what the select says.
   assert.match(css, /#tfcc-panel option \{ background: var\(--tm-bg-3\); color: var\(--tm-text\); \}/);
@@ -243,22 +243,22 @@ test('the error-16 and missing-key texts name Minimal Access as the required lev
   requiresMinimal(res.detail, 'the missing-key detail');
 });
 
-test('nothing in the panel takes its colour or background from the host page', () => {
+test('nothing in the panel takes its color or background from the host page', () => {
   // Inheritance is the weakest source in CSS: a value is inherited only when NO
   // rule matches. Torn styles bare elements, so `td { color: #000 }` on the host
-  // beat our panel's inherited colour and painted the API-key table black.
+  // beat our panel's inherited color and painted the API-key table black.
   // background needs its own reset because it is not inherited at all, which is
-  // how a host `code { background: #eee }` survived the colour fix.
+  // how a host `code { background: #eee }` survived the color fix.
   assert.match(css, /#tfcc-panel \* \{ color: inherit; background: transparent; \}/);
 
   // The reset must come before the rules it is meant to lose to, so a same
   // specificity rule later in the sheet still wins on source order.
   const reset = css.indexOf('#tfcc-panel * { color: inherit');
   const controls = css.indexOf('#tfcc-panel button, #tfcc-panel select');
-  assert.ok(reset < controls, 'the reset must not override the control colours');
+  assert.ok(reset < controls, 'the reset must not override the control colors');
 });
 
-test('table cells and code state their own colours outright', () => {
+test('table cells and code state their own colors outright', () => {
   // The two element types a host page is most likely to have opinions about.
   const cells = blockFor('#tfcc-panel .tfcc-tos th, #tfcc-panel .tfcc-tos td');
   assert.match(cells, /color:\s*var\(--tm-text\)/);
@@ -282,7 +282,7 @@ test('Match Torn reads the page it is on rather than a class name', () => {
 });
 
 test('a transparent body is not read as black', () => {
-  // body is very often transparent with the real colour on html. Reading
+  // body is very often transparent with the real color on html. Reading
   // rgba(0,0,0,0) as black would make every light page resolve to dark.
   const env = loadUserscript({
     computedStyles: {
@@ -359,21 +359,21 @@ test('following the theme costs no redraw', () => {
   assert.strictEqual(panel.classList.contains('tfcc-theme-light'), true);
 });
 
-// #43 (owner): My posts takes every nav button's colours, at every width.
+// #43 (owner): My posts takes every nav button's colors, at every width.
 // Its old light-grey fill made it look selected. Only its place differs.
-test('My posts is right-aligned and coloured like every other nav button (#43)', () => {
+test('My posts is right-aligned and colored like every other nav button (#43)', () => {
   const i = css.indexOf('#tfcc-panel button.tfcc-nav-mine {');
   assert.ok(i !== -1, 'the placement rule');
   assert.strictEqual(css.slice(i, css.indexOf('}', i) + 1), '#tfcc-panel button.tfcc-nav-mine { margin-left: auto; }');
-  assert.doesNotMatch(css, /button\.tfcc-nav-mine:hover|button\.tfcc-nav-mine\[aria-pressed/, 'no state colours of its own');
-  assert.doesNotMatch(css, /--tfcc-mine-/, 'no My posts colour tokens');
+  assert.doesNotMatch(css, /button\.tfcc-nav-mine:hover|button\.tfcc-nav-mine\[aria-pressed/, 'no state colors of its own');
+  assert.doesNotMatch(css, /--tfcc-mine-/, 'no My posts color tokens');
   // Every rule that names it, at every width, sets only layout.
   for (const m of css.matchAll(/([^\n{}]*tfcc-nav-mine[^{]*)\{([^}]*)\}/g)) {
     assert.doesNotMatch(m[2], /background|(^|[^-])color|border-color|font-weight|box-shadow/, m[1].trim());
   }
 });
 
-// PR #44 review: the owner asked for the colour scheme only, so the weight
+// PR #44 review: the owner asked for the color scheme only, so the weight
 // must be whatever the other nav buttons have: normal on wide (no rule sets
 // one), bold on narrow (the .tfcc-navgrid button rule, which My posts shares).
 test('My posts has the same font weight as the other nav buttons, at every width (#43)', () => {
@@ -410,11 +410,11 @@ test('the reactions pill sits in the wrapping nav row and wraps rather than over
   assert.ok(!/\.tfcc-head[^{]*\.tfcc-reactions/.test(css), 'no rule may place the tracker in the header row');
 });
 
-test('the karma icon is sized to the text and takes the theme colour', () => {
+test('the karma icon is sized to the text and takes the theme color', () => {
   const karma = blockFor('#tfcc-panel .tfcc-karma');
   assert.match(karma, /display: inline-flex/);
   assert.match(karma, /white-space: nowrap/);
-  assert.match(karma, /color: var\(--tm-text\)/, 'currentColor resolves to a themed colour, not black');
+  assert.match(karma, /color: var\(--tm-text\)/, 'currentColor resolves to a themed color, not black');
   assert.match(blockFor('#tfcc-panel .tfcc-karma svg'), /flex: none/);
   assert.ok(api.KARMA_ICON_SVG.includes('style="height:1em;width:auto"'));
 });
@@ -436,7 +436,7 @@ function ratio(a, b) {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
-test('badge tier colours exist in both themes and clear 3:1 on every panel surface', () => {
+test('badge tier colors exist in both themes and clear 3:1 on every panel surface', () => {
   // --tm-bg is the panel, --tm-bg-2 the shelf and toast, --tm-bg-3 the chip and
   // controls. Icons need 3:1 (WCAG 1.4.11). The spec's table lists the 4.5:1 text
   // values against --tm-bg and --tm-bg-3; the weakest pair on --tm-bg-2 is
@@ -452,9 +452,9 @@ test('badge tier colours exist in both themes and clear 3:1 on every panel surfa
   }
 });
 
-test('the light theme overrides every badge colour token the dark theme sets', () => {
-  // The existing "overrides every colour" check matches --tm- only, so a
-  // forgotten --tfcc-tier-* in the light block would ship dark-theme colours
+test('the light theme overrides every badge color token the dark theme sets', () => {
+  // The existing "overrides every color" check matches --tm- only, so a
+  // forgotten --tfcc-tier-* in the light block would ship dark-theme colors
   // on a light panel without any test noticing.
   const names = (block) => new Set(block.match(/--tfcc-(?:tier-[a-z]+|locked)(?=\s*:)/g) || []);
   const dark = names(blockFor('#tfcc-panel'));
@@ -478,12 +478,12 @@ test('the toast moves only when the user allows motion', () => {
   assert.strictEqual(css.split('tfcc-fade-in 160ms').length, 2, 'the animation is applied in one place only');
 });
 
-test('the logo is sized by height to the badge chip and keeps its colour against a host svg rule (#30)', () => {
+test('the logo is sized by height to the badge chip and keeps its color against a host svg rule (#30)', () => {
   const block = blockFor('#tfcc-panel .tfcc-logo');
   assert.match(block, /height: 28px/, 'the badge chip height (min-height 28px, border-box)');
   assert.match(blockFor('#tfcc-panel button.tfcc-chip'), /min-height: 28px/, 'the chip it matches is still 28px');
   assert.match(block, /width: auto/, 'width follows the viewBox');
-  assert.match(block, /color: var\(--tfcc-logo\);/, 'one rule, its colour a per-theme token (#53)');
+  assert.match(block, /color: var\(--tfcc-logo\);/, 'one rule, its color a per-theme token (#53)');
   assert.match(css, /#tfcc-panel \.tfcc-logo path \{ fill: currentColor; \}/,
     'a host "svg * { fill }" rule must not repaint it');
 });
@@ -491,7 +491,7 @@ test('the logo is sized by height to the badge chip and keeps its colour against
 // #53 (owner): the logo was all but invisible on the light theme. Dark keeps
 // the owner's #5C768F; light takes a muted dark blue at AA on the panel, kept
 // apart from the light priority blue, and still a blue rather than black.
-test('the logo colour is a token per theme: #5C768F dark, a muted dark blue at AA on light (#53)', () => {
+test('the logo color is a token per theme: #5C768F dark, a muted dark blue at AA on light (#53)', () => {
   const lum = (hex) => {
     const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
       .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
@@ -570,7 +570,7 @@ test('the priority number is its own blue per theme, at AA, apart from the green
     return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
   };
   const ratio = (a, b) => { const x = lum(a); const y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-  // CIELAB (D65), for a perceptual distance between two colours.
+  // CIELAB (D65), for a perceptual distance between two colors.
   const lab = (hex) => {
     const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
       .map((v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
@@ -641,8 +641,8 @@ test('the v1 nav tokens are the owner\'s values (#33, spec 13f)', () => {
 
 test('every nav label stays at 4.5:1 over the numeral painted on its cell, in both themes (#33)', () => {
   // The same composite the mockup's in-page script measures: the numeral is
-  // the cell's text colour at the numeral opacity over the cell; the label is
-  // the text colour at the label opacity over that numeral.
+  // the cell's text color at the numeral opacity over the cell; the label is
+  // the text color at the label opacity over that numeral.
   const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
   const toHex = (c) => '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
   const mix = (fg, bg, a) => fg.map((v, i) => v * a + bg[i] * (1 - a));
@@ -663,9 +663,9 @@ test('every nav label stays at 4.5:1 over the numeral painted on its cell, in bo
   }
 });
 
-test('the numeral takes its colour from the cell and has no outline (#33)', () => {
+test('the numeral takes its color from the cell and has no outline (#33)', () => {
   const num = blockFor('#tfcc-panel.tfcc-narrow .tfcc-navnum');
-  assert.doesNotMatch(num, /(^|[^-])color\s*:/, 'no colour of its own: currentColor is the cell\'s text');
+  assert.doesNotMatch(num, /(^|[^-])color\s*:/, 'no color of its own: currentColor is the cell\'s text');
   assert.doesNotMatch(css, /-webkit-text-stroke/, 'an outline is how v2 vanished');
   assert.match(num, /opacity: var\(--tfcc-navnum-opacity\)/);
   assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-navgrid button[aria-pressed="true"] .tfcc-navnum'),
@@ -694,7 +694,11 @@ test('every narrow control outside the header has a real 44px box (#33, spec pri
     if (!/button|select|input|tfcc-linkbtn/.test(sel) || headerOrTitle.test(sel)) continue;
     for (const prop of ['min-height', 'min-width']) {
       const m = new RegExp(prop + ':\\s*([0-9.]+)px').exec(body);
-      if (m) assert.ok(Number(m[1]) >= 44, sel + ' sets ' + prop + ' ' + m[1] + 'px');
+      // #58 (owner): the symbol toolbar buttons are up to 40px wide x 44px tall and shrink
+      // to a 32px floor so the primary row always fits one line on a phone (WCAG 2.5.8
+      // asks 24px); the 44px height is kept.
+      const floor = prop === 'min-width' && /tfcc-tools button/.test(sel) ? 32 : 44;
+      if (m) assert.ok(Number(m[1]) >= floor, sel + ' sets ' + prop + ' ' + m[1] + 'px');
     }
   }
 });

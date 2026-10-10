@@ -112,6 +112,6 @@ module.exports = [
     to: "<div class=\"tfcc-infobar\"><span class=\"tfcc-note\">Recorded on this device only. No request is made.</span>"
       + INFO("settings-badges", "About badges")
       + "</div>"
-      + HID("settings-badges", "Earned from what you do here: focused visits to threads, finishing Torn days with Catch up empty, and organising. A visit counts once a Torn day, after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days with it off."),
+      + HID("settings-badges", "Earned from what you do here: focused visits to threads, finishing Torn days with Catch up empty, and organizing. A visit counts once a Torn day, after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days with it off."),
   },
 ];

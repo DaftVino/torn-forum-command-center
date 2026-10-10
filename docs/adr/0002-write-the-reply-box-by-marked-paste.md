@@ -1,7 +1,7 @@
 # ADR 0002: Write Torn's reply box with a marked paste event
 
-**Status:** Proposed. It is accepted when the #58 implementation merges.
-**Date:** 2026-10-09
+**Status:** Accepted
+**Date:** 2026-10-10
 **Amends:** ADR 0001's reply-box access point. It changes the shape, not the
 count. FCC still touches Torn's page in exactly two places.
 

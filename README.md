@@ -4,7 +4,7 @@
 
 # Torn Forum Command Center
 
-Forum Command Center, or FCC, turns Torn's small subscribed-threads box into a full forum workspace. It runs on the forums page in desktop Tampermonkey and Torn PDA, using Torn's official API to organise followed threads, show what is new, preserve reply drafts, and search discussions you care about.
+Forum Command Center, or FCC, turns Torn's small subscribed-threads box into a full forum workspace. It runs on the forums page in desktop Tampermonkey and Torn PDA, using Torn's official API to organize followed threads, show what is new, preserve reply drafts, and search discussions you care about.
 
 FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or automate gameplay. Its folders, tags, notes, drafts, read markers, badges, and settings stay on your device.
 
@@ -28,7 +28,7 @@ FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or auto
 
 ### A complete forum workspace
 
-- **Threads** brings subscribed and manually organised threads into one sortable, filterable list.
+- **Threads** brings subscribed and manually organized threads into one sortable, filterable list.
 - **Catch up** shows new activity since your catch-up point, grouped by folder.
 - **My posts** lists threads you started or posted in, whether or not you follow them.
 - **Search** covers thread metadata and can search cached post bodies.
@@ -38,12 +38,12 @@ FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or auto
 - Filter by folder, tag, unread state, or query.
 - Rows shown can cap Threads, Catch up, and My posts. Search and Drafts remain uncapped, and Expand shows every row.
 
-### Folders, tags, and personal organisation
+### Folders, tags, and personal organization
 
 - Create and reorder folders, including the built-in **Unfiled** group.
 - Let a folder claim one or more forums. New subscriptions from a claimed forum file themselves automatically; filing a thread by hand always wins.
 - A forum can belong to only one folder. Removing a claim affects future filing and does not move threads already filed.
-- Folders organise only threads you subscribe to or file by hand. They never add every thread from a forum.
+- Folders organize only threads you subscribe to or file by hand. They never add every thread from a forum.
 - Catch up follows the folder order, and each group can be collapsed.
 - Add tags and private notes, pin threads, set personal priority, and archive or unarchive without deleting local work.
 
@@ -66,12 +66,119 @@ FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or auto
 - Queries support bare words, quoted phrases, author, tag, folder, unread, pinned, and draft filters, with negation.
 - **Search on Torn** sends the query to Torn's own forum search through an ordinary link.
 
+### The Drafts editor
+
+Drafts is a post editor. Drafts stay on the device, and you press Torn's Post
+button yourself.
+
+- **Modes.** A pill switches between Text, MD (Markdown), HTML and Preview,
+  one pane at a time. Switching converts the draft without losing anything. A
+  draft over 20000 characters is never cut: an action that would pass the
+  limit is refused with a notice.
+- **Preview** shows the post the way Torn will, in Torn's light or dark theme
+  (the switch is in the Preview bar). Tapping anywhere in the Preview, on a
+  paragraph, its text or the empty area, returns to the source mode at that
+  spot. Images in Preview stay as placeholders until you tap
+  Show images, so the panel does not contact image hosts on its own.
+- **Toolbar.** Bold, italic, underline, strike, Torn's 17 text colors or a
+  custom color, size, alignment, quote, link, image, table, emoji (Torn's own
+  and Unicode) and a Markdown help card. The buttons are symbols (B, I, U, S,
+  A with a color bar, aA, an align glyph, a quote mark, a link, a picture, a
+  table, a smiley, ?, and a curved arrow for Undo); each keeps its full name
+  as its tooltip and screen-reader label. On a narrow panel it shows Undo, B,
+  I, U, Color, Link and More in one right-aligned row that always fits, on
+  phones down to a 320px screen (the buttons narrow a little rather than
+  wrap); More opens the rest.
+  A custom color is only questioned when it is nearly invisible on Torn's
+  light or dark theme.
+- **Markdown marks.**
+
+| You type | You get |
+|---|---|
+| `**bold**` | bold |
+| `*italic*` | italic |
+| `++underline++` | underline |
+| `~~strike~~` | strike through |
+| `{red}text{/}` | a Torn color (red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange, gray1 to gray5) |
+| `{#ff8800}text{/}` | any color |
+| `{18}text{/}` | text size, 8 to 36 |
+| `# Title` | a big bold line (`##` and `###` are smaller) |
+| `:::center` | center the lines up to the next `:::` |
+| `> text` | a quote |
+| `- item` | a list (`1.` for numbers) |
+| `[text](link address)` | a link (https only) |
+| `![description](image link)` | an image |
+| `:grin:` | a Torn emoji |
+| `\| a \| b \|` | a table row; a `---` row under the first makes it a header |
+| `\*` | a literal mark character |
+
+- **Enter and blank lines.** Enter starts a new paragraph, an empty line adds
+  a gap, in every mode, with no markup to learn. In HTML mode a line of text
+  outside a tag is a paragraph; Enter inside `<p ...>` splits it and keeps
+  its alignment, Enter inside `<li>` starts a new item, Enter on an empty
+  item ends the list (as in Markdown), and Shift+Enter is a
+  line break (`<br>`). Inside an open list, table or quote a new line is only
+  a space, so a list can be typed over several lines; an empty line inside a
+  paragraph ends the paragraph. In Markdown, Enter on a
+  `- item`, `1. item` or `> quote` line continues the list or quote, and
+  Enter on a line holding only the marker ends it.
+- **Help key.** The `?` button opens a compact key of what you type and what
+  you get, for the current mode (Markdown or HTML). While it is open the
+  button reads `X` and the picker's bottom button reads Close.
+- **Selection and alignment.** Bold, Quote, Align and the other tools act on
+  the range you highlighted, and on a phone you can tap to place the caret or
+  drag the selection handles first. Align and Quote cover every selected line.
+  Aligning anywhere in a table aligns the whole table; a Markdown table needs
+  a header row (the `---` row) to hold alignment, otherwise the editor says
+  so and changes nothing.
+- **Undo.** The first toolbar button, also shown in Text mode. It restores the
+  previous text, mode and selection, including after a mode switch. Typing is
+  one step per burst, the last 50 steps are kept, and they are cleared when
+  you open another draft. There is no Redo.
+- **Save as free draft.** On a thread draft, copies what is in the editor
+  into a new free draft ("Untitled N") and opens it. The thread's own saved
+  draft is left as it was.
+- **Editor height.** Drag the corner of the box to resize it; it keeps that
+  height until you open another draft. Settings has "Editor height (desktop)"
+  and "Editor height (phone)": Small, Medium, Large or Extra large (Small is
+  the old height). Desktop defaults to Large, phone to Medium.
+- **One message at a time.** A new status message replaces the previous one,
+  and messages clear when you open another thread, forum page or panel view,
+  or leave the page. If a save fails, its error stays: the same action's
+  success message never replaces it.
+- **Drafts info.** The `i` button beside "Draft for this thread" (or beside
+  a free draft's name) explains thread drafts, free drafts, Save, Insert,
+  Copy and autosave.
+- **Free drafts.** **+ New draft** creates a named draft tied to no thread,
+  such as a new thread's opening post. All drafts lists both kinds.
+- **Insert and Copy.** Insert into reply box adds the formatted post to the end
+  of Torn's editor and never replaces what is already there. If the editor
+  cannot be found, FCC offers Copy. Copy puts the formatted post on the
+  clipboard; pasted into Torn's editor it keeps its styles.
+- **Image link fixer.** Paste a Google Drive, Dropbox, GitHub, Giphy, Gyazo,
+  Imgur or Reddit link and the editor rewrites it into a link Torn can show.
+  Google Photos, OneDrive, ImgBB, Postimages, Imgur albums, Lightshot and Tenor
+  cannot be rewritten, so the editor says how to copy the direct image address.
+  Discord links expire and plain http links are refused, and unsafe hosts are
+  refused.
+  Open it with **Fix image link** at the right end of the Save / Insert /
+  Delete row. The section checks one link (shows the converted link, a
+  thumbnail loaded only after you press Check, **Copy link** and **Insert into
+  draft**), and **Fix all links in this draft** rewrites every image link in
+  the draft. In Markdown and HTML, a fixable link that stands alone on its own
+  line, such as a Drive "view" link pasted by itself, becomes an image. A link
+  that is not on a line of its own (in a sentence, or inside link markup) is
+  left as a link, and the message says how many were left. Enter in the Image
+  link field runs Check. Nothing is uploaded.
+- **Default editor.** In Settings, "Default editor for new drafts": Markdown
+  (the default), HTML or Text. It applies to new drafts only.
+
 ### Reactions, karma, and badges
 
 - My posts checks the opening posts of started threads for thumbs up and thumbs down.
 - Until a thread has been checked, Torn's thread rating is displayed only as **net**. The project does not assume whether that source value means net reactions or likes alone.
 - The reactions display also shows forum karma.
-- Fifteen local badges cover setup, organisation, focused thread visits, explored forums, backlog clearing, and Catch up streaks.
+- Fifteen local badges cover setup, organization, focused thread visits, explored forums, backlog clearing, and Catch up streaks.
 - Badge streaks use TCT/UTC days. Badges make no API request of their own.
 - Badge progress can be disabled, exported, imported, or reset.
 
@@ -166,7 +273,7 @@ Exports or imports the workspace, reports post-cache size, clears cached posts, 
 - It requests only `GM_getValue`, `GM_setValue`, and `GM_xmlhttpRequest`.
 - Its only allowed connection host is `api.torn.com`.
 - Every network request is a GET. There are no POST, PUT, or DELETE requests, no third-party requests, and no telemetry.
-- FCC does not scrape Torn forum pages. Route capture uses the current address and page title; draft support reads the reply box on the page you are viewing, and the Match Torn theme (the default) reads the page background colour.
+- FCC does not scrape Torn forum pages. Route capture uses the current address and page title; draft support reads the reply box on the page you are viewing, and the Match Torn theme (the default) reads the page background color.
 - The script does not simulate account actions, submit forms, open windows, or navigate on its own. Inserting a draft stops at the reply box; the player presses Torn's Post button.
 - Auto refresh stops while the page is hidden or the window is unfocused.
 - A refused or invalid key is disabled instead of being retried repeatedly.
@@ -216,7 +323,7 @@ Release remains blocked on [`docs/qa-checklist.md`](docs/qa-checklist.md), which
 
 ### Do not read the userscript whole
 
-The userscript is intentionally organised around marked Engine and Runtime sections. Do not dump the entire file into a review or assistant context.
+The userscript is intentionally organized around marked Engine and Runtime sections. Do not dump the entire file into a review or assistant context.
 
 Use targeted searches first, then read only the relevant function or marked section. For example:
 

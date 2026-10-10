@@ -15,7 +15,7 @@ that the API is read-only.
 
 It is the HTML only. The saved page's copies of Bootstrap and jQuery were not
 kept, so it opens unstyled - but every word of the terms is in this file, which
-is what it is here for. The access-level table is colour-coded rather than
+is what it is here for. The access-level table is color-coded rather than
 labelled, and the legend maps `white` to Public, `green` to Minimal Access,
 `yellow` to Limited Access and `red` to Full Access.
 

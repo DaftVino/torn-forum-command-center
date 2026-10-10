@@ -140,8 +140,10 @@ const MUTATIONS = [
     name: 'the debug report includes the raw state',
     suite: 'tests/debug-report.test.js',
     apply: (s) => s.replace(
-      "    return lines.join('\\n');",
-      "    return lines.join('\\n') + '\\n' + JSON.stringify(state.organizer) + JSON.stringify(state.drafts);",
+      // The first `return lines.join` in the file is the Markdown renderer's,
+      // so the target is anchored on the report's own last line.
+      "authorTooMany + ')',\n    ];\n    return lines.join('\\n');",
+      "authorTooMany + ')',\n    ];\n    return lines.join('\\n') + '\\n' + JSON.stringify(state.organizer) + JSON.stringify(state.drafts);",
     ),
   },
   {
@@ -189,14 +191,29 @@ const MUTATIONS = [
     name: 'autosave stops writing anything',
     suite: 'tests/staleness.test.js',
     apply: (s) => s.replace(
-      "          state.drafts = saveDraft(state.drafts, state.route.threadId, text, Date.now(), '');",
-      '          void text;',
+      "          state.drafts = saveDraft(state.drafts, thread, source, Date.now(), '', 'html');",
+      '          void source;',
     ),
   },
   {
     name: 'an emptied reply box is autosaved over the draft',
     suite: 'tests/staleness.test.js',
-    apply: (s) => s.replace('          if (!text.trim()) return;', ''),
+    apply: (s) => s.replace("          if (!htmlToText(post).trim() && post.indexOf('<img') === -1) return;\n", ''),
+  },
+  {
+    name: 'autosave overwrites a Markdown draft with Torn\'s HTML',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace("          if (existing && draftLangOf(existing) !== 'html') return;\n", ''),
+  },
+  {
+    name: 'a pending autosave saves to whichever thread is open now',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace("if (!state.route || String(state.route.threadId) !== thread || autosaveBox !== box) return;", 'thread = String(state.route.threadId);'),
+  },
+  {
+    name: 'autosave stores an over-limit post, cut short',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace('          if (source.length > DRAFT_MAX_CHARS) return;\n', ''),
   },
   {
     name: 'a late refresh redraws onto whatever page the user went to',
@@ -312,7 +329,7 @@ const MUTATIONS = [
     ),
   },
   {
-    name: 'anchors lose their colour and fall back to browser blue',
+    name: 'anchors lose their color and fall back to browser blue',
     suite: 'tests/style.test.js',
     apply: (s) => s.replace(
       "      '#' + PANEL_ID + ' a, #' + PANEL_ID + ' a:link, #' + PANEL_ID + ' a:visited,',",
@@ -328,7 +345,7 @@ const MUTATIONS = [
     ),
   },
   {
-    name: 'dropdown options lose the panel colours',
+    name: 'dropdown options lose the panel colors',
     suite: 'tests/style.test.js',
     apply: (s) => s.replace(
       "      '#' + PANEL_ID + ' option { background: var(--tm-bg-3); color: var(--tm-text); }',",
@@ -376,7 +393,7 @@ const MUTATIONS = [
     ),
   },
   {
-    name: 'panel content takes its colour from the host page again',
+    name: 'panel content takes its color from the host page again',
     suite: 'tests/style.test.js',
     apply: (s) => s.replace(
       "      '#' + PANEL_ID + ' * { color: inherit; background: transparent; }',",
@@ -384,7 +401,7 @@ const MUTATIONS = [
     ),
   },
   {
-    name: 'table cells go back to inheriting their colour',
+    name: 'table cells go back to inheriting their color',
     suite: 'tests/style.test.js',
     apply: (s) => s.replace(
       "      '  color: var(--tm-text); background: transparent; }',",
@@ -546,7 +563,7 @@ const MUTATIONS = [
     apply: (s) => s.replace("+ '\" title=\"' + escapeHtml(INFO_KEYS[key]) + '\">'", "+ '\" title=\"' + escapeHtml(key) + '\">'"),
   },
   {
-    name: '#43: the wide My posts colour leaves the listed replacement',
+    name: '#43: the wide My posts color leaves the listed replacement',
     suite: 'tests/wide-parity.test.js',
     apply: (s) => s.replace("' button.tfcc-nav-mine { margin-left: auto; }',",
       "' button.tfcc-nav-mine { margin-left: auto; font-weight: bold; }',"),
@@ -603,7 +620,7 @@ const MUTATIONS = [
   {
     name: 'every My posts thread floods Threads',
     suite: 'tests/merge.test.js',
-    apply: (s) => s.replace('        inThreads: !!api || !rec || isOrganised(entry, !!draft),', '        inThreads: true,'),
+    apply: (s) => s.replace('        inThreads: !!api || !rec || isOrganized(entry, !!draft),', '        inThreads: true,'),
   },
   {
     name: 'the My posts staleness guard is removed',
@@ -974,7 +991,7 @@ const MUTATIONS = [
         "    out.push(renderReactions(model));\n    out.push('</div>');\n    return out.join('');\n  }\n\n  // The thread's priority adjustment") },
   { name: 'the thumbs are read aloud as emoji names', suite: 'tests/panel.test.js',
     apply: (s) => s.replace('<span class="tfcc-thumb" aria-hidden="true">', '<span class="tfcc-thumb">') },
-  { name: 'the thumbs keep their colours in the dark theme', suite: 'tests/style.test.js',
+  { name: 'the thumbs keep their colors in the dark theme', suite: 'tests/style.test.js',
     apply: (s) => s.replace(' .tfcc-thumb { filter: grayscale(1) brightness(0) invert(1); }', ' .tfcc-thumb { }') },
   { name: '"started" loses its red class', suite: 'tests/panel.test.js',
     apply: (s) => s.replace('<span class="tfcc-tag tfcc-started">started</span>', '<span class="tfcc-tag">started</span>') },
@@ -987,6 +1004,35 @@ const MUTATIONS = [
   { name: 'my posts: a stale run still writes its error', suite: 'tests/staleness.test.js',
     apply: (s) => s.replace("        if (stale()) return { ok: false, reason: 'stale' };\n        return fail({ reason: 'network'",
       "        return fail({ reason: 'network'") },
+  { name: 'a new notice stacks instead of replacing the old one', suite: 'tests/navigation.test.js',
+    apply: (s) => s.replace("    state.notices = [{ text: safeString(text, 300), kind: k }];",
+      "    state.notices.push({ text: safeString(text, 300), kind: k });") },
+  { name: 'navigating to another route keeps the old notice', suite: 'tests/navigation.test.js',
+    apply: (s) => s.replace('    if (routeKey(state.route) !== routeKey(capture.route)) { state.notices = []; persistFailed = false; }', '') },
+  { name: 'leaving the forums page keeps the old notice', suite: 'tests/navigation.test.js',
+    apply: (s) => s.replace('      state.route = null;\n      state.notices = [];\n', '      state.route = null;\n') },
+  // #58 final review: one central guard, in notice() and persist(), keeps a
+  // failed write's error over its own action's success message.
+  { name: 'Draft saved replaces the error of a failed save', suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("    if (k === 'info' && persistFailed) return;\n", '') },
+  { name: 'a success notice hides a failed write in Clear post cache, Fix image links, Import, Insert', suite: 'tests/navigation.test.js',
+    apply: (s) => s.replace("    if (k === 'info' && persistFailed) return;\n", '') },
+  { name: 'a failed write never raises the hold on success notices', suite: 'tests/navigation.test.js',
+    apply: (s) => s.replace('    if (!res.ok) { persistFailed = true; notice(', '    if (!res.ok) { notice(') },
+  { name: 'a failed write holds back the next action notices too', suite: 'tests/navigation.test.js',
+    apply: (s) => s.replace('        // A new action: an earlier failed write no longer holds back its notices.\n        persistFailed = false;\n', '') },
+  { name: 'a panel view change keeps the old notice', suite: 'tests/navigation.test.js',
+    apply: (s) => s.replace("      if (v !== state.settings.view) { applyTransient({ type: 'view' }); state.notices = []; }",
+      "      if (v !== state.settings.view) { applyTransient({ type: 'view' }); }") },
+  { name: 'undo: a same-draft reload is not its own step (Undo jumps past newer stored text)', suite: 'tests/editor-undo.test.js',
+    apply: (s) => s.replace('        pushUndo(state.editor, keep);\n', '') },
+  { name: 'B2: the mirrored field live selection is ignored once unfocused', suite: 'tests/editor-feedback.test.js',
+    apply: (s) => s.replace('      if (doc.activeElement === f || (f === lastSelField && String(f.value) === state.editor.text)) {',
+      '      if (doc.activeElement === f) {') },
+  { name: 'three damaged stores lose the commas', suite: 'tests/storage.test.js',
+    apply: (s) => s.replace("    return names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];", "    return names.join(' and ');") },
+  { name: 'only the last damaged store is reported at load', suite: 'tests/storage.test.js',
+    apply: (s) => s.replace('if (pair[1].recovered) damaged.push(pair[0]);', 'if (pair[1].recovered) damaged = [pair[0]];') },
   { name: 'my posts: a throttle is never recorded', suite: 'tests/mine-refresh.test.js',
     apply: (s) => s.replace('state.mineThrottled = throttled;', 'state.mineThrottled = false;') },
   { name: 'my posts: the throttle notice is not rendered', suite: 'tests/mine-refresh.test.js',
@@ -1071,7 +1117,7 @@ const MUTATIONS = [
   {
     name: 'a view change keeps the drawer open',
     suite: 'tests/narrow-state.test.js',
-    apply: (s) => s.replace("if (v !== state.settings.view) applyTransient({ type: 'view' });", ''),
+    apply: (s) => s.replace("if (v !== state.settings.view) { applyTransient({ type: 'view' }); state.notices = []; }", "if (v !== state.settings.view) { state.notices = []; }"),
   },
   {
     name: 'auto-hide leaves the drawer open',
@@ -1123,13 +1169,13 @@ const MUTATIONS = [
     ['the pill gets a border', (s) => s.replace(
       "'  border: 0; border-radius: 999px; background: var(--tm-bg-2);", "'  border: 1px solid var(--tm-border); border-radius: 999px; background: var(--tm-bg-2);")],
   ].map(([name, apply]) => ({ name: '#53: ' + name, suite: 'tests/narrow-view.test.js', apply })),
-  // #53 (owner): the logo's per-theme colour.
+  // #53 (owner): the logo's per-theme color.
   ...[
     ['the light logo is the raw #5C768F again', (s) => s.replace(
       "'  --tfcc-logo: #2e4a66;',", "'  --tfcc-logo: #5c768f;',")],
     ['the light logo goes black', (s) => s.replace(
       "'  --tfcc-logo: #2e4a66;',", "'  --tfcc-logo: #141414;',")],
-    ['the dark logo changes colour', (s) => s.replace(
+    ['the dark logo changes color', (s) => s.replace(
       "'  --tfcc-logo: #5c768f;',", "'  --tfcc-logo: #8db3d9;',")],
     ['the logo rule ignores the token', (s) => s.replace(
       "'  color: var(--tfcc-logo); }',", "'  color: #5c768f; }',")],
@@ -1393,8 +1439,8 @@ const MUTATIONS = [
     ['the drawer emoji reach screen readers', (s) => s.replace('\'<span class="tfcc-emo" aria-hidden="true">\'', '\'<span class="tfcc-emo">\'')],
     ['the archive button is named Delete', (s) => s.replace("emojiButton('archive', row.archived ? 'Unarchive' : 'Archive'", "emojiButton('archive', row.archived ? 'Unarchive' : 'Delete'")],
     ['a pinned row is not marked on its Pin button', (s) => s.replace("class=\"tfcc-emobtn' + (on ? ' tfcc-on' : '')", "class=\"tfcc-emobtn' + ''")],
-    ['the drawer emoji stay in colour on dark', (s) => s.replace("      '  filter: grayscale(1) brightness(0) invert(1); }',", "      '  filter: none; }',")],
-    ['the drawer emoji stay in colour on light', (s) => s.replace('.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }', '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: none; }')],
+    ['the drawer emoji stay in color on dark', (s) => s.replace("      '  filter: grayscale(1) brightness(0) invert(1); }',", "      '  filter: none; }',")],
+    ['the drawer emoji stay in color on light', (s) => s.replace('.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }', '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: none; }')],
     ['drawer buttons go under the 24px floor', (s) => s.replace('.tfcc-drawer button { min-height: 32px; min-width: 32px;', '.tfcc-drawer button { min-height: 20px; min-width: 20px;')],
     ['the drawer buttons may wrap', (s) => s.replace('.tfcc-drawer-btns { display: flex; flex-wrap: nowrap; align-items: center;', '.tfcc-drawer-btns { display: flex; flex-wrap: wrap; align-items: center;')],
     ['a drawer field is shortened by its font', (s) => s.replace("      '  padding: 4px 8px; }',", "      '  padding: 4px 8px; font-size: 12px; }',")],
@@ -1404,9 +1450,9 @@ const MUTATIONS = [
       "row.archived ? 'Unarchive' : 'Archive', ARCHIVE_SVG,", "row.archived ? 'Unarchive' : 'Archive', emojiIcon('" + String.fromCharCode(92) + "uD83D" + String.fromCharCode(92) + "uDDD1'),")],
     ['the archive icon reaches screen readers', (s) => s.replace(
       ' width="18" height="18" aria-hidden="true"', ' width="18" height="18"')],
-    ['the archive icon takes a fixed colour', (s) => s.replace(
+    ['the archive icon takes a fixed color', (s) => s.replace(
       'focusable="false"><path fill="currentColor" fill-rule="evenodd"', 'focusable="false"><path fill="#000" fill-rule="evenodd"')],
-    ['a host svg fill rule can recolour the archive icon', (s) => s.replace(
+    ['a host svg fill rule can recolor the archive icon', (s) => s.replace(
       ".tfcc-narrow .tfcc-archico path { fill: currentColor; }',", ".tfcc-narrow .tfcc-archico path { }',")],
     ['the archive icon is drawn through the emoji filter', (s) => s.replace(
       ".tfcc-narrow .tfcc-archico { display: block; flex: none; }',", ".tfcc-narrow .tfcc-archico { display: block; flex: none; filter: invert(1); }',")],
@@ -1536,7 +1582,7 @@ const MUTATIONS = [
     ['the blur outlives the setting', (s) => s.replace(
       "'#' + PANEL_ID + '.tfcc-seethrough { background: var(--tfcc-base-bg);',\n      '  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',",
       "'#' + PANEL_ID + '.tfcc-seethrough { background: var(--tfcc-base-bg); }',\n      '#' + PANEL_ID + ' { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',")],
-    ['see-through defaults off', (s) => s.replace('      seeThrough: true,\n    };', '      seeThrough: false,\n    };')],
+    ['see-through defaults off', (s) => s.replace('      seeThrough: true,\n', '      seeThrough: false,\n')],
     ['a junk see-through value is reported as damage', (s) => s.replace(
       "    var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now, isRecoveredSettings);",
       "    var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now);")],
@@ -1571,9 +1617,11 @@ const MUTATIONS = [
       '    if (!clean || hasTag(org, threadId, clean)) return org;\n    return toggleTag(org, threadId, clean);',
       '    if (!clean) return org;\n    return toggleTag(org, threadId, clean);')],
     ['Enter saves during IME composition (PR #44 review)', (s) => s.replace(
-      '        if (ev.isComposing === true || ev.keyCode === 229) return;\n', '')],
+      '// Escape dismisses it; neither is meant for the popup.\n        if (ev.isComposing === true || ev.keyCode === 229) return;\n',
+      '// Escape dismisses it; neither is meant for the popup.\n')],
     ['only isComposing counts as composition, not keyCode 229', (s) => s.replace(
-      'if (ev.isComposing === true || ev.keyCode === 229) return;', 'if (ev.isComposing === true) return;')],
+      'meant for the popup.\n        if (ev.isComposing === true || ev.keyCode === 229) return;',
+      'meant for the popup.\n        if (ev.isComposing === true) return;')],
     ['Escape no longer cancels the popup', (s) => s.replace("if (key !== 'Escape' && key !== 'Esc' && ", "if (key !== 'Esc' && ")],
     ['Enter no longer saves the popup', (s) => s.replace("!(key === 'Enter' && act === 'editor-input')", 'true')],
     ['opening the popup leaves focus on its button', (s) => s.replace(
@@ -1639,7 +1687,7 @@ const MUTATIONS = [
     ['group DOM ids collide again (PR #46 review)', (s) => s.replace(
       "return '_' + ('000' + c.charCodeAt(0).toString(16)).slice(-4);", "return '_';")],
     ['the folder note drops the subscribed-only sentence', (s) => s.replace(
-      "      + 'Folders organise only threads you subscribe to (and ones you file by hand); they never add other threads '\n      + 'from a forum. ",
+      "      + 'Folders organize only threads you subscribe to (and ones you file by hand); they never add other threads '\n      + 'from a forum. ",
       "      + '")],
     ['the narrow group toggle drops below 44px', (s) => s.replace(
       "'.tfcc-narrow button.tfcc-grp { min-height: 44px; }'", "'.tfcc-narrow button.tfcc-grp { min-height: 32px; }'")],
@@ -1675,7 +1723,7 @@ const MUTATIONS = [
       "      '  font: inherit; font-weight: bold; font-style: italic; text-align: left; cursor: pointer; }',"),
   },
   {
-    name: '#45: a second wide rule for the priority number overrides its colour',
+    name: '#45: a second wide rule for the priority number overrides its color',
     suite: 'tests/wide-parity.test.js',
     apply: (s) => s.replace("      '#' + PANEL_ID + ' .tfcc-section h4.tfcc-grphead { margin: 0; }',",
       "      '#' + PANEL_ID + ' .tfcc-section h4.tfcc-grphead { margin: 0; }',\n      '#' + PANEL_ID + ' .tfcc-prio { color: var(--tm-meta); }',"),
@@ -1686,7 +1734,7 @@ const MUTATIONS = [
     apply: (s) => s.replace("'  --tfcc-prio: #2e5680;',", "'  --tfcc-prio: #2e5681;',"),
   },
   {
-    name: '#45: the priority colour changes wide CSS outside its listed replacement',
+    name: '#45: the priority color changes wide CSS outside its listed replacement',
     suite: 'tests/wide-parity.test.js',
     apply: (s) => s.replace("' .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: var(--tfcc-text-sm);'",
       "' .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: 11px;'"),
@@ -1775,6 +1823,424 @@ const MUTATIONS = [
     ['a Settings rule shrinks text', (s) => s.replace(
       "'.tfcc-narrow .tfcc-set p.tfcc-note { margin: 0 0 8px 0; }'", "'.tfcc-narrow .tfcc-set p.tfcc-note { margin: 0 0 8px 0; font-size: 11px; }'")],
   ].map(([name, apply]) => ({ name: '#47: ' + name, suite: 'tests/settings-spacing.test.js', apply })),
+  // ---- #58 Task 7: Insert through Torn's TinyMCE editor ---------------------
+  {
+    name: 'the inserted paste loses TinyMCE internal marker, so Torn strips the styles',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace("data.setData('text/html', PASTE_MARKER + html);", "data.setData('text/html', html);"),
+  },
+  {
+    name: 'Insert no longer moves the caret to the end, so it can replace what was typed',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace('      caretToEnd(doc, win, box);\n', ''),
+  },
+  {
+    name: 'an ignored paste is reported as inserted',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace("if (handled && String(box.innerHTML) !== before) return { ok: true };", 'return { ok: true };'),
+  },
+  {
+    name: 'the first matching editor is taken, hidden or not (#60 by another route)',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace('    if (shown.length === 1) return shown[0];', '    if (all.length) return all[0];'),
+  },
+  {
+    name: 'two visible editors are guessed between',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace('    return inForm.length === 1 ? inForm[0] : null;', '    return shown[0] || null;'),
+  },
+
+  // ---- #58 Task 14: the Drafts editor's promises ------------------------------
+  {
+    name: 'the cleaner takes any image source (data: URLs and bare names survive)',
+    suite: 'tests/editor-clean.test.js',
+    apply: (s) => s.replace('        var src = safeImgSrc(attrs.src);', '        var src = attrs.src;'),
+  },
+  {
+    name: 'the cleaner accepts javascript: links',
+    suite: 'tests/editor-clean.test.js',
+    apply: (s) => s.replace("u.length <= URL_MAX_CHARS && /^https?:\\/\\/[^\\s<>\"'`]+$/i.test(u) ? u : '';", 'u;'),
+  },
+  {
+    // Both guards at once: with only one removed, the other still drops the
+    // script's text, and the mutation would change nothing.
+    name: 'a script element\'s text reaches the post',
+    suite: 'tests/editor-clean.test.js',
+    apply: (s) => s.replace('    script: true, style: true, iframe: true,', '    style: true, iframe: true,')
+      .replace('        if (!tok.raw) {', '        if (true) {'),
+  },
+  {
+    name: 'the cleaner reads without a size bound',
+    suite: 'tests/editor-clean.test.js',
+    apply: (s) => s.replace('var s = String(html || \'\').slice(0, CLEAN_MAX_CHARS);', "var s = String(html || '');"),
+  },
+  {
+    name: 'adjacent text runs stop merging, so cleaning is no longer idempotent',
+    suite: 'tests/editor-clean.test.js',
+    apply: (s) => s.replace('          if (last && last.text !== undefined) last.text += tok.text;\n          else top.children.push({ text: tok.text });',
+      '          top.children.push({ text: tok.text });'),
+  },
+  {
+    name: 'Markdown loses color on the way back from HTML',
+    suite: 'tests/editor-convert.test.js',
+    apply: (s) => s.replace("        out += '{' + key + '}' + inner + '{/}';", '        out += inner;'),
+  },
+  {
+    name: 'an older drafts blob is marked damaged: lang materialised as text',
+    suite: 'tests/editor-storage.test.js',
+    apply: (s) => s.replace('        if (lang) entry.lang = lang;\n        out.byThread[id] = entry;',
+      "        entry.lang = lang || 'text';\n        out.byThread[id] = entry;"),
+  },
+  {
+    name: 'the Default editor setting is ignored',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("    return DRAFT_LANGS.indexOf(state.settings.draftLang) !== -1 ? state.settings.draftLang : 'md';",
+      "    return 'md';"),
+  },
+  {
+    name: 'the height setting is ignored',
+    suite: 'tests/editor-height.test.js',
+    apply: (s) => s.replace("var setH = model.narrow ? model.settings.editorHeightNarrow : model.settings.editorHeightWide;",
+      "var setH = 'small';"),
+  },
+  {
+    name: 'the phone height uses the desktop setting',
+    suite: 'tests/editor-height.test.js',
+    apply: (s) => s.replace("var setH = model.narrow ? model.settings.editorHeightNarrow : model.settings.editorHeightWide;",
+      "var setH = model.settings.editorHeightWide;"),
+  },
+  {
+    name: 'Preview shows the Markdown draft as raw lines',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("return mdBlocks(src).map(function (b) { return { html: b.html, offset: starts[b.line] || 0 }; });",
+      "return src.split('\\n').map(function (l, i) { return { html: l, offset: starts[i] || 0 }; });"),
+  },
+  {
+    name: 'the image fixer stops rewriting Drive links',
+    suite: 'tests/editor-images.test.js',
+    apply: (s) => s.replace("var fixedDrive = 'https://drive.google.com/thumbnail?id=' + id + '&sz=w1000';", 'var fixedDrive = u;'),
+  },
+  {
+    name: 'switching to Text no longer asks first',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("          if (mode === 'text' && ed.lang !== 'text' && ed.text.trim()) { ed.confirmText = ed.lang; redraw(); return; }\n", ''),
+  },
+  {
+    name: 'a conversion past the draft limit is stored instead of refused',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('          if (converted.length > DRAFT_MAX_CHARS) { overLimitNotice(converted.length); redraw(); return; }\n', ''),
+  },
+
+  // ---- #58 final review: HTML-mode blocks and Reset all ----------------------
+  {
+    name: 'HTML Align wraps a paragraph inside another paragraph again',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace('        if (g.block) return alignOpenTag(g.lines[0], value);',
+      "        if (g.block) return '<p style=\"text-align: ' + value + ';\">' + g.lines[0] + '</p>';"),
+  },
+  {
+    name: 'HTML Quote puts each paragraph inside another paragraph again',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace('          if (g.block) return g.lines[0].trim();', "          if (g.block) return '<p>' + g.lines[0].trim() + '</p>';"),
+  },
+  {
+    name: 'an inline mark across two paragraphs merges them into one',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace("    if (lang !== 'html' || s[0] === s[1] || !HTML_BLOCK_TAG.test(sel)) {", '    if (true) {'),
+  },
+  {
+    name: 'a Markdown heading keeps its trailing space inside the bold',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace("mdInline(h[2].trim()) + '</strong>", "mdInline(h[2]) + '</strong>"),
+  },
+  {
+    name: 'Reset all leaves the old draft open in the editor',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('          state.draftFocusId = null; loadEditor(null, now);\n', ''),
+  },
+  {
+    name: 'Save recreates nothing yet reports a gone free draft as saved',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("      if (!state.drafts.free || !state.drafts.free[e.key]) return false;\n", ''),
+  },
+  {
+    name: 'Save says Draft saved whether or not it stored',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('          if (state.editor.key === id ? !saveEditor(now) : !draftFor(state.drafts, id)) {',
+      '          if (state.editor.key === id && (saveEditor(now), false)) {'),
+  },
+  {
+    name: 'a pending Text-switch question survives another mode choice',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('          ed.confirmText = null;\n', ''),
+  },
+  {
+    name: 'a changed image address keeps the old check, so Insert uses the old URL',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("          if (act === 'ed-img-url') state.editor.imageCheck = null;\n", ''),
+  },
+  // ---- #58 feedback Batch H: the image link fixer and bare links --------------
+  {
+    name: 'a bare fixable link alone on its line is not converted',
+    suite: 'tests/editor-images.test.js',
+    apply: (s) => s.replace("          if (r.status === 'fixed') {\n            changed += 1;\n            return line.replace(t,",
+      "          if (r.status === 'never') {\n            changed += 1;\n            return line.replace(t,"),
+  },
+  {
+    name: 'Fix all converts links inside sentences',
+    suite: 'tests/editor-images.test.js',
+    apply: (s) => s.replace(String.raw`        if (/^https:\/\/\S+$/i.test(t)) {`, String.raw`        if (/https:\/\/\S+/i.test(t)) {`),
+  },
+  {
+    name: 'Fix all converts a bare link inside an open HTML block',
+    suite: 'tests/editor-images.test.js',
+    apply: (s) => s.replace('            if (stack.length) { left += countFixableLinks(seg, true); continue; }\n', ''),
+  },
+  {
+    name: 'a changed fixer address keeps the old check, so Insert uses the old URL',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("          if (act === 'ed-fix-url') state.editor.fixCheck = null;\n", ''),
+  },
+  {
+    name: 'Fix all in Text mode rewrites anyway instead of asking to switch',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("          if (E.lang === 'text') { notice('Switch to Markdown or HTML to add images.', 'warn'); redraw(); return; }\n          var fx =",
+      '          var fx ='),
+  },
+  {
+    name: 'the Copy result forces a redraw over the player typing',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('            if (isForumsPage(win.location)) quietRedraw();\n          });\n          return;', '            redraw();\n          });\n          return;'),
+  },
+
+  // ---- #58 feedback Batch B: Preview tap, selection, tables, height ---------
+  {
+    name: 'a tap on an element inside a Preview block does nothing again',
+    suite: 'tests/editor-feedback.test.js',
+    apply: (s) => s.replace("          if (pvTap) { act = 'ed-jump'; t = pvTap; }", '          void pvTap;'),
+  },
+  {
+    name: 'a selection made without typing is not mirrored, so actions use the typed caret',
+    suite: 'tests/editor-feedback.test.js',
+    apply: (s) => s.replace('          handlers.onSelect(act, t);\n', ''),
+  },
+  {
+    name: 'an unfocused fresh textarea overrides the mirrored selection again',
+    suite: 'tests/editor-feedback.test.js',
+    apply: (s) => s.replace("      if (doc.activeElement === f || (f === lastSelField && String(f.value) === state.editor.text)) {", "      if (true) {"),
+  },
+  {
+    name: 'Align on a table fences it as text again (Markdown and HTML)',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace("      var tb = lang === 'md' ? alignMdRange(t, b[0], b[1], value) : alignHtmlRange(t, b[0], b[1], value);", '      var tb = null;'),
+  },
+  {
+    name: 'a headerless Markdown table is fenced instead of refused',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace("        if (!aligned) return { refused: 'table-header' };", "        if (!aligned) aligned = [':::' + value].concat(r.lines, [':::']);"),
+  },
+  {
+    name: 'an HTML table aligns only the text around it, not its cells',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace('      out += seg(body.slice(last, tm.index)) + alignOpenTag(tm[0], value, HTML_CELL_OPEN);', '      out += seg(body.slice(last, tm.index)) + tm[0];'),
+  },
+  {
+    name: 'the dragged editor height is lost on the next redraw',
+    suite: 'tests/editor-feedback.test.js',
+    apply: (s) => s.replace('aria-label="Draft text"\' + hgt + \'>', 'aria-label="Draft text">'),
+  },
+  {
+    name: 'Save as free draft also writes the typing into the thread draft',
+    suite: 'tests/editor-undo.test.js',
+    apply: (s) => s.replace('          E.dirty = false;\n          state.draftFocusId = mf.id;', '          state.draftFocusId = mf.id;'),
+  },
+  {
+    name: 'Undo restores the mode but not the previous text',
+    suite: 'tests/editor-undo.test.js',
+    apply: (s) => s.replace('          E.text = snap.text; E.lang = snap.lang;', '          E.lang = snap.lang;'),
+  },
+  {
+    name: 'every keystroke is its own Undo step',
+    suite: 'tests/editor-undo.test.js',
+    apply: (s) => s.replace('            if (!state.editor.typingAt || tnow - state.editor.typingAt > TYPING_BURST_MS) pushUndo(state.editor);', '            pushUndo(state.editor);'),
+  },
+  {
+    name: 'the contrast warning fires for merely weak colors again (old 4.5:1 threshold)',
+    suite: 'tests/editor-images.test.js',
+    apply: (s) => s.replace('if (r && r < 2.5) out.push', 'if (r && r < 4.5) out.push'),
+  },
+  {
+    name: 'the narrow toolbar is no longer right-aligned',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('.tfcc-narrow .tfcc-tools { gap: 4px; justify-content: flex-end; }', '.tfcc-narrow .tfcc-tools { gap: 4px; }'),
+  },
+  {
+    name: 'a toolbar button loses its full-word aria-label',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("' aria-label=\"' + escapeHtml(t[3])", "' aria-label=\"' + escapeHtml(t[2])"),
+  },
+  {
+    name: 'the Undo stack grows past 50 steps',
+    suite: 'tests/editor-undo.test.js',
+    apply: (s) => s.replace('  var UNDO_MAX = 50;', '  var UNDO_MAX = 60;'),
+  },
+  // #58 round 2, Batch I: Enter and blank lines keep paragraphs and gaps.
+  {
+    name: 'Insert ignores the HTML line rule: typed lines merge into one paragraph again',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("    if (lang === 'html') return htmlSourcePost(text);", "    if (lang === 'html') return cleanTornHtml(text);"),
+  },
+  {
+    name: 'an empty line in HTML source is no longer a gap',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("      if (!lineUsed) segs.push({ html: '<p>&nbsp;</p>', offset: lineStart });", '      if (!lineUsed) segs.push({ html: \'\', offset: lineStart });'),
+  },
+  {
+    name: 'Preview of HTML source ignores the line rule (Preview and Insert disagree)',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("    if (lang === 'html') return htmlSourceBlocks(src);", "    if (lang === 'html') return [{ html: cleanTornHtml(src), offset: 0 }].filter(function (b) { return b.html; });"),
+  },
+  {
+    name: 'a switch from HTML to Markdown merges typed lines again',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('    var root = buildCleanTree(tokenizeHtml(htmlSourcePost(html)));', '    var root = buildCleanTree(tokenizeHtml(cleanTornHtml(html)));'),
+  },
+  {
+    name: 'Enter inside an HTML paragraph splits it but drops its alignment',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("      return put(ctx.close + '</' + ctx.tag + '>\\n' + ctx.src + ctx.reopen);", "      return put(ctx.close + '</' + ctx.tag + '>\\n<' + ctx.tag + '>' + ctx.reopen);"),
+  },
+  {
+    name: 'Enter inside an HTML paragraph or list item no longer splits it',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("      return put(ctx.close + '</' + ctx.tag + '>\\n' + ctx.src + ctx.reopen);", '      return null;'),
+  },
+  {
+    name: 'Enter on a Markdown bullet line no longer continues the list',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("    return put('\\n' + m[0]);\n  }", '    return null;\n  }'),
+  },
+  {
+    name: 'a numbered Markdown line continues with the same number',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("    if (ol) return put('\\n' + ol[1] + Math.min(parseInt(ol[2], 10) + 1, 999999999) + ol[3]);", "    if (ol) return put('\\n' + ol[1] + ol[2] + ol[3]);"),
+  },
+  {
+    name: 'Enter on an empty list marker keeps the marker, so the list never ends',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('      return { text: t.slice(0, lineStart) + after.slice(rest.length), start: lineStart, end: lineStart };', '      return null;'),
+  },
+  {
+    name: 'an IME composing Enter in the draft field is taken by the editor',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("          // An IME's Enter accepts a candidate; Ctrl, Cmd or Alt+Enter is not typing.\n          if (ev.isComposing === true || ev.keyCode === 229) return;\n", "          // An IME's Enter accepts a candidate; Ctrl, Cmd or Alt+Enter is not typing.\n"),
+  },
+  {
+    name: 'in the draft field only isComposing counts as composition, not keyCode 229',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("not typing.\n          if (ev.isComposing === true || ev.keyCode === 229) return;", "not typing.\n          if (ev.isComposing === true) return;"),
+  },
+  {
+    name: 'Ctrl or Cmd+Enter in the draft field is taken by the editor',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("          if (ev.ctrlKey || ev.metaKey || ev.altKey) return;\n", ''),
+  },
+  {
+    name: 'an Enter edit takes no Undo snapshot',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('        pushUndo(E);\n        E.text = r.text; E.selStart = r.start; E.selEnd = r.end;', '        E.text = r.text; E.selStart = r.start; E.selEnd = r.end;'),
+  },
+  {
+    name: 'an Enter edit redraws the panel, replacing the field under the caret',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('        if (!writeDraftField(el, before, r)) {', '        if (writeDraftField(el, before, r) || true) {'),
+  },
+  // Batch I fix round 1.
+  {
+    name: 'a blank line inside an open top-level paragraph no longer ends it (lines merge for good)',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('          if (gap) {\n            block.html += raw.slice(0, gap.index);', '          if (false) {\n            block.html += raw.slice(0, gap.index);'),
+  },
+  {
+    name: 'Enter reads only the caret line, so a paragraph opened on an earlier line never splits',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('    var head = before.slice(info.open);', "    var head = before.slice(before.lastIndexOf('\\n') + 1);"),
+  },
+  {
+    name: 'the HTML line rule reopens every unclosed inline tag on every line (quadratic)',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('      while (inl.length > LINE_REOPEN_MAX_TAGS || inlChars > LINE_REOPEN_MAX_CHARS) inlChars -= inl.shift().src.length;\n', ''),
+  },
+  {
+    name: 'a phone keyboard line break (beforeinput) is not handled',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("        if (handlers.onDraftEnter(t, false) && typeof ev.preventDefault === 'function') ev.preventDefault();\n      });", '      });'),
+  },
+  {
+    name: 'one Enter is handled twice: keydown and then its beforeinput',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('        if (draftEnterDecided) { draftEnterDecided = false; return; }\n', ''),
+  },
+  {
+    name: 'a beforeinput mark outlives its press, so the next phone Enter is ignored',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("        if (t && t.getAttribute && t.getAttribute('data-act') === 'draft-text') draftEnterDecided = false;\n", ''),
+  },
+  {
+    name: 'Enter at the end of a heading starts another heading',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('      if (heading && atEnd) {', '      if (false) {'),
+  },
+  {
+    name: 'an Enter edit that reaches the limit does not mark the draft at the limit',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('        E.atLimit = r.text.length >= DRAFT_MAX_CHARS;\n', ''),
+  },
+  {
+    name: 'an Enter edit past the draft limit is stored anyway',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('        if (r.text.length > DRAFT_MAX_CHARS) {\n          overLimitNotice(r.text.length);', '        if (false) {\n          overLimitNotice(r.text.length);'),
+  },
+  {
+    name: 'Enter on an empty HTML list item adds another empty item instead of ending the list',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("      if (ctx.tag === 'li' && nb.length === before.length) {", '      if (false) {'),
+  },
+  {
+    name: 'an HTML list item with only an image counts as empty and ends the list',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("      return /^<(?:img|br|hr)\\b/i.test(tag) ? 'x' : '';", "      return '';"),
+  },
+  {
+    name: 'an empty nested list item ends the outer list, not its own',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("      if (tk.type === 'open' && !tk.selfClose) depth += 1;\n", ''),
+  },
+  {
+    name: 'the narrow primary toolbar row wraps again',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace(".tfcc-narrow .tfcc-tools:not(.tfcc-tools-more) { flex-wrap: nowrap; }", '.tfcc-narrow .tfcc-tools:not(.tfcc-tools-more) { }'),
+  },
+  {
+    name: 'the narrow toolbar buttons cannot shrink (fixed 40px)',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('.tfcc-narrow .tfcc-tools button { flex: 0 1 40px; min-width: 32px;', '.tfcc-narrow .tfcc-tools button { flex: 0 0 40px; min-width: 40px;'),
+  },
+  {
+    name: 'the narrow toolbar buttons shrink below the 32px floor',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace('.tfcc-narrow .tfcc-tools button { flex: 0 1 40px; min-width: 32px;', '.tfcc-narrow .tfcc-tools button { flex: 0 1 40px; min-width: 24px;'),
+  },
+  {
+    name: 'Enter in the fixer Image link field does not run Check',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("          handlers.onAction('ed-fix-check', t);\n", ''),
+  },
+  {
+    name: 'Fix all says links were left "in sentences" again',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("' links were left as links (not on a line of their own).'", "' links in sentences were left as links.'"),
+  },
 ];
 
 let failures = 0;

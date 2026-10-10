@@ -459,3 +459,25 @@ test('a stored karma pair reloads unchanged; a half pair is dropped', () => {
   const half = Object.assign(api.freshMine(), { karma: 5 });
   assert.ok(!('karma' in api.normaliseMine(JSON.parse(JSON.stringify(half)))), 'karma without karmaAt');
 });
+
+test('two damaged stores at load are both named in the one notice', () => {
+  const env = loadUserscript({ gmStore: [['tfcc:settings', '{not json'], ['tfcc:organizer', '{not json']] });
+  env.exports.loadAll(1700000000000);
+  const n = env.exports.state.notices;
+  assert.strictEqual(n.length, 1);
+  assert.strictEqual(n[0].text, 'Settings and Folders and tags were damaged and have been reset.');
+});
+
+test('three damaged stores are listed with commas and a final "and"', () => {
+  const env = loadUserscript({ gmStore: [['tfcc:settings', '{not json'], ['tfcc:organizer', '{not json'], ['tfcc:drafts', '{not json']] });
+  env.exports.loadAll(1700000000000);
+  const n = env.exports.state.notices;
+  assert.strictEqual(n.length, 1);
+  assert.strictEqual(n[0].text, 'Settings, Folders and tags, and Drafts were damaged and have been reset.');
+});
+
+test('two damaged stores are joined by "and" alone', () => {
+  const env = loadUserscript({ gmStore: [['tfcc:settings', '{not json'], ['tfcc:drafts', '{not json']] });
+  env.exports.loadAll(1700000000000);
+  assert.strictEqual(env.exports.state.notices[0].text, 'Settings and Drafts were damaged and have been reset.');
+});

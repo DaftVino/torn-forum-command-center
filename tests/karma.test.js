@@ -92,7 +92,7 @@ test('a My posts merge keeps the karma it already had', () => {
   assert.ok(!('karma' in api.mergeMineSnapshot(api.freshMine(), [], [], NOW, true)), 'never back-filled');
 });
 
-test('the icon is ASCII, follows the theme colour, and carries nothing active', () => {
+test('the icon is ASCII, follows the theme color, and carries nothing active', () => {
   const svg = api.KARMA_ICON_SVG;
   assert.match(svg, /^[\x00-\x7F]+$/, 'ASCII only (tests/metadata.test.js rule, Torn PDA rewrites the rest)');
   assert.ok(svg.includes('currentColor'));

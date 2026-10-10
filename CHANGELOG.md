@@ -4,6 +4,112 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+
+- Enter and blank lines keep paragraphs and gaps in every editor mode (#58,
+  owner round 2). HTML source now reads like Markdown: outside an open block
+  each line is a paragraph and an empty line is a gap (`<p>&nbsp;</p>`), so
+  `<p>one</p>`, `two`, an empty line and `three` post as four paragraphs
+  instead of merging into "two three". Lists, tables and quotes typed over
+  several lines stay whole. Preview, Insert, Copy and mode switches all use
+  the same rule, and the HTML this script lays out passes through unchanged.
+- Enter in the HTML editor splits the paragraph or list item at the caret and
+  keeps its alignment; Enter on an empty list item ends the list, leaving the
+  caret on a new line after it, so no empty bullet is posted; Shift+Enter
+  inserts `<br>`. Enter in Markdown continues
+  a `-`, `1.` or `>` line and ends the list or quote on an empty marker. Each
+  is one Undo step, edits the field in place (the caret and a phone's
+  keyboard stay put), leaves an IME's Enter alone, and ignores Ctrl, Cmd and
+  Alt+Enter. Text mode keeps the browser's Enter. A phone keyboard that
+  reports Enter only as a line break (Gboard) gets the same handling. Enter
+  splits a paragraph even when it runs over several lines, Enter at the end
+  of a heading starts a plain paragraph, and a blank line inside a top-level
+  paragraph ends it, so a missed Enter can never merge paragraphs for good.
+- Image link fixer section (#58): "Fix image link" moves from the toolbar to
+  the right end of the Save / Insert / Delete row and opens a section with a
+  link field, Check (converted link, host note, thumbnail loaded only after
+  Check), Copy link, Insert into draft, and "Fix all links in this draft".
+  Enter in the link field runs Check.
+- Fix all now also turns a fixable bare link that stands alone on its line
+  (for example a pasted Drive "view" link) into an image in Markdown and HTML.
+  A bare link not on a line of its own (in a sentence or inside link markup)
+  is left as a link and counted in the message ("left as links (not on a line
+  of their own)"); Text mode asks you to switch to Markdown or HTML.
+- Drafts editor, owner round 2 (#58): toolbar buttons are symbols (B, I, U,
+  S, A, aA, align, quote, link, picture, table, smiley, ?, curved-arrow Undo,
+  and three dots for More) with the full name kept as the tooltip and
+  screen-reader label. On phones the primary row (Undo, B, I, U, Color, Link,
+  More) always fits one line, down to a 320px screen: its buttons are up to
+  40px wide and narrow to 32px rather than wrap. It is right-aligned, as is
+  the More drawer.
+- A custom color is now questioned only when it is near-invisible on a theme
+  (under 2.5:1 contrast), with the line "This color may be hard to see on
+  Torn's light theme." Colors like #ff1111 no longer warn.
+- Drafts is now a post editor (#58).
+  - **Modes:** Text, Markdown, HTML and Preview, switched with a pill.
+    Switching converts the draft without losing anything. Preview shows the
+    post the way Torn will, in its light or dark theme, and tapping a
+    paragraph jumps back to it.
+  - **Toolbar:** bold, italic, underline, strike, Torn's 17 text colors or a
+    custom color, size, alignment, quote, link, image, table, emoji (Torn's
+    own and Unicode) and a Markdown help card. On a narrow panel it shows
+    Undo, B, I, U, Color, Link and More, and wraps onto another row when
+    they do not fit.
+  - **Image link fixer:** paste a Google Drive, Dropbox, GitHub, Giphy,
+    Gyazo, Imgur or Reddit link, and the editor rewrites it into a link Torn
+    can show. Hosts that cannot be rewritten get a one-line how-to. Image
+    links to unsafe hosts are refused.
+  - **Free drafts:** drafts not tied to a thread, such as a new thread's
+    opening post.
+  - **Default editor setting** for new drafts.
+  - **Editor height settings:** "Editor height (desktop)" and "Editor height
+    (phone)", each Small, Medium, Large or Extra large. Small is the old
+    height. Desktop defaults to Large and phone to Medium. A height you drag
+    the box to wins for the rest of that draft's editing.
+  - **Undo** at the start of the toolbar, also in Text mode. It restores the
+    previous text, mode and selection, including after a mode switch. Typing
+    counts as one step per burst, up to 50 steps, cleared when you open
+    another draft. There is no Redo.
+  - **Save as free draft** on a thread draft: what is in the editor becomes a
+    new free draft ("Untitled N") and opens; the thread's saved draft stays
+    as it was.
+  - **Help keys:** the `?` button shows a compact key for the current mode,
+    Markdown or HTML, and reads `X` while it is open.
+  - A short **drafts info** button explains thread drafts, free drafts, Save,
+    Insert and Copy.
+  - A draft over the 20000 character limit is never cut. An action that
+    would pass it is refused with a notice, and typing or pasting at the
+    limit shows a one-time notice.
+
+### Changed
+
+- One status message at a time: a new message replaces the previous one, and
+  messages clear when you open another thread, forum page or panel view, or
+  leave the page.
+- Alignment and Quote apply to every selected line, and aligning anywhere in
+  a table aligns the whole table. A Markdown table needs a header row to hold
+  alignment; without one the editor says so and changes nothing.
+- US spelling throughout (organize, color).
+
+### Fixed
+
+- Tapping anywhere in Preview, including the text inside a paragraph, returns
+  to the source at that spot. It did nothing when the tap landed on text.
+- The editor uses the range you highlighted, not the last typed caret, for
+  every toolbar and picker action, including after the More drawer opens.
+- The height you drag the editor to is kept across toolbar, picker and mode
+  changes.
+- A failed save's error is never replaced by the success message of the same
+  action (Save, Insert, Fix image links, Import, Clear post cache, the
+  resets). A warning, or the next thing you do, can still replace it. Damaged
+  stores found at load are named together in one message.
+- Insert into reply box now reaches Torn's reply editor. It had been writing
+  into a hidden Report reason box since Torn's editor change (#60). Insert
+  adds to what is already in the editor and never replaces it, and you
+  still press Post yourself.
+- Autosave reads Torn's editor again, and never overwrites a Markdown or
+  Text draft you wrote in the panel.
+
 ## [0.2.2] - 2026-10-09
 
 ### Changed
@@ -58,7 +164,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Collapsible Catch up groups (#45). Each folder group's heading, Unfiled's
   too, is a toggle that hides or shows its rows; the choice is remembered on
   this device and is not exported. Mark all read still covers hidden rows.
-- The Settings folder note now explains what folders are (they organise
+- The Settings folder note now explains what folders are (they organize
   only threads you subscribe to, or file by hand, and never add other threads
   from a forum), how to use them and why they help (#45).
 - Settings, author-only mode: its explanation now leads with what it does (a
@@ -152,7 +258,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   keyboard is composing). Save adds a tag and never removes one: a tag the
   thread already has is kept, with "Already tagged". A saved note shows
   as a bar under the Note button. Desktop rows keep their inline fields.
-- The My posts nav button uses the same colours as the other nav buttons, at
+- The My posts nav button uses the same colors as the other nav buttons, at
   every width: the normal fill, and the selected fill only while My posts is
   the current view, and the same weight (no longer bold alone on desktop).
   Its light-grey fill made it look selected. (#43)
@@ -171,7 +277,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   measured figures are in the #43 pull request. Settings, Appearance: **See-
   through background**, on by default, turns it off.
 - The narrow drawer's Archive button shows an archive box (UXWing's "archive
-  files" icon, inline and in the theme's text colour) instead of the
+  files" icon, inline and in the theme's text color) instead of the
   wastebasket, so it reads as archive, not delete. (#41)
 - Narrow view polish (#39). In the narrow layout only:
   - Catch up's "Mark all read", "Set catch-up point to now" and its info
@@ -206,7 +312,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - The custom key link also asks for `user` profile, read only by the karma
   fallback. (#10)
 - The panel header shows the owner's FCC logo in place of the "Forum Command
-  Center" text, inline, in its own colour `#5C768F`, one title line tall, with
+  Center" text, inline, in its own color `#5C768F`, one title line tall, with
   "Forum Command Center" as its accessible name. (#30)
 - A thread row's priority moved out of the action row to sit right after the
   title: the adjustment as a number (0 by default), then small + and -
@@ -307,7 +413,7 @@ First release. Blocked on the signed-in QA gate in `docs/qa-checklist.md`.
 ### Fixed before release
 
 - **The API key disclosure table was black text on the dark panel.** Its cells
-  took their colour by inheritance, and inheritance is the weakest source in
+  took their color by inheritance, and inheritance is the weakest source in
   CSS: a value is inherited only when no rule matches, so any bare `td` rule on
   Torn's own stylesheet beat it. The panel now resets `color` and `background`
   on every descendant, and states both outright on the cells. `background`
@@ -330,14 +436,14 @@ First release. Blocked on the signed-in QA gate in `docs/qa-checklist.md`.
   not written at all, and a redraw the user did not ask for is deferred while an
   input inside the panel has focus and flushed when focus leaves.
 
-- Links in the Search and Drafts views had no colour rule of their own and fell
+- Links in the Search and Drafts views had no color rule of their own and fell
   back to the browser default `rgb(0, 0, 238)`, which reads as black against the
-  dark panel. Every anchor is now coloured in every state, including `:visited`,
+  dark panel. Every anchor is now colored in every state, including `:visited`,
   which would otherwise have gone purple.
-- Dropdown options carry the panel colours. On some platforms the popup is drawn
+- Dropdown options carry the panel colors. On some platforms the popup is drawn
   by the OS and defaults to black on white regardless of the select.
 - The panel no longer tells people to create a **Minimal** access key. The API
-  docs colour-code both selections it needs as Minimal Access, but Torn's key
+  docs color-code both selections it needs as Minimal Access, but Torn's key
   page does not offer that as a choice, so it now names the selections instead:
   a Custom key with `forumsubscribedthreads` and `forumfeed`, or Limited Access.
 

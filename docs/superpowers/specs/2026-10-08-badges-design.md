@@ -31,7 +31,7 @@ rounds. The owner approved the resolution. The record is at
 - **Backlog buster is tied to the backlog itself.** It uses a stored set of
   the thread ids in that morning's Catch up.
 - **With #4 on, "not checked" threads block a check-in** at that moment.
-- **The chip is a cup in the best tier's colour**, not a tiny featured-badge
+- **The chip is a cup in the best tier's color**, not a tiny featured-badge
   glyph. #10's tracker stays on its own line, as #10's spec places it.
 - **Reset everything is a real reset.** There is no backfill.
 - **Multi-tab accounting is best effort.** Nothing promises atomicity.
@@ -43,7 +43,7 @@ record is the reasoning.
 
 ## 1. Goal and principle
 
-The command center pays off when it is used regularly: set up once, organised,
+The command center pays off when it is used regularly: set up once, organized,
 and caught up most days. Badges give a small, honest reward for doing what the
 user already came to the panel to do. They scale with regularity and
 breadth, and they never pay for busywork.
@@ -54,7 +54,7 @@ breadth, and they never pay for busywork.
 |---|---|---|---|
 | **Presence** | Showing up and leaving the forums handled | Catch up is empty against fresh data on a TCT day | Caught up, the five streaks |
 | **Attention** | Spending focused time on threads, across the forums | 15 s of visible, focused time on one thread page | Reader, Bookworm, the three forum badges, Backlog buster |
-| **Setup and care** | Building the workspace | Organiser state | Switched on, First folder, Tidy desk |
+| **Setup and care** | Building the workspace | Organizer state | Switched on, First folder, Tidy desk |
 
 Presence accepts triage. Clearing Catch up with Mark all read is a real
 decision ("none of this matters to me today"), and the script cannot tell a
@@ -86,7 +86,7 @@ Line numbers are from `884f614`. Grep before trusting them.
   navigation callback, including the debounced `MutationObserver` that fires
   on Torn's React churn. A captured visit is a state re-asserted many times a
   minute, not an event. Counting calls would count renders.
-- `captureVisit` creates an organiser entry for any opened thread, so "threads
+- `captureVisit` creates an organizer entry for any opened thread, so "threads
   the panel tracks" is not a useful filter.
 - `catchUpList(rows, lastCatchUpAt)` (l.911) keeps a non-dismissed row with
   `unread > 0` or `lastActivity > lastCatchUpAt`. `lastActivity` includes the
@@ -106,7 +106,7 @@ Line numbers are from `884f614`. Grep before trusting them.
   `JSON.stringify(raw) !== JSON.stringify(normalised)` (see 6.2).
 - `persist(which)` writes one key's whole in-memory value. No tab hears
   another tab's writes: `@grant` has no `GM_addValueChangeListener`.
-- `encodeState` and `importState` (l.1347, l.1412) cover folders, organiser
+- `encodeState` and `importState` (l.1347, l.1412) cover folders, organizer
   fields and drafts. `decodeState` rejects any `v` other than 1 and ignores
   unknown fields.
 - Reset everything (l.3491) resets every key except the API key.
@@ -120,7 +120,7 @@ Line numbers are from `884f614`. Grep before trusting them.
 |---|---|---|---|
 | **Fixed vs variable rewards** | Variable-ratio schedules drive compulsive checking. Fixed, legible rules support a sense of control. | Variable rewards are the core of manipulative design. | **Every badge is deterministic, visible and published with its rule.** No chance, no hidden badges, no mystery. |
 | **Goal gradient** | Effort rises near a visible goal. | Endless ladders become chores. | Progress bars in the catalogue. The shelf shows one "next" goal (the nearest unearned badge). Every ladder is short and ends. |
-| **Streaks and loss aversion** | Streaks build habits because losing one hurts. | Anxiety, and the what-the-hell effect: after a break, people quit. | **Strict streaks, softened in presentation, not in rules.** Best-ever and every badge are kept forever. A break shows as `0`, with `best 23` in neutral colour. There is no red, no "lost", no countdown and no warning. The low rungs (3, 10) are quick to re-earn. The panel chose strictness over rest days: rest days were a second system to explain and test, and they made "consecutive" mean something other than consecutive. |
+| **Streaks and loss aversion** | Streaks build habits because losing one hurts. | Anxiety, and the what-the-hell effect: after a break, people quit. | **Strict streaks, softened in presentation, not in rules.** Best-ever and every badge are kept forever. A break shows as `0`, with `best 23` in neutral color. There is no red, no "lost", no countdown and no warning. The low rungs (3, 10) are quick to re-earn. The panel chose strictness over rest days: rest days were a second system to explain and test, and they made "consecutive" mean something other than consecutive. |
 | **Competence feedback** | Informational rewards support intrinsic motivation. Controlling ones undermine it. | Overjustification. | Names describe what the user became or did ("Tidy desk", "Backlog buster"), not click tallies. |
 | **Rarity tiers** | Scarcity gives meaning. | Grind-only rarity is a chore with a medal. | Tiers follow the *calendar time* a daily user needs, which clicking cannot shorten (4.2). |
 
@@ -133,8 +133,8 @@ Line numbers are from `884f614`. Grep before trusting them.
 | **Mark read, Mark all read, Set catch-up point** | Only by emptying Catch up | Section 5.4 | Repeating does nothing: once per day. |
 | **Catch up empty** | Yes: a **check-in** | Section 5.4 | Once per day. Refreshing more does nothing. |
 | **Already quiet** | Yes: a check-in | The first fresh refresh of the day finds Catch up empty. | A quiet week must not cost a streak. |
-| **Create a folder and file into it** | Once | Organiser state | Earned once, never revoked, never re-earned. |
-| **File every followed thread** | Once | Organiser state, with a floor of 10 | Same |
+| **Create a folder and file into it** | Once | Organizer state | Earned once, never revoked, never re-earned. |
+| **File every followed thread** | Once | Organizer state, with a floor of 10 | Same |
 | **Refresh** | **Never** | | Only the first successful refresh, as Switched on. |
 | **Drafts, pins, tags, export, theme, sort** | Never | | Cut by the panel. They are features, not habits. |
 
@@ -147,7 +147,7 @@ Line numbers are from `884f614`. Grep before trusting them.
 | Gold | octagon | months | 3 |
 | Legendary | double ring | over a year | 1 |
 
-The tier is carried by frame shape and by text as well as colour (WCAG
+The tier is carried by frame shape and by text as well as color (WCAG
 1.4.1).
 
 ---
@@ -248,7 +248,7 @@ dwellStep(dwell, threadId, active, now) -> { dwell, credit: threadId | null }
   `NAV_FLAG`, and every one is wrapped in `try`, so nothing can throw onto
   Torn's page.
 - A credit calls `recordBadgeEvent({ type: 'visit', threadId, forumId }, now)`.
-  `forumId` comes from `state.route.forumId`, or the organiser entry if that
+  `forumId` comes from `state.route.forumId`, or the organizer entry if that
   is 0.
 
 **Once per thread per TCT day.** The record keeps `today.visitIds`. A credit
@@ -434,7 +434,7 @@ in its context.
 | 6 | `explorer` | Explorer | Attention | Bronze | `forums` | 3 | Make focused visits in 3 different forums. | Most players live in one or two forums. A third is a deliberate step. |
 | 7 | `well-travelled` | Well travelled | Attention | Silver | `forums` | 7 | ... in 7 different forums. | Real breadth. |
 | 8 | `cartographer` | Cartographer | Attention | Gold | `forums` | 12 | ... in 12 different forums. | About a quarter of the 43 forums (live count, 2026-10-08). |
-| 9 | `tidy-desk` | Tidy desk | Care | Silver | `tidy` (0/1) | 1 | Follow at least 10 threads and leave none Unfiled. | Organisation that pays off daily. The floor of 10 stops it being trivial. Folder rules count, because setting up rules is the skill. |
+| 9 | `tidy-desk` | Tidy desk | Care | Silver | `tidy` (0/1) | 1 | Follow at least 10 threads and leave none Unfiled. | Organization that pays off daily. The floor of 10 stops it being trivial. Folder rules count, because setting up rules is the skill. |
 | 10 | `backlog-buster` | Backlog buster | Care | Silver | `bigBacklog` | 20 | Start a day with 20 or more in Catch up, make focused visits to 10 of those threads, and finish with Catch up empty. | Digging out after time away is the hardest real use. Tied to the backlog's own ids (5.5). |
 | 11 | `streak-3` | Three days | Streak | Bronze | `best` | 3 | Finish 3 Torn days in a row with Catch up empty. | The early win, within the first week. |
 | 12 | `streak-10` | Ten days | Streak | Silver | `best` | 10 | ... 10 days in a row. | |
@@ -507,10 +507,10 @@ because it makes every collapsed panel taller forever.
   group. The head can be two lines at phone width. It already wraps today.
 - The chip is `flex: 0 0 auto; white-space: nowrap; min-height: 28px`. It
   never grows.
-- **The chip shows:** a **cup drawn in the tier colour of the best earned
+- **The chip shows:** a **cup drawn in the tier color of the best earned
   badge**, the earned count, then a streak glyph and the current streak
   number. **Decision: not a featured-badge glyph.** A 16 px rendering of one
-  badge's own art is illegible, and the cup's colour carries the same
+  badge's own art is illegible, and the cup's color carries the same
   information (the best tier) legibly. With no badges, the cup is drawn as an
   outline in `--tfcc-locked`. The streak segment is hidden until the first
   check-in. Its glyph is filled when today is counted and an outline when
@@ -539,7 +539,7 @@ Wide (about 900 px), shelf closed, #10 present:
 | Forum Command Center [U 7 ^12]                 3 new  12 subscribed [Refresh][Expand][Hide] |
 | Your threads: 34 up, 2 down                                       (#10's subhead)     |
 +--------------------------------------------------------------------------------------+
-  U = cup in the best tier's colour     ^ = streak glyph, filled = today counted
+  U = cup in the best tier's color     ^ = streak glyph, filled = today counted
 ```
 
 Wide, shelf open:
@@ -629,12 +629,12 @@ pushed off their own line.
   (streaks). Frames by tier (4.2).
 - **The host stylesheet can repaint SVG.** A host `svg path { fill: #333 }`
   beats a `fill` attribute, so fill is set in CSS at (1,1,1):
-  `#tfcc-panel .tfcc-ico path { fill: currentColor; stroke: none; }`. Colour
+  `#tfcc-panel .tfcc-ico path { fill: currentColor; stroke: none; }`. Color
   is set by `#tfcc-panel .tfcc-tier-gold { color: var(--tfcc-tier-gold); }`
   at (1,1,0), which beats the (1,0,0) inherit floor. The hostile preview sheet
   gains `svg, svg * { fill: #000; color: #000; }` to prove it.
 
-### 8.6 Colour and contrast, in every theme
+### 8.6 Color and contrast, in every theme
 
 New tokens in **both** theme blocks. Match Torn applies one of the two classes,
 so it is covered by them.
@@ -653,7 +653,7 @@ an SVG fill. `tests/style.test.js` therefore computes every `--tfcc-tier-*`
 and `--tfcc-locked` token against `--tm-bg`, `--tm-bg-2` (the shelf and toast
 surface; its weakest pair is `--tfcc-locked` in light, about 4.2:1) and
 `--tm-bg-3` in both blocks and requires at least 3:1. The existing "light
-overrides every colour" check matches `--tm-` only, so a companion check
+overrides every color" check matches `--tm-` only, so a companion check
 requires every `--tfcc-tier-*` and `--tfcc-locked` token set in the dark block
 to be set in the light block too.
 
@@ -665,7 +665,7 @@ A **Badges** section is appended after Storage, before the version footer:
 Badges
   [x] Show badges and record progress
   Earned from what you do here: focused visits to threads, finishing Torn days
-  with Catch up empty, and organising. A day is a Torn day (00:00 TCT).
+  with Catch up empty, and organizing. A day is a Torn day (00:00 TCT).
   Nothing is sent anywhere, and no request is made. Turning this off stops
   recording; a streak does not survive days with it off.
   [Show all 15 badges]                                   7 of 15 earned
@@ -708,7 +708,7 @@ Badges
   badges silently on upgrade. The panel rejected it for two reasons: it grants
   badges with no evidence trail, and it would silently re-award after Reset
   everything. Upgraders instead earn First folder and Tidy desk at their next
-  organiser change or refresh, each with a toast. That is a small, honest
+  organizer change or refresh, each with a toast. That is a small, honest
   welcome back.
   - **State-based badges are evaluated only on an event.** The `tick` event
     fires after a handler persists the organizer, and `refreshed` fires on

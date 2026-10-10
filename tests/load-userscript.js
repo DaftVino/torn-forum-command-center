@@ -27,6 +27,10 @@ const SOURCE_PATH = path.join(__dirname, '..', 'torn-forum-command-center.user.j
 // Every name a test needs to reach. A function missing from this list is
 // invisible to tests - add it here in the same commit that adds the function.
 const EXPORT_NAMES = [
+  // #58 editor operations
+  'wrapSelection', 'insertBlock', 'markPair', 'applyMark', 'applyBlockMark', 'tableSkeleton', 'emojiSnippet', 'imageSnippet', 'UNICODE_EMOJI',
+  // #58 image link fixer and color contrast
+  'fixImageUrl', 'fixAllImages', 'hexRgb', 'contrastRatio', 'colorWarnings', 'IMAGE_HOWTO',
   // identity and routing
   'SCRIPT_VERSION', 'STORAGE_KEYS', 'isForumsPage', 'parseForumRoute',
   // small shared helpers the suites assert on directly
@@ -36,7 +40,7 @@ const EXPORT_NAMES = [
   'DEFAULT_ENRICH_BUDGET', 'MAX_ENRICH_BUDGET', 'CATEGORY_TTL_MS', 'ENRICH_TTL_MS',
   'DEEP_SEARCH_MAX_PAGES', 'DEEP_SEARCH_MAX_THREADS', 'POSTS_PER_PAGE',
   // orchestration and live state
-  'state', 'init', 'syncToRoute', 'refreshAll', 'enrichThreads', 'runDeepSearch',
+  'state', 'notice', 'init', 'syncToRoute', 'refreshAll', 'enrichThreads', 'runDeepSearch',
   'loadAll', 'persist', 'recompute', 'makeHandlers', 'readRaw', 'writeRaw',
   'ambientTransports', 'transportName', 'injectStyleOnce', 'copyText', 'threadUrl',
   'THREAD_LINK_ATTR', 'THREAD_LINK_MAX_DEPTH', 'threadLinkAttr', 'threadLinkOf',
@@ -99,10 +103,11 @@ const EXPORT_NAMES = [
   'UNFILED_KEY', 'folderOrderKeys', 'moveFolder', 'toggleFolderCollapsed', 'isFolderCollapsed',
   // engine: drafts
   'DRAFT_MAX_CHARS', 'saveDraft', 'draftFor', 'deleteDraft', 'draftList',
+  'newFreeDraft', 'saveFreeDraft', 'deleteFreeDraft', 'draftLangOf', 'FREE_DRAFTS_MAX', 'FREE_NAME_MAX', 'isRecoveredSettings',
   // engine: my posts
   'MINE_MAX_THREADS', 'freshMine', 'freshMineThread', 'normaliseMine', 'normaliseMineThread',
   'mineThreadFromApi', 'minePostFromApi', 'pickList', 'threadPostsTotal', 'parseThreadDetail',
-  'mergeMineSnapshot', 'applyMineDetail', 'mineUnreadFor', 'isOrganised',
+  'mergeMineSnapshot', 'applyMineDetail', 'mineUnreadFor', 'isOrganized',
   'mineLookupTargets', 'mineIsDue', 'viewRows',
   // runtime: my posts
   'MINE_TTL_MS', 'MINE_PAGE_LIMIT', 'refreshMine',
@@ -124,9 +129,18 @@ const EXPORT_NAMES = [
   'VIEWS', 'buildPanelModel', 'loadingModel', 'errorModel', 'noopHandlers',
   'renderPanel', 'panelStyleText', 'THEMES', 'resolveTheme', 'measurePageTheme', 'applyThemeClass', 'observeTheme',
   // runtime: drafts insertion
-  'findReplyBox', 'insertDraft',
+  'findReplyBox', 'insertPost', 'caretToEnd', 'copyPost',
   // runtime: debug
   'gatherDebugContext', 'buildDebugReport',
+  // #58: Drafts rich editor
+  'editorKeyFor', 'loadEditor', 'editorPostHtml', 'saveEditor', 'overLimitNotice', 'previewImages',
+  'renderEditorPane', 'renderDraftList', 'renderModePill', 'renderPreview', 'teVars', 'EDITOR_MODES',
+  'insertAtCaret', 'renderEditorToolbar', 'renderPicker', 'EDITOR_TOOLS',
+  'TORN_COLORS', 'TORN_COLOR_NAMES', 'TORN_EMOJI', 'DRAFT_LANGS', 'FONT_SIZE_MIN', 'FONT_SIZE_MAX',
+  'SIZE_PICKS', 'HEADING_PX', 'PASTE_MARKER', 'EDITOR_BG', 'CLEAN_MAX_CHARS', 'URL_MAX_CHARS',
+  'mdInline', 'mdBlocks', 'mdToHtml', 'MD_ESCAPABLE',
+  'htmlToMd', 'textToHtml', 'textToMd', 'htmlToText', 'postHtml', 'convertDraft', 'previewModel', 'htmlLineSegments', 'htmlSourceBlocks', 'htmlSourcePost', 'editorEnter',
+  'decodeEntities', 'tokenizeHtml', 'cleanTornHtml', 'htmlSource', 'safeHref', 'safeImgSrc', 'emojiFromSrc',
   // formatting
   'formatRelativeTime', 'formatAbsoluteTime', 'formatCount', 'formatBytes', 'plural', 'escapeHtml',
 ];
@@ -345,7 +359,7 @@ function makeSandbox(options = {}) {
       dispatchEvent(ev) {
         const list = (this._listeners && this._listeners[ev && ev.type]) || [];
         for (const fn of list.slice()) fn(ev);
-        return true;
+        return !(ev && ev.defaultPrevented);
       },
       querySelector(sel) { return options.htmlQuery ? queryIn(this, sel, false) : null; },
       querySelectorAll(sel) { return options.htmlQuery ? queryIn(this, sel, true) : []; },
@@ -387,6 +401,10 @@ function makeSandbox(options = {}) {
     body,
     createElement: makeElement,
     createTextNode: (t) => ({ nodeType: 3, textContent: String(t) }),
+    createRange: () => ({
+      selectNodeContents(n) { selectionLog.push({ op: 'selectNodeContents', node: n }); },
+      collapse(toStart) { selectionLog.push({ op: 'collapse', toStart }); },
+    }),
     querySelector(sel) {
       queryLog.push(String(sel));
       if (Object.prototype.hasOwnProperty.call(selectorTable, sel)) return selectorTable[sel];
@@ -418,6 +436,9 @@ function makeSandbox(options = {}) {
     replaceState(...a) { historyCalls.push(['replaceState', a]); },
   };
 
+  const selectionLog = [];
+  const clipboardLog = [];
+
   const windowStub = {
     location: Object.assign({}, DEFAULT_LOCATION, options.location || {}),
     history: historyStub,
@@ -439,6 +460,33 @@ function makeSandbox(options = {}) {
     HTMLInputElement: function HTMLInputElement() {},
     Event: class FakeEvent {
       constructor(type, init) { this.type = type; this.bubbles = !!(init && init.bubbles); }
+    },
+    DataTransfer: class FakeDataTransfer {
+      constructor() { this._d = {}; }
+      setData(type, v) { this._d[type] = String(v); }
+      getData(type) { return Object.prototype.hasOwnProperty.call(this._d, type) ? this._d[type] : ''; }
+    },
+    ClipboardEvent: class FakeClipboardEvent {
+      constructor(type, init) {
+        this.type = type;
+        this.bubbles = !!(init && init.bubbles);
+        this.cancelable = !!(init && init.cancelable);
+        this.clipboardData = (init && init.clipboardData) || null;
+        this.defaultPrevented = false;
+      }
+      preventDefault() { if (this.cancelable) this.defaultPrevented = true; }
+    },
+    ClipboardItem: class FakeClipboardItem { constructor(map) { this.types = Object.keys(map); this.map = map; } },
+    Blob: class FakeBlob { constructor(parts, opts) { this.parts = parts; this.type = (opts && opts.type) || ''; } },
+    getSelection: () => ({
+      removeAllRanges() { selectionLog.push({ op: 'removeAllRanges' }); },
+      addRange(r) { selectionLog.push({ op: 'addRange', range: r }); },
+    }),
+    navigator: {
+      clipboard: {
+        writeText(t) { clipboardLog.push({ op: 'writeText', text: t }); return Promise.resolve(); },
+        write(items) { clipboardLog.push({ op: 'write', items }); return Promise.resolve(); },
+      },
     },
     // Controllable, because resolveTheme now measures what the page paints
     // rather than guessing at a class name. `computedStyles` maps a stub
@@ -599,7 +647,7 @@ function makeSandbox(options = {}) {
 
   return {
     sandbox, gmStore, win: windowStub, doc: documentStub, body, head,
-    observers, historyCalls, calls, nativeSetterCalls, createdElements,
+    observers, historyCalls, calls, nativeSetterCalls, selectionLog, clipboardLog, createdElements,
     makeElement,
     runTimers, advanceTimersBy,
     resize, resizeObservers, focusLog, queryLog,

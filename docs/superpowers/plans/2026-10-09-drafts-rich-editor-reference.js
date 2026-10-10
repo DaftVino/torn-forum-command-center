@@ -56,6 +56,11 @@
   // times. A test pins the bound with the worst inputs found.
   var CLEAN_MAX_CHARS = 1000000;
   var URL_MAX_CHARS = 2000;
+  // Open-element depth past which a new element is unwrapped (a ghost). Far
+  // beyond any real post; it keeps the recursive serialisers off the call-stack
+  // limit, which Torn PDA's WebView reaches sooner than Node does.
+  var CLEAN_MAX_DEPTH = 100;
+  var STRUCT_TAGS = { table: 1, tbody: 1, thead: 1, tfoot: 1, tr: 1, ul: 1, ol: 1 };
 
   // ---- HTML tokenizer ------------------------------------------------------
 
@@ -282,7 +287,13 @@
       }
       var top = stack[stack.length - 1];
       if (tok.type === 'text') {
-        if (!tok.raw) top.children.push({ text: tok.text });
+        if (!tok.raw) {
+          // Adjacent text merges, so a dropped element between two runs
+          // leaves one run and cleaning stays idempotent.
+          var last = top.children[top.children.length - 1];
+          if (last && last.text !== undefined) last.text += tok.text;
+          else top.children.push({ text: tok.text });
+        }
         continue;
       }
       if (tok.type === 'open') {
@@ -300,6 +311,16 @@
           if (!tok.selfClose && !VOID_TAGS[tok.tag]) {
             stack.push({ tag: '#ghost', from: tok.tag, style: {}, children: top.children });
           }
+          continue;
+        }
+        if (stack.length > CLEAN_MAX_DEPTH && !tok.selfClose && node.tag !== 'br' && node.tag !== 'img') {
+          // Share the nearest ancestor that can hold text, so text under a
+          // capped table or list part is kept rather than lost.
+          var holder = top;
+          for (var h = stack.length - 1; h > 0; h -= 1) {
+            if (!STRUCT_TAGS[stack[h].tag]) { holder = stack[h]; break; }
+          }
+          stack.push({ tag: '#ghost', from: tok.tag, style: {}, children: holder.children });
           continue;
         }
         if (BLOCK_TAGS[node.tag]) closeUpTo(stack, ['p'], ['li', 'td', 'th', 'blockquote']);
@@ -605,6 +626,12 @@
           i = im.end;
           continue;
         }
+        if (im) {
+          // An image whose source is not allowed stays literal text, not a link.
+          out += '![';
+          i += 2;
+          continue;
+        }
       }
       if (c === '[') {
         var ln = deep ? null : mdLink(s, i, n);
@@ -750,7 +777,7 @@
       var h = /^(#{1,3})[ \t]+(.*)$/.exec(line);
       if (h && h[2].trim()) {
         out.push({ line: start, html: '<p' + alignAttr() + '><span style="font-size: ' + HEADING_PX[h[1].length]
-          + 'px;"><strong>' + mdInline(h[2]) + '</strong></span></p>' });
+          + 'px;"><strong>' + mdInline(h[2].trim()) + '</strong></span></p>' });
         continue;
       }
       if (BLOCK_HTML_LINE.test(line)) { out.push({ line: start, html: line }); continue; }
@@ -1112,6 +1139,8 @@
   });
 
   function imageResult(status, url, host, note) {
+    // Parentheses are encoded so a link can never close a Markdown ![alt](url) early.
+    if (url && (status === 'ok' || status === 'fixed')) url = url.replace(/\(/g, '%28').replace(/\)/g, '%29');
     return { status: status, url: url, host: host, note: note || '' };
   }
 
@@ -1127,7 +1156,7 @@
     if (!u) return imageResult('refused', '', '', 'Paste an image link.');
     if (u.length > URL_MAX_CHARS) return imageResult('refused', '', '', 'That link is too long.');
     if (/^http:\/\//i.test(u)) return imageResult('refused', '', '', 'Torn needs an https link. Try the same link with https.');
-    var m = /^https:\/\/([^\/?#\s]+)([^\s"'<>`]*)$/i.exec(u);
+    var m = /^https:\/\/([a-z0-9.-]+(?::[0-9]{1,5})?)(?=[\/?#]|$)([^\s"'<>`\\]*)$/i.exec(u);
     if (!m) return imageResult('refused', '', '', 'That is not a web link.');
     var host = m[1].toLowerCase().replace(/^www\./, '');
     var rest = m[2];
@@ -1231,7 +1260,7 @@
     return { text: src, changed: changed };
   }
 
-  // ---- custom colour contrast (#58) ------------------------------------------
+  // ---- custom color contrast (#58) ------------------------------------------
 
   function hexRgb(hex) {
     var h = String(hex || '').toLowerCase();
@@ -1257,7 +1286,7 @@
     return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
   }
 
-  // The themes a custom colour is hard to read in (WCAG AA, 4.5:1), against the
+  // The themes a custom color is hard to read in (WCAG AA, 4.5:1), against the
   // editor backgrounds the owner measured.
   function colorWarnings(hex) {
     var out = [];
@@ -1325,13 +1354,71 @@
     }
   }
 
+  // A block tag in HTML source. An inline mark never spans one, so a selection
+  // across two paragraphs is marked inside each, and the paragraphs stay two.
+  var HTML_BLOCK_TAG = /<\/?(?:p|h[1-6]|li|ul|ol|blockquote|table|thead|tbody|tfoot|tr|td|th|div)(?:\s[^>]*)?>/gi;
+
   function applyMark(lang, text, start, end, mark, value) {
     var pair = markPair(lang, mark, value);
     var placeholder = mark === 'link' ? 'link text' : 'text';
-    return wrapSelection(text, start, end, pair[0], pair[1], placeholder);
+    var t = String(text || '');
+    var s = clampSel(t, start, end);
+    var sel = t.slice(s[0], s[1]);
+    HTML_BLOCK_TAG.lastIndex = 0;
+    if (lang !== 'html' || s[0] === s[1] || !HTML_BLOCK_TAG.test(sel)) {
+      return wrapSelection(t, s[0], s[1], pair[0], pair[1], placeholder);
+    }
+    var out = '';
+    var last = 0;
+    var wrap = function (part) { return part.trim() === '' ? part : pair[0] + part + pair[1]; };
+    HTML_BLOCK_TAG.lastIndex = 0;
+    var m;
+    while ((m = HTML_BLOCK_TAG.exec(sel)) !== null) {
+      out += wrap(sel.slice(last, m.index)) + m[0];
+      last = m.index + m[0].length;
+    }
+    out += wrap(sel.slice(last));
+    return { text: t.slice(0, s[0]) + out + t.slice(s[1]), start: s[0], end: s[0] + out.length };
   }
 
-  // Quote and alignment act on whole lines.
+  var HTML_P_LINE = /^\s*<(?:p|h[1-6])(?:\s[^>]*)?>/i;
+  var HTML_BLOCK_LINE = /^\s*<(?:p|h[1-6]|ul|ol|blockquote|table|div)(?:\s[^>]*)?>/i;
+  var HTML_P_OPEN = /<(p|h[1-6])((?:\s[^>]*)?)>/gi;
+
+  // Sets text-align on each paragraph opening tag in a line, replacing any it
+  // had.
+  function alignOpenTag(line, value) {
+    return line.replace(HTML_P_OPEN, function (all, tag, attrs) {
+      var decl = 'text-align: ' + value + ';';
+      var sm = /\sstyle\s*=\s*("([^"]*)"|'([^']*)')/i.exec(attrs);
+      if (!sm) return '<' + tag + attrs + ' style="' + decl + '">';
+      var kept = String(sm[2] !== undefined ? sm[2] : sm[3]).split(';')
+        .filter(function (d) { return d.trim() !== '' && !/^\s*text-align\s*:/i.test(d); })
+        .map(function (d) { return d.trim() + ';'; });
+      var style = [decl].concat(kept).join(' ');
+      return '<' + tag + attrs.slice(0, sm.index) + ' style="' + style + '"' + attrs.slice(sm.index + sm[0].length) + '>';
+    });
+  }
+
+  // HTML lines, split into block lines and runs of loose text between them.
+  function htmlLineGroups(body, isBlock) {
+    var groups = [];
+    body.split('\n').forEach(function (l) {
+      var block = isBlock(l);
+      var prev = groups[groups.length - 1];
+      if (!block && prev && !prev.block) prev.lines.push(l);
+      else groups.push({ block: block, lines: [l] });
+    });
+    return groups;
+  }
+
+  function looseRun(lines) {
+    return lines.map(function (l) { return l.trim() === '' ? '' : l; }).join('\n');
+  }
+
+  // Quote and alignment act on whole lines. In HTML a line that is already a
+  // paragraph is aligned in place or quoted as it is, never put inside another
+  // paragraph; loose text is wrapped in one.
   function applyBlockMark(lang, text, start, end, mark, value) {
     var t = String(text || '');
     var s = clampSel(t, start, end);
@@ -1342,11 +1429,20 @@
       replaced = mark === 'quote'
         ? body.split('\n').map(function (l) { return l.trim() === '' ? '>' : '> ' + l; }).join('\n')
         : ':::' + value + '\n' + body + '\n:::';
+    } else if (mark === 'quote') {
+      replaced = '<blockquote>' + htmlLineGroups(body, function (l) { return HTML_BLOCK_LINE.test(l); })
+        .map(function (g) {
+          if (g.block) return g.lines[0].trim();
+          var run = looseRun(g.lines);
+          return run.trim() === '' && body.trim() !== '' ? '' : '<p>' + run + '</p>';
+        }).join('') + '</blockquote>';
     } else {
-      var paras = body.split('\n').map(function (l) { return l.trim() === '' ? '' : l; }).join('\n');
-      replaced = mark === 'quote'
-        ? '<blockquote><p>' + paras + '</p></blockquote>'
-        : '<p style="text-align: ' + value + ';">' + paras + '</p>';
+      replaced = htmlLineGroups(body, function (l) { return HTML_P_LINE.test(l); })
+        .map(function (g) {
+          if (g.block) return alignOpenTag(g.lines[0], value);
+          var run = looseRun(g.lines);
+          return run.trim() === '' && body.trim() !== '' ? run : '<p style="text-align: ' + value + ';">' + run + '</p>';
+        }).join('\n');
     }
     var next = t.slice(0, b[0]) + replaced + t.slice(b[1]);
     return { text: next, start: b[0], end: b[0] + replaced.length };

@@ -103,7 +103,7 @@
     + '"/></svg>';
   // The owner's FCC logo (#30), in place of the header's title text. No id,
   // no aria-labelledby and no <title>: a fixed id would collide on Torn's page,
-  // so the accessible name is an aria-label. The fill is the owner's colour;
+  // so the accessible name is an aria-label. The fill is the owner's color;
   // the .tfcc-logo rules repeat it so a host "svg * { fill }" cannot win.
   // The viewBox is cropped to the letters (x 10-116, y 9-54 of the original
   // 127x66 art), so the drawn edges, not blank margin, meet the chip height.
@@ -229,6 +229,8 @@
     'settings-badges': 'About badges',
     // #43: in the open narrow row's drawer, before the priority number.
     priority: 'About priority',
+    // #58 C4: the Drafts editor.
+    'drafts-editor': 'About drafts',
   });
   // #43: info keys that live in the open row's drawer. One shared key: only
   // the open drawer renders it, and it closes whenever that drawer does.
@@ -237,7 +239,7 @@
     threads: Object.freeze(['priority']),
     catchup: Object.freeze(['catchup', 'priority']),
     search: Object.freeze(['search']),
-    drafts: Object.freeze([]),
+    drafts: Object.freeze(['drafts-editor']),
     settings: Object.freeze(['settings-budget', 'settings-author', 'settings-rows', 'settings-autohide',
       'settings-clip', 'settings-seethrough', 'settings-folders', 'settings-badges']),
     mine: Object.freeze(['mine']),
@@ -492,6 +494,11 @@
       // #43 (owner): the panel base and row cards are translucent. On by
       // default; a stored false is kept.
       seeThrough: true,
+      // #58: the mode a new draft opens in. Existing drafts keep their own.
+      draftLang: 'md',
+      // #58 F1: default editor heights, desktop and phone (strict menu).
+      editorHeightWide: 'large',
+      editorHeightNarrow: 'medium',
     };
   }
 
@@ -538,6 +545,10 @@
       out.rowsShown = typeof raw.rowsShown === 'number' && ROWS_SHOWN_OPTIONS.indexOf(raw.rowsShown) !== -1
         ? raw.rowsShown : 0;
     }
+    // #58: strict on the menu; absent or off it takes the default.
+    out.draftLang = DRAFT_LANGS.indexOf(raw.draftLang) !== -1 ? raw.draftLang : d.draftLang;
+    out.editorHeightWide = Object.prototype.hasOwnProperty.call(EDITOR_HEIGHTS, raw.editorHeightWide) ? raw.editorHeightWide : d.editorHeightWide;
+    out.editorHeightNarrow = Object.prototype.hasOwnProperty.call(EDITOR_HEIGHTS, raw.editorHeightNarrow) ? raw.editorHeightNarrow : d.editorHeightNarrow;
     return out;
   }
 
@@ -793,24 +804,51 @@
 
   function freshDrafts() { return { v: SCHEMA_VERSION, byThread: {} }; }
 
+  var FREE_DRAFTS_MAX = 100;
+  var FREE_NAME_MAX = 80;
+
+  function draftLangField(v) { return v === 'md' || v === 'html' ? v : null; }
+
   function normaliseDrafts(raw) {
     if (!isPlainObject(raw)) return freshDrafts();
     if (toInt(raw.v, 0) > SCHEMA_VERSION) return freshDrafts();
     var out = freshDrafts();
-    if (!isPlainObject(raw.byThread)) return out;
-    var ids = Object.keys(raw.byThread);
-    for (var i = 0; i < ids.length && i < 500; i += 1) {
-      var id = ids[i];
-      if (!/^[0-9]{1,12}$/.test(id)) continue;
-      var d = raw.byThread[id];
-      if (!isPlainObject(d)) continue;
-      var text = safeString(d.text, DRAFT_MAX_CHARS);
-      if (!text) continue;
-      out.byThread[id] = {
-        text: text,
-        updatedAt: Math.max(0, toInt(d.updatedAt, 0)),
-        title: safeString(d.title, 300),
-      };
+    if (isPlainObject(raw.byThread)) {
+      var ids = Object.keys(raw.byThread);
+      for (var i = 0; i < ids.length && i < 500; i += 1) {
+        var id = ids[i];
+        if (!/^[0-9]{1,12}$/.test(id)) continue;
+        var d = raw.byThread[id];
+        if (!isPlainObject(d)) continue;
+        var text = safeString(d.text, DRAFT_MAX_CHARS);
+        if (!text) continue;
+        // Key order matters: the recovery check compares JSON, and a stored
+        // draft was written in this order (saveDraft).
+        var entry = { text: text, updatedAt: Math.max(0, toInt(d.updatedAt, 0)), title: safeString(d.title, 300) };
+        var lang = draftLangField(d.lang);
+        if (lang) entry.lang = lang;
+        out.byThread[id] = entry;
+      }
+    }
+    // #58: free drafts, tied to no thread. Absent stays absent, so an older
+    // blob normalises byte-identical. A named draft may be empty.
+    if (isPlainObject(raw.free)) {
+      out.free = {};
+      var fids = Object.keys(raw.free);
+      for (var k = 0, kept = 0; k < fids.length && kept < FREE_DRAFTS_MAX; k += 1) {
+        if (!/^n[0-9]{1,12}$/.test(fids[k])) continue;
+        var f = raw.free[fids[k]];
+        if (!isPlainObject(f)) continue;
+        var fe = {
+          name: safeString(f.name, FREE_NAME_MAX) || 'Untitled',
+          text: safeString(f.text, DRAFT_MAX_CHARS),
+          updatedAt: Math.max(0, toInt(f.updatedAt, 0)),
+        };
+        var fl = draftLangField(f.lang);
+        if (fl) fe.lang = fl;
+        out.free[fids[k]] = fe;
+        kept += 1;
+      }
     }
     return out;
   }
@@ -1716,7 +1754,7 @@
 
   // What pulls a My posts thread into Threads. A read marker and a visit
   // deliberately do not, or marking your own thread read would file it.
-  function isOrganised(entry, hasDraft) {
+  function isOrganized(entry, hasDraft) {
     if (hasDraft) return true;
     if (!entry) return false;
     return !!(entry.folderId || entry.tags.length || entry.pinned || entry.priority !== 0
@@ -1884,7 +1922,7 @@
         up: rec && typeof rec.up === 'number' ? rec.up : null,
         down: rec && typeof rec.down === 'number' ? rec.down : null,
         rating: rec && typeof rec.rating === 'number' ? rec.rating : null,
-        inThreads: !!api || !rec || isOrganised(entry, !!draft),
+        inThreads: !!api || !rec || isOrganized(entry, !!draft),
         unreadSource: unreadSource,
       });
     }
@@ -2701,46 +2739,98 @@
 
   // -- drafts --------------------------------------------------------------
 
-  function saveDraft(drafts, threadId, text, now, title) {
+  function nextDrafts(drafts) {
+    var next = { v: SCHEMA_VERSION, byThread: Object.assign({}, (drafts && drafts.byThread) || {}) };
+    if (drafts && drafts.free) next.free = Object.assign({}, drafts.free);
+    return next;
+  }
+
+  function saveDraft(drafts, threadId, text, now, title, lang) {
     var id = String(toInt(threadId, 0));
     if (id === '0') return drafts;
-    var next = { v: SCHEMA_VERSION, byThread: Object.assign({}, drafts.byThread) };
+    var next = nextDrafts(drafts);
     var clean = safeString(text, DRAFT_MAX_CHARS);
     if (!clean.trim()) {
       delete next.byThread[id];
       return next;
     }
-    next.byThread[id] = {
+    var entry = {
       text: clean,
       updatedAt: Math.max(0, toInt(now, 0)),
       title: safeString(title, 300) || (next.byThread[id] ? next.byThread[id].title : ''),
     };
+    var l = draftLangField(lang);
+    if (l) entry.lang = l;
+    next.byThread[id] = entry;
     return next;
   }
 
-  function draftFor(drafts, threadId) {
-    var id = String(threadId);
-    return drafts && drafts.byThread && Object.prototype.hasOwnProperty.call(drafts.byThread, id)
-      ? drafts.byThread[id]
-      : null;
+  function isFreeKey(key) { return /^n[0-9]{1,12}$/.test(String(key)); }
+
+  function draftFor(drafts, key) {
+    var id = String(key);
+    var bag = isFreeKey(id) ? (drafts && drafts.free) : (drafts && drafts.byThread);
+    return bag && Object.prototype.hasOwnProperty.call(bag, id) ? bag[id] : null;
   }
 
+  function draftLangOf(entry) { return entry && draftLangField(entry.lang) ? entry.lang : 'text'; }
+
   function deleteDraft(drafts, threadId) {
-    var next = { v: SCHEMA_VERSION, byThread: Object.assign({}, drafts.byThread) };
+    var next = nextDrafts(drafts);
     delete next.byThread[String(threadId)];
     return next;
   }
 
+  function newFreeDraft(drafts, now, lang) {
+    var next = nextDrafts(drafts);
+    next.free = next.free || {};
+    if (Object.keys(next.free).length >= FREE_DRAFTS_MAX) return { drafts: drafts, id: null };
+    // Ids stay within the 12 digits the normaliser accepts, wrapping rather
+    // than growing a thirteenth.
+    var n = Math.max(1, toInt(now, 0) % 1000000000000);
+    while (Object.prototype.hasOwnProperty.call(next.free, 'n' + n)) n = n >= 999999999999 ? 1 : n + 1;
+    var names = Object.keys(next.free).map(function (k) { return next.free[k].name; });
+    var num = 1;
+    while (names.indexOf('Untitled ' + num) !== -1) num += 1;
+    var entry = { name: 'Untitled ' + num, text: '', updatedAt: Math.max(0, toInt(now, 0)) };
+    var l = draftLangField(lang);
+    if (l) entry.lang = l;
+    next.free['n' + n] = entry;
+    return { drafts: next, id: 'n' + n };
+  }
+
+  function saveFreeDraft(drafts, id, text, now, name, lang) {
+    if (!isFreeKey(id) || !drafts.free || !drafts.free[id]) return drafts;
+    var next = nextDrafts(drafts);
+    var entry = {
+      name: safeString(name, FREE_NAME_MAX).trim() || next.free[id].name,
+      text: safeString(text, DRAFT_MAX_CHARS),
+      updatedAt: Math.max(0, toInt(now, 0)),
+    };
+    var l = draftLangField(lang);
+    if (l) entry.lang = l;
+    next.free[id] = entry;
+    return next;
+  }
+
+  function deleteFreeDraft(drafts, id) {
+    var next = nextDrafts(drafts);
+    if (next.free) delete next.free[String(id)];
+    return next;
+  }
+
   function draftList(drafts) {
+    var out = [];
     var ids = Object.keys((drafts && drafts.byThread) || {});
-    return ids.map(function (id) {
-      return {
-        threadId: id,
-        text: drafts.byThread[id].text,
-        updatedAt: drafts.byThread[id].updatedAt,
-        title: drafts.byThread[id].title,
-      };
-    }).sort(function (a, b) { return b.updatedAt - a.updatedAt; });
+    ids.forEach(function (id) {
+      var d = drafts.byThread[id];
+      out.push({ kind: 'thread', key: id, threadId: id, text: d.text, updatedAt: d.updatedAt, title: d.title, lang: draftLangOf(d) });
+    });
+    Object.keys((drafts && drafts.free) || {}).forEach(function (id) {
+      var f = drafts.free[id];
+      out.push({ kind: 'free', key: id, threadId: null, text: f.text, updatedAt: f.updatedAt, title: f.name, name: f.name, lang: draftLangOf(f) });
+    });
+    return out.sort(function (a, b) { return b.updatedAt - a.updatedAt; });
   }
 
   // -- export and import ----------------------------------------------------
@@ -2797,6 +2887,13 @@
         updatedAt: drafts.byThread[dids[j]].updatedAt,
         title: drafts.byThread[dids[j]].title,
       };
+      if (drafts.byThread[dids[j]].lang) payload.drafts[dids[j]].lang = drafts.byThread[dids[j]].lang;
+    }
+    // #58: free drafts travel with the rest of the user's work.
+    var fids = Object.keys((drafts && drafts.free) || {});
+    if (fids.length) {
+      payload.freeDrafts = {};
+      fids.forEach(function (id) { payload.freeDrafts[id] = Object.assign({}, drafts.free[id]); });
     }
     if (badges) payload.badges = exportBadges(badges);
     return EXPORT_PREFIX + b64EncodeUtf8(JSON.stringify(payload), btoaFn);
@@ -2921,7 +3018,7 @@
       }
     }
 
-    var nextDrafts = { v: SCHEMA_VERSION, byThread: Object.assign({}, drafts.byThread) };
+    var nextDraftsBag = nextDrafts(drafts);
     if (isPlainObject(payload.drafts)) {
       var dids = Object.keys(payload.drafts);
       for (var k = 0; k < dids.length && k < 500; k += 1) {
@@ -2931,13 +3028,26 @@
         var textValue = safeString(d.text, DRAFT_MAX_CHARS);
         if (!textValue) continue;
         var incomingAt = Math.max(0, toInt(d.updatedAt, 0));
-        var current = nextDrafts.byThread[dids[k]];
+        var current = nextDraftsBag.byThread[dids[k]];
         if (current && current.updatedAt >= incomingAt) continue;
-        nextDrafts.byThread[dids[k]] = {
+        nextDraftsBag.byThread[dids[k]] = {
           text: textValue, updatedAt: incomingAt, title: safeString(d.title, 300),
         };
+        var importedLang = draftLangField(d.lang);
+        if (importedLang) nextDraftsBag.byThread[dids[k]].lang = importedLang;
         addedDrafts += 1;
       }
+    }
+    if (isPlainObject(payload.freeDrafts)) {
+      var incomingFree = normaliseDrafts({ v: SCHEMA_VERSION, byThread: {}, free: payload.freeDrafts }).free || {};
+      nextDraftsBag.free = nextDraftsBag.free || {};
+      Object.keys(incomingFree).forEach(function (id) {
+        var have = nextDraftsBag.free[id];
+        if (have && have.updatedAt >= incomingFree[id].updatedAt) return;
+        if (!have && Object.keys(nextDraftsBag.free).length >= FREE_DRAFTS_MAX) return;
+        nextDraftsBag.free[id] = incomingFree[id];
+        addedDrafts += 1;
+      });
     }
 
     var nextBadges = badges ? normaliseBadges(badges) : null;
@@ -2953,7 +3063,7 @@
     return {
       ok: true,
       organizer: org,
-      drafts: nextDrafts,
+      drafts: nextDraftsBag,
       badges: nextBadges,
       summary: { addedFolders: addedFolders, changedThreads: changedThreads, addedDrafts: addedDrafts,
         addedBadges: addedBadges },
@@ -3424,7 +3534,7 @@
   }
 
   // Icons are SVG paths written in ASCII: no emoji, no icon font, no <text>.
-  // Frames carry the tier by shape as well as colour.
+  // Frames carry the tier by shape as well as color.
   var BADGE_FRAMES = Object.freeze({
     bronze: 'M1 8a7 7 0 1 0 14 0a7 7 0 1 0 -14 0zM2.5 8a5.5 5.5 0 1 1 11 0a5.5 5.5 0 1 1 -11 0z',
     silver: 'M8 0.8L14.2 4.4V11.6L8 15.2L1.8 11.6V4.4ZM8 2.5L12.7 5.2V10.8L8 13.5L3.3 10.8V5.2Z',
@@ -3455,15 +3565,1977 @@
   // glyph names a BADGE_GLYPHS entry. framed draws the tier frame around it.
   function badgeIcon(cls, glyph, size, framed) {
     var px = toInt(size, 16);
-    var colour = cls === 'locked' ? 'tfcc-locked' : (cls === 'plain' ? '' : 'tfcc-tier-' + cls);
+    var color = cls === 'locked' ? 'tfcc-locked' : (cls === 'plain' ? '' : 'tfcc-tier-' + cls);
     var frameKey = cls === 'locked' ? 'bronze' : cls;
     var paths = [];
     if (framed && Object.prototype.hasOwnProperty.call(BADGE_FRAMES, frameKey)) paths.push(BADGE_FRAMES[frameKey]);
     if (Object.prototype.hasOwnProperty.call(BADGE_GLYPHS, glyph)) paths.push(BADGE_GLYPHS[glyph]);
-    return '<svg class="tfcc-ico' + (colour ? ' ' + colour : '') + '" viewBox="0 0 16 16" width="' + px
+    return '<svg class="tfcc-ico' + (color ? ' ' + color : '') + '" viewBox="0 0 16 16" width="' + px
       + '" height="' + px + '" aria-hidden="true" focusable="false">'
       + paths.map(function (d) { return '<path d="' + d + '"/>'; }).join('') + '</svg>';
   }
+
+  // ---- #58 editor constants ----------------------------------------------
+  var DRAFT_LANGS = Object.freeze(['md', 'html', 'text']);
+  // #58 F1: the editor textarea's default height, by Settings menu value.
+  // Small is the CSS min-height the box always had (90px).
+  var EDITOR_HEIGHTS = Object.freeze({ small: 90, medium: 160, large: 260, xlarge: 400 });
+  var EDITOR_HEIGHT_LABELS = Object.freeze([['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['xlarge', 'Extra large']]);
+  var TORN_COLORS = Object.freeze([
+    Object.freeze({ name: 'red', light: '#f03e3e', dark: '#ff8787' }),
+    Object.freeze({ name: 'pink', light: '#d6336c', dark: '#faa2c1' }),
+    Object.freeze({ name: 'grape', light: '#ae3ec9', dark: '#e599f7' }),
+    Object.freeze({ name: 'violet', light: '#7048e8', dark: '#d0bfff' }),
+    Object.freeze({ name: 'indigo', light: '#4263eb', dark: '#bac8ff' }),
+    Object.freeze({ name: 'blue', light: '#1c7ed6', dark: '#a5d8ff' }),
+    Object.freeze({ name: 'cyan', light: '#1098ad', dark: '#99e9f2' }),
+    Object.freeze({ name: 'teal', light: '#0ca678', dark: '#63e6be' }),
+    Object.freeze({ name: 'green', light: '#37b24d', dark: '#8ce99a' }),
+    Object.freeze({ name: 'lime', light: '#66a80f', dark: '#a9e34b' }),
+    Object.freeze({ name: 'yellow', light: '#e67700', dark: '#ffd43b' }),
+    Object.freeze({ name: 'orange', light: '#d9480f', dark: '#ffa94d' }),
+    Object.freeze({ name: 'gray1', light: '#333333', dark: '#ffffff' }),
+    Object.freeze({ name: 'gray2', light: '#666666', dark: '#dddddd' }),
+    Object.freeze({ name: 'gray3', light: '#999999', dark: '#aaaaaa' }),
+    Object.freeze({ name: 'gray4', light: '#cccccc', dark: '#888888' }),
+    Object.freeze({ name: 'gray5', light: '#ffffff', dark: '#000000' }),
+  ]);
+  var TORN_COLOR_NAMES = Object.freeze(TORN_COLORS.map(function (c) { return c.name; }));
+  var TORN_EMOJI = Object.freeze(['angel', 'angry', 'authority', 'beard', 'beaten_up', 'blushing',
+    'bored_sleepy', 'confused', 'cool', 'cry', 'disappointed', 'dizzy', 'evil', 'grin', 'hushed',
+    'kissing', 'laughing', 'love_chemistry', 'money', 'moustache', 'mugger_masked', 'nerd', 'party',
+    'pirate', 'sick', 'smiley', 'tired', 'tongue', 'wink', 'zip_mouth']);
+  var FONT_SIZE_MIN = 8;
+  var FONT_SIZE_MAX = 36;
+  var SIZE_PICKS = Object.freeze([10, 12, 14, 16, 18, 20, 24]);
+  var HEADING_PX = Object.freeze({ 1: 24, 2: 18, 3: 16 });
+  var PASTE_MARKER = '<!-- x-tinymce/html -->';
+  var EDITOR_BG = Object.freeze({ light: '#ffffff', dark: '#111111' });
+  // A security bound, never reached by a real draft: the source is capped at
+  // DRAFT_MAX_CHARS (20000), and the largest expansion found is an empty
+  // one-cell table per three characters ("|", newline, newline), about 38
+  // times. A test pins the bound with the worst inputs found.
+  var CLEAN_MAX_CHARS = 1000000;
+  var URL_MAX_CHARS = 2000;
+  // Open-element depth past which a new element is unwrapped (a ghost). Far
+  // beyond any real post; it keeps the recursive serialisers off the call-stack
+  // limit, which Torn PDA's WebView reaches sooner than Node does.
+  var CLEAN_MAX_DEPTH = 100;
+  var STRUCT_TAGS = { table: 1, tbody: 1, thead: 1, tfoot: 1, tr: 1, ul: 1, ol: 1 };
+
+  // ---- HTML tokenizer ------------------------------------------------------
+
+  var NAMED_ENTITIES = Object.freeze({
+    amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', rsquo: '\u2019', lsquo: '\u2018',
+    rdquo: '\u201d', ldquo: '\u201c', ndash: '\u2013', mdash: '\u2014', hellip: '\u2026',
+    copy: '\u00a9', reg: '\u00ae', trade: '\u2122', bull: '\u2022', middot: '\u00b7',
+  });
+
+  function decodeEntities(s) {
+    return String(s).replace(/&(#[xX][0-9a-fA-F]{1,6}|#[0-9]{1,7}|[a-zA-Z]{2,8});/g, function (all, e) {
+      if (e.charAt(0) === '#') {
+        var hex = e.charAt(1) === 'x' || e.charAt(1) === 'X';
+        var cp = hex ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+        return cp > 0 && cp <= 0x10ffff && !(cp >= 0xd800 && cp <= 0xdfff) ? String.fromCodePoint(cp) : all;
+      }
+      return Object.prototype.hasOwnProperty.call(NAMED_ENTITIES, e) ? NAMED_ENTITIES[e] : all;
+    });
+  }
+
+  var VOID_TAGS = Object.freeze({ br: true, img: true, hr: true, input: true, meta: true, link: true, wbr: true });
+  var RAW_TEXT_TAGS = Object.freeze({ script: true, style: true, textarea: true, title: true });
+
+  function isSpaceChar(c) { return c === ' ' || c === '\n' || c === '\t' || c === '\r' || c === '\f'; }
+
+  // One forward pass. Every loop advances, and nothing rescans the input, so a
+  // hostile 100000-character draft costs one pass. Each token carries pos and
+  // end, its span in the input (a comment between two tokens is in neither).
+  function tokenizeHtml(html) {
+    var s = String(html || '').slice(0, CLEAN_MAX_CHARS);
+    var lower = s.toLowerCase();
+    var out = [];
+    var n = s.length;
+    var i = 0;
+    var textStart = 0;
+    function flush(to) {
+      if (to > textStart) out.push({ type: 'text', text: decodeEntities(s.slice(textStart, to)), pos: textStart, end: to });
+    }
+    while (i < n) {
+      if (s.charAt(i) !== '<') { i += 1; continue; }
+      if (s.substr(i, 4) === '<!--') {
+        flush(i);
+        var endC = s.indexOf('-->', i + 4);
+        i = endC === -1 ? n : endC + 3;
+        textStart = i;
+        continue;
+      }
+      var m = /^<(\/?)([a-zA-Z][a-zA-Z0-9]{0,15})/.exec(s.slice(i, i + 18));
+      if (!m) { i += 1; continue; }
+      flush(i);
+      var start = i;
+      var j = i + m[0].length;
+      var attrs = {};
+      var selfClose = false;
+      while (j < n) {
+        while (j < n && isSpaceChar(s.charAt(j))) j += 1;
+        var ch = s.charAt(j);
+        if (ch === '>') { j += 1; break; }
+        if (ch === '/') { selfClose = true; j += 1; continue; }
+        var nameStart = j;
+        while (j < n && !isSpaceChar(s.charAt(j)) && '=>/'.indexOf(s.charAt(j)) === -1) j += 1;
+        var name = s.slice(nameStart, j).toLowerCase();
+        if (!name) { j += 1; continue; }
+        while (j < n && isSpaceChar(s.charAt(j))) j += 1;
+        var val = '';
+        if (s.charAt(j) === '=') {
+          j += 1;
+          while (j < n && isSpaceChar(s.charAt(j))) j += 1;
+          var q = s.charAt(j);
+          if (q === '"' || q === "'") {
+            var close = s.indexOf(q, j + 1);
+            if (close === -1) close = n;
+            val = s.slice(j + 1, close);
+            j = close + 1;
+          } else {
+            var vs = j;
+            while (j < n && !isSpaceChar(s.charAt(j)) && s.charAt(j) !== '>') j += 1;
+            val = s.slice(vs, j);
+          }
+        }
+        if (!Object.prototype.hasOwnProperty.call(attrs, name)) attrs[name] = decodeEntities(val);
+      }
+      var tag = m[2].toLowerCase();
+      if (m[1]) {
+        out.push({ type: 'close', tag: tag, pos: start, end: j });
+      } else {
+        out.push({ type: 'open', tag: tag, attrs: attrs, selfClose: selfClose || VOID_TAGS[tag] === true, pos: start, end: j });
+        if (RAW_TEXT_TAGS[tag] && !selfClose) {
+          var endTag = lower.indexOf('</' + tag, j);
+          var stop = endTag === -1 ? n : endTag;
+          if (stop > j) out.push({ type: 'text', text: s.slice(j, stop), raw: true, pos: j, end: stop });
+          j = stop;
+        }
+      }
+      i = j;
+      textStart = j;
+    }
+    flush(n);
+    return out;
+  }
+
+  // ---- the cleaner -----------------------------------------------------------
+
+  var STYLE_ORDER = Object.freeze(['text-align', 'color', 'font-size', 'text-decoration', 'width', 'height']);
+  var SPAN_PROPS = Object.freeze(['color', 'font-size', 'text-decoration']);
+  var DROP_WITH_CONTENT = Object.freeze({
+    script: true, style: true, iframe: true, object: true, embed: true, template: true, noscript: true,
+    title: true, textarea: true, head: true, svg: true, math: true, select: true, button: true,
+  });
+  var BLOCK_TAGS = Object.freeze({ p: true, ul: true, ol: true, blockquote: true, table: true });
+  var HEADING_TAGS = Object.freeze({ h1: 24, h2: 18, h3: 16, h4: 16, h5: 16, h6: 16 });
+
+  function cssValue(prop, v) {
+    var val = String(v || '').trim().toLowerCase();
+    if (prop === 'text-align') return /^(left|center|right|justify)$/.test(val) ? val : null;
+    if (prop === 'text-decoration') return /^(underline|line-through)$/.test(val) ? val : null;
+    if (prop === 'font-size') {
+      var px = /^([0-9]{1,2})px$/.exec(val);
+      var n = px ? parseInt(px[1], 10) : 0;
+      return n >= FONT_SIZE_MIN && n <= FONT_SIZE_MAX ? n + 'px' : null;
+    }
+    if (prop === 'color') {
+      var v2 = /^var\(--te-text-color-([a-z0-9]+)\)$/.exec(val.replace(/\s+/g, ''));
+      if (v2) return TORN_COLOR_NAMES.indexOf(v2[1]) !== -1 ? 'var(--te-text-color-' + v2[1] + ')' : null;
+      return /^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(val) ? val : null;
+    }
+    if (prop === 'width' || prop === 'height') return /^[0-9]{1,4}(\.[0-9]{1,4})?(px|%)$/.test(val) ? val : null;
+    return null;
+  }
+
+  function pickStyle(styleText, allowed) {
+    var out = {};
+    var parts = String(styleText || '').split(';');
+    for (var i = 0; i < parts.length && i < 40; i += 1) {
+      var k = parts[i].indexOf(':');
+      if (k === -1) continue;
+      var prop = parts[i].slice(0, k).trim().toLowerCase();
+      if (allowed.indexOf(prop) === -1) continue;
+      var v = cssValue(prop, parts[i].slice(k + 1));
+      if (v !== null) out[prop] = v;
+    }
+    return out;
+  }
+
+  function styleAttr(style) {
+    var parts = [];
+    for (var i = 0; i < STYLE_ORDER.length; i += 1) {
+      if (Object.prototype.hasOwnProperty.call(style || {}, STYLE_ORDER[i])) {
+        parts.push(STYLE_ORDER[i] + ': ' + style[STYLE_ORDER[i]] + ';');
+      }
+    }
+    return parts.length ? ' style="' + parts.join(' ') + '"' : '';
+  }
+
+  function safeHref(v) {
+    var u = String(v || '').trim();
+    return u.length <= URL_MAX_CHARS && /^https?:\/\/[^\s<>"'`]+$/i.test(u) ? u : '';
+  }
+
+  function emojiFromSrc(v) {
+    var m = /^\/images\/emotions\/svg\/([a-z_]{2,20})\.svg$/.exec(String(v || ''));
+    return m && TORN_EMOJI.indexOf(m[1]) !== -1 ? m[1] : '';
+  }
+
+  function safeImgSrc(v) {
+    var u = String(v || '').trim();
+    if (emojiFromSrc(u)) return u;
+    return u.length <= URL_MAX_CHARS && /^https:\/\/[^\s<>"'`]+$/i.test(u) ? u : '';
+  }
+
+  // The element an input tag becomes, or null to unwrap it (its text is kept).
+  function cleanElementFor(tag, attrs) {
+    var el = function (t, extra) {
+      var node = { tag: t, from: tag, style: {}, children: [] };
+      return Object.assign(node, extra || {});
+    };
+    switch (tag) {
+      case 'p': return el('p', { style: pickStyle(attrs.style, ['text-align']) });
+      case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6':
+        return el('p', { style: pickStyle(attrs.style, ['text-align']), heading: HEADING_TAGS[tag] });
+      case 'br': return el('br');
+      case 'span': return el('span', { style: pickStyle(attrs.style, SPAN_PROPS) });
+      case 'b': case 'strong': return el('strong');
+      case 'i': case 'em': return el('em');
+      case 's': case 'strike': case 'del': return el('span', { style: { 'text-decoration': 'line-through' } });
+      case 'u': case 'ins': return el('span', { style: { 'text-decoration': 'underline' } });
+      case 'ul': case 'ol': case 'li': case 'blockquote': case 'thead': case 'tbody': case 'tfoot':
+        return el(tag);
+      case 'tr': return el('tr', { style: pickStyle(attrs.style, ['height']) });
+      case 'table': case 'th': case 'td':
+        return el(tag, { style: pickStyle(attrs.style, ['width', 'height', 'text-align']) });
+      case 'a': {
+        var href = safeHref(attrs.href);
+        return href ? el('a', { href: href }) : null;
+      }
+      case 'img': {
+        var src = safeImgSrc(attrs.src);
+        return src ? el('img', { src: src, alt: safeString(attrs.alt || '', 200) }) : null;
+      }
+      default: return null;
+    }
+  }
+
+  // Pops the stack down to (and including) the nearest element named in
+  // `closes`, unless one named in `stops` comes first.
+  function closeUpTo(stack, closes, stops) {
+    for (var k = stack.length - 1; k > 0; k -= 1) {
+      var t = stack[k].tag;
+      if (closes.indexOf(t) !== -1) { stack.length = k; return; }
+      if (stops.indexOf(t) !== -1) return;
+    }
+  }
+
+  function buildCleanTree(tokens) {
+    var root = { tag: '#root', from: '#root', style: {}, children: [] };
+    var stack = [root];
+    var skip = null;
+    var skipDepth = 0;
+    for (var i = 0; i < tokens.length; i += 1) {
+      var tok = tokens[i];
+      if (skip) {
+        if (tok.type === 'open' && tok.tag === skip && !tok.selfClose) skipDepth += 1;
+        else if (tok.type === 'close' && tok.tag === skip) { skipDepth -= 1; if (!skipDepth) skip = null; }
+        continue;
+      }
+      var top = stack[stack.length - 1];
+      if (tok.type === 'text') {
+        if (!tok.raw) {
+          // Adjacent text merges, so a dropped element between two runs
+          // leaves one run and cleaning stays idempotent.
+          var last = top.children[top.children.length - 1];
+          if (last && last.text !== undefined) last.text += tok.text;
+          else top.children.push({ text: tok.text });
+        }
+        continue;
+      }
+      if (tok.type === 'open') {
+        // TinyMCE's own bookkeeping: "all" goes with its content, any other
+        // bogus element is unwrapped (its content is the player's).
+        var bogus = tok.attrs['data-mce-bogus'];
+        if (bogus === 'all' || DROP_WITH_CONTENT[tok.tag]) {
+          if (!tok.selfClose) { skip = tok.tag; skipDepth = 1; }
+          continue;
+        }
+        var node = bogus !== undefined ? null : cleanElementFor(tok.tag, tok.attrs);
+        if (!node) {
+          // Unwrapped, but still a container: a ghost shares its parent's
+          // children, so its close tag ends what was opened inside it.
+          if (!tok.selfClose && !VOID_TAGS[tok.tag]) {
+            stack.push({ tag: '#ghost', from: tok.tag, style: {}, children: top.children });
+          }
+          continue;
+        }
+        if (stack.length > CLEAN_MAX_DEPTH && !tok.selfClose && node.tag !== 'br' && node.tag !== 'img') {
+          // Share the nearest ancestor that can hold text, so text under a
+          // capped table or list part is kept rather than lost.
+          var holder = top;
+          for (var h = stack.length - 1; h > 0; h -= 1) {
+            if (!STRUCT_TAGS[stack[h].tag]) { holder = stack[h]; break; }
+          }
+          stack.push({ tag: '#ghost', from: tok.tag, style: {}, children: holder.children });
+          continue;
+        }
+        if (BLOCK_TAGS[node.tag]) closeUpTo(stack, ['p'], ['li', 'td', 'th', 'blockquote']);
+        if (node.tag === 'li') closeUpTo(stack, ['li'], ['ul', 'ol']);
+        if (node.tag === 'td' || node.tag === 'th') closeUpTo(stack, ['td', 'th'], ['tr', 'table']);
+        if (node.tag === 'tr') closeUpTo(stack, ['tr'], ['tbody', 'thead', 'tfoot', 'table']);
+        stack[stack.length - 1].children.push(node);
+        if (!tok.selfClose && node.tag !== 'br' && node.tag !== 'img') stack.push(node);
+        continue;
+      }
+      // A close tag ends the nearest open element that came from that tag.
+      for (var k = stack.length - 1; k > 0; k -= 1) {
+        if (stack[k].from === tok.tag) { stack.length = k; break; }
+      }
+    }
+    return root;
+  }
+
+  function escText(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\u00a0/g, '&nbsp;');
+  }
+
+  function escAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function isBlankText(node) { return node && node.text !== undefined && /^[ \t\r\n\f]*$/.test(node.text); }
+
+  // Drops whitespace-only text at both ends and trims the edge text nodes.
+  // Only ordinary spaces: a non-breaking space is content.
+  function trimEdges(children) {
+    var list = children.slice();
+    while (list.length && isBlankText(list[0])) list.shift();
+    while (list.length && isBlankText(list[list.length - 1])) list.pop();
+    if (list.length && list[0].text !== undefined) list[0] = { text: list[0].text.replace(/^[ \t\r\n\f]+/, '') };
+    var last = list.length - 1;
+    if (last >= 0 && list[last].text !== undefined) list[last] = { text: list[last].text.replace(/[ \t\r\n\f]+$/, '') };
+    return list;
+  }
+
+  function serInline(children) {
+    var out = '';
+    for (var i = 0; i < children.length; i += 1) {
+      var c = children[i];
+      if (c.text !== undefined) { out += escText(c.text.replace(/[ \t\r\n\f]+/g, ' ')); continue; }
+      if (c.tag === 'br') { out += '<br>'; continue; }
+      if (c.tag === 'img') {
+        out += '<img src="' + escAttr(c.src) + '"' + (c.alt ? ' alt="' + escAttr(c.alt) + '"' : '') + '>';
+        continue;
+      }
+      var inner = serInline(c.children);
+      if (c.tag === 'a') {
+        out += '<a href="' + escAttr(c.href) + '" target="_blank" rel="noopener">' + (inner || escText(c.href)) + '</a>';
+        continue;
+      }
+      if (inner === '') continue;
+      if (c.tag === 'strong' || c.tag === 'em') { out += '<' + c.tag + '>' + inner + '</' + c.tag + '>'; continue; }
+      if (c.tag === 'span') {
+        // One property per span, outermost first, so equal content serialises
+        // equally however the input grouped its styles.
+        for (var p = SPAN_PROPS.length - 1; p >= 0; p -= 1) {
+          var prop = SPAN_PROPS[p];
+          if (Object.prototype.hasOwnProperty.call(c.style, prop)) {
+            inner = '<span style="' + prop + ': ' + c.style[prop] + ';">' + inner + '</span>';
+          }
+        }
+        out += inner;
+        continue;
+      }
+      out += inner; // a block or a table part inside inline content: its text
+    }
+    return out;
+  }
+
+  function isBlankInline(html) {
+    return html.replace(/&nbsp;|<br>|[ \t\r\n\f]/g, '') === '';
+  }
+
+  function serParagraph(node) {
+    var inner = serInline(trimEdges(node.children));
+    if (isBlankInline(inner)) inner = '&nbsp;';
+    else if (node.heading) inner = '<span style="font-size: ' + node.heading + 'px;"><strong>' + inner + '</strong></span>';
+    return '<p' + styleAttr(node.style) + '>' + inner + '</p>';
+  }
+
+  // Content that may mix blocks and inline runs, unwrapped (li, td, th).
+  function serMixed(children) {
+    var out = '';
+    var run = [];
+    var flushRun = function () { if (run.length) out += serInline(trimEdges(run)); run = []; };
+    for (var i = 0; i < children.length; i += 1) {
+      var c = children[i];
+      if (c.tag && BLOCK_TAGS[c.tag]) { flushRun(); out += serBlock(c); } else run.push(c);
+    }
+    flushRun();
+    return out;
+  }
+
+  // Block content (root, blockquote): inline runs become paragraphs.
+  function serBlocks(children, sep) {
+    var out = [];
+    var run = [];
+    var flushRun = function () {
+      var t = trimEdges(run);
+      run = [];
+      if (!t.length) return;
+      out.push(serParagraph({ tag: 'p', style: {}, children: t }));
+    };
+    for (var i = 0; i < children.length; i += 1) {
+      var c = children[i];
+      if (c.tag && BLOCK_TAGS[c.tag]) { flushRun(); var b = serBlock(c); if (b) out.push(b); continue; }
+      if (c.tag === 'li' || c.tag === 'tr' || c.tag === 'td' || c.tag === 'th'
+        || c.tag === 'thead' || c.tag === 'tbody' || c.tag === 'tfoot') {
+        flushRun();
+        var inner = serBlocks(c.children, sep);
+        if (inner) out.push(inner);
+        continue;
+      }
+      run.push(c);
+    }
+    flushRun();
+    return out.join(sep || '');
+  }
+
+  function tableRows(node) {
+    var rows = [];
+    for (var i = 0; i < node.children.length; i += 1) {
+      var c = node.children[i];
+      if (c.tag === 'tr') rows.push(c);
+      else if (c.tag === 'thead' || c.tag === 'tbody' || c.tag === 'tfoot') rows = rows.concat(tableRows(c));
+    }
+    return rows;
+  }
+
+  function serRow(row) {
+    var cells = '';
+    for (var i = 0; i < row.children.length; i += 1) {
+      var c = row.children[i];
+      if (c.tag === 'td' || c.tag === 'th') {
+        cells += '<' + c.tag + styleAttr(c.style) + '>' + serMixed(trimEdges(c.children)) + '</' + c.tag + '>';
+      } else if (!isBlankText(c)) {
+        cells += '<td>' + serMixed(trimEdges([c])) + '</td>';
+      }
+    }
+    return cells ? '<tr' + styleAttr(row.style) + '>' + cells + '</tr>' : '';
+  }
+
+  function serBlock(node) {
+    if (node.tag === 'p') return serParagraph(node);
+    if (node.tag === 'blockquote') {
+      var q = serBlocks(node.children);
+      return q ? '<blockquote>' + q + '</blockquote>' : '';
+    }
+    if (node.tag === 'ul' || node.tag === 'ol') {
+      var items = '';
+      var loose = [];
+      var flushLoose = function () {
+        var t = trimEdges(loose);
+        loose = [];
+        if (t.length) items += '<li>' + serMixed(t) + '</li>';
+      };
+      for (var i = 0; i < node.children.length; i += 1) {
+        var c = node.children[i];
+        if (c.tag === 'li') { flushLoose(); items += '<li>' + serMixed(trimEdges(c.children)) + '</li>'; } else loose.push(c);
+      }
+      flushLoose();
+      return items ? '<' + node.tag + '>' + items + '</' + node.tag + '>' : '';
+    }
+    if (node.tag === 'table') {
+      var rows = tableRows(node).map(serRow).join('');
+      return rows ? '<div><div><div class="table-wrap"><table' + styleAttr(node.style) + '><tbody>'
+        + rows + '</tbody></table></div></div></div>' : '';
+    }
+    return '';
+  }
+
+  // The one allowlist. Preview, Insert, Copy, mode switching and autosave all
+  // pass through it, and its output is canonical: cleaning twice changes
+  // nothing, so equal posts compare equal.
+  function cleanTornHtml(html) {
+    return serBlocks(buildCleanTree(tokenizeHtml(html)).children);
+  }
+
+  // The same post laid out one block per line, for editing in HTML mode. The
+  // cleaner drops the whitespace between blocks, so this round-trips.
+  function htmlSource(clean) {
+    return serBlocks(buildCleanTree(tokenizeHtml(clean)).children, '\n');
+  }
+
+  // ---- HTML source is line-based (#58 round 2) -------------------------------
+  // The player types HTML the way they type Markdown: outside an open block,
+  // each line is its own paragraph and an empty line is a gap (<p>&nbsp;</p>,
+  // which is how Torn stores one). Inside an open block (a paragraph, a list,
+  // a table, a quote, a div) a newline is only whitespace, so a list typed
+  // over several lines stays one list. An inline element open at a line break
+  // (<strong> over two lines) is closed there and reopened on the next line.
+  // htmlSource output (one block per line, no empty lines) passes through
+  // unchanged. Every reader of typed HTML (Preview, Insert, Copy, a mode
+  // switch) goes through htmlSourceBlocks, so they all agree.
+  var LINE_BLOCK_TAGS = Object.freeze({
+    p: true, div: true, ul: true, ol: true, li: true, table: true, blockquote: true,
+    h1: true, h2: true, h3: true, h4: true, h5: true, h6: true,
+    thead: true, tbody: true, tfoot: true, tr: true, td: true, th: true,
+  });
+  // Opening one of these ends an open paragraph or heading, as the cleaner does.
+  var LINE_ENDS_P = Object.freeze({
+    p: true, ul: true, ol: true, blockquote: true, table: true,
+    h1: true, h2: true, h3: true, h4: true, h5: true, h6: true,
+  });
+
+  // An open tag that shows something even when empty, so a line holding only
+  // it is not blank: a line break, an image, a link (an empty link shows its
+  // address).
+  function lineContentTag(tag) { return VOID_TAGS[tag] === true || tag === 'a'; }
+
+  // An inline element open at a line break is reopened on each later line, so
+  // the reopened set is bounded (oldest dropped first): a hostile draft of
+  // unclosed tags over thousands of lines stays linear.
+  var LINE_REOPEN_MAX_TAGS = 8;
+  var LINE_REOPEN_MAX_CHARS = 256;
+
+  // The typed source cut into top-level pieces, each with the offset it starts
+  // at: a block as typed, a line of loose text wrapped in <p>, or a gap.
+  // A blank line inside an open top-level paragraph or heading ends it, so a
+  // newline that missed the editor's Enter can never merge paragraphs for
+  // good. With info, info.open is where the top-level block still open at the
+  // end of src starts, or -1.
+  function htmlLineSegments(src, info) {
+    var s = String(src || '').replace(/\r\n?/g, '\n').slice(0, CLEAN_MAX_CHARS);
+    if (s === '') return [];
+    var toks = tokenizeHtml(s);
+    var segs = [];
+    var block = null; // the top-level block being copied: { start, html, stack }
+    var inl = [];     // inline elements open at the top level: { tag, src }
+    var inlChars = 0;
+    var run = null;   // the loose text of the current line: { start, html, content }
+    var lineStart = 0;
+    var lineUsed = false;
+    var reopen = function () { return inl.map(function (x) { return x.src; }).join(''); };
+    var closers = function (from) {
+      var c = '';
+      for (var k = inl.length - 1; k >= from; k -= 1) c += '</' + inl[k].tag + '>';
+      return c;
+    };
+    var runAdd = function (pos, html, content) {
+      if (!run) run = { start: pos, html: reopen(), content: false };
+      run.html += html;
+      if (content) run.content = true;
+    };
+    var flushRun = function () {
+      if (run && run.content) segs.push({ html: '<p>' + run.html + closers(0) + '</p>', offset: run.start });
+      run = null;
+    };
+    var endLine = function (next) {
+      flushRun();
+      if (!lineUsed) segs.push({ html: '<p>&nbsp;</p>', offset: lineStart });
+      lineStart = next;
+      lineUsed = false;
+    };
+    var endBlock = function () {
+      segs.push({ html: block.html, offset: block.start });
+      block = null;
+    };
+    var setInl = function (n) {
+      inl.length = n;
+      inlChars = 0;
+      for (var k = 0; k < inl.length; k += 1) inlChars += inl[k].src.length;
+    };
+    var pushInl = function (tag, attrs, html) {
+      // Only what the cleaner keeps is worth reopening, and only once: the
+      // same tag nested in itself looks no different.
+      if (html.length > LINE_REOPEN_MAX_CHARS || !cleanElementFor(tag, attrs)) return;
+      for (var k = 0; k < inl.length; k += 1) if (inl[k].src === html) return;
+      inl.push({ tag: tag, src: html });
+      inlChars += html.length;
+      while (inl.length > LINE_REOPEN_MAX_TAGS || inlChars > LINE_REOPEN_MAX_CHARS) inlChars -= inl.shift().src.length;
+    };
+    var topText = function (text, pos) {
+      var pieces = text.split('\n');
+      var p = pos;
+      for (var k = 0; k < pieces.length; k += 1) {
+        var piece = pieces[k];
+        if (/[^ \t\f]/.test(piece)) { runAdd(p, piece, true); lineUsed = true; } else if (run) run.html += piece;
+        p += piece.length;
+        if (k < pieces.length - 1) { endLine(p + 1); p += 1; }
+      }
+    };
+    var seen = 0; // where the last token ended: anything between is a comment
+    for (var i = 0; i < toks.length; i += 1) {
+      var t = toks[i];
+      var raw = s.slice(t.pos, t.end);
+      // A line holding only a comment is not an empty line.
+      if (t.pos > seen && !block) lineUsed = true;
+      seen = t.end;
+      if (block) {
+        var st = block.stack;
+        if (t.type === 'open' && !t.selfClose && (LINE_BLOCK_TAGS[t.tag] || DROP_WITH_CONTENT[t.tag])) {
+          var top = st[st.length - 1];
+          if ((LINE_ENDS_P[t.tag] && (top === 'p' || HEADING_TAGS[top]))
+            || (t.tag === 'li' && top === 'li')
+            || ((t.tag === 'td' || t.tag === 'th') && (top === 'td' || top === 'th'))
+            || (t.tag === 'tr' && top === 'tr')) st.pop();
+          if (!st.length) endBlock();
+        } else if (t.type === 'text' && !t.raw && st.length === 1 && (st[0] === 'p' || HEADING_TAGS[st[0]])) {
+          var gap = /\n[ \t\f]*\n/.exec(raw);
+          if (gap) {
+            block.html += raw.slice(0, gap.index);
+            endBlock();
+            topText(raw.slice(gap.index), t.pos + gap.index);
+            continue;
+          }
+        } else if (t.type === 'close') {
+          var at = st.lastIndexOf(t.tag);
+          if (at !== -1) st.length = at;
+          block.html += raw;
+          if (!st.length) endBlock();
+          continue;
+        }
+        if (block) {
+          block.html += raw;
+          if (t.type === 'open' && !t.selfClose && (LINE_BLOCK_TAGS[t.tag] || DROP_WITH_CONTENT[t.tag])) st.push(t.tag);
+          continue;
+        }
+      }
+      if (t.type === 'text') { topText(raw, t.pos); continue; }
+      lineUsed = true;
+      if (t.type === 'open' && (LINE_BLOCK_TAGS[t.tag] || DROP_WITH_CONTENT[t.tag])) {
+        flushRun();
+        block = { start: t.pos, html: raw, stack: [t.tag] };
+        if (t.selfClose) endBlock();
+        continue;
+      }
+      if (t.type === 'open') {
+        runAdd(t.pos, raw, lineContentTag(t.tag));
+        if (!t.selfClose) pushInl(t.tag, t.attrs, raw);
+        continue;
+      }
+      // A close tag at the top level ends the inline elements it closes; a
+      // stray one is dropped, as the cleaner would.
+      for (var c = inl.length - 1; c >= 0; c -= 1) {
+        if (inl[c].tag !== t.tag) continue;
+        if (run) run.html += closers(c);
+        setInl(c);
+        break;
+      }
+    }
+    if (s.length > seen && !block) lineUsed = true;
+    if (info) info.open = block ? block.start : -1;
+    if (block) endBlock();
+    endLine(s.length);
+    return segs;
+  }
+
+  // Typed HTML as the cleaned blocks Torn gets, each with the source offset a
+  // tap in Preview returns the caret to.
+  function htmlSourceBlocks(src) {
+    var segs = htmlLineSegments(src);
+    var out = [];
+    for (var i = 0; i < segs.length; i += 1) {
+      var clean = cleanTornHtml(segs[i].html);
+      if (!clean) continue;
+      var kids = buildCleanTree(tokenizeHtml(clean)).children;
+      if (kids.length === 1) { out.push({ html: clean, offset: segs[i].offset }); continue; }
+      for (var k = 0; k < kids.length; k += 1) {
+        var h = serBlocks([kids[k]]);
+        if (h) out.push({ html: h, offset: segs[i].offset });
+      }
+    }
+    return out;
+  }
+
+  function htmlSourcePost(src) {
+    return htmlSourceBlocks(src).map(function (b) { return b.html; }).join('');
+  }
+
+  // ---- Markdown to HTML ------------------------------------------------------
+
+  var MD_ESCAPABLE = '\\*+~{}[]()!:<>&|#-._`';
+  var MD_PAIRS = Object.freeze([['**', 'strong'], ['++', 'u'], ['~~', 's'], ['*', 'em']]);
+
+  function mdWrap(kind, inner) {
+    if (kind === 'strong' || kind === 'em') return '<' + kind + '>' + inner + '</' + kind + '>';
+    return '<span style="text-decoration: ' + (kind === 'u' ? 'underline' : 'line-through') + ';">' + inner + '</span>';
+  }
+
+  function isEscaped(s, j) {
+    var count = 0;
+    for (var k = j - 1; k >= 0 && s.charAt(k) === '\\'; k -= 1) count += 1;
+    return count % 2 === 1;
+  }
+
+  function findMdClose(s, d, from) {
+    var j = s.indexOf(d, from);
+    while (j !== -1) {
+      var ok = !isEscaped(s, j);
+      if (ok && d === '*' && (s.charAt(j + 1) === '*' || s.charAt(j - 1) === '*')) ok = false;
+      if (ok) return j;
+      j = s.indexOf(d, j + 1);
+    }
+    return -1;
+  }
+
+  function mdOpener(s, i) {
+    var m = /^\{(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z][a-z0-9]{1,6}|[0-9]{1,2})\}/.exec(s.slice(i, i + 10));
+    if (!m) return null;
+    var v = m[1];
+    var style = null;
+    if (v.charAt(0) === '#') style = 'color: ' + v.toLowerCase() + ';';
+    else if (/^[0-9]/.test(v)) {
+      var n = parseInt(v, 10);
+      if (n >= FONT_SIZE_MIN && n <= FONT_SIZE_MAX) style = 'font-size: ' + n + 'px;';
+    } else if (TORN_COLOR_NAMES.indexOf(v) !== -1) style = 'color: var(--te-text-color-' + v + ');';
+    return style ? { open: '<span style="' + style + '">', end: i + m[0].length } : null;
+  }
+
+  // Every {opener} paired with its {/} in one pass, innermost first, the way
+  // brackets match. An opener left without a closer is literal text.
+  function mdBracePairs(s) {
+    var pairs = {};
+    var open = [];
+    var k = 0;
+    while (k < s.length) {
+      if (s.charAt(k) === '{' && !isEscaped(s, k)) {
+        if (s.substr(k, 3) === '{/}') {
+          if (open.length) pairs[open.pop()] = k;
+          k += 3;
+          continue;
+        }
+        var o = mdOpener(s, k);
+        if (o) { open.push(k); k = o.end; continue; }
+      }
+      k += 1;
+    }
+    return pairs;
+  }
+
+  function mdLink(s, i, to) {
+    var j = i + 1;
+    while (j < to && (s.charAt(j) !== ']' || isEscaped(s, j))) j += 1;
+    if (j >= to || s.charAt(j + 1) !== '(') return null;
+    var k = s.indexOf(')', j + 2);
+    if (k === -1 || k >= to) return null;
+    return { text: s.slice(i + 1, j), textEnd: j, url: s.slice(j + 2, k).trim(), end: k + 1 };
+  }
+
+  var MD_MAX_DEPTH = 16;
+
+  // Renders s[from, to) of one line. ctx carries the line's brace pairs; depth
+  // caps nesting, so a hostile draft cannot exhaust the stack.
+  function mdInlineRange(s, from, to, ctx, depth) {
+    var out = '';
+    var i = from;
+    var n = to;
+    var deep = depth >= MD_MAX_DEPTH;
+    while (i < n) {
+      var c = s.charAt(i);
+      if (c === '\\' && i + 1 < n && MD_ESCAPABLE.indexOf(s.charAt(i + 1)) !== -1) {
+        out += escText(s.charAt(i + 1));
+        i += 2;
+        continue;
+      }
+      var matched = false;
+      for (var p = 0; p < MD_PAIRS.length; p += 1) {
+        var d = MD_PAIRS[p][0];
+        if (deep || s.substr(i, d.length) !== d) continue;
+        if (d === '*' && s.charAt(i + 1) === '*') continue;
+        var j = findMdClose(s, d, i + d.length);
+        if (j > i + d.length && j + d.length <= n) {
+          out += mdWrap(MD_PAIRS[p][1], mdInlineRange(s, i + d.length, j, ctx, depth + 1));
+          i = j + d.length;
+          matched = true;
+        }
+        break;
+      }
+      if (matched) continue;
+      if (c === '{' && !deep && Object.prototype.hasOwnProperty.call(ctx.pairs, i)) {
+        var o = mdOpener(s, i);
+        var close = ctx.pairs[i];
+        if (o && close > o.end && close + 3 <= n) {
+          out += o.open + mdInlineRange(s, o.end, close, ctx, depth + 1) + '</span>';
+          i = close + 3;
+          continue;
+        }
+      }
+      if (c === '!' && s.charAt(i + 1) === '[') {
+        var im = mdLink(s, i + 1, n);
+        if (im && safeImgSrc(im.url)) {
+          out += '<img src="' + escAttr(im.url) + '"' + (im.text ? ' alt="' + escAttr(im.text) + '"' : '') + '>';
+          i = im.end;
+          continue;
+        }
+        if (im) {
+          // An image whose source is not allowed stays literal text, not a link.
+          out += '![';
+          i += 2;
+          continue;
+        }
+      }
+      if (c === '[') {
+        var ln = deep ? null : mdLink(s, i, n);
+        if (ln && safeHref(ln.url)) {
+          out += '<a href="' + escAttr(ln.url) + '">' + mdInlineRange(s, i + 1, ln.textEnd, ctx, depth + 1) + '</a>';
+          i = ln.end;
+          continue;
+        }
+      }
+      if (c === ':') {
+        var em = /^:([a-z_]{2,20}):/.exec(s.slice(i, Math.min(n, i + 23)));
+        if (em && TORN_EMOJI.indexOf(em[1]) !== -1) {
+          out += '<img src="/images/emotions/svg/' + em[1] + '.svg">';
+          i += em[0].length;
+          continue;
+        }
+      }
+      if (c === '<') {
+        if (s.substr(i, 4) === '<!--') {
+          var ce = s.indexOf('-->', i + 4);
+          i = ce === -1 || ce + 3 > n ? n : ce + 3;
+          continue;
+        }
+        if (/^<\/?[a-zA-Z]/.test(s.slice(i, i + 3))) {
+          var gt = s.indexOf('>', i);
+          if (gt !== -1 && gt < n) { out += s.slice(i, gt + 1); i = gt + 1; continue; }
+        }
+        out += '&lt;';
+        i += 1;
+        continue;
+      }
+      if (c === '&') {
+        var ent = /^&(#[xX][0-9a-fA-F]{1,6}|#[0-9]{1,7}|[a-zA-Z]{2,8});/.exec(s.slice(i, Math.min(n, i + 12)));
+        if (ent) { out += ent[0]; i += ent[0].length; continue; }
+        out += '&amp;';
+        i += 1;
+        continue;
+      }
+      if (c === '>') { out += '&gt;'; i += 1; continue; }
+      if (c === '\u00a0') { out += '&nbsp;'; i += 1; continue; }
+      out += c;
+      i += 1;
+    }
+    return out;
+  }
+
+  function mdInline(s) {
+    var line = String(s);
+    return mdInlineRange(line, 0, line.length, { pairs: mdBracePairs(line) }, 0);
+  }
+
+  function splitCells(line) {
+    var t = line.trim();
+    if (t.charAt(0) === '|') t = t.slice(1);
+    if (t.charAt(t.length - 1) === '|' && !isEscaped(t, t.length - 1)) t = t.slice(0, -1);
+    var cells = [];
+    var cur = '';
+    for (var i = 0; i < t.length; i += 1) {
+      var ch = t.charAt(i);
+      if (ch === '\\' && t.charAt(i + 1) === '|') { cur += '\\|'; i += 1; continue; }
+      if (ch === '|') { cells.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
+    }
+    cells.push(cur.trim());
+    return cells;
+  }
+
+  function delimiterAligns(line) {
+    if (line.indexOf('-') === -1) return null;
+    var cells = splitCells(line);
+    var aligns = [];
+    for (var i = 0; i < cells.length; i += 1) {
+      var m = /^(:?)-+(:?)$/.exec(cells[i]);
+      if (!m) return null;
+      aligns.push(m[1] && m[2] ? 'center' : m[2] ? 'right' : m[1] ? 'left' : '');
+    }
+    return aligns;
+  }
+
+  function mdTableCell(tag, text, align) {
+    return '<' + tag + (align ? ' style="text-align: ' + align + ';"' : '') + '>' + mdInline(text) + '</' + tag + '>';
+  }
+
+  var BLOCK_HTML_LINE = /^\s*<(p|div|table|blockquote|ul|ol|h[1-6])\b/i;
+
+  // Markdown source to blocks, each with the line it starts on, so Preview can
+  // send a tap back to its source line.
+  function mdBlocks(md) {
+    var src = String(md || '');
+    if (src === '') return [];
+    var lines = src.replace(/\r\n?/g, '\n').split('\n');
+    var out = [];
+    var align = null;
+    var i = 0;
+    var alignAttr = function () { return align ? ' style="text-align: ' + align + ';"' : ''; };
+    while (i < lines.length) {
+      var line = lines[i];
+      var start = i;
+      var fence = /^:::[ \t]*(left|center|right|justify)[ \t]*$/i.exec(line);
+      if (fence) { align = fence[1].toLowerCase(); i += 1; continue; }
+      if (align && /^:::[ \t]*$/.test(line)) { align = null; i += 1; continue; }
+      var trimmed = line.trim();
+      if (trimmed.charAt(0) === '|') {
+        var aligns = i + 1 < lines.length ? delimiterAligns(lines[i + 1]) : null;
+        var header = splitCells(line);
+        var rows = '';
+        if (aligns && aligns.length === header.length) {
+          rows += '<tr>' + header.map(function (h, k) { return mdTableCell('th', h, aligns[k]); }).join('') + '</tr>';
+          i += 2;
+        } else {
+          aligns = [];
+        }
+        while (i < lines.length && lines[i].trim().charAt(0) === '|') {
+          var cells = splitCells(lines[i]);
+          rows += '<tr>' + cells.map(function (h, k) { return mdTableCell('td', h, aligns[k] || ''); }).join('') + '</tr>';
+          i += 1;
+        }
+        out.push({ line: start, html: '<table><tbody>' + rows + '</tbody></table>' });
+        continue;
+      }
+      if (/^[ \t]*>/.test(line)) {
+        var quote = '';
+        while (i < lines.length && /^[ \t]*>/.test(lines[i])) {
+          var q = lines[i].replace(/^[ \t]*>[ \t]?/, '');
+          quote += q.trim() === '' ? '<p>&nbsp;</p>' : '<p>' + mdInline(q) + '</p>';
+          i += 1;
+        }
+        out.push({ line: start, html: '<blockquote>' + quote + '</blockquote>' });
+        continue;
+      }
+      var listKind = /^[ \t]*[-*+][ \t]+/.test(line) ? 'ul' : /^[ \t]*[0-9]{1,9}[.)][ \t]+/.test(line) ? 'ol' : null;
+      if (listKind) {
+        var re = listKind === 'ul' ? /^[ \t]*[-*+][ \t]+/ : /^[ \t]*[0-9]{1,9}[.)][ \t]+/;
+        var items = '';
+        while (i < lines.length && re.test(lines[i])) {
+          items += '<li>' + mdInline(lines[i].replace(re, '')) + '</li>';
+          i += 1;
+        }
+        out.push({ line: start, html: '<' + listKind + '>' + items + '</' + listKind + '>' });
+        continue;
+      }
+      i += 1;
+      var h = /^(#{1,3})[ \t]+(.*)$/.exec(line);
+      if (h && h[2].trim()) {
+        out.push({ line: start, html: '<p' + alignAttr() + '><span style="font-size: ' + HEADING_PX[h[1].length]
+          + 'px;"><strong>' + mdInline(h[2].trim()) + '</strong></span></p>' });
+        continue;
+      }
+      if (BLOCK_HTML_LINE.test(line)) { out.push({ line: start, html: line }); continue; }
+      out.push({ line: start, html: '<p' + alignAttr() + '>' + (trimmed === '' ? '&nbsp;' : mdInline(line)) + '</p>' });
+    }
+    return out.map(function (b) { return { line: b.line, html: cleanTornHtml(b.html) }; })
+      .filter(function (b) { return b.html !== ''; });
+  }
+
+  function mdToHtml(md) {
+    return mdBlocks(md).map(function (b) { return b.html; }).join('');
+  }
+
+  // ---- HTML to Markdown ------------------------------------------------------
+
+  // Characters inside raw HTML kept in Markdown are written as entities, so
+  // the Markdown reader never mistakes them for marks.
+  function rawForMd(html) {
+    return html.replace(/>([^<]*)</g, function (all, text) {
+      return '>' + text.replace(/[\\*+~{}\[\]:|!_`#]/g, function (ch) { return '&#' + ch.charCodeAt(0) + ';'; }) + '<';
+    });
+  }
+
+  function mdEscapeText(t, inTable) {
+    var s = String(t).replace(/[\\*{}\[\]<&`]/g, '\\$&').replace(/\+\+/g, '\\+\\+').replace(/~~/g, '\\~\\~');
+    s = s.replace(/:([a-z_]{2,20}):/g, function (all, name) {
+      return TORN_EMOJI.indexOf(name) !== -1 ? '\\:' + name + ':' : all;
+    });
+    if (inTable) s = s.replace(/\|/g, '\\|');
+    return s;
+  }
+
+  function mdLineStartEscape(line) {
+    if (/^(#{1,3}[ \t]|[-*+][ \t]|>|\||:::)/.test(line)) return '\\' + line;
+    var ol = /^([0-9]{1,9})([.)])([ \t])/.exec(line);
+    if (ol) return ol[1] + '\\' + ol[2] + line.slice(ol[1].length + 1);
+    return line;
+  }
+
+  function nodeHtml(node) {
+    return serInline([node]);
+  }
+
+  function mdFromInline(children, inTable) {
+    var out = '';
+    for (var i = 0; i < children.length; i += 1) {
+      var c = children[i];
+      if (c.text !== undefined) { out += mdEscapeText(c.text.replace(/[ \t\r\n\f]+/g, ' '), inTable); continue; }
+      if (c.tag === 'br') { out += '<br>'; continue; }
+      if (c.tag === 'img') {
+        var emoji = emojiFromSrc(c.src);
+        if (emoji) { out += ':' + emoji + ':'; continue; }
+        if (/[\])\s]/.test(c.alt) || /[()\s]/.test(c.src) || (inTable && /\|/.test(c.alt + c.src))) {
+          out += rawForMd(nodeHtml(c));
+        } else out += '![' + c.alt + '](' + c.src + ')';
+        continue;
+      }
+      var inner = mdFromInline(c.children, inTable);
+      if (inner === '' && c.tag !== 'a') continue;
+      if (c.tag === 'a') {
+        var hasImg = JSON.stringify(c.children).indexOf('"img"') !== -1;
+        if (hasImg || /[()\s]/.test(c.href) || /[\[\]]/.test(inner) || (inTable && /\|/.test(c.href))) {
+          out += rawForMd(nodeHtml(c));
+        } else out += '[' + inner + '](' + c.href + ')';
+        continue;
+      }
+      if (c.tag === 'strong' || c.tag === 'em') {
+        var d = c.tag === 'strong' ? '**' : '*';
+        if (/^\*|\*$/.test(inner) || /^[ \t]|[ \t]$/.test(inner)) out += rawForMd(nodeHtml(c));
+        else out += d + inner + d;
+        continue;
+      }
+      if (c.tag === 'span') {
+        // Canonical spans carry one property each (serInline).
+        var props = Object.keys(c.style);
+        if (props.length !== 1) { out += rawForMd(nodeHtml(c)); continue; }
+        var v = c.style[props[0]];
+        if (props[0] === 'text-decoration') {
+          var dd = v === 'underline' ? '++' : '~~';
+          if (/^[+~]|[+~]$/.test(inner) || /^[ \t]|[ \t]$/.test(inner)) out += rawForMd(nodeHtml(c));
+          else out += dd + inner + dd;
+          continue;
+        }
+        var key = props[0] === 'font-size' ? v.replace('px', '')
+          : /^var\(/.test(v) ? v.replace(/^var\(--te-text-color-|\)$/g, '') : v;
+        out += '{' + key + '}' + inner + '{/}';
+        continue;
+      }
+      out += inner;
+    }
+    return out;
+  }
+
+  function onlyChild(node, tag) {
+    var kids = node.children.filter(function (k) { return !isBlankText(k); });
+    return kids.length === 1 && kids[0].tag === tag ? kids[0] : null;
+  }
+
+  function headingLevel(p) {
+    var span = onlyChild(p, 'span');
+    if (!span || Object.keys(span.style).length !== 1 || !span.style['font-size']) return 0;
+    var strong = onlyChild(span, 'strong');
+    if (!strong) return 0;
+    var px = parseInt(span.style['font-size'], 10);
+    for (var lvl = 1; lvl <= 3; lvl += 1) if (HEADING_PX[lvl] === px) return { level: lvl, node: strong };
+    return 0;
+  }
+
+  function isBlankParagraph(p) {
+    return isBlankInline(serInline(trimEdges(p.children)));
+  }
+
+  function paragraphMd(p) {
+    if (isBlankParagraph(p)) return '';
+    var h = headingLevel(p);
+    if (h) return '#'.repeat(h.level) + ' ' + mdFromInline(trimEdges(h.node.children), false);
+    var line = mdFromInline(trimEdges(p.children), false);
+    return mdLineStartEscape(line);
+  }
+
+  function tableMd(table) {
+    if (Object.keys(table.style).length) return null;
+    var rows = tableRows(table);
+    if (!rows.length) return null;
+    var width = -1;
+    var headerForm = false;
+    var aligns = [];
+    for (var r = 0; r < rows.length; r += 1) {
+      var row = rows[r];
+      if (Object.keys(row.style).length) return null;
+      var cells = row.children.filter(function (k) { return !isBlankText(k); });
+      if (cells.some(function (k) { return k.tag !== 'td' && k.tag !== 'th'; })) return null;
+      if (width === -1) width = cells.length; else if (cells.length !== width) return null;
+      var allTh = cells.every(function (k) { return k.tag === 'th'; });
+      var anyTh = cells.some(function (k) { return k.tag === 'th'; });
+      if (r === 0) headerForm = allTh;
+      else if (anyTh) return null;
+      if (r === 0 && anyTh && !allTh) return null;
+      for (var k = 0; k < cells.length; k += 1) {
+        var st = cells[k].style;
+        var keys = Object.keys(st);
+        if (keys.some(function (x) { return x !== 'text-align'; })) return null;
+        var a = st['text-align'] || '';
+        if (r === 0) aligns[k] = a; else if (aligns[k] !== a) return null;
+        if (cells[k].children.some(function (x) { return x.tag && BLOCK_TAGS[x.tag]; })) return null;
+      }
+    }
+    if (!headerForm && aligns.some(function (a) { return a; })) return null;
+    var lines = [];
+    for (var r2 = 0; r2 < rows.length; r2 += 1) {
+      var cs = rows[r2].children.filter(function (k) { return !isBlankText(k); });
+      lines.push('| ' + cs.map(function (cell) { return mdFromInline(trimEdges(cell.children), true); }).join(' | ') + ' |');
+      if (r2 === 0 && headerForm) {
+        lines.push('| ' + aligns.map(function (a) {
+          return a === 'center' ? ':---:' : a === 'right' ? '---:' : a === 'left' ? ':---' : '---';
+        }).join(' | ') + ' |');
+      }
+    }
+    return lines;
+  }
+
+  // Input is typed HTML source, so it is read line by line like Preview reads it.
+  function htmlToMd(html) {
+    var root = buildCleanTree(tokenizeHtml(htmlSourcePost(html)));
+    var lines = [];
+    var prevKind = null;
+    var align = null;
+    var setAlign = function (a) {
+      if (a === align) return;
+      if (align) lines.push(':::');
+      if (a) lines.push(':::' + a);
+      align = a;
+    };
+    for (var i = 0; i < root.children.length; i += 1) {
+      var b = root.children[i];
+      var kind = b.tag;
+      if (b.tag === 'p') {
+        setAlign(b.style['text-align'] || null);
+        lines.push(paragraphMd(b));
+        prevKind = 'p';
+        continue;
+      }
+      setAlign(null);
+      var raw = rawForMd(serBlock(b));
+      if (b.tag === 'ul' || b.tag === 'ol') {
+        var ok = prevKind !== b.tag;
+        var items = [];
+        for (var k = 0; ok && k < b.children.length; k += 1) {
+          var li = b.children[k];
+          if (li.tag !== 'li' || li.children.some(function (x) { return x.tag && BLOCK_TAGS[x.tag]; })) { ok = false; break; }
+          var text = mdFromInline(trimEdges(li.children), false);
+          items.push((b.tag === 'ul' ? '- ' : '1. ') + text);
+        }
+        if (ok) lines = lines.concat(items); else lines.push(raw);
+      } else if (b.tag === 'blockquote') {
+        var qok = prevKind !== 'blockquote';
+        var ql = [];
+        for (var q = 0; qok && q < b.children.length; q += 1) {
+          var qp = b.children[q];
+          if (qp.tag !== 'p' || Object.keys(qp.style).length || headingLevel(qp)) { qok = false; break; }
+          var qt = isBlankParagraph(qp) ? '' : mdFromInline(trimEdges(qp.children), false);
+          ql.push(qt === '' ? '>' : '> ' + qt);
+        }
+        if (qok) lines = lines.concat(ql); else lines.push(raw);
+      } else if (b.tag === 'table') {
+        var tl = tableMd(b);
+        if (tl && prevKind !== 'table') lines = lines.concat(tl); else lines.push(raw);
+      } else {
+        lines.push(raw);
+      }
+      prevKind = kind;
+    }
+    setAlign(null);
+    return lines.join('\n');
+  }
+
+  // ---- plain text ------------------------------------------------------------
+
+  function textToHtml(text) {
+    var src = String(text || '');
+    if (src === '') return '';
+    return cleanTornHtml(src.replace(/\r\n?/g, '\n').split('\n').map(function (line) {
+      return line.trim() === '' ? '<p>&nbsp;</p>' : '<p>' + escText(line) + '</p>';
+    }).join(''));
+  }
+
+  function textToMd(text) {
+    var src = String(text || '');
+    if (src === '') return '';
+    return src.replace(/\r\n?/g, '\n').split('\n').map(function (line) {
+      return line.trim() === '' ? '' : mdLineStartEscape(mdEscapeText(line.trim(), false));
+    }).join('\n');
+  }
+
+  function plainInline(children) {
+    var out = '';
+    for (var i = 0; i < children.length; i += 1) {
+      var c = children[i];
+      if (c.text !== undefined) out += c.text.replace(/[ \t\r\n\f]+/g, ' ');
+      else if (c.tag === 'br') out += '\n';
+      else if (c.tag === 'img') out += emojiFromSrc(c.src) ? ':' + emojiFromSrc(c.src) + ':' : (c.alt || '');
+      else out += plainInline(c.children);
+    }
+    return out;
+  }
+
+  function htmlToText(html) {
+    var root = buildCleanTree(tokenizeHtml(cleanTornHtml(html)));
+    var lines = [];
+    var walk = function (nodes, prefix) {
+      for (var i = 0; i < nodes.length; i += 1) {
+        var b = nodes[i];
+        if (b.tag === 'p') lines.push(prefix + plainInline(trimEdges(b.children)).replace(/\u00a0/g, ' ').trim());
+        else if (b.tag === 'blockquote') walk(b.children, prefix + '> ');
+        else if (b.tag === 'ul' || b.tag === 'ol') {
+          b.children.forEach(function (li) { if (li.tag === 'li') lines.push(prefix + '- ' + plainInline(li.children).trim()); });
+        } else if (b.tag === 'table') {
+          tableRows(b).forEach(function (r) {
+            lines.push(prefix + r.children.filter(function (c) { return c.tag; }).map(function (c) {
+              return plainInline(c.children).trim();
+            }).join(' | '));
+          });
+        }
+      }
+    };
+    walk(root.children, '');
+    return lines.join('\n');
+  }
+
+  // ---- Preview (#58) -----------------------------------------------------------
+
+  function lineOffsets(text) {
+    var out = [0];
+    for (var i = 0; i < text.length; i += 1) if (text.charAt(i) === '\n') out.push(i + 1);
+    return out;
+  }
+
+  // The post as Preview shows it: one entry per block, each with the source
+  // offset a tap returns the caret to.
+  function previewModel(lang, text) {
+    var src = String(text || '').replace(/\r\n?/g, '\n');
+    if (lang === 'md') {
+      var starts = lineOffsets(src);
+      return mdBlocks(src).map(function (b) { return { html: b.html, offset: starts[b.line] || 0 }; });
+    }
+    if (lang === 'html') return htmlSourceBlocks(src);
+    if (src === '') return [];
+    var lineStarts = lineOffsets(src);
+    return src.split('\n').map(function (line, idx) {
+      return { html: textToHtml(line === '' ? ' ' : line), offset: lineStarts[idx] };
+    });
+  }
+
+  // Spec 4a: Preview loads no external image until the player asks. Torn's
+  // own emoji are same-site and always show. Input is cleaned HTML, whose img
+  // tags are always exactly <img src="..."> or <img src="..." alt="...">.
+  function previewImages(html, show) {
+    return String(html).replace(/<img src="(https:[^"]*)"( alt="[^"]*")?>/g, function (all, src, alt) {
+      if (show) return '<img referrerpolicy="no-referrer" src="' + src + '"' + (alt || '') + '>';
+      var host = (/^https:\/\/([^\/?#"]+)/.exec(src) || [])[1] || 'another site';
+      return '<span class="tfcc-img-ph">[image from ' + host + ']</span>';
+    });
+  }
+
+  // ---- conversion entry points -----------------------------------------------
+
+  function postHtml(text, lang) {
+    if (lang === 'md') return mdToHtml(text);
+    if (lang === 'html') return htmlSourcePost(text);
+    return textToHtml(text);
+  }
+
+  function convertDraft(text, from, to) {
+    if (from === to) return String(text || '');
+    if (to === 'text') return htmlToText(postHtml(text, from));
+    if (to === 'html') return htmlSource(postHtml(text, from));
+    if (from === 'text') return textToMd(text);
+    return htmlToMd(text);
+  }
+
+  // ---- image link fixer (#58) ------------------------------------------------
+  // A pure string rewrite: no lookup, no request. Rules and their sources are in
+  // docs/reference/image-host-link-rules-2026-10-09.md.
+
+  var IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp)$/i;
+
+  var IMAGE_HOWTO = Object.freeze({
+    'photos.app.goo.gl': 'Google Photos links are pages. Open the photo, right-click it, choose Copy image address, and use that link (it starts with lh3.googleusercontent.com).',
+    'photos.google.com': 'Google Photos links are pages. Open the photo, right-click it, choose Copy image address, and use that link (it starts with lh3.googleusercontent.com).',
+    '1drv.ms': 'OneDrive links are pages. Open the image in OneDrive on the web, right-click it and choose Copy image address, or use another host.',
+    'onedrive.live.com': 'OneDrive links are pages. Open the image in OneDrive on the web, right-click it and choose Copy image address, or use another host.',
+    'ibb.co': 'That is the ImgBB page. On it, copy the Direct link field (it starts with i.ibb.co).',
+    'postimg.cc': 'That is the Postimages page. Copy its Direct link (it starts with i.postimg.cc).',
+    'postimages.org': 'That is the Postimages page. Copy its Direct link (it starts with i.postimg.cc).',
+    'prnt.sc': 'Lightshot links are pages. Open it, right-click the image and choose Copy image address.',
+    'tenor.com': 'Tenor links are pages. Right-click the GIF and choose Copy image address.',
+  });
+
+  function imageResult(status, url, host, note) {
+    // Parentheses are encoded so a link can never close a Markdown ![alt](url) early.
+    if (url && (status === 'ok' || status === 'fixed')) url = url.replace(/\(/g, '%28').replace(/\)/g, '%29');
+    return { status: status, url: url, host: host, note: note || '' };
+  }
+
+  function pathPart(rest) { return rest.split(/[?#]/)[0]; }
+
+  function queryParam(rest, name) {
+    var m = new RegExp('[?&]' + name + '=([^&#]*)').exec(rest);
+    return m ? m[1] : '';
+  }
+
+  function fixImageUrl(raw, depth) {
+    var u = String(raw || '').trim();
+    if (!u) return imageResult('refused', '', '', 'Paste an image link.');
+    if (u.length > URL_MAX_CHARS) return imageResult('refused', '', '', 'That link is too long.');
+    if (/^http:\/\//i.test(u)) return imageResult('refused', '', '', 'Torn needs an https link. Try the same link with https.');
+    var m = /^https:\/\/([a-z0-9.-]+(?::[0-9]{1,5})?)(?=[\/?#]|$)([^\s"'<>`\\]*)$/i.exec(u);
+    if (!m) return imageResult('refused', '', '', 'That is not a web link.');
+    var host = m[1].toLowerCase().replace(/^www\./, '');
+    var rest = m[2];
+    var path = pathPart(rest);
+    var ext = IMAGE_EXT_RE.test(path);
+
+    if (host === 'editor.torn.com') return imageResult('ok', u, host, 'Uploaded to Torn.');
+    if (host === 'drive.google.com') {
+      var id = (/\/file\/(?:u\/[0-9]+\/)?d\/([A-Za-z0-9_-]{20,})/.exec(path) || [])[1] || '';
+      if (!id) id = /^\/(open|uc|thumbnail)$/.test(path) ? (/^[A-Za-z0-9_-]{20,}$/.exec(queryParam(rest, 'id')) || [''])[0] : '';
+      if (!id) return imageResult('refused', '', host, 'That is a Drive folder or page, not a file. Open the image file in Drive and copy its share link.');
+      var fixedDrive = 'https://drive.google.com/thumbnail?id=' + id + '&sz=w1000';
+      return imageResult(fixedDrive === u ? 'ok' : 'fixed', fixedDrive, host,
+        'The file must be shared as "Anyone with the link". Drive serves it 1000px wide.');
+    }
+    if (host === 'docs.google.com') return imageResult('refused', '', host, 'Google Docs pages are not images.');
+    if (host === 'dropbox.com') {
+      if (/^\/scl\/fo\//.test(path)) return imageResult('refused', '', host, 'That is a Dropbox folder. Share the image file itself.');
+      if (!/^\/(s|scl\/fi)\//.test(path)) return imageResult('refused', '', host, 'That Dropbox link is not a shared file.');
+      var query = rest.slice(path.length).replace(/^\?/, '').split('#')[0];
+      var params = query ? query.split('&').filter(function (q) { return q && !/^(dl|raw)=/.test(q); }) : [];
+      params.push('raw=1');
+      var fixedBox = 'https://www.dropbox.com' + path + '?' + params.join('&');
+      return imageResult(fixedBox === u ? 'ok' : 'fixed', fixedBox, host, 'The link must be public.');
+    }
+    if (host === 'dl.dropboxusercontent.com') return imageResult('ok', u, host, '');
+    if (host === 'github.com') {
+      var gh = /^\/([^\/]+)\/([^\/]+)\/(?:blob|raw)\/(.+)$/.exec(path);
+      if (!gh) return imageResult('refused', '', host, 'Open the image file on GitHub and copy that link.');
+      if (/\.svg$/i.test(gh[3])) return imageResult('refused', '', host, 'GitHub serves SVG files as text, so they will not show. Use a PNG.');
+      return imageResult('fixed', 'https://raw.githubusercontent.com/' + gh[1] + '/' + gh[2] + '/' + gh[3], host,
+        'Public repositories only.');
+    }
+    if (host === 'raw.githubusercontent.com') {
+      if (/\.svg$/i.test(path)) return imageResult('refused', '', host, 'GitHub serves SVG files as text, so they will not show. Use a PNG.');
+      return imageResult('ok', u, host, '');
+    }
+    if (host === 'giphy.com') {
+      var gi = /^\/(?:gifs|embed)\/(?:[^\/]*-)?([A-Za-z0-9]+)\/?$/.exec(path);
+      if (!gi) return imageResult('refused', '', host, 'Open the GIF on Giphy and copy its link.');
+      return imageResult('fixed', 'https://media.giphy.com/media/' + gi[1] + '/giphy.gif', host, '');
+    }
+    if (/^media[0-9]?\.giphy\.com$/.test(host)) return imageResult('ok', u, host, '');
+    if (host === 'gyazo.com') {
+      var gy = /^\/([0-9a-f]{32})\/?$/.exec(path);
+      if (!gy) return imageResult('refused', '', host, 'Use Share, then Copy Direct Link on Gyazo.');
+      return imageResult('fixed', 'https://i.gyazo.com/' + gy[1] + '.png', host,
+        'Right for screenshots. For a GIF or video capture, use Share, then Copy Direct Link.');
+    }
+    if (host === 'i.gyazo.com') return imageResult('ok', u, host, '');
+    if (host === 'imgur.com' || host === 'm.imgur.com') {
+      if (/^\/(a|gallery|t|r|user)\//.test(path)) {
+        return imageResult('howto', '', host, 'That is an Imgur album or gallery. Open the image, right-click it, choose Copy image address (it starts with i.imgur.com).');
+      }
+      var im = /^\/([A-Za-z0-9]{5,8})(?:\.[A-Za-z]{3,4})?\/?$/.exec(path);
+      if (!im) return imageResult('refused', '', host, 'Open the image on Imgur and copy its link.');
+      return imageResult('fixed', 'https://i.imgur.com/' + im[1] + '.png', host,
+        'If it is a GIF, change .png to .gif. Imgur is blocked in the UK, so UK readers see a broken image.');
+    }
+    if (host === 'i.imgur.com') return imageResult('ok', u, host, 'Imgur is blocked in the UK, so UK readers see a broken image.');
+    if (host === 'reddit.com' && path === '/media' && !(depth > 0)) {
+      var inner = '';
+      try { inner = decodeURIComponent(queryParam(rest, 'url')); } catch (e) { inner = ''; }
+      var r = fixImageUrl(inner, 1);
+      return r.status === 'ok' || r.status === 'fixed' ? imageResult('fixed', r.url, r.host, r.note) : r;
+    }
+    if (host === 'preview.redd.it') {
+      return imageResult('fixed', 'https://i.redd.it' + path, host, 'Reddit images often refuse to show on other sites.');
+    }
+    if (host === 'i.redd.it') return imageResult('ok', u, host, 'Reddit images often refuse to show on other sites.');
+    if (host === 'cdn.discordapp.com' || host === 'media.discordapp.net') {
+      return imageResult('refused', '', host, 'Discord links expire after about a day, so the image would break. Upload it somewhere lasting.');
+    }
+    if (Object.prototype.hasOwnProperty.call(IMAGE_HOWTO, host) || /\.sharepoint\.com$/.test(host)) {
+      return imageResult('howto', '', host, IMAGE_HOWTO[host] || IMAGE_HOWTO['onedrive.live.com']);
+    }
+    if (host === 'lh3.googleusercontent.com' || ext) return imageResult('ok', u, host, '');
+    return imageResult('refused', '', host, 'This looks like a web page, not an image. Open the image itself and copy its address.');
+  }
+
+  // A bare https link in running text, without the punctuation that ends a
+  // sentence or closes link markup around it.
+  function bareLinksIn(text) {
+    var out = [];
+    var re = /https:\/\/[^\s<>"'`]+/gi;
+    var m;
+    while ((m = re.exec(text))) out.push(m[0].replace(/[).,;:!?\]]+$/, ''));
+    return out;
+  }
+
+  // How many links in this running text the fixer would rewrite if they stood
+  // alone: they are left as links, and counted so the notice can say so.
+  function countFixableLinks(text, decode) {
+    var n = 0;
+    bareLinksIn(text).forEach(function (u) {
+      if (fixImageUrl(decode ? u.replace(/&amp;/g, '&') : u).status === 'fixed') n += 1;
+    });
+    return n;
+  }
+
+  // Every image link in a draft that the fixer can rewrite, rewritten. A
+  // fixable bare link that stands alone on its line becomes an image; one in a
+  // sentence or inside link markup is left as it is and counted (leftAsLinks).
+  function fixAllImages(lang, text) {
+    var changed = 0;
+    var left = 0;
+    var src = String(text || '');
+    if (lang === 'md') {
+      src = src.replace(/(!\[[^\]\n]*\]\()([^)\s]+)(\))/g, function (all, a, url, b) {
+        var r = fixImageUrl(url);
+        if (r.status !== 'fixed') return all;
+        changed += 1;
+        return a + r.url + b;
+      });
+      src = src.split('\n').map(function (line) {
+        var t = line.trim();
+        if (/^https:\/\/\S+$/i.test(t)) {
+          var r = fixImageUrl(t);
+          if (r.status === 'fixed') {
+            changed += 1;
+            return line.replace(t, function () { return '![](' + r.url + ')'; });
+          }
+          return line;
+        }
+        left += countFixableLinks(line.replace(/!\[[^\]\n]*\]\([^)\s]+\)/g, ''), false);
+        return line;
+      }).join('\n');
+    } else if (lang === 'html') {
+      // Single- or double-quoted src, as players type either.
+      src = src.replace(/(<img\b[^>]*?\bsrc=)(["'])([^"']*)\2/gi, function (all, a, q, url) {
+        var r = fixImageUrl(url.replace(/&amp;/g, '&'));
+        if (r.status !== 'fixed') return all;
+        changed += 1;
+        return a + q + r.url.replace(/&/g, '&amp;') + q;
+      });
+      if (src.length <= CLEAN_MAX_CHARS) {
+        var tokens = tokenizeHtml(src);
+        var stack = [];
+        var edits = [];
+        for (var i = 0; i < tokens.length; i += 1) {
+          var tk = tokens[i];
+          if (tk.type === 'open') {
+            if (!tk.selfClose) stack.push(tk.tag);
+          } else if (tk.type === 'close') {
+            var at = stack.lastIndexOf(tk.tag);
+            if (at !== -1) stack.length = at;
+          } else if (!tk.raw) {
+            var end = i + 1 < tokens.length ? tokens[i + 1].pos : src.length;
+            var seg = src.slice(tk.pos, end);
+            if (seg.indexOf('<') !== -1) continue; // a comment sits in here: leave it be
+            if (stack.length) { left += countFixableLinks(seg, true); continue; }
+            var lines = seg.split('\n');
+            var off = tk.pos;
+            for (var k = 0; k < lines.length; k += 1) {
+              var ln = lines[k];
+              var startsLine = k > 0 || off === 0 || src.charAt(off - 1) === '\n';
+              var endsLine = k < lines.length - 1 || end >= src.length || src.charAt(end) === '\n';
+              var tl = ln.trim();
+              var fixed = startsLine && endsLine && /^https:\/\/\S+$/i.test(tl) ? fixImageUrl(tl.replace(/&amp;/g, '&')) : null;
+              if (fixed && fixed.status === 'fixed') {
+                changed += 1;
+                var lead = ln.indexOf(tl);
+                edits.push({ from: off + lead, to: off + lead + tl.length, text: '<img src="' + fixed.url.replace(/&/g, '&amp;') + '">' });
+              } else {
+                left += countFixableLinks(ln, true);
+              }
+              off += ln.length + 1;
+            }
+          }
+        }
+        for (var e = edits.length - 1; e >= 0; e -= 1) src = src.slice(0, edits[e].from) + edits[e].text + src.slice(edits[e].to);
+      }
+    }
+    return { text: src, changed: changed, leftAsLinks: left };
+  }
+
+  // ---- custom color contrast (#58) ------------------------------------------
+
+  function hexRgb(hex) {
+    var h = String(hex || '').toLowerCase();
+    if (/^#[0-9a-f]{3}$/.test(h)) h = '#' + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2) + h.charAt(3) + h.charAt(3);
+    if (!/^#[0-9a-f]{6}$/.test(h)) return null;
+    return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  }
+
+  function relLuminance(rgb) {
+    var c = rgb.map(function (v) {
+      var s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+
+  function contrastRatio(a, b) {
+    var x = hexRgb(a);
+    var y = hexRgb(b);
+    if (!x || !y) return 0;
+    var l1 = relLuminance(x);
+    var l2 = relLuminance(y);
+    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  }
+
+  // The themes a custom color is near-invisible in: under 2.5:1 against the
+  // editor backgrounds the owner measured, fainter than every Torn text color
+  // except the grays. Anything stronger is the player's choice.
+  function colorWarnings(hex) {
+    var out = [];
+    ['light', 'dark'].forEach(function (theme) {
+      var r = contrastRatio(hex, EDITOR_BG[theme]);
+      if (r && r < 2.5) out.push({ theme: theme, ratio: Math.floor(r * 10) / 10 });
+    });
+    return out;
+  }
+
+
+  // ---- editor operations (#58) -----------------------------------------------
+  // Pure edits on the source text and its selection. Each returns the new text
+  // and the selection to restore, so the runtime only reads and writes the
+  // panel's own textarea.
+
+  function clampSel(text, start, end) {
+    var n = text.length;
+    var a = Math.max(0, Math.min(n, start | 0));
+    var b = Math.max(0, Math.min(n, end | 0));
+    return a <= b ? [a, b] : [b, a];
+  }
+
+  function wrapSelection(text, start, end, open, close, placeholder) {
+    var t = String(text || '');
+    var s = clampSel(t, start, end);
+    var inner = s[0] === s[1] ? (placeholder || '') : t.slice(s[0], s[1]);
+    var next = t.slice(0, s[0]) + open + inner + close + t.slice(s[1]);
+    return { text: next, start: s[0] + open.length, end: s[0] + open.length + inner.length };
+  }
+
+  // Puts a block on lines of its own: a line break before it unless the caret
+  // starts a line, and after it unless the caret ends one.
+  function insertBlock(text, start, end, block) {
+    var t = String(text || '');
+    var s = clampSel(t, start, end);
+    var before = s[0] > 0 && t.charAt(s[0] - 1) !== '\n' ? '\n' : '';
+    var after = s[1] < t.length && t.charAt(s[1]) !== '\n' ? '\n' : '';
+    var next = t.slice(0, s[0]) + before + block + after + t.slice(s[1]);
+    var caret = s[0] + before.length + block.length;
+    return { text: next, start: caret, end: caret };
+  }
+
+  function lineBounds(t, start, end) {
+    var a = t.lastIndexOf('\n', start - 1) + 1;
+    var nl = t.indexOf('\n', Math.max(end - (end > start && t.charAt(end - 1) === '\n' ? 1 : 0), start));
+    return [a, nl === -1 ? t.length : nl];
+  }
+
+  function colorValue(value) {
+    return TORN_COLOR_NAMES.indexOf(value) !== -1 ? 'var(--te-text-color-' + value + ')' : String(value).toLowerCase();
+  }
+
+  // The open and close marks for a toolbar button, in the draft's language.
+  function markPair(lang, mark, value) {
+    var md = lang === 'md';
+    switch (mark) {
+      case 'bold': return md ? ['**', '**'] : ['<strong>', '</strong>'];
+      case 'italic': return md ? ['*', '*'] : ['<em>', '</em>'];
+      case 'underline': return md ? ['++', '++'] : ['<span style="text-decoration: underline;">', '</span>'];
+      case 'strike': return md ? ['~~', '~~'] : ['<span style="text-decoration: line-through;">', '</span>'];
+      case 'color': return md ? ['{' + String(value).toLowerCase() + '}', '{/}'] : ['<span style="color: ' + colorValue(value) + ';">', '</span>'];
+      case 'size': return md ? ['{' + (value | 0) + '}', '{/}'] : ['<span style="font-size: ' + (value | 0) + 'px;">', '</span>'];
+      case 'link': return md ? ['[', '](' + value + ')'] : ['<a href="' + escAttr(value) + '">', '</a>'];
+      default: return ['', ''];
+    }
+  }
+
+  // A block tag in HTML source. An inline mark never spans one, so a selection
+  // across two paragraphs is marked inside each, and the paragraphs stay two.
+  var HTML_BLOCK_TAG = /<\/?(?:p|h[1-6]|li|ul|ol|blockquote|table|thead|tbody|tfoot|tr|td|th|div)(?:\s[^>]*)?>/gi;
+
+  function applyMark(lang, text, start, end, mark, value) {
+    var pair = markPair(lang, mark, value);
+    var placeholder = mark === 'link' ? 'link text' : 'text';
+    var t = String(text || '');
+    var s = clampSel(t, start, end);
+    var sel = t.slice(s[0], s[1]);
+    HTML_BLOCK_TAG.lastIndex = 0;
+    if (lang !== 'html' || s[0] === s[1] || !HTML_BLOCK_TAG.test(sel)) {
+      return wrapSelection(t, s[0], s[1], pair[0], pair[1], placeholder);
+    }
+    var out = '';
+    var last = 0;
+    var wrap = function (part) { return part.trim() === '' ? part : pair[0] + part + pair[1]; };
+    HTML_BLOCK_TAG.lastIndex = 0;
+    var m;
+    while ((m = HTML_BLOCK_TAG.exec(sel)) !== null) {
+      out += wrap(sel.slice(last, m.index)) + m[0];
+      last = m.index + m[0].length;
+    }
+    out += wrap(sel.slice(last));
+    return { text: t.slice(0, s[0]) + out + t.slice(s[1]), start: s[0], end: s[0] + out.length };
+  }
+
+  var HTML_P_LINE = /^\s*<(?:p|h[1-6])(?:\s[^>]*)?>/i;
+  var HTML_BLOCK_LINE = /^\s*<(?:p|h[1-6]|ul|ol|blockquote|table|div)(?:\s[^>]*)?>/i;
+  var HTML_P_OPEN = /<(p|h[1-6])((?:\s[^>]*)?)>/gi;
+
+  var HTML_CELL_OPEN = /<(th|td)((?:\s[^>]*)?)>/gi;
+  var HTML_TABLE_SPAN = /<table\b[^>]*>[\s\S]*?<\/table\s*>/gi;
+
+  // Sets text-align on each paragraph opening tag in a line (or, given
+  // HTML_CELL_OPEN, each table cell), replacing any it had.
+  function alignOpenTag(line, value, openTag) {
+    return line.replace(openTag || HTML_P_OPEN, function (all, tag, attrs) {
+      var decl = 'text-align: ' + value + ';';
+      var sm = /\sstyle\s*=\s*("([^"]*)"|'([^']*)')/i.exec(attrs);
+      if (!sm) return '<' + tag + attrs + ' style="' + decl + '">';
+      var kept = String(sm[2] !== undefined ? sm[2] : sm[3]).split(';')
+        .filter(function (d) { return d.trim() !== '' && !/^\s*text-align\s*:/i.test(d); })
+        .map(function (d) { return d.trim() + ';'; });
+      var style = [decl].concat(kept).join(' ');
+      return '<' + tag + attrs.slice(0, sm.index) + ' style="' + style + '"' + attrs.slice(sm.index + sm[0].length) + '>';
+    });
+  }
+
+  // HTML lines, split into block lines and runs of loose text between them.
+  function htmlLineGroups(body, isBlock) {
+    var groups = [];
+    body.split('\n').forEach(function (l) {
+      var block = isBlock(l);
+      var prev = groups[groups.length - 1];
+      if (!block && prev && !prev.block) prev.lines.push(l);
+      else groups.push({ block: block, lines: [l] });
+    });
+    return groups;
+  }
+
+  function looseRun(lines) {
+    return lines.map(function (l) { return l.trim() === '' ? '' : l; }).join('\n');
+  }
+
+  // HTML lines aligned: a paragraph line in place, loose text in a new one.
+  function htmlAlignBody(body, value) {
+    return htmlLineGroups(body, function (l) { return HTML_P_LINE.test(l); })
+      .map(function (g) {
+        if (g.block) return alignOpenTag(g.lines[0], value);
+        var run = looseRun(g.lines);
+        return run.trim() === '' && body.trim() !== '' ? run : '<p style="text-align: ' + value + ';">' + run + '</p>';
+      }).join('\n');
+  }
+
+  function isMdTableLine(l) { return l.trim().charAt(0) === '|'; }
+
+  // #58 B4: a Markdown table keeps its alignment in its delimiter row (the
+  // --- row under the header), so aligning any line of it rewrites that row
+  // for every column. Justify has no Markdown form and becomes left. A table
+  // without that row cannot hold an alignment: null.
+  function alignMdTable(lines, value) {
+    var heads = splitCells(lines[0]);
+    var aligns = lines.length > 1 ? delimiterAligns(lines[1]) : null;
+    if (!aligns || aligns.length !== heads.length) return null;
+    var cell = value === 'center' ? ':---:' : value === 'right' ? '---:' : ':---';
+    return [lines[0], '| ' + heads.map(function () { return cell; }).join(' | ') + ' |'].concat(lines.slice(2));
+  }
+
+  // The line range [a, z) grown over every Markdown table it cuts, aligned as
+  // whole tables, with the other lines fenced as before. Null when no table
+  // line is in the range; { refused } when a table has no header row.
+  function alignMdRange(t, a, z, value) {
+    var lineAt = function (i) { var e = t.indexOf('\n', i); return t.slice(i, e === -1 ? t.length : e); };
+    while (a > 0) {
+      var pa = t.lastIndexOf('\n', a - 2) + 1;
+      if (pa >= a || !isMdTableLine(lineAt(a)) || !isMdTableLine(t.slice(pa, a - 1))) break;
+      a = pa;
+    }
+    while (z < t.length) {
+      var last = t.slice(t.lastIndexOf('\n', z - 1) + 1, z);
+      var nz = t.indexOf('\n', z + 1);
+      if (!isMdTableLine(last) || !isMdTableLine(t.slice(z + 1, nz === -1 ? t.length : nz))) break;
+      z = nz === -1 ? t.length : nz;
+    }
+    var lines = t.slice(a, z).split('\n');
+    if (!lines.some(isMdTableLine)) return null;
+    var runs = [];
+    lines.forEach(function (l) {
+      var table = isMdTableLine(l);
+      var prev = runs[runs.length - 1];
+      if (prev && prev.table === table) prev.lines.push(l); else runs.push({ table: table, lines: [l] });
+    });
+    var out = [];
+    for (var i = 0; i < runs.length; i += 1) {
+      var r = runs[i];
+      if (r.table) {
+        var aligned = alignMdTable(r.lines, value);
+        if (!aligned) return { refused: 'table-header' };
+        out = out.concat(aligned);
+      } else if (r.lines.join('').trim() === '') {
+        out = out.concat(r.lines);
+      } else {
+        out = out.concat([':::' + value], r.lines, [':::']);
+      }
+    }
+    return { a: a, z: z, out: out.join('\n') };
+  }
+
+  // The HTML twin: every table the range touches is aligned whole (each th
+  // and td), and the text around the tables is aligned as before. Null when
+  // the range touches no table.
+  function alignHtmlRange(t, a, z, value) {
+    var touched = false;
+    for (var grown = true; grown;) {
+      grown = false;
+      HTML_TABLE_SPAN.lastIndex = 0;
+      var m;
+      while ((m = HTML_TABLE_SPAN.exec(t)) !== null) {
+        var ts = m.index;
+        var te = ts + m[0].length;
+        if (ts >= z || te <= a) continue;
+        touched = true;
+        var na = Math.min(a, t.lastIndexOf('\n', ts - 1) + 1);
+        var ne = t.indexOf('\n', te);
+        var nz = Math.max(z, ne === -1 ? t.length : ne);
+        if (na !== a || nz !== z) { a = na; z = nz; grown = true; }
+      }
+    }
+    if (!touched) return null;
+    var body = t.slice(a, z);
+    var out = '';
+    var last = 0;
+    var seg = function (part) { return part.trim() === '' ? part : htmlAlignBody(part, value); };
+    HTML_TABLE_SPAN.lastIndex = 0;
+    var tm;
+    while ((tm = HTML_TABLE_SPAN.exec(body)) !== null) {
+      out += seg(body.slice(last, tm.index)) + alignOpenTag(tm[0], value, HTML_CELL_OPEN);
+      last = tm.index + tm[0].length;
+    }
+    out += seg(body.slice(last));
+    return { a: a, z: z, out: out };
+  }
+
+  // Quote and alignment act on whole lines. In HTML a line that is already a
+  // paragraph is aligned in place or quoted as it is, never put inside another
+  // paragraph; loose text is wrapped in one.
+  function applyBlockMark(lang, text, start, end, mark, value) {
+    var t = String(text || '');
+    var s = clampSel(t, start, end);
+    var b = lineBounds(t, s[0], s[1]);
+    if (mark === 'align') {
+      var tb = lang === 'md' ? alignMdRange(t, b[0], b[1], value) : alignHtmlRange(t, b[0], b[1], value);
+      if (tb && tb.refused) return { text: t, start: s[0], end: s[1], refused: tb.refused };
+      if (tb) return { text: t.slice(0, tb.a) + tb.out + t.slice(tb.z), start: tb.a, end: tb.a + tb.out.length };
+    }
+    var body = t.slice(b[0], b[1]);
+    var replaced;
+    if (lang === 'md') {
+      replaced = mark === 'quote'
+        ? body.split('\n').map(function (l) { return l.trim() === '' ? '>' : '> ' + l; }).join('\n')
+        : ':::' + value + '\n' + body + '\n:::';
+    } else if (mark === 'quote') {
+      replaced = '<blockquote>' + htmlLineGroups(body, function (l) { return HTML_BLOCK_LINE.test(l); })
+        .map(function (g) {
+          if (g.block) return g.lines[0].trim();
+          var run = looseRun(g.lines);
+          return run.trim() === '' && body.trim() !== '' ? '' : '<p>' + run + '</p>';
+        }).join('') + '</blockquote>';
+    } else {
+      replaced = htmlAlignBody(body, value);
+    }
+    var next = t.slice(0, b[0]) + replaced + t.slice(b[1]);
+    return { text: next, start: b[0], end: b[0] + replaced.length };
+  }
+
+  function tableSkeleton(lang, cols, rows, header) {
+    var c = Math.max(1, Math.min(8, cols | 0));
+    var r = Math.max(1, Math.min(30, rows | 0));
+    var heads = [];
+    var cells = [];
+    for (var k = 0; k < c; k += 1) { heads.push('Column ' + (k + 1)); cells.push('Cell'); }
+    if (lang === 'md') {
+      var lines = [];
+      if (header) {
+        lines.push('| ' + heads.join(' | ') + ' |');
+        lines.push('| ' + heads.map(function () { return '---'; }).join(' | ') + ' |');
+      }
+      for (var i = 0; i < r; i += 1) lines.push('| ' + cells.join(' | ') + ' |');
+      return lines.join('\n');
+    }
+    var html = '<table><tbody>';
+    if (header) html += '<tr>' + heads.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
+    for (var j = 0; j < r; j += 1) html += '<tr>' + cells.map(function (x) { return '<td>' + x + '</td>'; }).join('') + '</tr>';
+    return html + '</tbody></table>';
+  }
+
+  function emojiSnippet(lang, name) {
+    if (TORN_EMOJI.indexOf(name) === -1) return '';
+    return lang === 'md' ? ':' + name + ':' : '<img src="/images/emotions/svg/' + name + '.svg">';
+  }
+
+  function imageSnippet(lang, url, alt) {
+    var a = String(alt || '').replace(/[\[\]\n]/g, ' ').trim();
+    return lang === 'md' ? '![' + a + '](' + url + ')'
+      : '<img src="' + escAttr(url) + '"' + (a ? ' alt="' + escAttr(a) + '"' : '') + '>';
+  }
+
+  // An inline snippet (an emoji, an image) in place of the selection, with the
+  // caret after it.
+  function insertAtCaret(text, start, end, snippet) {
+    var t = String(text || '');
+    var s = clampSel(t, start, end);
+    var next = t.slice(0, s[0]) + snippet + t.slice(s[1]);
+    var caret = s[0] + snippet.length;
+    return { text: next, start: caret, end: caret };
+  }
+
+  // The paragraph or list item the caret is inside, from the text before the
+  // caret: its opening tag as typed, and the inline elements open inside it,
+  // to close before the break and reopen after. It is read from the start of
+  // the top-level block still open at the caret (by the same line rule
+  // Preview and Insert use), not from the caret's line, so a paragraph that
+  // runs over several lines still splits.
+  function enterContext(before) {
+    var info = {};
+    htmlLineSegments(before, info);
+    if (info.open < 0) return null;
+    var head = before.slice(info.open);
+    var toks = tokenizeHtml(head);
+    var stack = [];
+    for (var i = 0; i < toks.length; i += 1) {
+      var t = toks[i];
+      if (t.type === 'open' && !t.selfClose && !RAW_TEXT_TAGS[t.tag]) stack.push({ tag: t.tag, src: head.slice(t.pos, t.end), end: info.open + t.end });
+      else if (t.type === 'close') {
+        for (var k = stack.length - 1; k >= 0; k -= 1) if (stack[k].tag === t.tag) { stack.length = k; break; }
+      }
+    }
+    for (var j = stack.length - 1; j >= 0; j -= 1) {
+      if (stack[j].tag !== 'p' && stack[j].tag !== 'li') continue;
+      var inner = stack.slice(j + 1);
+      return {
+        tag: stack[j].tag, src: stack[j].src, inner: inner.slice(),
+        at: stack[j].end - stack[j].src.length, openEnd: stack[j].end,
+        reopen: inner.map(function (x) { return x.src; }).join(''),
+        close: inner.reverse().map(function (x) { return '</' + x.tag + '>'; }).join(''),
+      };
+    }
+    return null;
+  }
+
+  // #58 round 2: what Enter does in the editor, or null for the browser's own
+  // newline (which the line rule already makes a new paragraph, and an empty
+  // line a gap). A selection is replaced first, as a typed key replaces it.
+  //   HTML: inside <p ...>a|b</p> on the caret's line, the paragraph splits and
+  //   keeps its opening tag (its alignment); inside <li>a|b</li>, the item
+  //   splits. Shift+Enter is a line break, <br>.
+  //   An EMPTY item (only whitespace and open inline tags before the caret,
+  //   only closing tags after it) is removed and the caret goes to a new
+  //   top-level line after the list's close, which ends the list as an empty
+  //   Markdown marker does (htmlEmptyItemExit).
+  //   Markdown: a list or quote line continues on the next line; a line that
+  //   is only the marker loses it, which ends the list or quote.
+  function htmlEmptyItemExit(before, after, ctx) {
+    var between = before.slice(ctx.openEnd).replace(/<[a-zA-Z][a-zA-Z0-9]*(?:[ \t][^<>]*)?>/g, function (tag) {
+      return /^<(?:img|br|hr)\b/i.test(tag) ? 'x' : '';
+    });
+    if (between.trim() !== '') return null;
+    var close = /^(?:\s*<\/[a-zA-Z][a-zA-Z0-9]*[ \t]*>)*?\s*<\/li[ \t]*>/i.exec(after);
+    if (!close) return null;
+    var head = before.slice(0, ctx.at);
+    var tail = after.slice(close[0].length);
+    // The item had its own line: that line goes with it.
+    if (/(^|\n)[ \t]*$/.test(head) && /^[ \t]*(\n|$)/.test(tail)) {
+      head = head.replace(/[ \t]*$/, '');
+      tail = tail.replace(/^[ \t]*\n?/, '');
+    }
+    // The close of the list holding the item: the first </ul> or </ol> at
+    // this item's depth. The caret goes on a new line after it.
+    var toks = tokenizeHtml(tail);
+    var depth = 0;
+    for (var i = 0; i < toks.length; i += 1) {
+      var tk = toks[i];
+      if (tk.tag !== 'ul' && tk.tag !== 'ol') continue;
+      if (tk.type === 'open' && !tk.selfClose) depth += 1;
+      else if (tk.type === 'close') {
+        if (depth === 0) {
+          var c = head.length + tk.end + 1;
+          return { text: head + tail.slice(0, tk.end) + '\n' + tail.slice(tk.end), start: c, end: c };
+        }
+        depth -= 1;
+      }
+    }
+    return null;
+  }
+
+  function editorEnter(lang, text, start, end, shift) {
+    if (lang !== 'html' && lang !== 'md') return null;
+    var t = String(text || '');
+    var sel = clampSel(t, start, end);
+    var before = t.slice(0, sel[0]);
+    var after = t.slice(sel[1]);
+    var lineStart = before.lastIndexOf('\n') + 1;
+    var head = before.slice(lineStart);
+    var put = function (ins) {
+      var c = before.length + ins.length;
+      return { text: before + ins + after, start: c, end: c };
+    };
+    if (lang === 'html') {
+      if (shift) return put('<br>');
+      // The caret inside a tag's own markup: the browser's newline.
+      if (head.lastIndexOf('<') > head.lastIndexOf('>')) return null;
+      var nb = before.replace(/\r\n?/g, '\n');
+      var ctx = enterContext(nb);
+      if (!ctx) return null;
+      // An empty item ends the list (positions hold only without CRs).
+      if (ctx.tag === 'li' && nb.length === before.length) {
+        var exit = htmlEmptyItemExit(before, after, ctx);
+        if (exit) return exit;
+      }
+      // Enter at the end of a heading (a size span holding bold) starts a
+      // plain paragraph, not another heading.
+      var closing = /^(?:<\/[a-zA-Z][a-zA-Z0-9]*[ \t]*>)*/.exec(after)[0];
+      var atEnd = /<\/p[ \t]*>/i.test(closing) || /^[ \t]*(\n|$)/.test(after.slice(closing.length));
+      var heading = ctx.tag === 'p' && ctx.inner.length === 2 && ctx.inner[0].tag === 'span'
+        && /font-size/i.test(ctx.inner[0].src) && (ctx.inner[1].tag === 'strong' || ctx.inner[1].tag === 'b');
+      if (heading && atEnd) {
+        // The heading's own closing tags after the caret are replaced, so the
+        // new paragraph holds none of them.
+        var pEnd = /<\/p[ \t]*>/i.exec(closing);
+        var ins = ctx.close + '</p>\n<p>';
+        var c = before.length + ins.length;
+        return { text: before + ins + (pEnd ? '</p>' : '') + after.slice(pEnd ? pEnd.index + pEnd[0].length : closing.length), start: c, end: c };
+      }
+      return put(ctx.close + '</' + ctx.tag + '>\n' + ctx.src + ctx.reopen);
+    }
+    if (shift) return null;
+    var nl = after.indexOf('\n');
+    var rest = nl === -1 ? after : after.slice(0, nl);
+    var m = /^[ \t]*[-*+][ \t]+/.exec(head) || /^[ \t]*[0-9]{1,9}[.)][ \t]+/.exec(head) || /^[ \t]*>[ \t]?/.exec(head);
+    if (!m) return null;
+    if ((head + rest).slice(m[0].length).trim() === '') {
+      return { text: t.slice(0, lineStart) + after.slice(rest.length), start: lineStart, end: lineStart };
+    }
+    var ol = /^([ \t]*)([0-9]{1,9})([.)][ \t]+)$/.exec(m[0]);
+    if (ol) return put('\n' + ol[1] + Math.min(parseInt(ol[2], 10) + 1, 999999999) + ol[3]);
+    var q = /^([ \t]*)>/.exec(m[0]);
+    if (q) return put('\n' + q[1] + '> ');
+    return put('\n' + m[0]);
+  }
+
+  // Common Unicode emoji, for the picker's second tab. Code points, not
+  // characters, so the source stays ASCII (constraint 4). A pair is an emoji
+  // and its variation selector.
+  var UNICODE_EMOJI = Object.freeze([
+    [0x1F600], [0x1F602], [0x1F642], [0x1F609], [0x1F60D], [0x1F60E], [0x1F914], [0x1F605],
+    [0x1F622], [0x1F621], [0x1F631], [0x1F634], [0x1F923], [0x1F644], [0x1F62C], [0x1F91D],
+    [0x1F44D], [0x1F44E], [0x1F44F], [0x1F64F], [0x1F4AA], [0x1F440], [0x1F525], [0x1F4AF],
+    [0x1F389], [0x1F4B0], [0x1F480], [0x1F48A], [0x1F3C6], [0x2B50], [0x2705], [0x274C],
+    [0x26A0, 0xFE0F], [0x2764, 0xFE0F], [0x1F494], [0x2708, 0xFE0F], [0x1F680], [0x23F0], [0x1F4CC],
+  ].map(function (cps) { return String.fromCodePoint.apply(String, cps); }));
 
   // ---- ENGINE END ------------------------------------------------------
 
@@ -3751,6 +5823,18 @@
     deepBusy: false,
     deepProgress: null,
     draftFocusId: null,
+    // #58: the draft open in the Drafts editor. Typing updates text and the
+    // selection here without a redraw (onInput), the way drawerEdit does.
+    editor: {
+      key: null, lang: 'md', text: '', selStart: 0, selEnd: 0, mode: 'source', previewTheme: null,
+      picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn', name: '', imageCheck: null,
+      fixOpen: false, fixCheck: null,
+      pickerWarn: null, dirty: false, showImages: false, fields: {}, src: 'new|md', atLimit: false,
+      undo: [], typingAt: 0,
+    },
+    // #58: the panel's resolved theme, set by applyThemeClass; Preview
+    // defaults to it.
+    themeResolved: null,
     pendingRedraw: false,
     generation: 0,
     mounted: false,
@@ -3837,9 +5921,26 @@
     persist('settings');
   }
 
+  // True once a write failed during the current action: its error notice
+  // must not be replaced by that action's own success message. Every action
+  // entry (onAction, onChange, onInput, a thread link) and a route change
+  // clears it; persist sets it.
+  var persistFailed = false;
+
   function notice(text, kind) {
-    state.notices.push({ text: safeString(text, 300), kind: kind || 'info' });
-    if (state.notices.length > 5) state.notices.shift();
+    var k = kind || 'info';
+    // A failed save is never hidden by a later "done" in the same action;
+    // a warning or another error still replaces it.
+    if (k === 'info' && persistFailed) return;
+    // One status message at a time: a new one replaces the previous.
+    state.notices = [{ text: safeString(text, 300), kind: k }];
+  }
+
+  // "A", "A and B", "A, B, and C": the comma before the last "and" keeps
+  // "Folders and tags" readable as one name.
+  function joinNames(names) {
+    if (names.length < 3) return names.join(' and ');
+    return names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
   }
 
   function loadAll(now) {
@@ -3859,11 +5960,14 @@
     state.badges = b.value;
     // A key that failed normalisation is reported rather than silently reset,
     // because a user who loses their folders deserves to know it happened.
+    var damaged = [];
     [['Settings', s], ['Folders and tags', o], ['Drafts', d], ['Cached thread list', f], ['Post cache', p], ['My posts list', m],
       ['Badges', b]]
       .forEach(function (pair) {
-        if (pair[1].recovered) notice(pair[0] + ' were damaged and have been reset.', 'warn');
+        if (pair[1].recovered) damaged.push(pair[0]);
       });
+    // One slot for messages: every damaged store is named in a single notice.
+    if (damaged.length) notice(joinNames(damaged) + ' were damaged and have been reset.', 'warn');
   }
 
   function persist(which) {
@@ -3879,7 +5983,7 @@
     var pair = map[which];
     if (!pair) return { ok: true };
     var res = saveKey(pair[0], pair[1]);
-    if (!res.ok) notice(res.detail || 'Could not save.', 'error');
+    if (!res.ok) { persistFailed = true; notice(res.detail || 'Could not save.', 'error'); }
     return res;
   }
 
@@ -4494,95 +6598,139 @@
 
   // ---- reply box and drafts ----------------------------------------------
 
+  // Torn's reply box is TinyMCE 6.8.5 in inline mode: a contenteditable div,
+  // not a textarea (docs/reference/torn-forum-editor-findings-2026-10-09.md).
+  // These hooks are unhashed, and TornTools uses the same selector. There is
+  // no textarea fallback on purpose: the old broad fallbacks matched a hidden
+  // Report reason box and wrote the draft there (#60). A miss offers Copy.
   var REPLY_SELECTORS = Object.freeze([
-    // Torn's own reply editor, most specific first. Every one of these is a
-    // guess against markup research could not confirm, so failure here has to
-    // be visible and harmless: the panel falls back to a copy button.
-    'textarea[name="postText"]',
-    '#quickReplyText',
-    '.forums-thread-wrap textarea',
-    '#forums-page-wrap textarea',
-    'textarea',
+    '#editor-wrapper .editor-content.mce-content-body',
   ]);
 
-  function findReplyBox(doc) {
-    if (!doc || typeof doc.querySelector !== 'function') return null;
-    for (var i = 0; i < REPLY_SELECTORS.length; i += 1) {
-      var el = null;
-      try { el = doc.querySelector(REPLY_SELECTORS[i]); } catch (e) { el = null; }
-      if (el && el.isConnected !== false) return el;
-    }
-    return null;
+  function isShown(el) {
+    try {
+      var r = el.getBoundingClientRect();
+      return !!r && r.width > 0 && r.height > 0;
+    } catch (e) { return false; }
   }
 
-  // React owns the value of its own textarea. Assigning .value directly updates
-  // the DOM but not React's state, and the next render throws the text away.
-  // Going through the prototype's native setter and then dispatching a bubbling
-  // input event is what makes React accept the change.
-  function insertDraft(doc, win, text) {
+  // A thread page holds several TinyMCE editors (the owner's probe found five).
+  // Keep the connected, visible ones; if more than one is visible, the one in
+  // the reply or new-thread form; if that is still ambiguous, none, so the
+  // panel offers Copy rather than guessing.
+  function findReplyBox(doc) {
+    if (!doc || typeof doc.querySelectorAll !== 'function') return null;
+    var all;
+    try { all = Array.prototype.slice.call(doc.querySelectorAll(REPLY_SELECTORS[0]) || []); } catch (e) { return null; }
+    var shown = all.filter(function (el) {
+      return el && el.isConnected !== false && typeof el.getBoundingClientRect === 'function' && isShown(el);
+    });
+    if (shown.length === 1) return shown[0];
+    var inForm = shown.filter(function (el) {
+      try { return typeof el.closest === 'function' && !!el.closest('.forums-new-post-wrap'); } catch (e) { return false; }
+    });
+    return inForm.length === 1 ? inForm[0] : null;
+  }
+
+  // The paste lands at the caret, so the caret goes to the end first: Insert
+  // adds to what the player has typed and never replaces it.
+  function caretToEnd(doc, win, box) {
+    try {
+      var sel = win && typeof win.getSelection === 'function' ? win.getSelection() : null;
+      if (!sel || !doc || typeof doc.createRange !== 'function') return;
+      var range = doc.createRange();
+      range.selectNodeContents(box);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) { /* the paste still lands, at TinyMCE's own caret */ }
+  }
+
+  // ADR 0002. One synthetic paste, marked as TinyMCE's own content so Torn's
+  // paste_webkit_styles: 'none' filter keeps the styles (owner-observed, test
+  // B). TinyMCE calls preventDefault on a paste it handles, so dispatchEvent
+  // returning false, and the body having changed, together mean it landed.
+  // The player still presses Post.
+  function insertPost(doc, win, html) {
     var box = findReplyBox(doc);
     if (!box) {
       return { ok: false, reason: 'noreplybox', detail: 'No reply box found on this page. Use Copy instead.' };
     }
+    var DT = win && win.DataTransfer;
+    var CE = win && win.ClipboardEvent;
+    if (typeof DT !== 'function' || typeof CE !== 'function') {
+      return { ok: false, reason: 'unsupported', detail: 'This browser cannot insert for you. Use Copy instead.' };
+    }
     try {
-      var proto = win && win.HTMLTextAreaElement ? win.HTMLTextAreaElement.prototype : null;
-      var desc = proto ? Object.getOwnPropertyDescriptor(proto, 'value') : null;
-      if (desc && typeof desc.set === 'function') {
-        desc.set.call(box, text);
-      } else {
-        box.value = text;
-      }
-      var EventCtor = win && win.Event ? win.Event : null;
-      if (EventCtor) box.dispatchEvent(new EventCtor('input', { bubbles: true }));
+      var before = String(box.innerHTML);
       if (typeof box.focus === 'function') box.focus();
-      return { ok: true };
+      caretToEnd(doc, win, box);
+      var data = new DT();
+      data.setData('text/html', PASTE_MARKER + html);
+      data.setData('text/plain', htmlToText(html));
+      var handled = box.dispatchEvent(new CE('paste', { clipboardData: data, bubbles: true, cancelable: true })) === false;
+      if (handled && String(box.innerHTML) !== before) return { ok: true };
+      return { ok: false, reason: 'refused', detail: 'Torn\'s editor did not accept the insert. Use Copy instead.' };
     } catch (e) {
-      return { ok: false, reason: 'insert', detail: 'Could not write into the reply box.' };
+      return { ok: false, reason: 'insert', detail: 'Could not write into the reply box. Use Copy instead.' };
     }
   }
 
-  // Autosave keeps its own record of which element it is listening to. The
-  // panel redraws on every interaction, so attaching per draw would pile up a
-  // listener each time and write the same draft over and over.
+  // Autosave keeps its own record of which element, which listener and which
+  // thread it is serving. The panel redraws on every interaction, so attaching
+  // per draw would pile up listeners; and a timer must save to the thread it
+  // was started for, never to the one the player has since moved to.
   var autosaveBox = null;
   var autosaveTimer = null;
+  var autosaveListener = null;
+  var autosaveThread = null;
 
   function attachAutosave(doc, win) {
-    if (!state.settings.autosaveDrafts || !state.route || !state.route.isThread) {
-      autosaveBox = null;
-      return false;
-    }
+    void win;
+    if (!state.settings.autosaveDrafts || !state.route || !state.route.isThread) { detachAutosave(); return false; }
     var box = findReplyBox(doc);
-    if (!box || typeof box.addEventListener !== 'function') {
-      autosaveBox = null;
-      return false;
-    }
-    if (autosaveBox === box) return true;
+    if (!box || typeof box.addEventListener !== 'function') { detachAutosave(); return false; }
+    var thread = String(state.route.threadId);
+    if (autosaveBox === box && autosaveThread === thread) return true;
+    detachAutosave();
     autosaveBox = box;
-
-    box.addEventListener('input', function () {
+    autosaveThread = thread;
+    autosaveListener = function () {
       if (autosaveTimer !== null) clearTimeout(autosaveTimer);
       autosaveTimer = setTimeout(function () {
         autosaveTimer = null;
         try {
           if (!state.settings.autosaveDrafts) return;
-          if (!state.route || !state.route.isThread) return;
-          var text = box.value === undefined || box.value === null ? '' : String(box.value);
-          // An empty box never deletes a saved draft. Torn clears the reply box
-          // after a successful post, and can hand back an empty textarea during
-          // a re-render; either would otherwise wipe work the user still wants.
-          // Deleting a draft is what the Delete button is for.
-          if (!text.trim()) return;
-          state.drafts = saveDraft(state.drafts, state.route.threadId, text, Date.now(), '');
+          if (!state.route || String(state.route.threadId) !== thread || autosaveBox !== box) return;
+          // #58: the box is TinyMCE's body, so its HTML is the post, cleaned
+          // like everything else and saved as an HTML draft, never over a
+          // Markdown or Text draft the player wrote in the panel.
+          var post = cleanTornHtml(String(box.innerHTML || ''));
+          // An empty editor never deletes a saved draft. Torn clears the box
+          // after a successful post, and can hand back an empty body during a
+          // re-render; either would otherwise wipe work the user still wants.
+          if (!htmlToText(post).trim() && post.indexOf('<img') === -1) return;
+          var source = htmlSource(post);
+          // Over the draft limit: skip rather than store a truncated post.
+          if (source.length > DRAFT_MAX_CHARS) return;
+          var existing = draftFor(state.drafts, thread);
+          if (existing && draftLangOf(existing) !== 'html') return;
+          state.drafts = saveDraft(state.drafts, thread, source, Date.now(), '', 'html');
           persist('drafts');
         } catch (e) { /* autosave must never throw onto Torn's page */ }
       }, AUTOSAVE_DEBOUNCE_MS);
-    });
+    };
+    box.addEventListener('input', autosaveListener);
     return true;
   }
 
   function detachAutosave() {
+    if (autosaveBox && autosaveListener && typeof autosaveBox.removeEventListener === 'function') {
+      try { autosaveBox.removeEventListener('input', autosaveListener); } catch (e) { /* the box is gone */ }
+    }
     autosaveBox = null;
+    autosaveListener = null;
+    autosaveThread = null;
     if (autosaveTimer !== null) { clearTimeout(autosaveTimer); autosaveTimer = null; }
   }
 
@@ -4595,7 +6743,7 @@
     try {
       if (!win || typeof win.getComputedStyle !== 'function') return null;
       var candidates = [doc && doc.body, doc && doc.documentElement];
-      // "Could not read a colour" and "read a transparent colour" are different
+      // "Could not read a color" and "read a transparent color" are different
       // answers. Only the second means the browser is painting its own white
       // canvas; the first has to fall through to the other signals.
       var readAny = false;
@@ -4609,7 +6757,7 @@
         var m = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/.exec(raw);
         if (!m) continue;
         readAny = true;
-        // A transparent element paints nothing, so the colour comes from
+        // A transparent element paints nothing, so the color comes from
         // further out. Keep looking rather than reading it as black.
         if (m[4] !== undefined && Number(m[4]) < 0.5) continue;
         var lum = 0.2126 * Number(m[1]) + 0.7152 * Number(m[2]) + 0.0722 * Number(m[3]);
@@ -4650,6 +6798,7 @@
       var panel = doc.getElementById(PANEL_ID);
       if (!panel || !panel.classList) return null;
       var theme = resolveTheme(state.settings.theme, doc, win);
+      state.themeResolved = theme;
       panel.classList.remove('tfcc-theme-dark');
       panel.classList.remove('tfcc-theme-light');
       panel.classList.add('tfcc-theme-' + theme);
@@ -4684,9 +6833,15 @@
     } catch (e2) { /* same */ }
   }
 
+  // The 17 Torn text colors for a Preview theme, as one declaration list, so
+  // a cleaned post's var(--te-text-color-*) resolves inside the panel.
+  function teVars(theme) {
+    return TORN_COLORS.map(function (c) { return '--te-text-color-' + c.name + ': ' + c[theme] + ';'; }).join(' ');
+  }
+
   function panelStyleText() {
     return [
-      // Colour values follow Torn Bookie Live Scores' default scheme so the two
+      // Color values follow Torn Bookie Live Scores' default scheme so the two
       // scripts read as a family. --tm-* means "matches Bookie"; --tfcc-* is
       // local to this script. No font is set: the panel inherits Torn's, which
       // is what makes it look like part of the page rather than bolted on.
@@ -4707,7 +6862,7 @@
       // lightened for dark: 6.91:1 on the row, 7.52:1 on the panel. The logo
       // blue itself is 3.49:1 here, too low for 12px text.
       '  --tfcc-prio: #8db3d9;',
-      // #53 (owner): the logo's colour, per theme. Dark keeps #5C768F.
+      // #53 (owner): the logo's color, per theme. Dark keeps #5C768F.
       '  --tfcc-logo: #5c768f;',
       // #43 (owner): the "See-through background" setting's two base layers,
       // --tm-bg and --tm-bg-2 with alpha: the panel's own background at 50%
@@ -4718,7 +6873,7 @@
       // #33: the narrow header button size; fitHeader overrides it inline.
       '  --tfcc-hb: 44px;',
       // #33 nav numerals, v1 tint (spec 13f). The same in both themes, because
-      // the colour is the cell's own text colour. contrast is in style.test.js.
+      // the color is the cell's own text color. contrast is in style.test.js.
       '  --tfcc-navnum-opacity: 0.14; --tfcc-navnum-opacity-selected: 0.09;',
       '  --tfcc-navlab-opacity: 0.9; --tfcc-navlab-opacity-selected: 0.96; --tfcc-navnum-size: 40px;',
       '}',
@@ -4749,10 +6904,10 @@
       '#' + PANEL_ID + ' * { box-sizing: border-box; }',
       // Inheritance is the weakest source in CSS: a value is inherited only
       // when NO rule matches. Torn styles bare elements - td, h4, p, code - so
-      // any such rule of theirs beat our panel's inherited colour and painted
+      // any such rule of theirs beat our panel's inherited color and painted
       // black text on the dark panel. background needs its own reset because it
       // is not inherited at all, which is how a host `code { background: #eee }`
-      // survived the colour fix and left grey text on a grey block.
+      // survived the color fix and left grey text on a grey block.
       // Both declarations are (1,0,0), so every rule below still wins.
       '#' + PANEL_ID + ' * { color: inherit; background: transparent; }',
       '#' + PANEL_ID + ' code, #' + PANEL_ID + ' pre {',
@@ -4764,7 +6919,7 @@
       '  overflow-y: auto; overflow-x: hidden; padding: 12px; }',
       // #43 (owner): "See-through background", one class on the panel. Only
       // the panel's base and the row cards go translucent; text and every
-      // control stay opaque (alpha on the colour, never opacity). The blur is
+      // control stay opaque (alpha on the color, never opacity). The blur is
       // a readability aid for a busy page under it; it cannot help a plain
       // one, so contrast was measured without it, and a browser without it
       // simply shows the page. Expand covers the page, so it stays solid.
@@ -4838,7 +6993,7 @@
       // the button.tfcc-nav-mine margin at (1,1,1).
       '#' + PANEL_ID + ' .tfcc-nav button.tfcc-reactions { margin-left: auto; }',
       '#' + PANEL_ID + ' .tfcc-nav .tfcc-reactions + button.tfcc-nav-mine { margin-left: 0; }',
-      // The thumbs (#30) drawn in one colour: white on the dark panel (the
+      // The thumbs (#30) drawn in one color: white on the dark panel (the
       // default tokens are dark), black on the light one.
       '#' + PANEL_ID + ' .tfcc-thumb { filter: grayscale(1) brightness(0) invert(1); }',
       '#' + PANEL_ID + '.tfcc-theme-light .tfcc-thumb { filter: grayscale(1) brightness(0); }',
@@ -4867,7 +7022,7 @@
       '#' + PANEL_ID + ' .tfcc-nav { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
       '  margin-bottom: var(--tfcc-gap); }',
       // My posts stands apart from the other five by place only: last, and
-      // pushed right. Its colours are every nav button's (#43, owner): the
+      // pushed right. Its colors are every nav button's (#43, owner): the
       // normal fill, and the selected fill only while it is the current view.
       // Its old light-grey fill read as selected.
       '#' + PANEL_ID + ' button.tfcc-nav-mine { margin-left: auto; }',
@@ -4930,7 +7085,7 @@
       // #43 (owner): an info button is a bare icon, at every width. It keeps
       // its 44px target and a transparent border (so its box does not move);
       // only the fill and the outline go. Hover and open tint the icon in the
-      // accent colour instead of filling a box; focus keeps the panel ring.
+      // accent color instead of filling a box; focus keeps the panel ring.
       '#' + PANEL_ID + ' button.tfcc-info { display: inline-flex; align-items: center; justify-content: center;',
       '  flex: none; min-width: 44px; min-height: 44px; padding: 0; border-color: transparent; background: transparent; }',
       '#' + PANEL_ID + ' button.tfcc-info:hover { background: transparent; color: var(--tm-accent-text); }',
@@ -5148,7 +7303,7 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-emo { display: block; font-size: 16px; line-height: 1;',
       '  filter: grayscale(1) brightness(0) invert(1); }',
       '#' + PANEL_ID + '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }',
-      // #41: the archive icon, in the button's own text colour in both themes.
+      // #41: the archive icon, in the button's own text color in both themes.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-archico { display: block; flex: none; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-archico path { fill: currentColor; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-vh { font-size: var(--tfcc-text); margin: 2px 0 6px 0; }',
@@ -5205,6 +7360,40 @@
       '  min-width: 24px; min-height: 24px; padding: 0; border: 0; border-radius: 12px; background: transparent;',
       '  color: inherit; }',
       '#' + PANEL_ID + ' .tfcc-draft { width: 100%; min-height: 90px; resize: vertical; }',
+      '#' + PANEL_ID + ' .tfcc-modes { display: flex; gap: 0; margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-modes button { flex: 1 1 0; min-height: 32px; border-radius: 0; }',
+      '#' + PANEL_ID + ' .tfcc-modes button[aria-pressed="true"] { background: var(--tm-good-bg); color: var(--tm-text); }',
+      '#' + PANEL_ID + ' .tfcc-pvbar { display: flex; align-items: center; gap: var(--tfcc-gap-sm); margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-pv { border: 1px solid var(--tm-border); border-radius: 4px; padding: 8px; overflow-x: auto; }',
+      '#' + PANEL_ID + ' .tfcc-pv-light { background: #ffffff; color: #333333; ' + teVars('light') + ' }',
+      '#' + PANEL_ID + ' .tfcc-pv-dark { background: #111111; color: #dddddd; ' + teVars('dark') + ' }',
+      '#' + PANEL_ID + ' .tfcc-pv-block { cursor: text; }',
+      '#' + PANEL_ID + ' .tfcc-pv p { margin: 0; }',
+      '#' + PANEL_ID + ' .tfcc-pv img { max-width: 100%; }',
+      '#' + PANEL_ID + ' .tfcc-pv table { border-collapse: collapse; }',
+      '#' + PANEL_ID + ' .tfcc-pv th, #' + PANEL_ID + ' .tfcc-pv td { border: 1px solid currentColor; padding: 2px 6px; }',
+      '#' + PANEL_ID + ' .tfcc-pv blockquote { margin: 0 0 0 8px; padding-left: 8px; border-left: 3px solid currentColor; }',
+      '#' + PANEL_ID + ' .tfcc-confirm { margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-tools button { min-width: 32px; min-height: 32px; }',
+      // E1: Save as free draft stands apart from Delete, in the accent color.
+      '#' + PANEL_ID + ' .tfcc-actions button.tfcc-tofree { margin-left: var(--tfcc-gap-lg); color: var(--tm-accent-text); }',
+      '#' + PANEL_ID + ' .tfcc-picker { border: 1px solid var(--tm-border); border-radius: 4px; padding: 8px; margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-swatches, #' + PANEL_ID + ' .tfcc-emoji { display: flex; flex-wrap: wrap; gap: 4px; }',
+      '#' + PANEL_ID + ' .tfcc-swatch { display: block; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--tm-border); }',
+      '#' + PANEL_ID + ' .tfcc-actions button.tfcc-fixopen { margin-left: auto; }',
+      '#' + PANEL_ID + ' .tfcc-img-check { display: block; max-width: 100%; max-height: 160px; margin: 4px 0; }',
+      '#' + PANEL_ID + ' .tfcc-key { border-collapse: collapse; width: 100%; }',
+      '#' + PANEL_ID + ' .tfcc-key th, #' + PANEL_ID + ' .tfcc-key td { border: 1px solid var(--tm-border); padding: 2px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-modes button { min-width: 44px; min-height: 44px; }',
+      // Symbol buttons: up to 40 wide, 44 tall, 4px gaps, right-aligned. The
+      // primary row (Undo B I U Color Link More) never wraps: its buttons
+      // shrink to a 32px floor, so 7 x 32 + 6 x 4 = 248 fits the 284px row a
+      // 320px screen leaves. The More drawer may still wrap.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools button { flex: 0 1 40px; min-width: 32px; width: 40px; min-height: 44px; padding: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools { gap: 4px; justify-content: flex-end; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools:not(.tfcc-tools-more) { flex-wrap: nowrap; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-draft, #' + PANEL_ID + '.tfcc-narrow .tfcc-picker input { font-size: 16px; }',
       '#' + PANEL_ID + ' .tfcc-hit { border-left: 3px solid var(--tm-accent-text); padding-left: 8px;',
       '  margin-bottom: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + ' .tfcc-hit-text { white-space: pre-wrap; overflow-wrap: anywhere;',
@@ -5379,6 +7568,30 @@
 
   function buildPanelModel(now) {
     var s = state.settings;
+    var edKey = editorKeyFor({ draftFocusId: state.draftFocusId, route: state.route });
+    if (edKey !== state.editor.key) {
+      // Spec 4a: switching drafts or threads never discards typed text.
+      if (state.editor.dirty && state.editor.key) saveEditor(now);
+      loadEditor(edKey, now);
+    } else if (edKey && !state.editor.dirty && draftSig(draftFor(state.drafts, edKey)) !== state.editor.src) {
+      // The stored draft changed behind a clean editor (autosave from Torn's
+      // editor, an import, a setting read after boot): show what is stored,
+      // keeping the pane the player is looking at.
+      var keep = state.editor;
+      loadEditor(edKey, now);
+      state.editor.mode = keep.mode;
+      state.editor.previewTheme = keep.previewTheme;
+      state.editor.showImages = keep.showImages;
+      // An open picker and what was typed into it are the player's, not the
+      // stored draft's: a reload never wipes them mid-edit.
+      ['picker', 'fields', 'imageCheck', 'fixOpen', 'fixCheck', 'pickerWarn', 'emojiTab', 'moreOpen', 'height', 'undo'].forEach(function (k) { state.editor[k] = keep[k]; });
+      // With steps to undo, the reload is a step of its own: one Undo goes
+      // back to what the editor showed before it, never past the newer stored
+      // text. With none, Undo stays off, as on a freshly opened draft.
+      if (keep.undo && keep.undo.length && (keep.text !== state.editor.text || keep.lang !== state.editor.lang)) {
+        pushUndo(state.editor, keep);
+      }
+    }
     var rows = state.rows;
     var query = parseQuery(state.searchQuery);
 
@@ -5488,10 +7701,15 @@
       route: state.route,
       draftFocusId: state.draftFocusId,
       replyBoxFound: state.replyBoxFound,
+      editor: Object.assign({}, state.editor),
+      themeResolved: state.themeResolved || null,
       settings: {
         autoRefreshMs: s.autoRefreshMs,
         enrichBudget: s.enrichBudget,
         autosaveDrafts: s.autosaveDrafts,
+        draftLang: s.draftLang,
+        editorHeightWide: s.editorHeightWide,
+        editorHeightNarrow: s.editorHeightNarrow,
         hideTornBox: s.hideTornBox,
         authorOnly: s.authorOnly,
         autoHideOnOpen: s.autoHideOnOpen,
@@ -6257,54 +8475,420 @@
     return out.join('');
   }
 
-  function renderDraftsView(model) {
-    var out = [];
-    // The thread the user asked to write about wins over the one they happen to
-    // be looking at, so the Draft button on a row works from anywhere.
-    var current = model.draftFocusId
-      || (model.route && model.route.isThread ? String(model.route.threadId) : null);
-    if (current) {
-      out.push('<div class="tfcc-section"><h4>Draft for this thread</h4>');
-      var existing = '';
-      for (var d = 0; d < model.drafts.length; d += 1) {
-        if (model.drafts[d].threadId === current) existing = model.drafts[d].text;
-      }
-      out.push('<textarea class="tfcc-draft" data-act="draft-text" data-id="' + escapeHtml(current)
-        + '">' + escapeHtml(existing) + '</textarea>');
-      out.push('<div class="tfcc-actions">');
-      out.push(btn('draft-save', 'Save draft', ' data-id="' + escapeHtml(current) + '"'));
-      if (model.replyBoxFound) {
-        out.push(btn('draft-insert', 'Insert into reply box', ' data-id="' + escapeHtml(current) + '"'));
-      } else {
-        out.push(btn('draft-copy', 'Copy', ' data-id="' + escapeHtml(current) + '"'));
-      }
-      out.push(btn('draft-delete', 'Delete', ' data-id="' + escapeHtml(current) + '"'));
-      out.push('</div>');
-      if (!model.replyBoxFound) {
-        out.push('<p class="tfcc-note">No reply box here, so Copy replaces Insert.</p>');
-      }
-      out.push('</div>');
-    } else {
-      out.push('<p class="tfcc-note">Open a thread to write a draft for it.</p>');
-    }
+  var EDITOR_MODES = Object.freeze([['text', 'Text'], ['md', 'MD'], ['html', 'HTML'], ['preview', 'Preview']]);
 
-    out.push('<div class="tfcc-section"><h4>All drafts (' + model.drafts.length + ')</h4>');
+  function renderModePill(e) {
+    var out = ['<div class="tfcc-modes" role="group" aria-label="Editor mode">'];
+    for (var i = 0; i < EDITOR_MODES.length; i += 1) {
+      var m = EDITOR_MODES[i][0];
+      var on = m === 'preview' ? e.mode === 'preview' : e.mode === 'source' && e.lang === m;
+      out.push('<button type="button" data-act="ed-mode" data-mode="' + m + '" aria-pressed="' + (on ? 'true' : 'false')
+        + '">' + EDITOR_MODES[i][1] + '</button>');
+    }
+    out.push('</div>');
+    return out.join('');
+  }
+
+  function renderPreview(model) {
+    var e = model.editor;
+    var theme = e.previewTheme || model.themeResolved || 'dark';
+    var blocks = previewModel(e.lang, e.text);
+    var hasExternal = blocks.some(function (b) { return /<img src="https:/.test(b.html); });
+    var out = ['<div class="tfcc-pvbar">'];
+    out.push('<span class="tfcc-note">Preview as Torn shows it.</span>');
+    if (hasExternal && !e.showImages) out.push(btn('ed-pv-images', 'Show images'));
+    for (var t = 0; t < 2; t += 1) {
+      var th = t ? 'dark' : 'light';
+      out.push('<button type="button" data-act="ed-pv-theme" data-theme="' + th + '" aria-pressed="'
+        + (theme === th ? 'true' : 'false') + '">' + (t ? 'Dark' : 'Light') + '</button>');
+    }
+    out.push('</div><div class="tfcc-pv tfcc-pv-' + theme + '">');
+    if (!blocks.length) out.push('<p class="tfcc-note">Nothing to preview yet.</p>');
+    for (var i = 0; i < blocks.length; i += 1) {
+      // blocks[i].html is cleanTornHtml output: the allowlist is what makes
+      // rendering player-typed HTML inside the panel safe (spec section 5).
+      out.push('<div class="tfcc-pv-block" data-act="ed-jump" data-offset="' + blocks[i].offset
+        + '" title="Tap to edit here">' + previewImages(blocks[i].html, e.showImages) + '</div>');
+    }
+    out.push('</div>');
+    return out.join('');
+  }
+
+  // Toolbar items: [act, data, label, aria label, primary-when-narrow].
+  var EDITOR_TOOLS = Object.freeze([
+    ['ed-mark', 'data-mark="bold"', '<b>B</b>', 'Bold', true],
+    ['ed-mark', 'data-mark="italic"', '<i>I</i>', 'Italic', true],
+    ['ed-mark', 'data-mark="underline"', '<u>U</u>', 'Underline', true],
+    ['ed-picker', 'data-picker="color"', '<span style="border-bottom: 3px solid #e03131;">A</span>', 'Text color', true],
+    ['ed-picker', 'data-picker="link"', '<span class="tfcc-emo" aria-hidden="true">\uD83D\uDD17</span>', 'Insert link', true],
+    ['ed-mark', 'data-mark="strike"', '<s>S</s>', 'Strike through', false],
+    ['ed-picker', 'data-picker="size"', 'aA', 'Text size', false],
+    ['ed-picker', 'data-picker="align"', '\u2261', 'Alignment', false],
+    ['ed-quote', '', '\u201C', 'Quote', false],
+    ['ed-picker', 'data-picker="image"', '<span class="tfcc-emo" aria-hidden="true">\uD83D\uDDBC\uFE0F</span>', 'Insert image', false],
+    ['ed-picker', 'data-picker="table"', '\u25A6', 'Insert table', false],
+    ['ed-picker', 'data-picker="emoji"', '\u263A', 'Insert emoji', false],
+    ['ed-picker', 'data-picker="help"', '?', 'Markdown help', false],
+  ]);
+
+  // C1: the help button reads X while the key is open, and says which key
+  // it opens (Markdown or HTML) while it is closed.
+  function isHelpTool(t) { return t[2] === '?'; }
+
+  function helpToolFor(t, e) {
+    if (e.picker === 'help') return [t[0], t[1], 'X', 'Close help', t[4]];
+    return [t[0], t[1], t[2], e.lang === 'html' ? 'HTML help' : 'Markdown help', t[4]];
+  }
+
+  // t[1] (extra attributes) and t[2] (the button's face) are emitted
+  // unescaped: they must stay trusted constant markup from the tool tables
+  // (a styled letter or a JS-escaped symbol), never user or API text. Only
+  // the name (t[3]) is escaped.
+  function toolButton(t, disabled) {
+    return '<button type="button" data-act="' + t[0] + '"' + (t[1] ? ' ' + t[1] : '') + ' aria-label="' + escapeHtml(t[3])
+      + '" title="' + escapeHtml(t[3]) + '"' + (disabled ? ' disabled' : '') + '>' + t[2] + '</button>';
+  }
+
+  // E2: Undo leads the toolbar, and is all of it in Text mode.
+  function undoButton(e) {
+    return toolButton(['ed-undo', '', '\u21B6', 'Undo the last change', true], e.mode === 'preview' || !(e.undo && e.undo.length));
+  }
+
+  function renderEditorToolbar(model) {
+    var e = model.editor;
+    if (e.lang === 'text' && e.mode === 'source') {
+      return '<div class="tfcc-tools" role="toolbar" aria-label="Formatting">' + undoButton(e) + '</div>';
+    }
+    var disabled = e.mode === 'preview';
+    var out = ['<div class="tfcc-tools" role="toolbar" aria-label="Formatting">', undoButton(e)];
+    for (var i = 0; i < EDITOR_TOOLS.length; i += 1) {
+      var t = EDITOR_TOOLS[i];
+      if (model.narrow && !t[4]) continue;
+      if (isHelpTool(t)) {
+        if (e.lang === 'text') continue;
+        t = helpToolFor(t, e);
+      }
+      out.push(toolButton(t, disabled));
+    }
+    if (model.narrow) {
+      out.push('<button type="button" data-act="ed-more" aria-expanded="' + (e.moreOpen ? 'true' : 'false')
+        + '" aria-label="More tools" title="More tools"' + (disabled ? ' disabled' : '') + '>\u22EF</button>');
+    }
+    out.push('</div>');
+    if (model.narrow && e.moreOpen && !disabled) {
+      out.push('<div class="tfcc-tools tfcc-tools-more">');
+      for (var k = 0; k < EDITOR_TOOLS.length; k += 1) {
+        var mt = EDITOR_TOOLS[k];
+        if (mt[4]) continue;
+        if (isHelpTool(mt)) {
+          if (e.lang === 'text') continue;
+          mt = helpToolFor(mt, e);
+        }
+        out.push(toolButton(mt, false));
+      }
+      out.push('</div>');
+    }
+    if (e.picker && !disabled) out.push(renderPicker(model));
+    return out.join('');
+  }
+
+  // C2/C3: the help is a key, not a lesson: what you type, what you get.
+  // Players are assumed to know Markdown and HTML. No literal URLs here:
+  // read-only.test.js audits every http(s) host in the source.
+  var MD_KEY = Object.freeze([
+    ['# Title, ## Title, ### Title', 'headings (the space after # is required)'],
+    ['**bold**', 'bold'], ['*italic*', 'italic'], ['++underline++', 'underline'], ['~~strike~~', 'strike through'],
+    ['{red}text{/}', '17 Torn colors, e.g. {red}'], ['{#ff8800}text{/}', 'any hex color'],
+    ['{18}text{/}', 'size 8 to 36'], [':::center / left / right ... :::', 'aligned lines'],
+    ['> text', 'quote'], ['- item / 1. item', 'bullet / numbered list'],
+    ['| a | b |', 'table row (a --- row makes the header)'],
+    ['[text](link)', 'link'], ['![alt](image link)', 'image'], [':grin:', 'Torn emoji'], ['\\*', 'backslash: show a mark as text (e.g. \\*)'],
+    ['Not supported', 'code blocks, nested lists, #### and smaller, _underscores_, horizontal rules'],
+  ]);
+
+  var HTML_KEY = Object.freeze([
+    ['<p>text</p>', 'paragraph'], ['<strong> / <em>', 'bold / italic'],
+    ['<span style="text-decoration: underline">', 'underline (line-through: strike)'],
+    ['<span style="color: var(--te-text-color-red)">', 'Torn color (or a #hex value)'],
+    ['<span style="font-size: 18px">', 'text size'], ['<p style="text-align: center">', 'centered'],
+    ['<blockquote><p>', 'quote'], ['<ul> / <ol> + <li>', 'bullet / numbered list'],
+    ['<table><tr><th> / <td>', 'table'], ['<a href="...">', 'link'], ['<img src="..." alt="...">', 'image'],
+    ['<img src="/images/emotions/svg/grin.svg">', 'Torn emoji'],
+    ['Everything else', 'is stripped when posting'],
+  ]);
+
+  function renderKey(lang) {
+    var rows = lang === 'html' ? HTML_KEY : MD_KEY;
+    var out = ['<table class="tfcc-key"><thead><tr><th scope="col">You type</th><th scope="col">You get</th></tr></thead><tbody>'];
+    rows.forEach(function (h) { out.push('<tr><td><code>' + escapeHtml(h[0]) + '</code></td><td>' + escapeHtml(h[1]) + '</td></tr>'); });
+    out.push('</tbody></table>');
+    return out.join('');
+  }
+
+  // The result of a link check, shared by the Image picker and the fixer
+  // section: the converted link, the host's note, and (only after a check)
+  // the thumbnail with its buttons. withCopy also shows the ready link.
+  function renderImageCheck(out, r, insertBtn, withCopy) {
+    if (!r) return;
+    if (r.status === 'fixed') out.push('<p class="tfcc-note">Fixed for Torn: <code>' + escapeHtml(r.url) + '</code></p>');
+    else if (withCopy && r.status === 'ok') out.push('<p class="tfcc-note">Ready to use: <code>' + escapeHtml(r.url) + '</code></p>');
+    if (r.note) out.push('<p class="tfcc-note">' + escapeHtml(r.note) + '</p>');
+    if (r.status === 'ok' || r.status === 'fixed') {
+      // Loaded because the player tapped Check; no referrer (spec 4a).
+      out.push('<img class="tfcc-img-check" referrerpolicy="no-referrer" src="' + escapeHtml(r.url) + '" alt="Preview of the image">'
+        + (withCopy ? btn('ed-fix-copy', 'Copy link') : '') + insertBtn);
+    }
+  }
+
+  var FIX_ALL_NOTE = 'Rewrites image page links (Drive, Dropbox, Imgur...) in this draft into direct image links. Nothing is uploaded.';
+
+  // H1: the image link fixer, a section below the editor.
+  function renderFixer(e) {
+    var F = e.fields || {};
+    var v = escapeHtml(Object.prototype.hasOwnProperty.call(F, 'ed-fix-url') ? F['ed-fix-url'] : '');
+    var out = ['<div class="tfcc-picker tfcc-fixer" role="group" aria-label="Fix image link">'];
+    out.push('<label for="tfcc-ed-fix" class="tfcc-note">Image link</label>'
+      + '<input id="tfcc-ed-fix" type="url" data-act="ed-fix-url" value="' + v + '">' + btn('ed-fix-check', 'Check'));
+    renderImageCheck(out, e.fixCheck, btn('ed-fix-insert', 'Insert into draft'), true);
+    out.push('<div class="tfcc-actions">' + btn('ed-fix-all', 'Fix all links in this draft') + '</div>'
+      + '<p class="tfcc-note">' + FIX_ALL_NOTE + '</p></div>');
+    return out.join('');
+  }
+
+  function pickerClose(picker) { return btn('ed-picker-close', picker === 'help' ? 'Close' : 'Cancel'); }
+
+  function renderPicker(model) {
+    var e = model.editor;
+    // Typed fields live in the editor state (onInput), so a redraw re-renders
+    // what was typed instead of emptying it.
+    var F = e.fields || {};
+    var fv = function (k, d) { return escapeHtml(Object.prototype.hasOwnProperty.call(F, k) ? F[k] : d); };
+    var out = ['<div class="tfcc-picker" role="group" aria-label="' + escapeHtml(e.picker) + '">'];
+    if (e.picker === 'color') {
+      var theme = model.themeResolved || 'dark';
+      out.push('<div class="tfcc-swatches">');
+      for (var i = 0; i < TORN_COLORS.length; i += 1) {
+        var c = TORN_COLORS[i];
+        out.push('<button type="button" data-act="ed-color" data-value="' + c.name + '" aria-label="' + c.name
+          + (c.name === 'gray5' ? ', matches the page background' : '') + '" title="' + c.name + '">'
+          + '<span class="tfcc-swatch" style="background: ' + c[theme] + ';" aria-hidden="true"></span></button>');
+      }
+      out.push('</div><label for="tfcc-ed-hex" class="tfcc-note">Custom color</label>'
+        + '<input id="tfcc-ed-hex" type="text" data-act="ed-hex-input" placeholder="#ff8800" maxlength="7" value="' + fv('ed-hex-input', '') + '">'
+        + btn('ed-color', 'Use custom color', ' data-value="custom"'));
+      if (e.pickerWarn) {
+        out.push('<p class="tfcc-note" role="alert">' + escapeHtml(e.pickerWarn) + ' Tap Use custom color again to use it anyway.</p>');
+      }
+    } else if (e.picker === 'size') {
+      for (var s = 0; s < SIZE_PICKS.length; s += 1) out.push(btn('ed-size', SIZE_PICKS[s] + 'px', ' data-value="' + SIZE_PICKS[s] + '"'));
+    } else if (e.picker === 'align') {
+      ['left', 'center', 'right', 'justify'].forEach(function (a) { out.push(btn('ed-align', a.charAt(0).toUpperCase() + a.slice(1), ' data-value="' + a + '"')); });
+    } else if (e.picker === 'link') {
+      out.push('<label for="tfcc-ed-link" class="tfcc-note">Link address (https)</label>'
+        + '<input id="tfcc-ed-link" type="url" data-act="ed-link-input" value="' + fv('ed-link-input', '') + '">' + btn('ed-link-apply', 'Add link'));
+    } else if (e.picker === 'image') {
+      out.push('<label for="tfcc-ed-img" class="tfcc-note">Image link</label>'
+        + '<input id="tfcc-ed-img" type="url" data-act="ed-img-url" value="' + fv('ed-img-url', '') + '">'
+        + '<label for="tfcc-ed-alt" class="tfcc-note">Description (optional)</label>'
+        + '<input id="tfcc-ed-alt" type="text" data-act="ed-img-alt" maxlength="200" value="' + fv('ed-img-alt', '') + '">'
+        + btn('ed-img-check', 'Check link'));
+      renderImageCheck(out, e.imageCheck, btn('ed-img-insert', 'Insert image'), false);
+      out.push('<p class="tfcc-note">Have the file, not a link? Upload it with Torn\'s own Insert Image button after Insert.</p>');
+    } else if (e.picker === 'table') {
+      out.push('<label for="tfcc-ed-cols" class="tfcc-note">Columns</label><input id="tfcc-ed-cols" type="number" min="1" max="8" value="' + fv('ed-cols', '2') + '" data-act="ed-cols">'
+        + '<label for="tfcc-ed-rows" class="tfcc-note">Rows</label><input id="tfcc-ed-rows" type="number" min="1" max="30" value="' + fv('ed-rows', '2') + '" data-act="ed-rows">'
+        + '<label for="tfcc-ed-head" class="tfcc-note">Header row</label><input id="tfcc-ed-head" type="checkbox"'
+        + (F['ed-header'] === false ? '' : ' checked') + ' data-act="ed-header">'
+        + btn('ed-table-insert', 'Insert table'));
+    } else if (e.picker === 'emoji') {
+      out.push('<div class="tfcc-modes" role="group" aria-label="Emoji set">'
+        + '<button type="button" data-act="ed-emoji-tab" data-tab="torn" aria-pressed="' + (e.emojiTab !== 'unicode') + '">Torn</button>'
+        + '<button type="button" data-act="ed-emoji-tab" data-tab="unicode" aria-pressed="' + (e.emojiTab === 'unicode') + '">Unicode</button></div>');
+      out.push('<div class="tfcc-emoji">');
+      if (e.emojiTab === 'unicode') {
+        for (var u = 0; u < UNICODE_EMOJI.length; u += 1) {
+          out.push('<button type="button" data-act="ed-emoji" data-value="u' + u + '" aria-label="Emoji ' + (u + 1) + '">' + UNICODE_EMOJI[u] + '</button>');
+        }
+      } else {
+        for (var k = 0; k < TORN_EMOJI.length; k += 1) {
+          var nm = TORN_EMOJI[k];
+          out.push('<button type="button" data-act="ed-emoji" data-value="' + nm + '" aria-label="' + nm.replace(/_/g, ' ') + '" title="' + nm + '">'
+            + '<img src="/images/emotions/svg/' + nm + '.svg" alt="" width="24" height="24"></button>');
+        }
+      }
+      out.push('</div><p class="tfcc-note">More emoji: press Win + . (Windows) or Ctrl + Cmd + Space (Mac) while typing.</p>');
+    } else if (e.picker === 'help') {
+      out.push(renderKey(e.lang));
+    }
+    out.push('<div class="tfcc-actions">' + pickerClose(e.picker) + '</div></div>');
+    return out.join('');
+  }
+
+  // C4: what drafts are and what each button does. Plain text, no data.
+  var DRAFTS_INFO = 'A draft belongs to one thread, or is a free draft you can use for anything, such as a new thread. '
+    + 'Save keeps it on this device only. Insert puts the post at the end of the reply box on Torn, and you still press Post yourself. '
+    + 'Copy is for anywhere else. What you type in the reply box on Torn is also autosaved here as an HTML draft.';
+
+  function renderEditorPane(model) {
+    var e = model.editor;
+    var key = e.key;
+    var out = ['<div class="tfcc-section tfcc-draft-editor">'];
+    var isFree = /^n[0-9]+$/.test(key);
+    // The info button sits in an infobar beside the heading or the name's
+    // label, as every other info button does, never inside the heading.
+    if (isFree) {
+      out.push('<div class="tfcc-infobar"><label class="tfcc-note" for="tfcc-ed-name">Draft name</label>'
+        + renderInfoButton('drafts-editor', model.openInfoId) + '</div>'
+        + '<input id="tfcc-ed-name" type="text" maxlength="80" data-act="ed-name" data-id="' + escapeHtml(key)
+        + '" value="' + escapeHtml(e.name) + '">');
+    } else {
+      out.push('<div class="tfcc-infobar"><h4>Draft for this thread</h4>'
+        + renderInfoButton('drafts-editor', model.openInfoId) + '</div>');
+    }
+    out.push(renderInfoText('drafts-editor', model.openInfoId, DRAFTS_INFO));
+    out.push(renderModePill(e));
+    if (e.confirmText) {
+      out.push('<div class="tfcc-confirm" role="alert"><p class="tfcc-note">Plain text drops the formatting. Switch anyway?</p>'
+        + btn('ed-mode-confirm', 'Switch') + btn('ed-mode-cancel', 'Cancel') + '</div>');
+    }
+    out.push(renderEditorToolbar(model));
+    if (e.mode === 'preview') {
+      out.push(renderPreview(model));
+    } else {
+      // B5: the height the player dragged it to survives every redraw.
+      // F1: with no dragged height, the Settings default for this layout.
+      var setH = model.narrow ? model.settings.editorHeightNarrow : model.settings.editorHeightWide;
+      var useH = typeof e.height === 'number' && isFinite(e.height) && e.height > 0 ? e.height
+        : (Object.prototype.hasOwnProperty.call(EDITOR_HEIGHTS, setH) ? EDITOR_HEIGHTS[setH] : EDITOR_HEIGHTS[model.narrow ? 'medium' : 'large']);
+      var hgt = ' style="height: ' + Math.round(useH) + 'px;"';
+      out.push('<textarea class="tfcc-draft" data-act="draft-text" data-id="' + escapeHtml(key)
+        + '" maxlength="' + DRAFT_MAX_CHARS + '" aria-label="Draft text"' + hgt + '>' + escapeHtml(e.text) + '</textarea>');
+    }
+    out.push('<div class="tfcc-actions">');
+    out.push(btn('draft-save', 'Save draft', ' data-id="' + escapeHtml(key) + '"'));
+    out.push(model.replyBoxFound
+      ? btn('draft-insert', 'Insert into reply box', ' data-id="' + escapeHtml(key) + '"')
+      : btn('draft-copy', 'Copy', ' data-id="' + escapeHtml(key) + '"'));
+    out.push(btn('draft-delete', 'Delete', ' data-id="' + escapeHtml(key) + '"'));
+    // E1: a thread draft's text can move to a new free draft.
+    if (!isFree) out.push(btn('draft-to-free', 'Save as free draft', ' class="tfcc-tofree" data-id="' + escapeHtml(key) + '"'));
+    // H1: the image link fixer opens from the right end of the row.
+    out.push(btn('ed-fix-open', 'Fix image link', ' class="tfcc-fixopen" aria-expanded="' + (e.fixOpen ? 'true' : 'false') + '"'));
+    out.push('</div>');
+    if (e.fixOpen) out.push(renderFixer(e));
+    if (!model.replyBoxFound) out.push('<p class="tfcc-note">No reply box here, so Copy replaces Insert.</p>');
+    out.push('</div>');
+    return out.join('');
+  }
+
+  function renderDraftList(model) {
+    var out = ['<div class="tfcc-section"><h4>All drafts (' + model.drafts.length + ')</h4>'];
+    out.push('<div class="tfcc-actions">' + btn('draft-new', '+ New draft') + '</div>');
     if (!model.drafts.length) out.push('<div class="tfcc-empty">No saved drafts.</div>');
     for (var i = 0; i < model.drafts.length; i += 1) {
       var dr = model.drafts[i];
-      out.push('<div class="tfcc-hit"><div><a href="https://www.torn.com/forums.php#/p=threads&t='
-        + escapeHtml(dr.threadId) + '&b=0&a=0"' + threadLinkAttr(dr.threadId) + '>'
-        + escapeHtml(dr.title || ('Thread ' + dr.threadId)) + '</a> '
-        + '<span class="tfcc-note">' + escapeHtml(formatRelativeTime(dr.updatedAt, model.now))
-        + '</span></div>');
+      var free = dr.kind === 'free';
+      out.push('<div class="tfcc-hit' + (free ? ' tfcc-free' : '') + '"><div>');
+      if (free) {
+        out.push('<strong>' + escapeHtml(dr.title) + '</strong> <span class="tfcc-note">(free)</span> ');
+      } else {
+        out.push('<a href="https://www.torn.com/forums.php#/p=threads&t=' + escapeHtml(dr.threadId) + '&b=0&a=0"'
+          + threadLinkAttr(dr.threadId) + '>' + escapeHtml(dr.title || ('Thread ' + dr.threadId)) + '</a> ');
+      }
+      out.push('<span class="tfcc-note">' + escapeHtml(formatRelativeTime(dr.updatedAt, model.now)) + '</span></div>');
       out.push('<div class="tfcc-hit-text">' + escapeHtml(dr.text.slice(0, 300)) + '</div>');
       out.push('<div class="tfcc-actions">'
-        + btn('draft-copy', 'Copy', ' data-id="' + escapeHtml(dr.threadId) + '"')
-        + btn('draft-delete', 'Delete', ' data-id="' + escapeHtml(dr.threadId) + '"')
+        + btn('draft-edit', 'Edit', ' data-id="' + escapeHtml(dr.key) + '"')
+        + btn('draft-copy', 'Copy', ' data-id="' + escapeHtml(dr.key) + '"')
+        + btn('draft-delete', 'Delete', ' data-id="' + escapeHtml(dr.key) + '"')
         + '</div></div>');
     }
     out.push('</div>');
     return out.join('');
+  }
+
+  function renderDraftsView(model) {
+    var out = [];
+    if (model.editor && model.editor.key) out.push(renderEditorPane(model));
+    else out.push('<p class="tfcc-note">Open a thread to write a draft for it, or start a new draft below.</p>');
+    out.push(renderDraftList(model));
+    return out.join('');
+  }
+
+  // The draft key the Drafts view edits: the thread the user asked to write
+  // about (or a free draft) wins over the thread they happen to be looking at,
+  // so the Draft button on a row works from anywhere.
+  function editorKeyFor(model) {
+    if (model.draftFocusId) return String(model.draftFocusId);
+    return model.route && model.route.isThread ? String(model.route.threadId) : null;
+  }
+
+  // Points the editor at a draft. A saved draft brings its own language; a new
+  // one opens in the Default editor mode (Settings).
+  function defaultDraftLang() {
+    return DRAFT_LANGS.indexOf(state.settings.draftLang) !== -1 ? state.settings.draftLang : 'md';
+  }
+
+  function loadEditor(key, now) {
+    var d = key ? draftFor(state.drafts, key) : null;
+    var lang = d ? draftLangOf(d) : defaultDraftLang();
+    var text = d ? d.text : '';
+    state.editor = {
+      key: key, lang: lang, text: text, selStart: text.length, selEnd: text.length, mode: 'source',
+      previewTheme: null, picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn',
+      name: d && d.name ? d.name : '', imageCheck: null, fixOpen: false, fixCheck: null, pickerWarn: null, dirty: false, showImages: false,
+      fields: {}, src: draftSig(d), atLimit: false, height: null, undo: [], typingAt: 0,
+    };
+    void now;
+  }
+
+  // #58 E2: Undo. A snapshot of the text, mode and selection is pushed before
+  // each edit; a typing burst pushes one at its start. The stack belongs to
+  // the open draft: loadEditor starts a new one.
+  var UNDO_MAX = 50;
+  var TYPING_BURST_MS = 1000;
+
+  // from: the state to snapshot when it is not e itself (a reload keeps the
+  // editor it replaced).
+  function pushUndo(e, from) {
+    var f = from || e;
+    var stack = (e.undo || []).concat([{ text: f.text, lang: f.lang, selStart: f.selStart, selEnd: f.selEnd }]);
+    e.undo = stack.length > UNDO_MAX ? stack.slice(stack.length - UNDO_MAX) : stack;
+    // Anything pushed here ends a typing burst: the next keystroke starts one.
+    e.typingAt = 0;
+  }
+
+  // What the editor last loaded or saved, so buildPanelModel can tell when the
+  // stored draft has changed behind a clean editor. A draft not yet stored is
+  // keyed by the Default editor mode it would open in.
+  function draftSig(d) {
+    return d ? [d.text, draftLangOf(d), d.name || '', d.updatedAt].join('\n|') : 'new|' + defaultDraftLang();
+  }
+
+  function editorPostHtml() { return postHtml(state.editor.text, state.editor.lang); }
+
+  // Saves the open draft. A blank thread draft is deleted, as before; a free
+  // draft keeps its name even when empty. Returns whether it stored: a free
+  // draft that no longer exists (deleted, or gone in Reset all) is not
+  // recreated, and the editor stays dirty so the text is not taken for saved.
+  function saveEditor(now) {
+    var e = state.editor;
+    if (!e.key) return false;
+    if (/^n[0-9]+$/.test(e.key)) {
+      if (!state.drafts.free || !state.drafts.free[e.key]) return false;
+      state.drafts = saveFreeDraft(state.drafts, e.key, e.text, now, e.name, e.lang);
+    } else state.drafts = saveDraft(state.drafts, e.key, e.text, now, '', e.lang);
+    e.dirty = false;
+    e.src = draftSig(draftFor(state.drafts, e.key));
+    persist('drafts');
+    return true;
+  }
+
+  // Spec section 4a: nothing is ever silently cut. An action whose result
+  // would pass the draft limit is refused with this.
+  function overLimitNotice(n) {
+    notice('That would make this draft ' + n + ' characters, over the ' + DRAFT_MAX_CHARS
+      + ' limit. Shorten it, or keep it as it is.', 'warn');
   }
 
   var BADGE_METRIC_LABELS = Object.freeze({
@@ -6327,7 +8911,7 @@
     out.push('<div class="tfcc-infobar"><span class="tfcc-note">Recorded on this device only. No request is made.'
       + '</span>' + renderInfoButton('settings-badges', model.openInfoId) + '</div>');
     out.push(renderInfoText('settings-badges', model.openInfoId, 'Earned from what you do here: focused visits '
-      + 'to threads, finishing Torn days with Catch up empty, and organising. A visit counts once a Torn day, '
+      + 'to threads, finishing Torn days with Catch up empty, and organizing. A visit counts once a Torn day, '
       + 'after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent '
       + 'anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days '
       + 'with it off.'));
@@ -6383,7 +8967,7 @@
     // rather than buried in a readme because that is where the terms put it.
     out.push('<table class="tfcc-tos"><tbody>');
     out.push('<tr><th>Who can see your data</th><td>Nobody. It never leaves this device.</td></tr>');
-    out.push('<tr><th>What it is used for</th><td>Public community tool: listing and organising the '
+    out.push('<tr><th>What it is used for</th><td>Public community tool: listing and organizing the '
       + 'forum threads you subscribe to.</td></tr>');
     out.push('<tr><th>Storage</th><td>Key and cached thread data are stored in this browser only. '
       + 'Not shared, not uploaded, not included in an export.</td></tr>');
@@ -6502,6 +9086,19 @@
     out.push(checkRow(model) + '<label for="tfcc-autosave">Autosave the reply box as a draft</label>'
       + '<input id="tfcc-autosave" type="checkbox" data-act="autosave"'
       + (model.settings.autosaveDrafts ? ' checked' : '') + '></div>');
+    out.push('<div class="tfcc-kv"><label for="tfcc-draftlang">Default editor for new drafts</label>'
+      + '<select id="tfcc-draftlang" data-act="draft-lang">'
+      + [['md', 'Markdown'], ['html', 'HTML'], ['text', 'Text']].map(function (o) {
+        return '<option value="' + o[0] + '"' + (model.settings.draftLang === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+      }).join('') + '</select></div>');
+    [['tfcc-edh-wide', 'ed-height-wide', 'Editor height (desktop)', model.settings.editorHeightWide],
+      ['tfcc-edh-narrow', 'ed-height-narrow', 'Editor height (phone)', model.settings.editorHeightNarrow]].forEach(function (r) {
+      out.push('<div class="tfcc-kv"><label for="' + r[0] + '">' + r[2] + '</label>'
+        + '<select id="' + r[0] + '" data-act="' + r[1] + '">'
+        + EDITOR_HEIGHT_LABELS.map(function (o) {
+          return '<option value="' + o[0] + '"' + (r[3] === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+        }).join('') + '</select></div>');
+    });
     out.push(checkRow(model) + '<label for="tfcc-autohide">Hide the panel when I open a thread</label>'
       + '<input id="tfcc-autohide" type="checkbox" data-act="auto-hide"'
       + (model.settings.autoHideOnOpen ? ' checked' : '') + '>'
@@ -6536,7 +9133,7 @@
     // up groups by folder in the order (groupCatchUp), the Threads folder
     // filter, encodeState, and the First folder badge (ownFoldersFilled).
     out.push(renderInfoText('settings-folders', model.openInfoId, ''
-      + 'Folders organise only threads you subscribe to (and ones you file by hand); they never add other threads '
+      + 'Folders organize only threads you subscribe to (and ones you file by hand); they never add other threads '
       + 'from a forum. To use them: add a folder below; optionally claim one or more forums, so new subscriptions '
       + 'from them file themselves into it; a forum belongs to one folder at a time, and removing a claim leaves '
       + 'the threads already filed where they are; or file a thread from the folder menu on its row. Filing by '
@@ -6801,7 +9398,7 @@
     return s.current + ' ' + plural(s.current, 'day', 'days');
   }
 
-  // One chip: a cup in the best earned tier's colour, the count, then the
+  // One chip: a cup in the best earned tier's color, the count, then the
   // streak. Its children ignore pointer events, because click delegation
   // reads data-act from the event target and an SVG child has none.
   function renderBadgeChip(model) {
@@ -7170,6 +9767,77 @@
   var PRESS_FLUSH_MS = 300;
   var pressTimer = null;
   var pressWinBound = false;
+  // #58 round 2: a keydown in the draft field already decided this Enter, so
+  // the beforeinput of the same press is not handled twice.
+  var draftEnterDecided = false;
+
+  // #58 B1: a tap anywhere in the Preview edits there. The nearest preview
+  // block above the tapped node (a paragraph, a bold run, an image inside
+  // it), else the preview area itself (its empty space: the end of the
+  // text). A link inside the preview is left to the browser. Our own nodes
+  // only, and only for a tap no data-act claimed, so every other control
+  // keeps exact-target delegation.
+  var PREVIEW_TAP_MAX_DEPTH = 16;
+  function hasClassName(n, c) {
+    if (n.classList && typeof n.classList.contains === 'function') return n.classList.contains(c);
+    var cls = typeof n.getAttribute === 'function' ? n.getAttribute('class') : null;
+    return (' ' + String(cls || '') + ' ').indexOf(' ' + c + ' ') !== -1;
+  }
+  function previewTapOf(node, panel) {
+    var n = node;
+    for (var i = 0; n && i < PREVIEW_TAP_MAX_DEPTH; i += 1) {
+      if (n === panel) return null;
+      if (String(n.tagName || '').toUpperCase() === 'A') return null;
+      if (hasClassName(n, 'tfcc-pv-block') || hasClassName(n, 'tfcc-pv')) return n;
+      n = n.parentNode;
+    }
+    return null;
+  }
+
+  // #58 B5: the height the player dragged the draft textarea to. Measured on
+  // the panel's own textarea (never Torn's markup) when a press over it ends
+  // at a different height than it began; a failed measurement keeps the
+  // current height.
+  function draftFieldOf(panel) {
+    try { return panel && typeof panel.querySelector === 'function' ? panel.querySelector('[data-act="draft-text"]') : null; } catch (e) { return null; }
+  }
+  // #58 round 2: puts an editor edit into the draft textarea in place. Only
+  // the changed range is replaced, so a browser with setRangeText keeps its
+  // own scroll position; the caret goes where the edit says. This script's
+  // own field, never Torn's. False when the field would not take it.
+  function writeDraftField(el, before, r) {
+    var p = 0;
+    var max = Math.min(before.length, r.text.length);
+    while (p < max && before.charAt(p) === r.text.charAt(p)) p += 1;
+    var q = 0;
+    while (q < max - p && before.charAt(before.length - 1 - q) === r.text.charAt(r.text.length - 1 - q)) q += 1;
+    try {
+      if (typeof el.setRangeText === 'function') el.setRangeText(r.text.slice(p, r.text.length - q), p, before.length - q, 'end');
+      if (String(el.value) !== r.text) el.value = r.text;
+      if (typeof el.setSelectionRange === 'function') el.setSelectionRange(r.start, r.end);
+      return String(el.value) === r.text;
+    } catch (e) {
+      return false;
+    }
+  }
+  function fieldHeight(el) {
+    try {
+      var h = el && typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect().height : null;
+      return typeof h === 'number' && isFinite(h) && h > 0 ? Math.round(h) : null;
+    } catch (e) { return null; }
+  }
+  var editorPressHeight = null;
+  function editorPressStart(t) {
+    var draft = !!t && typeof t.getAttribute === 'function' && t.getAttribute('data-act') === 'draft-text';
+    editorPressHeight = draft ? fieldHeight(t) : null;
+  }
+  function editorPressEnd(doc) {
+    var from = editorPressHeight;
+    editorPressHeight = null;
+    if (from === null || !state.editor || !state.editor.key) return;
+    var h = fieldHeight(draftFieldOf(doc && typeof doc.getElementById === 'function' ? doc.getElementById(PANEL_ID) : null));
+    if (h !== null && Math.abs(h - from) >= 2) state.editor.height = h;
+  }
 
   function clearPress() {
     if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
@@ -7368,6 +10036,10 @@
           return;
         }
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+        if (!act) {
+          var pvTap = previewTapOf(t, panel);
+          if (pvTap) { act = 'ed-jump'; t = pvTap; }
+        }
         // A held redraw is flushed after dispatch too, never inside the click:
         // an action that redraws has already rendered it (pressed was cleared
         // above), so the flush only matters for a tap with no redraw of its own,
@@ -7401,9 +10073,39 @@
         try { handlers.onChange(act, t); } finally { state.focusIntent = null; state.deferCommit = false; }
       });
       // #43: in the tag or note popup, Enter saves and Escape cancels.
+      // #58 round 2: in the draft field, Enter keeps paragraphs (editorEnter).
+      // A real key on this script's own textarea, never a synthetic event; the
+      // browser's newline is cancelled only when the editor makes the edit.
+      // A phone keyboard (Gboard) often reports Enter as keyCode 229, so the
+      // field's beforeinput line break is handled too. A keydown that already
+      // decided an Enter (handled, or left to the browser) marks it, and the
+      // beforeinput that follows the same press is then left alone.
       panel.addEventListener('keydown', function (ev) {
         var t = ev && ev.target;
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+        if (act === 'draft-text') {
+          draftEnterDecided = false;
+          // An IME's Enter accepts a candidate; Ctrl, Cmd or Alt+Enter is not typing.
+          if (ev.isComposing === true || ev.keyCode === 229) return;
+          if (ev.key !== 'Enter') return;
+          draftEnterDecided = true;
+          if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+          if (typeof handlers.onDraftEnter !== 'function') return;
+          if (handlers.onDraftEnter(t, ev.shiftKey === true) && typeof ev.preventDefault === 'function') ev.preventDefault();
+          return;
+        }
+        // Enter in the fixer's Image link field runs Check, as pressing Check
+        // does; it never reaches the draft's Enter. The field is read first,
+        // so the check uses what is on screen.
+        if (act === 'ed-fix-url') {
+          if (ev.isComposing === true || ev.keyCode === 229) return;
+          if (ev.key !== 'Enter' || ev.ctrlKey || ev.metaKey || ev.altKey || ev.shiftKey) return;
+          if (typeof handlers.onAction !== 'function') return;
+          if (typeof ev.preventDefault === 'function') ev.preventDefault();
+          if (typeof handlers.onInput === 'function') handlers.onInput('ed-fix-url', t);
+          handlers.onAction('ed-fix-check', t);
+          return;
+        }
         if (act !== 'editor-input' && act !== 'editor-save' && act !== 'editor-cancel') return;
         // PR #44 review: during IME composition Enter accepts a candidate and
         // Escape dismisses it; neither is meant for the popup.
@@ -7414,6 +10116,19 @@
         if (typeof ev.preventDefault === 'function') ev.preventDefault();
         handlers.onAction(key === 'Enter' ? 'editor-save' : 'editor-cancel', editorButtonFor(panel, t, key === 'Enter'));
       });
+      panel.addEventListener('beforeinput', function (ev) {
+        var t = ev && ev.target;
+        var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+        if (act !== 'draft-text') return;
+        if (ev.inputType !== 'insertLineBreak' && ev.inputType !== 'insertParagraph') return;
+        if (draftEnterDecided) { draftEnterDecided = false; return; }
+        if (typeof handlers.onDraftEnter !== 'function') return;
+        if (handlers.onDraftEnter(t, false) && typeof ev.preventDefault === 'function') ev.preventDefault();
+      });
+      panel.addEventListener('keyup', function (ev) {
+        var t = ev && ev.target;
+        if (t && t.getAttribute && t.getAttribute('data-act') === 'draft-text') draftEnterDecided = false;
+      });
       panel.addEventListener('input', function (ev) {
         var t = ev && ev.target;
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
@@ -7422,6 +10137,23 @@
       });
       panel.addEventListener('pointerdown', function () { startPress(doc, win, handlers); });
       panel.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); });
+      // #58 B2: the draft textarea's selection is mirrored whenever it can
+      // change without typing (a drag, a double-click, Shift+arrows, Select
+      // all), so a toolbar action after any redraw uses the highlighted range.
+      // B5: a press that began on the textarea and ends at another height was
+      // a resize.
+      ['pointerdown', 'mousedown', 'touchstart'].forEach(function (type) {
+        panel.addEventListener(type, function (ev) { editorPressStart(ev && ev.target); });
+      });
+      ['select', 'selectionchange', 'keyup', 'mouseup', 'pointerup', 'touchend'].forEach(function (type) {
+        panel.addEventListener(type, function (ev) {
+          var t = ev && ev.target;
+          if (type === 'mouseup' || type === 'pointerup' || type === 'touchend') editorPressEnd(doc);
+          var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+          if (act !== 'draft-text' || typeof handlers.onSelect !== 'function') return;
+          handlers.onSelect(act, t);
+        });
+      });
       panel.addEventListener('pointercancel', function () { endPress(doc, win, handlers); });
       // A pointer that lifts outside the panel (a mouse dragged off it) must
       // still end the press, or redraws would be held forever. This listens to
@@ -7429,6 +10161,8 @@
       if (!pressWinBound && win && typeof win.addEventListener === 'function') {
         pressWinBound = true;
         win.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); }, true);
+        // #58 B5: a textarea resize dragged off the panel ends there too.
+        win.addEventListener('pointerup', function () { editorPressEnd(doc); }, true);
       }
       // #39: a click outside the panel closes an open drawer. One capture-phase
       // listener on the window, bound once. It only asks whether the target is
@@ -7698,6 +10432,43 @@
     }
   }
 
+  // #58: Copy puts the formatted post on the clipboard. Pasted into Torn's
+  // editor, the marked HTML keeps its styles. Pasted as text, it is the HTML
+  // source, ready for Torn's code view. The result is reported only once the
+  // clipboard has answered, so the panel never claims a copy that failed.
+  function copyPost(doc, win, html, done) {
+    var source = htmlSource(html);
+    var report = function (ok) { try { if (typeof done === 'function') done({ ok: !!ok }); } catch (e) { /* never */ } };
+    var nav = win && win.navigator;
+    var clip = nav && nav.clipboard;
+    var asText = function () {
+      try {
+        if (clip && typeof clip.writeText === 'function') {
+          var t = clip.writeText(source);
+          if (t && typeof t.then === 'function') { t.then(function () { report(true); }, function () { report(false); }); return; }
+          report(true);
+          return;
+        }
+      } catch (e) { /* fall through to the textarea path */ }
+      report(copyText(doc, win, source).ok);
+    };
+    try {
+      var Item = win && win.ClipboardItem;
+      var BlobCtor = win && win.Blob;
+      if (clip && typeof clip.write === 'function' && typeof Item === 'function' && typeof BlobCtor === 'function') {
+        var item = new Item({
+          'text/html': new BlobCtor([PASTE_MARKER + html], { type: 'text/html' }),
+          'text/plain': new BlobCtor([source], { type: 'text/plain' }),
+        });
+        var p = clip.write([item]);
+        if (p && typeof p.then === 'function') { p.then(function () { report(true); }, asText); return; }
+        report(true);
+        return;
+      }
+    } catch (e2) { /* fall through to plain text */ }
+    asText();
+  }
+
   // Every asynchronous redraw goes through here. A refresh takes seconds, and
   // the user can leave the forums in that time; drawing unconditionally would
   // mount the panel onto whatever page they went to.
@@ -7737,6 +10508,13 @@
   }
 
   function restoreSelection(el) {
+    // #58: the Drafts editor keeps its own selection, so a redraw (a mode
+    // switch, a tap in Preview) puts the caret back where it belongs.
+    if (typeof el.getAttribute === 'function' && el.getAttribute('data-act') === 'draft-text'
+      && typeof el.setSelectionRange === 'function') {
+      try { el.setSelectionRange(state.editor.selStart, state.editor.selEnd); } catch (e) { /* not a text field */ }
+      return;
+    }
     var d = state.drawerEdit;
     if (!d || typeof el.setSelectionRange !== 'function' || typeof el.getAttribute !== 'function') return;
     // #43: the popup's field names its mirror in data-field.
@@ -7855,6 +10633,42 @@
       return el && el.value !== undefined ? String(el.value) : '';
     }
 
+    // #58: the panel's own draft textarea, for the selection at click time.
+    // The editor's handlers never call valueOf.
+    function editorField() { return draftFieldOf(doc.getElementById(PANEL_ID)); }
+    // The textarea the last selection-mirror event (onSelect, onInput) came
+    // from. Its live selection is the player's even once focus has moved to a
+    // toolbar button.
+    var lastSelField = null;
+    // Only a focused field's selection, or that of the very field the last
+    // mirror event came from, is the player's: a redraw (More, a picker)
+    // renders a fresh textarea whose own selection means nothing, and the
+    // mirrored one (onSelect) stands (#58 B2).
+    function captureSelection() {
+      var f = editorField();
+      if (!f || typeof f.selectionStart !== 'number') return;
+      // The mirror's field counts only while it still holds the mirrored text.
+      if (doc.activeElement === f || (f === lastSelField && String(f.value) === state.editor.text)) {
+        state.editor.text = String(f.value); state.editor.selStart = f.selectionStart; state.editor.selEnd = f.selectionEnd;
+      }
+    }
+    // A picker's typed value, from the editor state (onInput), never from a
+    // document query: Torn's page could hold the same data-act.
+    function field(k, d) {
+      var f = state.editor.fields || {};
+      return Object.prototype.hasOwnProperty.call(f, k) ? f[k] : d;
+    }
+    function applyEdit(r, now) {
+      // Spec 4a: never silently cut, never store past the limit.
+      if (r.text.length > DRAFT_MAX_CHARS) { overLimitNotice(r.text.length); redraw(); return; }
+      if (r.text !== state.editor.text) pushUndo(state.editor);
+      state.editor.text = r.text; state.editor.selStart = r.start; state.editor.selEnd = r.end;
+      state.editor.picker = null; state.editor.pickerWarn = null; state.editor.imageCheck = null;
+      state.focusIntent = [attrSel('data-act', 'draft-text')];
+      if (state.editor.text.trim()) saveEditor(now);
+      redraw();
+    }
+
     // #43: the popup's typed text: the field on screen, else the mirror. A
     // read of this script's own panel, never of the document.
     function valueOfEditor(id, field) {
@@ -7871,8 +10685,9 @@
 
     // Every way the view changes goes through here, so the disclosures close
     // with it (spec section 6). Tapping the current view changes nothing.
+    // A message belongs to the view it was raised in: a view change clears it.
     function setView(v) {
-      if (v !== state.settings.view) applyTransient({ type: 'view' });
+      if (v !== state.settings.view) { applyTransient({ type: 'view' }); state.notices = []; }
       state.settings.view = v;
     }
 
@@ -7881,6 +10696,7 @@
       // not a control, so tests/handlers.test.js does not pair it.
       onThreadLink: function (link, click) {
         if (!isPlainActivation(click)) return;
+        persistFailed = false;
         var next = autoHideSettings(state.settings);
         if (next === state.settings) return;
         // The shelf renders in the collapsed header too; hiding the panel closes it.
@@ -7894,8 +10710,12 @@
         setTimeout(function () { if (isForumsPage(win.location)) redraw(); }, 0);
       },
       onAction: function (act, el) {
+        // A new action: an earlier failed write no longer holds back its notices.
+        persistFailed = false;
         var now = Date.now();
         var id = idOf(el);
+        // E2: any action ends a typing burst; the next keystroke starts one.
+        state.editor.typingAt = 0;
         if (act === 'refresh') {
           state.notices = [];
           // Refresh refreshes what the user is looking at: My posts runs its own
@@ -8039,22 +10859,216 @@
           persist('settings');
           redraw(); return;
         }
+        if (act === 'ed-mode') {
+          var mode = el.getAttribute('data-mode');
+          var ed = state.editor;
+          if (ed.mode === 'source') captureSelection();
+          // Any mode choice answers a pending Text-switch question.
+          ed.confirmText = null;
+          if (mode === 'preview') { ed.mode = 'preview'; ed.picker = null; redraw(); return; }
+          if (DRAFT_LANGS.indexOf(mode) === -1) return;
+          if (mode === ed.lang) { ed.mode = 'source'; redraw(); return; }
+          if (mode === 'text' && ed.lang !== 'text' && ed.text.trim()) { ed.confirmText = ed.lang; redraw(); return; }
+          var converted = convertDraft(ed.text, ed.lang, mode);
+          if (converted.length > DRAFT_MAX_CHARS) { overLimitNotice(converted.length); redraw(); return; }
+          pushUndo(ed);
+          ed.text = converted;
+          ed.lang = mode; ed.mode = 'source'; ed.selStart = ed.selEnd = ed.text.length;
+          if (ed.text.trim()) saveEditor(now);
+          redraw(); return;
+        }
+        if (act === 'ed-pv-images') { state.editor.showImages = true; redraw(); return; }
+        if (act === 'ed-mode-confirm') {
+          var ec = state.editor;
+          pushUndo(ec);
+          ec.text = convertDraft(ec.text, ec.lang, 'text');
+          ec.lang = 'text'; ec.mode = 'source'; ec.confirmText = null; ec.selStart = ec.selEnd = ec.text.length;
+          if (ec.text.trim()) saveEditor(now);
+          redraw(); return;
+        }
+        if (act === 'ed-mode-cancel') { state.editor.confirmText = null; redraw(); return; }
+        if (act === 'ed-pv-theme') { state.editor.previewTheme = el.getAttribute('data-theme') === 'light' ? 'light' : 'dark'; redraw(); return; }
+        if (act === 'ed-jump') {
+          // B1: the preview's empty area carries no offset: the end of the text.
+          var rawOff = el.getAttribute('data-offset');
+          var off = Math.max(0, Math.min(state.editor.text.length, rawOff === null ? state.editor.text.length : toInt(rawOff, 0)));
+          state.editor.mode = 'source'; state.editor.selStart = state.editor.selEnd = off;
+          state.focusIntent = [attrSel('data-act', 'draft-text')];
+          redraw(); return;
+        }
+        // #58: the toolbar and its pickers. A picker applies to the selection
+        // it was opened on; its typed fields come from the editor state.
+        var E = state.editor;
+        if (act === 'ed-more') { captureSelection(); E.moreOpen = !E.moreOpen; redraw(); return; }
+        if (act === 'ed-mark') {
+          captureSelection();
+          applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, el.getAttribute('data-mark')), now); return;
+        }
+        if (act === 'ed-quote') { captureSelection(); applyEdit(applyBlockMark(E.lang, E.text, E.selStart, E.selEnd, 'quote'), now); return; }
+        if (act === 'ed-picker') {
+          captureSelection();
+          var which = el.getAttribute('data-picker');
+          E.picker = E.picker === which ? null : which; E.pickerWarn = null; E.imageCheck = null;
+          redraw(); return;
+        }
+        if (act === 'ed-picker-close') { E.picker = null; E.pickerWarn = null; E.imageCheck = null; redraw(); return; }
+        if (act === 'ed-color') {
+          var colV = el.getAttribute('data-value');
+          if (colV === 'custom') {
+            var hex = String(field('ed-hex-input', '')).trim().toLowerCase();
+            if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(hex)) { notice('Type a color like #ff8800.', 'warn'); redraw(); return; }
+            var warns = colorWarnings(hex);
+            var warnText = warns.length ? 'This color may be hard to see on Torn\'s ' + warns.map(function (w) { return w.theme; }).join(' and ')
+              + ' theme.' : '';
+            if (warnText && E.pickerWarn !== warnText) { E.pickerWarn = warnText; redraw(); return; }
+            applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, 'color', hex), now); return;
+          }
+          if (TORN_COLOR_NAMES.indexOf(colV) === -1) return;
+          applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, 'color', colV), now); return;
+        }
+        if (act === 'ed-size') {
+          var sz = toInt(el.getAttribute('data-value'), 16);
+          if (SIZE_PICKS.indexOf(sz) === -1) return;
+          applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, 'size', sz), now); return;
+        }
+        if (act === 'ed-align') {
+          var av = el.getAttribute('data-value');
+          if (['left', 'center', 'right', 'justify'].indexOf(av) === -1) return;
+          var ar = applyBlockMark(E.lang, E.text, E.selStart, E.selEnd, 'align', av);
+          // B4: a Markdown table without a header row has nowhere to keep an
+          // alignment; the text stays as it was.
+          if (ar.refused) { E.picker = null; notice('Add a header row to align a Markdown table.', 'warn'); redraw(); return; }
+          applyEdit(ar, now); return;
+        }
+        if (act === 'ed-link-apply') {
+          var href = safeHref(field('ed-link-input', ''));
+          if (!href) { notice('A link needs a full web address, starting with https or http.', 'warn'); redraw(); return; }
+          // A Markdown destination ends at ')' or a space: encode them, so a
+          // link like a wiki page's Foo_(bar) survives the round trip.
+          if (E.lang === 'md') href = href.replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/ /g, '%20');
+          applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, 'link', href), now); return;
+        }
+        if (act === 'ed-img-check') {
+          E.imageCheck = fixImageUrl(field('ed-img-url', ''));
+          redraw(); return;
+        }
+        if (act === 'ed-img-insert') {
+          var ic = E.imageCheck;
+          if (!ic) { notice('Check the image link first.', 'warn'); redraw(); return; }
+          if (ic.status !== 'ok' && ic.status !== 'fixed') return;
+          applyEdit(insertAtCaret(E.text, E.selStart, E.selEnd, imageSnippet(E.lang, ic.url, String(field('ed-img-alt', '')))), now); return;
+        }
+        if (act === 'ed-table-insert') {
+          var tbl = tableSkeleton(E.lang, toInt(field('ed-cols', 2), 2), toInt(field('ed-rows', 2), 2), field('ed-header', true) !== false);
+          applyEdit(insertBlock(E.text, E.selStart, E.selEnd, tbl), now); return;
+        }
+        if (act === 'ed-emoji-tab') { E.emojiTab = el.getAttribute('data-tab') === 'unicode' ? 'unicode' : 'torn'; redraw(); return; }
+        if (act === 'ed-emoji') {
+          var ev = el.getAttribute('data-value') || '';
+          var snip = /^u[0-9]+$/.test(ev) ? (UNICODE_EMOJI[toInt(ev.slice(1), -1)] || '') : emojiSnippet(E.lang, ev);
+          if (!snip) return;
+          applyEdit(insertAtCaret(E.text, E.selStart, E.selEnd, snip), now); return;
+        }
+        if (act === 'ed-fix-open') { captureSelection(); E.fixOpen = !E.fixOpen; if (!E.fixOpen) E.fixCheck = null; redraw(); return; }
+        if (act === 'ed-fix-check') { E.fixCheck = fixImageUrl(field('ed-fix-url', '')); redraw(); return; }
+        if (act === 'ed-fix-copy') {
+          var fc = E.fixCheck;
+          if (!fc || (fc.status !== 'ok' && fc.status !== 'fixed')) return;
+          var cp = copyText(doc, win, fc.url);
+          notice(cp.ok ? 'Link copied.' : 'Copy failed. Select the link above and copy it yourself.', cp.ok ? 'info' : 'warn');
+          redraw(); return;
+        }
+        if (act === 'ed-fix-insert') {
+          var fi = E.fixCheck;
+          if (!fi) { notice('Check the image link first.', 'warn'); redraw(); return; }
+          if (fi.status !== 'ok' && fi.status !== 'fixed') return;
+          if (E.lang === 'text') { notice('Switch to Markdown or HTML to add images.', 'warn'); redraw(); return; }
+          captureSelection();
+          // Preview has no textarea, so the stored caret is stale: the image goes
+          // at the end and the editor returns to source so the player sees it.
+          if (E.mode === 'preview') { E.selStart = E.text.length; E.selEnd = E.text.length; E.mode = 'source'; }
+          applyEdit(insertAtCaret(E.text, E.selStart, E.selEnd, imageSnippet(E.lang, fi.url, '')), now); return;
+        }
+        if (act === 'ed-fix-all') {
+          captureSelection();
+          if (E.lang === 'text') { notice('Switch to Markdown or HTML to add images.', 'warn'); redraw(); return; }
+          var fx = fixAllImages(E.lang, E.text);
+          if (fx.text.length > DRAFT_MAX_CHARS) { overLimitNotice(fx.text.length); redraw(); return; }
+          if (fx.text !== E.text) pushUndo(E);
+          E.text = fx.text;
+          if (fx.changed && E.text.trim()) saveEditor(now);
+          var fparts = [];
+          if (fx.changed) fparts.push('Fixed ' + fx.changed + ' image link' + (fx.changed === 1 ? '' : 's') + '.');
+          if (fx.leftAsLinks) {
+            fparts.push(fx.leftAsLinks === 1 ? '1 link was left as a link (not on a line of its own).'
+              : fx.leftAsLinks + ' links were left as links (not on a line of their own).');
+          }
+          notice(fparts.length ? fparts.join(' ') : 'No image links found to fix.', 'info');
+          redraw(); return;
+        }
+        // E2: back one step: the text, mode and selection before the last edit.
+        if (act === 'ed-undo') {
+          if (!E.undo || !E.undo.length) return;
+          var snap = E.undo[E.undo.length - 1];
+          E.undo = E.undo.slice(0, -1);
+          E.text = snap.text; E.lang = snap.lang; E.selStart = snap.selStart; E.selEnd = snap.selEnd;
+          E.mode = 'source'; E.confirmText = null; E.picker = null; E.pickerWarn = null; E.imageCheck = null;
+          E.dirty = true;
+          state.focusIntent = [attrSel('data-act', 'draft-text')];
+          if (E.text.trim()) saveEditor(now);
+          redraw(); return;
+        }
+        // E1 (owner: move): the editor's text and mode become a new free
+        // draft, which opens. The thread's stored draft stays as it was; the
+        // unsaved typing goes with the free draft, so the editor is left clean
+        // and the key switch does not save it into the thread.
+        if (act === 'draft-to-free' && id) {
+          if (E.key !== id || /^n[0-9]+$/.test(id)) return;
+          captureSelection();
+          var mf = newFreeDraft(state.drafts, now, E.lang);
+          if (!mf.id) { notice('You have ' + FREE_DRAFTS_MAX + ' free drafts. Delete one to make another.', 'warn'); redraw(); return; }
+          var mfName = mf.drafts.free[mf.id].name;
+          state.drafts = saveFreeDraft(mf.drafts, mf.id, E.text, now, mfName, E.lang);
+          E.dirty = false;
+          state.draftFocusId = mf.id;
+          if (persist('drafts').ok) notice('Saved as ' + mfName + '. The thread draft is unchanged.', 'info');
+          recompute(now); redraw(); return;
+        }
+        if (act === 'draft-new') {
+          var made = newFreeDraft(state.drafts, now, state.settings.draftLang);
+          if (!made.id) { notice('You have ' + FREE_DRAFTS_MAX + ' free drafts. Delete one to make another.', 'warn'); redraw(); return; }
+          state.drafts = made.drafts; persist('drafts');
+          state.draftFocusId = made.id;
+          redraw(); return;
+        }
+        if (act === 'draft-edit' && id) { state.draftFocusId = id; setView('drafts'); redraw(); return; }
         if (act === 'draft-save' && id) {
-          state.drafts = saveDraft(state.drafts, id, valueOf('draft-text'), now, '');
-          persist('drafts'); recompute(now); notice('Draft saved.', 'info'); redraw(); return;
+          // Saved only if it stored: an open draft is written now; one not open
+          // must still exist.
+          if (state.editor.key === id ? !saveEditor(now) : !draftFor(state.drafts, id)) {
+            notice('This draft no longer exists. Copy your text, then use + New draft.', 'warn'); redraw(); return;
+          }
+          recompute(now); notice('Draft saved.', 'info'); redraw(); return;
         }
         if (act === 'draft-delete' && id) {
-          state.drafts = deleteDraft(state.drafts, id); persist('drafts'); recompute(now); redraw(); return;
+          if (/^n[0-9]+$/.test(id)) state.drafts = deleteFreeDraft(state.drafts, id);
+          else state.drafts = deleteDraft(state.drafts, id);
+          if (state.editor.key === id) { state.editor.key = null; if (state.draftFocusId === id) state.draftFocusId = null; }
+          persist('drafts'); recompute(now); redraw(); return;
         }
         if (act === 'draft-copy' && id) {
-          var d = draftFor(state.drafts, id);
-          copyText(doc, win, d ? d.text : '');
-          notice('Draft copied.', 'info'); redraw(); return;
+          var cd = state.editor.key === id ? null : draftFor(state.drafts, id);
+          copyPost(doc, win, cd ? postHtml(cd.text, draftLangOf(cd)) : editorPostHtml(), function (r) {
+            notice(r.ok ? 'Post copied. Paste it into Torn\'s reply box.' : 'Copy failed. Switch to HTML, select the text and copy it yourself.', r.ok ? 'info' : 'warn');
+            // The copy finishes later: redraw through the guarded path.
+            if (isForumsPage(win.location)) quietRedraw();
+          });
+          return;
         }
         if (act === 'draft-insert' && id) {
-          var dd = draftFor(state.drafts, id);
-          var ins = insertDraft(doc, win, dd ? dd.text : '');
-          notice(ins.ok ? 'Draft inserted.' : (ins.detail || 'Could not insert.'), ins.ok ? 'info' : 'warn');
+          if (state.editor.key === id && state.editor.text.trim()) saveEditor(now);
+          var ins = insertPost(doc, win, editorPostHtml());
+          notice(ins.ok ? 'Post inserted. Check it, then press Post.' : (ins.detail || 'Could not insert.'), ins.ok ? 'info' : 'warn');
           redraw(); return;
         }
         if (act === 'folder-add') {
@@ -8136,6 +11150,9 @@
           // A real reset: no backfill, nothing re-awarded until a new event earns it.
           state.badges = freshBadges(); state.badgeShelfOpen = false; state.badgeCatalogueOpen = false;
           state.badgeToast = null; state.dwell = freshDwell();
+          // The open editor goes too: its draft is gone, and a dirty one must
+          // not be saved back on the next draw or navigation.
+          state.draftFocusId = null; loadEditor(null, now);
           persist('settings'); persist('organizer'); persist('drafts'); persist('feed'); persist('postCache');
           persist('mine');
           persist('badges');
@@ -8154,6 +11171,7 @@
       },
 
       onChange: function (act, el) {
+        persistFailed = false;
         var now = Date.now();
         var id = idOf(el);
         var value = el && el.value !== undefined ? String(el.value) : '';
@@ -8210,9 +11228,24 @@
           if (!state.settings.autosaveDrafts) detachAutosave();
           redraw(); return;
         }
+        if (act === 'draft-lang') {
+          if (DRAFT_LANGS.indexOf(value) !== -1) { state.settings.draftLang = value; persist('settings'); }
+          redraw(); return;
+        }
+        if (act === 'ed-height-wide' || act === 'ed-height-narrow') {
+          if (Object.prototype.hasOwnProperty.call(EDITOR_HEIGHTS, value)) {
+            state.settings[act === 'ed-height-wide' ? 'editorHeightWide' : 'editorHeightNarrow'] = value;
+            persist('settings');
+          }
+          redraw(); return;
+        }
         if (act === 'auto-hide') {
           state.settings.autoHideOnOpen = !!el.checked;
           persist('settings'); redraw(); return;
+        }
+        if (act === 'ed-header') {
+          state.editor.fields = Object.assign({}, state.editor.fields, { 'ed-header': !!el.checked });
+          return;
         }
         if (act === 'see-through') {
           state.settings.seeThrough = !!el.checked;
@@ -8244,9 +11277,94 @@
       // #33: mirror a drawer field on every keystroke, without a redraw, so a
       // forced redraw before the commit renders what was typed and restores
       // the caret (spec section 6, dirty inputs rule 3).
+      // #58 B2: a selection made without typing, mirrored from the panel's
+      // select, keyup, mouseup and pointer events on the draft textarea.
+      // #58 round 2: Enter in the draft field. The field is edited in place,
+      // as typing edits it: no redraw, so the caret, the scroll position and a
+      // phone's keyboard stay put. Like any other edit it takes an Undo
+      // snapshot, marks the draft dirty and is refused past the limit.
+      // Returns whether the editor handled the key.
+      onDraftEnter: function (el, shift) {
+        var E = state.editor;
+        if (!el || el.value === undefined || E.mode === 'preview') return false;
+        var a = el.selectionStart;
+        var b = el.selectionEnd;
+        if (typeof a !== 'number' || typeof b !== 'number' || !isFinite(a) || !isFinite(b)) return false;
+        var before = String(el.value);
+        var r = editorEnter(E.lang, before, a, b, shift);
+        if (!r) return false;
+        persistFailed = false;
+        if (before !== E.text) handlers.onInput('draft-text', el);
+        if (r.text.length > DRAFT_MAX_CHARS) {
+          overLimitNotice(r.text.length);
+          state.focusIntent = [attrSel('data-act', 'draft-text')];
+          redraw();
+          return true;
+        }
+        E.selStart = a; E.selEnd = b;
+        pushUndo(E);
+        E.text = r.text; E.selStart = r.start; E.selEnd = r.end;
+        E.dirty = true;
+        E.atLimit = r.text.length >= DRAFT_MAX_CHARS;
+        lastSelField = el;
+        if (!writeDraftField(el, before, r)) { state.focusIntent = [attrSel('data-act', 'draft-text')]; redraw(); }
+        return true;
+      },
+      onSelect: function (act, el) {
+        if (act !== 'draft-text' || !el) return;
+        lastSelField = el;
+        var a = el.selectionStart;
+        var b = el.selectionEnd;
+        if (typeof a !== 'number' || typeof b !== 'number' || !isFinite(a) || !isFinite(b)) return;
+        var len = state.editor.text.length;
+        state.editor.selStart = Math.max(0, Math.min(len, a));
+        state.editor.selEnd = Math.max(0, Math.min(len, b));
+      },
       onInput: function (act, el) {
+        persistFailed = false;
         // #43: the popup's field mirrors under the inline field's name.
         if (act === 'editor-input') act = el && el.getAttribute ? el.getAttribute('data-field') : null;
+        if (act === 'draft-text') {
+          var nn = function (v) { return typeof v === 'number' && isFinite(v) ? v : 0; };
+          var raw = el && el.value !== undefined ? String(el.value) : '';
+          var typed = raw.slice(0, DRAFT_MAX_CHARS);
+          // E2: one Undo step per typing burst: a snapshot at its first
+          // keystroke; a pause or any other action ends it.
+          if (typed !== state.editor.text) {
+            var tnow = Date.now();
+            if (!state.editor.typingAt || tnow - state.editor.typingAt > TYPING_BURST_MS) pushUndo(state.editor);
+            state.editor.typingAt = tnow;
+          }
+          state.editor.text = typed;
+          // Spec 4a: nothing is silently cut. maxlength and the slice keep the
+          // stored source within the limit; the player hears about it once per
+          // crossing, on the next redraw, not on every keystroke at the limit.
+          var atLimit = raw.length >= DRAFT_MAX_CHARS;
+          if (atLimit && !state.editor.atLimit) {
+            notice('This draft is at the ' + DRAFT_MAX_CHARS + '-character limit; anything past it was not added.', 'warn');
+          }
+          state.editor.atLimit = atLimit;
+          state.editor.selStart = nn(el && el.selectionStart);
+          state.editor.selEnd = nn(el && el.selectionEnd);
+          lastSelField = el || null;
+          state.editor.dirty = true;
+          return;
+        }
+        if (act === 'ed-name') {
+          state.editor.name = el && el.value !== undefined ? String(el.value).slice(0, FREE_NAME_MAX) : '';
+          state.editor.dirty = true;
+          return;
+        }
+        // #58: a picker's typed fields live in the editor state, so a redraw
+        // re-renders them and the handlers never query the document.
+        if (['ed-hex-input', 'ed-link-input', 'ed-img-url', 'ed-fix-url', 'ed-img-alt', 'ed-cols', 'ed-rows'].indexOf(act) !== -1) {
+          state.editor.fields = Object.assign({}, state.editor.fields);
+          state.editor.fields[act] = el && el.value !== undefined ? String(el.value).slice(0, URL_MAX_CHARS) : '';
+          // A changed address needs a new check: Insert never uses an old one.
+          if (act === 'ed-img-url') state.editor.imageCheck = null;
+          if (act === 'ed-fix-url') state.editor.fixCheck = null;
+          return;
+        }
         if (act !== 'note-input' && act !== 'tag-input') return;
         var id = idOf(el);
         if (!id) return;
@@ -8266,6 +11384,10 @@
   var booted = false;
   var autoTimer = null;
 
+  function routeKey(r) {
+    return r ? String(r.view) + '|' + String(r.forumId) + '|' + String(r.threadId) : '';
+  }
+
   function syncToRoute(doc, win) {
     if (!isForumsPage(win.location)) {
       if (state.mounted) unmountPanel(doc);
@@ -8275,11 +11397,15 @@
       detachAutosave();
       stopDwell();
       state.route = null;
+      state.notices = [];
+      persistFailed = false;
       return;
     }
     var now = Date.now();
     var capture = captureVisit(win.location, doc.title, now);
     if (capture.changed) { persist('organizer'); recompute(now); }
+    // A message belongs to the place it was raised; navigating clears it.
+    if (routeKey(state.route) !== routeKey(capture.route)) { state.notices = []; persistFailed = false; }
     state.route = capture.route;
     startDwell(doc, win);
     sampleDwell(doc, win, now);

@@ -1164,7 +1164,7 @@ test('setKarma writes both fields together, last, and clears on a non-number', (
   assert.strictEqual(api.setKarma(api.freshMine(), 0, NOW).karma, 0, 'a real zero is stored');
 });
 
-test('the icon is ASCII, follows the theme colour, and carries nothing active', () => {
+test('the icon is ASCII, follows the theme color, and carries nothing active', () => {
   const svg = api.KARMA_ICON_SVG;
   assert.match(svg, /^[\x00-\x7F]+$/, 'ASCII only (tests/metadata.test.js rule, Torn PDA rewrites the rest)');
   assert.ok(svg.includes('currentColor'));
@@ -1539,7 +1539,7 @@ test('every tooltip says subscribers cannot be shown', () => {
   }
 });
 
-test('stale figures carry a visible age, not just a colour', () => {
+test('stale figures carry a visible age, not just a color', () => {
   const env = bootPanel();
   withMine(env, [startedRec(env.exports, 1, TH(1, 1, NOW - 3 * 24 * 3600000))]);
   const html = htmlOf(env);
@@ -1762,11 +1762,11 @@ test('the karma line is also present before My posts has loaded, as "-"', () => 
 Append to `tests/style.test.js`:
 
 ```js
-test('the karma icon is sized to the text and takes the theme colour', () => {
+test('the karma icon is sized to the text and takes the theme color', () => {
   const karma = blockFor('#tfcc-panel .tfcc-karma');
   assert.match(karma, /display: inline-flex/);
   assert.match(karma, /white-space: nowrap/);
-  assert.match(karma, /color: var\(--tm-text\)/, 'currentColor resolves to a themed colour, not black');
+  assert.match(karma, /color: var\(--tm-text\)/, 'currentColor resolves to a themed color, not black');
   assert.match(blockFor('#tfcc-panel .tfcc-karma svg'), /flex: none/);
   assert.ok(api.KARMA_ICON_SVG.includes('style="height:1em;width:auto"'));
 });

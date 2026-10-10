@@ -170,7 +170,7 @@ reference, `viewBox="149 50 702 900"`. The userscript carries it as an ASCII
 string constant, `KARMA_ICON_SVG`, changed in these ways only:
 
 - `fill="#000000"` becomes `fill="currentColor"`, so it follows the theme text
-  colour in Dark, Light and Match Torn;
+  color in Dark, Light and Match Torn;
 - the XML prolog, `<title>`, `<desc>`, `role`, `aria-labelledby` and `xmlns`
   are dropped (it is inline in HTML);
 - `aria-hidden="true"` and `focusable="false"` are added;
@@ -534,7 +534,7 @@ never see the figure it paid a request for.
   up or down.
 - A known zero renders `0`; unknown renders `-`; a negative net renders
   `net -3`, never confusable with a lone `-`.
-- Stale is not colour alone: the visible `(3d ago)` is the cue.
+- Stale is not color alone: the visible `(3d ago)` is the cue.
 
 Tooltip (`title`, repeated in `aria-label` after the visible figures):
 
@@ -581,10 +581,10 @@ has no hover). Sorting by thumbs is out of scope.
 (1,1,1) beats the generic `#tfcc-panel button` (1,0,1); `:hover` at (1,2,1)
 beats the generic `button:hover` (1,1,1). Existing tokens only. ASCII text
 labels, no emoji. The knot icon is the one non-text mark: it is `currentColor`
-so it takes the pill's `--tm-meta` colour, and
+so it takes the pill's `--tm-meta` color, and
 `#tfcc-panel .tfcc-karma` is `display: inline-flex; align-items: center;
 gap: 0.25em; white-space: nowrap`. The contrast audit must print OK, and it
-must check the icon colour (`--tm-meta` on `--tm-bg-3`) in Dark, Light and
+must check the icon color (`--tm-meta` on `--tm-bg-3`) in Dark, Light and
 Match Torn as it does for the text; the preview seeds
 three started threads (two with thumbs, one net only).
 
@@ -780,7 +780,7 @@ New section "Reactions tracker", Torn PDA and desktop:
 - [ ] After a day without opening My posts, the line shows `(1d ago)`.
 - [ ] Karma: the endless-knot icon and a number follow the thumbs, with no word
       "karma" on screen. Before My posts has ever loaded it shows `-`, not 0.
-- [ ] The icon takes the text colour in Dark, Light and Match Torn (visible,
+- [ ] The icon takes the text color in Dark, Light and Match Torn (visible,
       not black on dark).
 - [ ] The karma figure equals the karma on your Torn profile (owner check 2).
 - [ ] A test account with no threads and no posts: opening My posts shows the

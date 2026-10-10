@@ -147,7 +147,7 @@ test('the header shows the FCC logo, named for assistive tech, in place of the t
   }
 });
 
-test('the logo carries no fixed id, no labelledby and no <title>, and keeps the owner colour', () => {
+test('the logo carries no fixed id, no labelledby and no <title>, and keeps the owner color', () => {
   const { exports: api } = loadUserscript();
   const svg = api.LOGO_SVG;
   assert.doesNotMatch(svg, /\sid=/, 'a fixed id would collide on Torn\'s page');
@@ -741,7 +741,7 @@ test('every tooltip says subscribers cannot be shown', () => {
   }
 });
 
-test('stale figures carry a visible age, not just a colour', () => {
+test('stale figures carry a visible age, not just a color', () => {
   const env = bootPanel();
   withMine(env, [startedRec(env.exports, 1, TH(1, 1, NOW - 3 * 24 * 3600000))]);
   const html = htmlOf(env);

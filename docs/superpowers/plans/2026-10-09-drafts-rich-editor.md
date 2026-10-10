@@ -317,7 +317,7 @@ const MEASURED_EMOJI = ['angel', 'angry', 'authority', 'beard', 'beaten_up', 'bl
   'love_chemistry', 'money', 'moustache', 'mugger_masked', 'nerd', 'party', 'pirate', 'sick', 'smiley',
   'tired', 'tongue', 'wink', 'zip_mouth'];
 
-test('the 17 Torn colours and the 30 Torn emoji are exactly the measured sets', () => {
+test('the 17 Torn colors and the 30 Torn emoji are exactly the measured sets', () => {
   assert.deepStrictEqual(api.TORN_COLORS.map((c) => [c.name, c.light, c.dark]), MEASURED_COLORS);
   assert.deepStrictEqual(api.TORN_EMOJI.slice(), MEASURED_EMOJI);
   assert.strictEqual(api.PASTE_MARKER, '<!-- x-tinymce/html -->');
@@ -734,7 +734,7 @@ git commit -m "feat: HTML to Markdown, plain text and mode conversion with a los
 
 ---
 
-### Task 4: Image link fixer and colour contrast
+### Task 4: Image link fixer and color contrast
 
 **Files:**
 - Modify: `torn-forum-command-center.user.js`, the engine section
@@ -846,7 +846,7 @@ test('Fix image link rewrites every fixable image in a draft', () => {
     { text: '![a](https://imgur.com/AbC12dE)', changed: 0 });
 });
 
-test('a custom colour hard to read in a theme is flagged there', () => {
+test('a custom color hard to read in a theme is flagged there', () => {
   assert.deepStrictEqual(api.colorWarnings('#ffd43b'), [{ theme: 'light', ratio: 1.4 }]);
   assert.deepStrictEqual(api.colorWarnings('#000000'), [{ theme: 'dark', ratio: 1.1 }]);
   assert.deepStrictEqual(api.colorWarnings('#777777').map((w) => w.theme), ['light', 'dark']);
@@ -861,7 +861,7 @@ Run: `node --test tests/editor-images.test.js`
 Expected: FAIL, `api.fixImageUrl is not a function`.
 
 - [ ] **Step 3: Paste the reference sections** `// ---- image link fixer (#58)`
-  and `// ---- custom colour contrast (#58)`. Add these to `EXPORT_NAMES`:
+  and `// ---- custom color contrast (#58)`. Add these to `EXPORT_NAMES`:
   `'fixImageUrl', 'fixAllImages', 'hexRgb', 'contrastRatio', 'colorWarnings', 'IMAGE_HOWTO',`.
 
 - [ ] **Step 4: Run the tests**
@@ -904,7 +904,7 @@ fetches:
 ```bash
 npm test
 git add torn-forum-command-center.user.js tests/load-userscript.js tests/editor-images.test.js
-git commit -m "feat: image link fixer and custom colour contrast check (#58)"
+git commit -m "feat: image link fixer and custom color contrast check (#58)"
 ```
 
 ---
@@ -2553,7 +2553,7 @@ substitute the existing token. Do not invent new tokens. Add the helper beside
 the CSS builder (runtime):
 
 ```js
-  // The 17 Torn text colours for a Preview theme, as one declaration list, so
+  // The 17 Torn text colors for a Preview theme, as one declaration list, so
   // a cleaned post's var(--te-text-color-*) resolves inside the panel.
   function teVars(theme) {
     return TORN_COLORS.map(function (c) { return '--te-text-color-' + c.name + ': ' + c[theme] + ';'; }).join(' ');
@@ -2772,7 +2772,7 @@ test('Bold wraps the selection in the draft\'s language', () => {
   assert.strictEqual(api.state.editor.text, 'hello **world**');
 });
 
-test('a colour from the picker wraps the selection it was opened on', () => {
+test('a color from the picker wraps the selection it was opened on', () => {
   const { api, h } = editorAt('hi there', 'html', [3, 8]);
   h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'color' }));
   h.onAction('ed-color', el({ 'data-act': 'ed-color', 'data-value': 'red' }));
@@ -2783,7 +2783,7 @@ test('a colour from the picker wraps the selection it was opened on', () => {
 // A picker field typed into: the panel's input event, as the browser sends it.
 const typeInto = (h, act, value) => h.onInput(act, Object.assign(el({ 'data-act': act }), { value }));
 
-test('a hard-to-read custom colour asks once, keeps the typed hex across the redraw, then applies', () => {
+test('a hard-to-read custom color asks once, keeps the typed hex across the redraw, then applies', () => {
   const { api, h } = editorAt('x', 'md', [0, 1]);
   h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'color' }));
   typeInto(h, 'ed-hex-input', '#ffd43b');
@@ -2877,7 +2877,7 @@ test('narrow shows five tools and More; the rest are in the drawer', () => {
     ['ed-mark', 'data-mark="bold"', 'B', 'Bold', true],
     ['ed-mark', 'data-mark="italic"', 'I', 'Italic', true],
     ['ed-mark', 'data-mark="underline"', 'U', 'Underline', true],
-    ['ed-picker', 'data-picker="color"', 'Colour', 'Text colour', true],
+    ['ed-picker', 'data-picker="color"', 'Color', 'Text color', true],
     ['ed-picker', 'data-picker="link"', 'Link', 'Insert link', true],
     ['ed-mark', 'data-mark="strike"', 'S', 'Strike through', false],
     ['ed-picker', 'data-picker="size"', 'Size', 'Text size', false],
@@ -2924,8 +2924,8 @@ test('narrow shows five tools and More; the rest are in the drawer', () => {
 
   var MD_HELP = Object.freeze([
     ['**bold**', 'bold'], ['*italic*', 'italic'], ['++underline++', 'underline'], ['~~strike~~', 'strike through'],
-    ['{red}text{/}', 'a Torn colour (red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange, gray1 to gray5)'],
-    ['{#ff8800}text{/}', 'any colour'], ['{18}text{/}', 'text size, 8 to 36'], ['# Title', 'a big bold line (## and ### are smaller)'],
+    ['{red}text{/}', 'a Torn color (red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange, gray1 to gray5)'],
+    ['{#ff8800}text{/}', 'any color'], ['{18}text{/}', 'text size, 8 to 36'], ['# Title', 'a big bold line (## and ### are smaller)'],
     [':::center', 'centre the lines up to the next :::'], ['> text', 'a quote'], ['- item', 'a list (1. for numbers)'],
     // No literal URLs here: read-only.test.js audits every http(s) host in the source.
     ['[text](link address)', 'a link (https only)'], ['![description](image link)', 'an image'], [':grin:', 'a Torn emoji'],
@@ -2950,11 +2950,11 @@ test('narrow shows five tools and More; the rest are in the drawer', () => {
           + (c.name === 'gray5' ? ', matches the page background' : '') + '" title="' + c.name + '">'
           + '<span class="tfcc-swatch" style="background: ' + c[theme] + ';" aria-hidden="true"></span></button>');
       }
-      out.push('</div><label for="tfcc-ed-hex" class="tfcc-note">Custom colour</label>'
+      out.push('</div><label for="tfcc-ed-hex" class="tfcc-note">Custom color</label>'
         + '<input id="tfcc-ed-hex" type="text" data-act="ed-hex-input" placeholder="#ff8800" maxlength="7" value="' + fv('ed-hex-input', '') + '">'
-        + btn('ed-color', 'Use custom colour', ' data-value="custom"'));
+        + btn('ed-color', 'Use custom color', ' data-value="custom"'));
       if (e.pickerWarn) {
-        out.push('<p class="tfcc-note" role="alert">' + escapeHtml(e.pickerWarn) + ' Tap Use custom colour again to use it anyway.</p>');
+        out.push('<p class="tfcc-note" role="alert">' + escapeHtml(e.pickerWarn) + ' Tap Use custom color again to use it anyway.</p>');
       }
     } else if (e.picker === 'size') {
       for (var s = 0; s < SIZE_PICKS.length; s += 1) out.push(btn('ed-size', SIZE_PICKS[s] + 'px', ' data-value="' + SIZE_PICKS[s] + '"'));
@@ -3071,9 +3071,9 @@ Then add the cases:
           var cv = el.getAttribute('data-value');
           if (cv === 'custom') {
             var hex = String(field('ed-hex-input', '')).trim().toLowerCase();
-            if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(hex)) { notice('Type a colour like #ff8800.', 'warn'); redraw(); return; }
+            if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(hex)) { notice('Type a color like #ff8800.', 'warn'); redraw(); return; }
             var warns = colorWarnings(hex);
-            var warnText = warns.length ? 'This colour is hard to read on Torn\'s ' + warns.map(function (w) { return w.theme; }).join(' and ')
+            var warnText = warns.length ? 'This color is hard to read on Torn\'s ' + warns.map(function (w) { return w.theme; }).join(' and ')
               + ' theme (contrast ' + warns.map(function (w) { return w.ratio; }).join(' and ') + ' to 1).' : '';
             if (warnText && E.pickerWarn !== warnText) { E.pickerWarn = warnText; redraw(); return; }
             applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, 'color', hex)); return;
@@ -3366,7 +3366,7 @@ Expected: PASS.
    `screenshot "#tfcc-panel"`.
 3. Confirm all of the following:
    - the pill's four segments fit on one row;
-   - the toolbar shows B, I, U, Colour, Link and More, all 44px;
+   - the toolbar shows B, I, U, Color, Link and More, all 44px;
    - nothing scrolls sideways;
    - the textarea text is 16px.
 4. Run `node tests/contrast-audit.mjs`. It must pass. If it audits panel tokens
@@ -3412,7 +3412,7 @@ git commit -m "test: wide parity list for the Drafts editor (#58)"
       .replace("        if (!tok.raw) top.children.push({ text: tok.text });", '        top.children.push({ text: tok.text });'),
   },
   {
-    name: 'Markdown loses colour on the way back from HTML',
+    name: 'Markdown loses color on the way back from HTML',
     suite: 'tests/editor-convert.test.js',
     apply: (s) => s.replace("out += '{' + key + '}' + inner + '{/}';", 'out += inner;'),
   },
@@ -3493,8 +3493,8 @@ git commit -m "test: mutation check guards the editor's promises (#58)"
     Switching converts the draft without losing anything. Preview shows the
     post the way Torn will, in its light or dark theme, and tapping a
     paragraph jumps back to it.
-  - **Toolbar:** bold, italic, underline, strike, Torn's 17 text colours or a
-    custom colour, size, alignment, quote, link, image, table, emoji (Torn's
+  - **Toolbar:** bold, italic, underline, strike, Torn's 17 text colors or a
+    custom color, size, alignment, quote, link, image, table, emoji (Torn's
     own and Unicode) and a Markdown help card.
   - **Image link fixer:** paste a Google Drive, Dropbox, GitHub, Giphy,
     Gyazo, Imgur or Reddit link, and the editor rewrites it into a link Torn
@@ -3525,7 +3525,7 @@ git commit -m "test: mutation check guards the editor's promises (#58)"
     - the image link fixer and its host list;
     - the Default editor setting.
   - **`docs/forum-post.md`:** add the editor to its feature list, and change
-    every hex colour to the nearest `var(--te-text-color-*)`, using the light
+    every hex color to the nearest `var(--te-text-color-*)`, using the light
     and dark table in the findings.
   - **ASCII check:** `docs/` is not covered by the ASCII rule, but the README
     may be included in Greasy Fork copy, so keep it plain ASCII.
@@ -3596,7 +3596,7 @@ spec, ADR 0002 or the reference code changed.
 | 4 | Major: the legacy-settings test bypasses `isRecoveredSettings` | **Fixed.** The Task 6 tests go through `loadKey` with `isRecoveredSettings`, as `loadAll` does |
 | 5 | Major: an autosave timer saves to the thread open now | **Fixed.** The thread and box are captured per listener, the old listener is removed, and the stale route is checked. Test and mutation added |
 | 6 | Major: Copy reports success before the clipboard answers | **Fixed.** `copyPost` takes a `done` callback, called only on settlement. Rejected `write` falls back to `writeText`, and a rejected `writeText` reports failure. Tests added |
-| 7 | Major: the custom-colour confirmation loses the typed hex | **Fixed.** Picker fields live in `state.editor.fields` (via `onInput`) and render back. The test asserts the redrawn value |
+| 7 | Major: the custom-color confirmation loses the typed hex | **Fixed.** Picker fields live in `state.editor.fields` (via `onInput`) and render back. The test asserts the redrawn value |
 | 8 | Major: picker reads use document-wide `valueOf` | **Fixed.** Editor handlers read `field()` from state only. A test proves a same-named element on Torn's page is ignored |
 | 9 | Major: unsaved text is discarded when switching drafts | **Fixed.** A `dirty` flag, with a save before `loadEditor` changes key. Test added |
 | 10 | Major: the cleaner slices silently | **Fixed** by #1. The slice is a security bound that a real draft cannot reach, and a test proves it |

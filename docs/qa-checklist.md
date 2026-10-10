@@ -155,7 +155,7 @@ Walk on Torn PDA, portrait, on the narrowest phone you have, then landscape.
       Enter: the note is saved and the drawer closes.
 - [ ] The drawer shows a pin, a check mark, a pencil and an archive box (a
       box with a down arrow, #41) on one row, in white on the dark theme and
-      black on the light theme (no colour emoji). TalkBack reads them as "Pin" (or "Unpin"), "Mark read", "Draft"
+      black on the light theme (no color emoji). TalkBack reads them as "Pin" (or "Unpin"), "Mark read", "Draft"
       (or "Edit draft") and "Archive" (or "Unarchive"). A pinned row's pin
       button is underlined.
 - [ ] The archive box archives, it does not delete: the thread leaves the list
@@ -387,7 +387,7 @@ Torn PDA and desktop (#10).
 - [ ] After a day without opening My posts, the line shows `(1d ago)`.
 - [ ] Karma: the endless-knot icon and a number follow the thumbs, with no word
       "karma" on screen. Before My posts has ever loaded it shows `-`, not 0.
-- [ ] The icon takes the text colour in Dark, Light and Match Torn (visible,
+- [ ] The icon takes the text color in Dark, Light and Match Torn (visible,
       not black on dark).
 - [ ] The karma figure equals the karma on your Torn profile (owner check 2).
 - [ ] A test account with no threads and no posts: opening My posts shows the
@@ -418,7 +418,7 @@ Tampermonkey, on the same build.
       and Drafts views falling back to the browser default blue, which reads as
       black against the dark panel. It renders each view twice, the second time
       under a stylesheet that fights ours the way Torn's does; the plain
-      previews were too clean to catch either colour bug.
+      previews were too clean to catch either color bug.
 - [ ] Keyboard only: tab through the panel. Focus is always visible.
 - [ ] With "Hide the panel when I open a thread" on: a plain click on a thread
       collapses the panel and opens the thread; Ctrl-click and middle-click open
@@ -533,6 +533,71 @@ Walk on Torn PDA and on desktop, signed in to a real account.
       with no "Folders and tags were damaged" notice.
 - [ ] Export, Reset folders and tags, Import: every claim comes back.
 - [ ] On a desktop, Settings looks as before, apart from the chips.
+
+## Drafts editor (#58)
+
+- [ ] 1. Insert a Markdown draft with every construct into a reply and a new
+      thread. Press Post in the owner's test thread, then confirm the
+      published post matches Preview. This settles what Torn keeps on save:
+      quote; strike; italic; cell alignment; `table-wrap`.
+- [ ] 2. The same Insert in Torn PDA (Android, and iOS if available). The
+      synthetic paste must work in PDA's webview, otherwise the panel offers
+      Copy.
+- [ ] 3. Copy, then paste into Torn's editor: the styles survive.
+- [ ] 4. Old drafts and settings from v0.2.2 load with no damage notice.
+- [ ] 5. At 320px in PDA, the pill, toolbar, More drawer and pickers fit, with
+      44px targets.
+- [ ] 6. Fixed image links render after Post. Check each of these: a Drive
+      file; a Dropbox file; an Imgur single image, as a JPG and as a GIF; a
+      GitHub image; a Gyazo screenshot. A host that fails is moved to "not
+      derivable" before release.
+      Also: paste a bare Drive "view" link on its own line in Markdown (and
+      again in HTML), open Fix image link, press Fix all links in this draft,
+      Insert into the reply box and Post: the image renders. A link in the
+      middle of a sentence stays a link and the message says it was left
+      "not on a line of its own". Check the Check, Copy link and Insert into
+      draft buttons on a phone, and that Enter in the Image link field runs
+      Check without adding a line to the draft.
+- [ ] 7. On a phone (Torn PDA and mobile Safari/Chrome), tap in the draft to
+      place the caret, or drag the selection handles, then press Bold and
+      Quote: they act on the caret or highlighted range, also after More.
+- [ ] 8. Drag-resize the editor box, then press toolbar buttons, pick an
+      emoji and switch modes: the height stays and the buttons still work.
+      Check iOS Safari, Firefox and Torn PDA.
+- [ ] 9. Settings: Editor height (desktop) and (phone) each change the box
+      height for that layout (Small, Medium, Large, Extra large); the
+      defaults are Large on desktop and Medium on phone.
+- [ ] 10. Undo: after a toolbar edit, a mode switch and a burst of typing, each
+      Undo steps back; it is disabled when there is nothing to undo, and it
+      works in Text mode.
+- [ ] 11. Save as free draft on a thread draft creates "Untitled N" with the
+      editor text and leaves the thread's draft unchanged.
+- [ ] 12. Status messages: only the latest shows, and it clears when you open
+      another thread, forum page or panel view (Threads, Drafts, Settings).
+- [ ] 13. On phones at 375px and at 320px, the narrow toolbar symbols (Undo,
+      B, I, U, Color, Link, More) always sit on ONE row, right-aligned, 44px
+      tall and up to 40px wide (narrower, never under 32px, when the screen
+      is tight), and More opens the rest (also right-aligned; it may wrap
+      to a second row). Long-press shows
+      the full names. A custom color like #ff1111 gives no warning; #ffd43b
+      on the light theme does. The drafts `i` button sits beside
+      "Draft for this thread" and beside a free draft's name, and opens its
+      text under them.
+- [ ] 14. Enter and blank lines (owner round 2). In HTML mode type
+      `<p>one</p>`, press Enter, type `two`, press Enter twice, type `three`.
+      Preview shows one, two, a gap, three; Insert and Post keep the gap.
+      Inside `<p style="text-align: center;">ab</p>`, Enter between a and b
+      gives two centered paragraphs; Shift+Enter gives a line break. In a list
+      item Enter starts a new item; Enter again on that empty item removes
+      it and puts the caret on a new line after `</ul>` (no empty bullet in
+      Preview or the post). In Markdown, Enter on `- item` starts
+      `- `, on `1. item` starts `2. `, and Enter on an empty `- ` ends the
+      list. Text mode: each line a paragraph, an empty line a gap. Check with
+      a phone keyboard (Torn PDA, Gboard and iOS) and with an IME (Japanese or
+      Chinese input): composing Enter picks the candidate and adds nothing;
+      after Enter the keyboard stays up and the caret stays in view. With
+      Gboard, Enter inside `<p>ab</p>` splits it exactly once. Enter at the
+      end of a `# Title` heading switched to HTML starts a plain paragraph.
 
 ## Sign-off
 

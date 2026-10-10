@@ -5,8 +5,8 @@
 // panel sees is named here.
 //
 // The narrow reactions pill hangs entirely off .tfcc-narrow, so it adds
-// nothing to these lists. The logo's light-theme colour does: the logo rule
-// takes its colour from a per-theme token instead of a fixed hex. The markup
+// nothing to these lists. The logo's light-theme color does: the logo rule
+// takes its color from a per-theme token instead of a fixed hex. The markup
 // (the SVG's own fill="#5C768F") is unchanged.
 //
 // css: each entry replaces a line of main's stylesheet (`from`, required

@@ -281,12 +281,12 @@ test('an unknown total is unchecked, not a checked zero', () => {
   assert.strictEqual(u.unreadSource, 'unchecked');
 });
 
-test('only organising state counts as organised; a read marker or a visit does not', () => {
-  assert.strictEqual(api.isOrganised(api.normaliseThreadEntry({ lastSeenTotal: 5, lastVisitedAt: 9 }), false), false);
+test('only organizing state counts as organized; a read marker or a visit does not', () => {
+  assert.strictEqual(api.isOrganized(api.normaliseThreadEntry({ lastSeenTotal: 5, lastVisitedAt: 9 }), false), false);
   for (const e of [{ pinned: true }, { tags: ['x'] }, { folderId: 'guides' }, { priority: 1 }, { note: 'n' }, { archived: true }]) {
-    assert.strictEqual(api.isOrganised(api.normaliseThreadEntry(e), false), true, JSON.stringify(e));
+    assert.strictEqual(api.isOrganized(api.normaliseThreadEntry(e), false), true, JSON.stringify(e));
   }
-  assert.strictEqual(api.isOrganised(api.normaliseThreadEntry(null), true), true, 'a draft is organising');
+  assert.strictEqual(api.isOrganized(api.normaliseThreadEntry(null), true), true, 'a draft is organizing');
 });
 
 function row(over) {

@@ -14,7 +14,7 @@ writing code.
 Read nothing else until you have these, in order:
 
 1. `docs/designs/2026-10-09-drafts-rich-editor.md` (6.7K) -- the phase contract. It holds the owner's request, the five research questions to answer before designing, the known constraints, and the handoff log for everything shipped through v0.2.2.
-2. `docs/reference/torn-forum-post-sample.html` (4.1K) -- a real published post the owner supplied, whose tables Torn renders correctly. Its header lists the markup conventions it shows: `var(--te-text-color-*)` colours, the `table-wrap` divs, `<p>&nbsp;</p>` spacers, `target="_blank" rel="noopener"`.
+2. `docs/reference/torn-forum-post-sample.html` (4.1K) -- a real published post the owner supplied, whose tables Torn renders correctly. Its header lists the markup conventions it shows: `var(--te-text-color-*)` colors, the `table-wrap` divs, `<p>&nbsp;</p>` spacers, `target="_blank" rel="noopener"`.
 3. `docs/adr/0001-read-the-torn-api-not-the-forum-dom.md` (3.9K) -- FCC touches Torn's page in exactly two places, the mount and the reply box. An editor inside the panel adds no DOM path, but changing how the reply box is found or written changes one of the two.
 4. `docs/code-map.md` (63.1K) -- read it in slices, never whole. Grep it for `findReplyBox` (line 274), `insertDraft` (275) and `renderDraftsView` (329). Then read the userscript at those anchors with offset/limit.
 5. `docs/superpowers/specs/2026-10-09-mobile-condense-design.md` (101.4K) -- read section 14 only (from line 1156), by anchor. It defines the narrow layout rules the Drafts editor must meet at 320px in Torn PDA.
@@ -46,9 +46,9 @@ Read nothing else until you have these, in order:
 
 ## Unknowns and risks
 
-- The central unknown: FCC finds the reply box as `textarea[name="postText"]`, but the sample's `--te-` colour variables suggest Torn's visible editor is a rich editor. Whether inserted HTML survives, and how, decides the whole design. Only the owner's own browser can answer it.
+- The central unknown: FCC finds the reply box as `textarea[name="postText"]`, but the sample's `--te-` color variables suggest Torn's visible editor is a rich editor. Whether inserted HTML survives, and how, decides the whole design. Only the owner's own browser can answer it.
 - What Torn strips on save, the image format the owner calls "the proper format", and the full list of `--te-text-color-*` variables are all unverified.
-- `docs/forum-post.md` uses hex colours and bare tables. The research may show it needs Torn's conventions before it is posted.
+- `docs/forum-post.md` uses hex colors and bare tables. The research may show it needs Torn's conventions before it is posted.
 - Owner gates still open from the last session:
   - upload v0.2.2 to Greasy Fork;
   - host the forum-post images and fill the placeholders;
