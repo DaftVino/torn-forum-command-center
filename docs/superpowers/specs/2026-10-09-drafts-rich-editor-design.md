@@ -60,10 +60,18 @@ Out of scope, by owner decision:
   - The estimate was 1,200 to 2,500 added lines, mostly untestable in Node, and
     fighting the panel's innerHTML redraw model.
 
-Also out of scope:
-- emoji shortcodes;
-- YouTube embeds;
-- uploading images.
+Back in scope (owner, 2026-10-09):
+- **The image link fixer** (section 8).
+- **Torn's emoji** (section 8). The emoji list comes from the owner's emoji
+  check.
+- **YouTube embeds**, provided the owner's check shows the markup Torn's
+  `EmbedYoutubePlugin` produces.
+- Both data items are added to this spec before the plan is written.
+
+Still out of scope:
+- **Uploading image files to Torn.** It needs Torn's undocumented upload
+  endpoint, which ADR 0001 rules out and which Torn's scripting rules put at
+  risk. The image picker points to Torn's own Insert Image button for files.
 
 The README and forum-post updates are in scope, and they gate release (section 9).
 
@@ -272,13 +280,38 @@ path.
     shows a warning naming the theme. The backgrounds are `--te-background-color`,
     `#fff` light and `#111` dark, both measured.
   - gray5 carries "matches the page background".
-- **Image:** a URL field.
-  - Accepted as is: `https://editor.torn.com/...`, and `https://` URLs ending in
-    `.png`, `.jpg`, `.jpeg`, `.gif` or `.webp`.
-  - **Page links** get an explanation and a pointer to Torn's own Insert Image
-    upload: `drive.google.com/file/`, `dropbox.com/s/` without a raw form,
-    `imgur.com/` without `i.`, or anything without an image extension.
-  - `http:` is refused.
+- **Image:** a URL field, an alt-text field, and a **Fix link** step that runs as
+  the player pastes. The rules come from
+  `docs/reference/image-host-link-rules-2026-10-09.md`.
+  - **Rewritten:** a pure function, `fixImageUrl(url)`, returns
+    `{ url, host, status, note }`. It rewrites deterministic hosts:
+    - Google Drive, to `thumbnail?id=ID&sz=w1000` (owner-verified);
+    - Dropbox, to `raw=1`;
+    - GitHub, to `raw.githubusercontent.com`;
+    - Giphy, to `media.giphy.com`;
+    - Gyazo, to `i.gyazo.com/<hash>.png`;
+    - a single Imgur image, to `i.imgur.com/ID.png`;
+    - Reddit's media wrapper, to the URL inside it.
+    - The picker shows both the old and the new link, plus that host's caveat:
+      for example "Drive: the file must be shared 'Anyone with the link'".
+  - **Accepted as is:** `https://editor.torn.com/...`, and `https://` URLs
+    ending in `.png`, `.jpg`, `.jpeg`, `.gif` or `.webp`.
+  - **Not derivable:** Google Photos, OneDrive, ImgBB, Postimages, Imgur albums,
+    Lightshot and Tenor. The picker shows that host's one-line instruction (the
+    tooltip the owner asked for), for example "On the ImgBB page, copy the
+    Direct link field".
+  - **Refused, with a reason:**
+    - Discord CDN links, which expire;
+    - `http:`;
+    - anything else with no image extension: "This looks like a web page, not
+      an image".
+  - **For files:** "Have the file, not a link? Upload it with Torn's own Insert
+    Image button after Insert."
+  - **A preview thumbnail** of the fixed URL shows in the picker, so a dead link
+    is visible before it is inserted.
+  - **A Fix image link button** also sits in the Drafts toolbar's More drawer.
+    It rewrites every fixable image URL already in the draft and reports how
+    many it changed.
 - **Table:** columns 1 to 8, rows 1 to 30, header row on or off. It inserts a
   skeleton in the current mode's language.
 
