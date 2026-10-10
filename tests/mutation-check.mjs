@@ -1892,8 +1892,8 @@ const MUTATIONS = [
   {
     name: 'HTML Align wraps a paragraph inside another paragraph again',
     suite: 'tests/editor-ops.test.js',
-    apply: (s) => s.replace('          if (g.block) return alignOpenTag(g.lines[0], value);',
-      "          if (g.block) return '<p style=\"text-align: ' + value + ';\">' + g.lines[0] + '</p>';"),
+    apply: (s) => s.replace('        if (g.block) return alignOpenTag(g.lines[0], value);',
+      "        if (g.block) return '<p style=\"text-align: ' + value + ';\">' + g.lines[0] + '</p>';"),
   },
   {
     name: 'HTML Quote puts each paragraph inside another paragraph again',
@@ -1940,6 +1940,43 @@ const MUTATIONS = [
     name: 'the Copy result forces a redraw over the player typing',
     suite: 'tests/editor-view.test.js',
     apply: (s) => s.replace('            if (isForumsPage(win.location)) quietRedraw();\n          });\n          return;', '            redraw();\n          });\n          return;'),
+  },
+
+  // ---- #58 feedback Batch B: Preview tap, selection, tables, height ---------
+  {
+    name: 'a tap on an element inside a Preview block does nothing again',
+    suite: 'tests/editor-feedback.test.js',
+    apply: (s) => s.replace("          if (pvTap) { act = 'ed-jump'; t = pvTap; }", '          void pvTap;'),
+  },
+  {
+    name: 'a selection made without typing is not mirrored, so actions use the typed caret',
+    suite: 'tests/editor-feedback.test.js',
+    apply: (s) => s.replace('          handlers.onSelect(act, t);\n', ''),
+  },
+  {
+    name: 'an unfocused fresh textarea overrides the mirrored selection again',
+    suite: 'tests/editor-feedback.test.js',
+    apply: (s) => s.replace("typeof f.selectionStart === 'number' && doc.activeElement === f) {", "typeof f.selectionStart === 'number') {"),
+  },
+  {
+    name: 'Align on a table fences it as text again (Markdown and HTML)',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace("      var tb = lang === 'md' ? alignMdRange(t, b[0], b[1], value) : alignHtmlRange(t, b[0], b[1], value);", '      var tb = null;'),
+  },
+  {
+    name: 'a headerless Markdown table is fenced instead of refused',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace("        if (!aligned) return { refused: 'table-header' };", "        if (!aligned) aligned = [':::' + value].concat(r.lines, [':::']);"),
+  },
+  {
+    name: 'an HTML table aligns only the text around it, not its cells',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace('      out += seg(body.slice(last, tm.index)) + alignOpenTag(tm[0], value, HTML_CELL_OPEN);', '      out += seg(body.slice(last, tm.index)) + tm[0];'),
+  },
+  {
+    name: 'the dragged editor height is lost on the next redraw',
+    suite: 'tests/editor-feedback.test.js',
+    apply: (s) => s.replace('aria-label="Draft text"\' + hgt + \'>', 'aria-label="Draft text">'),
   },
 ];
 

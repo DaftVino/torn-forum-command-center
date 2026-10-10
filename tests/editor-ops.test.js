@@ -105,3 +105,70 @@ test('a heading with trailing spaces round-trips (mdBlocks trims it)', () => {
   assert.strictEqual(api.htmlToMd(api.mdToHtml('# word ')), '# word');
   assert.strictEqual(api.mdToHtml(api.htmlToMd(api.mdToHtml('# word '))), api.mdToHtml('# word '));
 });
+
+// ---- #58 feedback: multi-line blocks and whole tables (Batch B) ----------
+
+test('B3: Align and Quote over a multi-line selection take every selected line, in both languages', () => {
+  // Markdown: one fence around the whole selected line range, from mid-line
+  // to mid-line, and only those lines.
+  const md = 'top\nfirst line\nsecond line\nbottom';
+  assert.deepStrictEqual(api.applyBlockMark('md', md, 7, 20, 'align', 'right'),
+    { text: 'top\n:::right\nfirst line\nsecond line\n:::\nbottom', start: 4, end: 39 });
+  assert.strictEqual(api.applyBlockMark('md', md, 7, 20, 'quote').text, 'top\n> first line\n> second line\nbottom');
+  // HTML: each selected paragraph line, the unselected ones untouched.
+  const html = '<p>top</p>\n<p>one</p>\n<p>two</p>\n<p>end</p>';
+  assert.strictEqual(api.applyBlockMark('html', html, 14, 25, 'align', 'center').text,
+    '<p>top</p>\n<p style="text-align: center;">one</p>\n<p style="text-align: center;">two</p>\n<p>end</p>');
+  assert.strictEqual(api.applyBlockMark('html', html, 14, 25, 'quote').text,
+    '<p>top</p>\n<blockquote><p>one</p><p>two</p></blockquote>\n<p>end</p>');
+});
+
+const MD_TABLE = 'intro\n| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\nafter';
+
+test('B4: aligning a Markdown table from a body row rewrites its delimiter row, never splits it', () => {
+  const caret = MD_TABLE.indexOf('| 3');
+  const r = api.applyBlockMark('md', MD_TABLE, caret, caret, 'align', 'center');
+  assert.strictEqual(r.text, 'intro\n| A | B |\n| :---: | :---: |\n| 1 | 2 |\n| 3 | 4 |\nafter');
+  assert.strictEqual(r.refused, undefined);
+  assert.doesNotMatch(r.text, /:::/);
+  assert.strictEqual(api.applyBlockMark('md', MD_TABLE, caret, caret, 'align', 'right').text.split('\n')[2], '| ---: | ---: |');
+  assert.strictEqual(api.applyBlockMark('md', MD_TABLE, caret, caret, 'align', 'left').text.split('\n')[2], '| :--- | :--- |');
+  // Justify has no Markdown table form: left, and no refusal.
+  const j = api.applyBlockMark('md', MD_TABLE, caret, caret, 'align', 'justify');
+  assert.strictEqual(j.text.split('\n')[2], '| :--- | :--- |');
+  assert.strictEqual(j.refused, undefined);
+  // Previewed, every cell carries the alignment.
+  const html = api.mdToHtml(r.text);
+  assert.strictEqual((html.match(/<t[hd] style="text-align: center;">/g) || []).length, 6);
+});
+
+test('B4: a selection from text into a table fences the text and aligns the table whole', () => {
+  const r = api.applyBlockMark('md', MD_TABLE, 0, MD_TABLE.indexOf('| 1'), 'align', 'right');
+  assert.strictEqual(r.text, ':::right\nintro\n:::\n| A | B |\n| ---: | ---: |\n| 1 | 2 |\n| 3 | 4 |\nafter');
+});
+
+test('B4: a Markdown table with no header row cannot hold alignment: refused, text unchanged', () => {
+  const t = 'x\n| 1 | 2 |\n| 3 | 4 |';
+  const r = api.applyBlockMark('md', t, t.length, t.length, 'align', 'center');
+  assert.strictEqual(r.refused, 'table-header');
+  assert.strictEqual(r.text, t);
+  assert.deepStrictEqual([r.start, r.end], [t.length, t.length]);
+});
+
+test('B4: aligning an HTML table from a body cell sets text-align on every th and td', () => {
+  const t = '<p>a</p>\n<table><tbody><tr><th>H</th><th style="color: red; text-align: left;">I</th></tr>'
+    + '<tr><td>1</td><td>2</td></tr></tbody></table>\n<p>z</p>';
+  const caret = t.indexOf('<td>2');
+  const r = api.applyBlockMark('html', t, caret, caret, 'align', 'right');
+  assert.strictEqual(r.text, '<p>a</p>\n<table><tbody><tr><th style="text-align: right;">H</th>'
+    + '<th style="text-align: right; color: red;">I</th></tr>'
+    + '<tr><td style="text-align: right;">1</td><td style="text-align: right;">2</td></tr></tbody></table>\n<p>z</p>');
+  assert.doesNotMatch(r.text, /<p style/, 'neither the table nor the paragraphs around it are wrapped');
+});
+
+test('B4: a multi-line HTML table aligns whole from any of its lines', () => {
+  const t = '<table>\n<tr><td>1</td></tr>\n<tr><td>2</td></tr>\n</table>';
+  const caret = t.indexOf('<td>2');
+  assert.strictEqual(api.applyBlockMark('html', t, caret, caret, 'align', 'center').text,
+    '<table>\n<tr><td style="text-align: center;">1</td></tr>\n<tr><td style="text-align: center;">2</td></tr>\n</table>');
+});

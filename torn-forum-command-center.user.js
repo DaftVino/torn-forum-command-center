@@ -4947,10 +4947,13 @@
   var HTML_BLOCK_LINE = /^\s*<(?:p|h[1-6]|ul|ol|blockquote|table|div)(?:\s[^>]*)?>/i;
   var HTML_P_OPEN = /<(p|h[1-6])((?:\s[^>]*)?)>/gi;
 
-  // Sets text-align on each paragraph opening tag in a line, replacing any it
-  // had.
-  function alignOpenTag(line, value) {
-    return line.replace(HTML_P_OPEN, function (all, tag, attrs) {
+  var HTML_CELL_OPEN = /<(th|td)((?:\s[^>]*)?)>/gi;
+  var HTML_TABLE_SPAN = /<table\b[^>]*>[\s\S]*?<\/table\s*>/gi;
+
+  // Sets text-align on each paragraph opening tag in a line (or, given
+  // HTML_CELL_OPEN, each table cell), replacing any it had.
+  function alignOpenTag(line, value, openTag) {
+    return line.replace(openTag || HTML_P_OPEN, function (all, tag, attrs) {
       var decl = 'text-align: ' + value + ';';
       var sm = /\sstyle\s*=\s*("([^"]*)"|'([^']*)')/i.exec(attrs);
       if (!sm) return '<' + tag + attrs + ' style="' + decl + '">';
@@ -4978,6 +4981,105 @@
     return lines.map(function (l) { return l.trim() === '' ? '' : l; }).join('\n');
   }
 
+  // HTML lines aligned: a paragraph line in place, loose text in a new one.
+  function htmlAlignBody(body, value) {
+    return htmlLineGroups(body, function (l) { return HTML_P_LINE.test(l); })
+      .map(function (g) {
+        if (g.block) return alignOpenTag(g.lines[0], value);
+        var run = looseRun(g.lines);
+        return run.trim() === '' && body.trim() !== '' ? run : '<p style="text-align: ' + value + ';">' + run + '</p>';
+      }).join('\n');
+  }
+
+  function isMdTableLine(l) { return l.trim().charAt(0) === '|'; }
+
+  // #58 B4: a Markdown table keeps its alignment in its delimiter row (the
+  // --- row under the header), so aligning any line of it rewrites that row
+  // for every column. Justify has no Markdown form and becomes left. A table
+  // without that row cannot hold an alignment: null.
+  function alignMdTable(lines, value) {
+    var heads = splitCells(lines[0]);
+    var aligns = lines.length > 1 ? delimiterAligns(lines[1]) : null;
+    if (!aligns || aligns.length !== heads.length) return null;
+    var cell = value === 'center' ? ':---:' : value === 'right' ? '---:' : ':---';
+    return [lines[0], '| ' + heads.map(function () { return cell; }).join(' | ') + ' |'].concat(lines.slice(2));
+  }
+
+  // The line range [a, z) grown over every Markdown table it cuts, aligned as
+  // whole tables, with the other lines fenced as before. Null when no table
+  // line is in the range; { refused } when a table has no header row.
+  function alignMdRange(t, a, z, value) {
+    var lineAt = function (i) { var e = t.indexOf('\n', i); return t.slice(i, e === -1 ? t.length : e); };
+    while (a > 0) {
+      var pa = t.lastIndexOf('\n', a - 2) + 1;
+      if (pa >= a || !isMdTableLine(lineAt(a)) || !isMdTableLine(t.slice(pa, a - 1))) break;
+      a = pa;
+    }
+    while (z < t.length) {
+      var last = t.slice(t.lastIndexOf('\n', z - 1) + 1, z);
+      var nz = t.indexOf('\n', z + 1);
+      if (!isMdTableLine(last) || !isMdTableLine(t.slice(z + 1, nz === -1 ? t.length : nz))) break;
+      z = nz === -1 ? t.length : nz;
+    }
+    var lines = t.slice(a, z).split('\n');
+    if (!lines.some(isMdTableLine)) return null;
+    var runs = [];
+    lines.forEach(function (l) {
+      var table = isMdTableLine(l);
+      var prev = runs[runs.length - 1];
+      if (prev && prev.table === table) prev.lines.push(l); else runs.push({ table: table, lines: [l] });
+    });
+    var out = [];
+    for (var i = 0; i < runs.length; i += 1) {
+      var r = runs[i];
+      if (r.table) {
+        var aligned = alignMdTable(r.lines, value);
+        if (!aligned) return { refused: 'table-header' };
+        out = out.concat(aligned);
+      } else if (r.lines.join('').trim() === '') {
+        out = out.concat(r.lines);
+      } else {
+        out = out.concat([':::' + value], r.lines, [':::']);
+      }
+    }
+    return { a: a, z: z, out: out.join('\n') };
+  }
+
+  // The HTML twin: every table the range touches is aligned whole (each th
+  // and td), and the text around the tables is aligned as before. Null when
+  // the range touches no table.
+  function alignHtmlRange(t, a, z, value) {
+    var touched = false;
+    for (var grown = true; grown;) {
+      grown = false;
+      HTML_TABLE_SPAN.lastIndex = 0;
+      var m;
+      while ((m = HTML_TABLE_SPAN.exec(t)) !== null) {
+        var ts = m.index;
+        var te = ts + m[0].length;
+        if (ts >= z || te <= a) continue;
+        touched = true;
+        var na = Math.min(a, t.lastIndexOf('\n', ts - 1) + 1);
+        var ne = t.indexOf('\n', te);
+        var nz = Math.max(z, ne === -1 ? t.length : ne);
+        if (na !== a || nz !== z) { a = na; z = nz; grown = true; }
+      }
+    }
+    if (!touched) return null;
+    var body = t.slice(a, z);
+    var out = '';
+    var last = 0;
+    var seg = function (part) { return part.trim() === '' ? part : htmlAlignBody(part, value); };
+    HTML_TABLE_SPAN.lastIndex = 0;
+    var tm;
+    while ((tm = HTML_TABLE_SPAN.exec(body)) !== null) {
+      out += seg(body.slice(last, tm.index)) + alignOpenTag(tm[0], value, HTML_CELL_OPEN);
+      last = tm.index + tm[0].length;
+    }
+    out += seg(body.slice(last));
+    return { a: a, z: z, out: out };
+  }
+
   // Quote and alignment act on whole lines. In HTML a line that is already a
   // paragraph is aligned in place or quoted as it is, never put inside another
   // paragraph; loose text is wrapped in one.
@@ -4985,6 +5087,11 @@
     var t = String(text || '');
     var s = clampSel(t, start, end);
     var b = lineBounds(t, s[0], s[1]);
+    if (mark === 'align') {
+      var tb = lang === 'md' ? alignMdRange(t, b[0], b[1], value) : alignHtmlRange(t, b[0], b[1], value);
+      if (tb && tb.refused) return { text: t, start: s[0], end: s[1], refused: tb.refused };
+      if (tb) return { text: t.slice(0, tb.a) + tb.out + t.slice(tb.z), start: tb.a, end: tb.a + tb.out.length };
+    }
     var body = t.slice(b[0], b[1]);
     var replaced;
     if (lang === 'md') {
@@ -4999,12 +5106,7 @@
           return run.trim() === '' && body.trim() !== '' ? '' : '<p>' + run + '</p>';
         }).join('') + '</blockquote>';
     } else {
-      replaced = htmlLineGroups(body, function (l) { return HTML_P_LINE.test(l); })
-        .map(function (g) {
-          if (g.block) return alignOpenTag(g.lines[0], value);
-          var run = looseRun(g.lines);
-          return run.trim() === '' && body.trim() !== '' ? run : '<p style="text-align: ' + value + ';">' + run + '</p>';
-        }).join('\n');
+      replaced = htmlAlignBody(body, value);
     }
     var next = t.slice(0, b[0]) + replaced + t.slice(b[1]);
     return { text: next, start: b[0], end: b[0] + replaced.length };
@@ -7078,7 +7180,7 @@
       state.editor.showImages = keep.showImages;
       // An open picker and what was typed into it are the player's, not the
       // stored draft's: a reload never wipes them mid-edit.
-      ['picker', 'fields', 'imageCheck', 'pickerWarn', 'emojiTab', 'moreOpen'].forEach(function (k) { state.editor[k] = keep[k]; });
+      ['picker', 'fields', 'imageCheck', 'pickerWarn', 'emojiTab', 'moreOpen', 'height'].forEach(function (k) { state.editor[k] = keep[k]; });
     }
     var rows = state.rows;
     var query = parseQuery(state.searchQuery);
@@ -8161,8 +8263,10 @@
     if (e.mode === 'preview') {
       out.push(renderPreview(model));
     } else {
+      // B5: the height the player dragged it to survives every redraw.
+      var hgt = typeof e.height === 'number' && isFinite(e.height) && e.height > 0 ? ' style="height: ' + Math.round(e.height) + 'px;"' : '';
       out.push('<textarea class="tfcc-draft" data-act="draft-text" data-id="' + escapeHtml(key)
-        + '" maxlength="' + DRAFT_MAX_CHARS + '" aria-label="Draft text">' + escapeHtml(e.text) + '</textarea>');
+        + '" maxlength="' + DRAFT_MAX_CHARS + '" aria-label="Draft text"' + hgt + '>' + escapeHtml(e.text) + '</textarea>');
     }
     out.push('<div class="tfcc-actions">');
     out.push(btn('draft-save', 'Save draft', ' data-id="' + escapeHtml(key) + '"'));
@@ -8232,7 +8336,7 @@
       key: key, lang: lang, text: text, selStart: text.length, selEnd: text.length, mode: 'source',
       previewTheme: null, picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn',
       name: d && d.name ? d.name : '', imageCheck: null, pickerWarn: null, dirty: false, showImages: false,
-      fields: {}, src: draftSig(d), atLimit: false,
+      fields: {}, src: draftSig(d), atLimit: false, height: null,
     };
     void now;
   }
@@ -9139,6 +9243,55 @@
   var pressTimer = null;
   var pressWinBound = false;
 
+  // #58 B1: a tap anywhere in the Preview edits there. The nearest preview
+  // block above the tapped node (a paragraph, a bold run, an image inside
+  // it), else the preview area itself (its empty space: the end of the
+  // text). A link inside the preview is left to the browser. Our own nodes
+  // only, and only for a tap no data-act claimed, so every other control
+  // keeps exact-target delegation.
+  var PREVIEW_TAP_MAX_DEPTH = 16;
+  function hasClassName(n, c) {
+    if (n.classList && typeof n.classList.contains === 'function') return n.classList.contains(c);
+    var cls = typeof n.getAttribute === 'function' ? n.getAttribute('class') : null;
+    return (' ' + String(cls || '') + ' ').indexOf(' ' + c + ' ') !== -1;
+  }
+  function previewTapOf(node, panel) {
+    var n = node;
+    for (var i = 0; n && i < PREVIEW_TAP_MAX_DEPTH; i += 1) {
+      if (n === panel) return null;
+      if (String(n.tagName || '').toUpperCase() === 'A') return null;
+      if (hasClassName(n, 'tfcc-pv-block') || hasClassName(n, 'tfcc-pv')) return n;
+      n = n.parentNode;
+    }
+    return null;
+  }
+
+  // #58 B5: the height the player dragged the draft textarea to. Measured on
+  // the panel's own textarea (never Torn's markup) when a press over it ends
+  // at a different height than it began; a failed measurement keeps the
+  // current height.
+  function draftFieldOf(panel) {
+    try { return panel && typeof panel.querySelector === 'function' ? panel.querySelector('[data-act="draft-text"]') : null; } catch (e) { return null; }
+  }
+  function fieldHeight(el) {
+    try {
+      var h = el && typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect().height : null;
+      return typeof h === 'number' && isFinite(h) && h > 0 ? Math.round(h) : null;
+    } catch (e) { return null; }
+  }
+  var editorPressHeight = null;
+  function editorPressStart(t) {
+    var draft = !!t && typeof t.getAttribute === 'function' && t.getAttribute('data-act') === 'draft-text';
+    editorPressHeight = draft ? fieldHeight(t) : null;
+  }
+  function editorPressEnd(doc) {
+    var from = editorPressHeight;
+    editorPressHeight = null;
+    if (from === null || !state.editor || !state.editor.key) return;
+    var h = fieldHeight(draftFieldOf(doc && typeof doc.getElementById === 'function' ? doc.getElementById(PANEL_ID) : null));
+    if (h !== null && Math.abs(h - from) >= 2) state.editor.height = h;
+  }
+
   function clearPress() {
     if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
     state.pressActive = false;
@@ -9336,6 +9489,10 @@
           return;
         }
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+        if (!act) {
+          var pvTap = previewTapOf(t, panel);
+          if (pvTap) { act = 'ed-jump'; t = pvTap; }
+        }
         // A held redraw is flushed after dispatch too, never inside the click:
         // an action that redraws has already rendered it (pressed was cleared
         // above), so the flush only matters for a tap with no redraw of its own,
@@ -9390,6 +9547,23 @@
       });
       panel.addEventListener('pointerdown', function () { startPress(doc, win, handlers); });
       panel.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); });
+      // #58 B2: the draft textarea's selection is mirrored whenever it can
+      // change without typing (a drag, a double-click, Shift+arrows, Select
+      // all), so a toolbar action after any redraw uses the highlighted range.
+      // B5: a press that began on the textarea and ends at another height was
+      // a resize.
+      ['pointerdown', 'mousedown', 'touchstart'].forEach(function (type) {
+        panel.addEventListener(type, function (ev) { editorPressStart(ev && ev.target); });
+      });
+      ['select', 'selectionchange', 'keyup', 'mouseup', 'pointerup', 'touchend'].forEach(function (type) {
+        panel.addEventListener(type, function (ev) {
+          var t = ev && ev.target;
+          if (type === 'mouseup' || type === 'pointerup' || type === 'touchend') editorPressEnd(doc);
+          var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+          if (act !== 'draft-text' || typeof handlers.onSelect !== 'function') return;
+          handlers.onSelect(act, t);
+        });
+      });
       panel.addEventListener('pointercancel', function () { endPress(doc, win, handlers); });
       // A pointer that lifts outside the panel (a mouse dragged off it) must
       // still end the press, or redraws would be held forever. This listens to
@@ -9397,6 +9571,8 @@
       if (!pressWinBound && win && typeof win.addEventListener === 'function') {
         pressWinBound = true;
         win.addEventListener('pointerup', function () { armPressTimer(doc, win, handlers); }, true);
+        // #58 B5: a textarea resize dragged off the panel ends there too.
+        win.addEventListener('pointerup', function () { editorPressEnd(doc); }, true);
       }
       // #39: a click outside the panel closes an open drawer. One capture-phase
       // listener on the window, bound once. It only asks whether the target is
@@ -9869,13 +10045,13 @@
 
     // #58: the panel's own draft textarea, for the selection at click time.
     // The editor's handlers never call valueOf.
-    function editorField() {
-      var panel = doc.getElementById(PANEL_ID);
-      try { return panel && typeof panel.querySelector === 'function' ? panel.querySelector('[data-act="draft-text"]') : null; } catch (e) { return null; }
-    }
+    function editorField() { return draftFieldOf(doc.getElementById(PANEL_ID)); }
+    // Only a focused field's selection is the player's: a redraw (More, a
+    // picker) renders a fresh, unfocused textarea whose own selection means
+    // nothing, and the mirrored one (onSelect) stands (#58 B2).
     function captureSelection() {
       var f = editorField();
-      if (f && typeof f.selectionStart === 'number') {
+      if (f && typeof f.selectionStart === 'number' && doc.activeElement === f) {
         state.editor.text = String(f.value); state.editor.selStart = f.selectionStart; state.editor.selEnd = f.selectionEnd;
       }
     }
@@ -10082,6 +10258,7 @@
         if (act === 'ed-mode') {
           var mode = el.getAttribute('data-mode');
           var ed = state.editor;
+          if (ed.mode === 'source') captureSelection();
           // Any mode choice answers a pending Text-switch question.
           ed.confirmText = null;
           if (mode === 'preview') { ed.mode = 'preview'; ed.picker = null; redraw(); return; }
@@ -10106,7 +10283,9 @@
         if (act === 'ed-mode-cancel') { state.editor.confirmText = null; redraw(); return; }
         if (act === 'ed-pv-theme') { state.editor.previewTheme = el.getAttribute('data-theme') === 'light' ? 'light' : 'dark'; redraw(); return; }
         if (act === 'ed-jump') {
-          var off = Math.max(0, Math.min(state.editor.text.length, toInt(el.getAttribute('data-offset'), 0)));
+          // B1: the preview's empty area carries no offset: the end of the text.
+          var rawOff = el.getAttribute('data-offset');
+          var off = Math.max(0, Math.min(state.editor.text.length, rawOff === null ? state.editor.text.length : toInt(rawOff, 0)));
           state.editor.mode = 'source'; state.editor.selStart = state.editor.selEnd = off;
           state.focusIntent = [attrSel('data-act', 'draft-text')];
           redraw(); return;
@@ -10114,7 +10293,7 @@
         // #58: the toolbar and its pickers. A picker applies to the selection
         // it was opened on; its typed fields come from the editor state.
         var E = state.editor;
-        if (act === 'ed-more') { E.moreOpen = !E.moreOpen; redraw(); return; }
+        if (act === 'ed-more') { captureSelection(); E.moreOpen = !E.moreOpen; redraw(); return; }
         if (act === 'ed-mark') {
           captureSelection();
           applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, el.getAttribute('data-mark')), now); return;
@@ -10149,7 +10328,11 @@
         if (act === 'ed-align') {
           var av = el.getAttribute('data-value');
           if (['left', 'center', 'right', 'justify'].indexOf(av) === -1) return;
-          applyEdit(applyBlockMark(E.lang, E.text, E.selStart, E.selEnd, 'align', av), now); return;
+          var ar = applyBlockMark(E.lang, E.text, E.selStart, E.selEnd, 'align', av);
+          // B4: a Markdown table without a header row has nowhere to keep an
+          // alignment; the text stays as it was.
+          if (ar.refused) { E.picker = null; notice('Add a header row to align a Markdown table.', 'warn'); redraw(); return; }
+          applyEdit(ar, now); return;
         }
         if (act === 'ed-link-apply') {
           var href = safeHref(field('ed-link-input', ''));
@@ -10424,6 +10607,17 @@
       // #33: mirror a drawer field on every keystroke, without a redraw, so a
       // forced redraw before the commit renders what was typed and restores
       // the caret (spec section 6, dirty inputs rule 3).
+      // #58 B2: a selection made without typing, mirrored from the panel's
+      // select, keyup, mouseup and pointer events on the draft textarea.
+      onSelect: function (act, el) {
+        if (act !== 'draft-text' || !el) return;
+        var a = el.selectionStart;
+        var b = el.selectionEnd;
+        if (typeof a !== 'number' || typeof b !== 'number' || !isFinite(a) || !isFinite(b)) return;
+        var len = state.editor.text.length;
+        state.editor.selStart = Math.max(0, Math.min(len, a));
+        state.editor.selEnd = Math.max(0, Math.min(len, b));
+      },
       onInput: function (act, el) {
         // #43: the popup's field mirrors under the inline field's name.
         if (act === 'editor-input') act = el && el.getAttribute ? el.getAttribute('data-field') : null;
