@@ -4849,7 +4849,7 @@
           var r = fixImageUrl(t);
           if (r.status === 'fixed') {
             changed += 1;
-            return line.replace(t, '![](' + r.url + ')');
+            return line.replace(t, function () { return '![](' + r.url + ')'; });
           }
           return line;
         }
@@ -10625,6 +10625,9 @@
           if (fi.status !== 'ok' && fi.status !== 'fixed') return;
           if (E.lang === 'text') { notice('Switch to Markdown or HTML to add images.', 'warn'); redraw(); return; }
           captureSelection();
+          // Preview has no textarea, so the stored caret is stale: the image goes
+          // at the end and the editor returns to source so the player sees it.
+          if (E.mode === 'preview') { E.selStart = E.text.length; E.selEnd = E.text.length; E.mode = 'source'; }
           applyEdit(insertAtCaret(E.text, E.selStart, E.selEnd, imageSnippet(E.lang, fi.url, '')), now); return;
         }
         if (act === 'ed-fix-all') {

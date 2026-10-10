@@ -682,3 +682,16 @@ test('H2: Text mode changes nothing and says to switch', () => {
   assert.strictEqual(api.state.editor.text, OWNER_LINK);
   assert.match(api.state.notices.map((n) => n.text).join('|'), /Switch to Markdown or HTML to add images\./);
 });
+
+test('H1: Insert into draft from Preview goes to the end and returns to source so it shows', () => {
+  const { api, h } = editorAt('first\nsecond', 'md', [0, 0]);
+  h.onAction('ed-fix-open', el({ 'data-act': 'ed-fix-open' }));
+  h.onInput('ed-fix-url', Object.assign(el({ 'data-act': 'ed-fix-url' }), { value: OWNER_LINK }));
+  h.onAction('ed-fix-check', el({ 'data-act': 'ed-fix-check' }));
+  api.state.editor.mode = 'preview';
+  h.onAction('ed-fix-insert', el({ 'data-act': 'ed-fix-insert' }));
+  const img = '![](https://drive.google.com/thumbnail?id=1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h&sz=w1000)';
+  assert.strictEqual(api.state.editor.text, 'first\nsecond' + img);
+  assert.strictEqual(api.state.editor.mode, 'source');
+  assert.strictEqual(api.state.editor.selStart, api.state.editor.text.length);
+});

@@ -176,3 +176,10 @@ test('an image link can never break out of Markdown or HTML', () => {
   assert.deepStrictEqual([gh.status, gh.url], ['fixed', 'https://raw.githubusercontent.com/o/r/main/a%29.png']);
   for (const r of [fix('https://x.y/a).png'), box, gh]) assert.doesNotMatch(r.url, /[()"'<>`\\\s]/);
 });
+
+test('H2: replacement patterns in a link ($& and friends) are written literally', () => {
+  const u = 'https://www.dropbox.com/s/abc/p$&q$$.png?dl=0';
+  const r = api.fixAllImages('md', u);
+  assert.strictEqual(r.changed, 1);
+  assert.strictEqual(r.text, '![](https://www.dropbox.com/s/abc/p$&q$$.png?raw=1)');
+});
