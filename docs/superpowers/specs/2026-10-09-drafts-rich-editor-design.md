@@ -164,7 +164,9 @@ panel on torn.com.
 - **Removed:** every `on*` attribute and every `data-*` attribute.
 - **Output** is canonical: lower-case tags and fixed attribute order, so
   equality tests are meaningful.
-- **Input is capped** at `DRAFT_MAX_CHARS` (20000). The tokenizer is linear,
+- **Input is capped** at `CLEAN_MAX_CHARS` (100000). A 20000-character
+  Markdown draft can expand to about five times that as HTML, so the cap sits
+  above `DRAFT_MAX_CHARS` (amended while planning). The tokenizer is linear,
   with no backtracking regex over the whole input.
 
 ## 6. Drafts and settings storage
