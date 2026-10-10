@@ -492,6 +492,8 @@
       // #43 (owner): the panel base and row cards are translucent. On by
       // default; a stored false is kept.
       seeThrough: true,
+      // #58: the mode a new draft opens in. Existing drafts keep their own.
+      draftLang: 'md',
     };
   }
 
@@ -538,6 +540,8 @@
       out.rowsShown = typeof raw.rowsShown === 'number' && ROWS_SHOWN_OPTIONS.indexOf(raw.rowsShown) !== -1
         ? raw.rowsShown : 0;
     }
+    // #58: strict on the menu; absent or off it takes the default.
+    out.draftLang = DRAFT_LANGS.indexOf(raw.draftLang) !== -1 ? raw.draftLang : d.draftLang;
     return out;
   }
 
@@ -793,24 +797,51 @@
 
   function freshDrafts() { return { v: SCHEMA_VERSION, byThread: {} }; }
 
+  var FREE_DRAFTS_MAX = 100;
+  var FREE_NAME_MAX = 80;
+
+  function draftLangField(v) { return v === 'md' || v === 'html' ? v : null; }
+
   function normaliseDrafts(raw) {
     if (!isPlainObject(raw)) return freshDrafts();
     if (toInt(raw.v, 0) > SCHEMA_VERSION) return freshDrafts();
     var out = freshDrafts();
-    if (!isPlainObject(raw.byThread)) return out;
-    var ids = Object.keys(raw.byThread);
-    for (var i = 0; i < ids.length && i < 500; i += 1) {
-      var id = ids[i];
-      if (!/^[0-9]{1,12}$/.test(id)) continue;
-      var d = raw.byThread[id];
-      if (!isPlainObject(d)) continue;
-      var text = safeString(d.text, DRAFT_MAX_CHARS);
-      if (!text) continue;
-      out.byThread[id] = {
-        text: text,
-        updatedAt: Math.max(0, toInt(d.updatedAt, 0)),
-        title: safeString(d.title, 300),
-      };
+    if (isPlainObject(raw.byThread)) {
+      var ids = Object.keys(raw.byThread);
+      for (var i = 0; i < ids.length && i < 500; i += 1) {
+        var id = ids[i];
+        if (!/^[0-9]{1,12}$/.test(id)) continue;
+        var d = raw.byThread[id];
+        if (!isPlainObject(d)) continue;
+        var text = safeString(d.text, DRAFT_MAX_CHARS);
+        if (!text) continue;
+        // Key order matters: the recovery check compares JSON, and a stored
+        // draft was written in this order (saveDraft).
+        var entry = { text: text, updatedAt: Math.max(0, toInt(d.updatedAt, 0)), title: safeString(d.title, 300) };
+        var lang = draftLangField(d.lang);
+        if (lang) entry.lang = lang;
+        out.byThread[id] = entry;
+      }
+    }
+    // #58: free drafts, tied to no thread. Absent stays absent, so an older
+    // blob normalises byte-identical. A named draft may be empty.
+    if (isPlainObject(raw.free)) {
+      out.free = {};
+      var fids = Object.keys(raw.free);
+      for (var k = 0, kept = 0; k < fids.length && kept < FREE_DRAFTS_MAX; k += 1) {
+        if (!/^n[0-9]{1,12}$/.test(fids[k])) continue;
+        var f = raw.free[fids[k]];
+        if (!isPlainObject(f)) continue;
+        var fe = {
+          name: safeString(f.name, FREE_NAME_MAX) || 'Untitled',
+          text: safeString(f.text, DRAFT_MAX_CHARS),
+          updatedAt: Math.max(0, toInt(f.updatedAt, 0)),
+        };
+        var fl = draftLangField(f.lang);
+        if (fl) fe.lang = fl;
+        out.free[fids[k]] = fe;
+        kept += 1;
+      }
     }
     return out;
   }
@@ -2701,46 +2732,98 @@
 
   // -- drafts --------------------------------------------------------------
 
-  function saveDraft(drafts, threadId, text, now, title) {
+  function nextDrafts(drafts) {
+    var next = { v: SCHEMA_VERSION, byThread: Object.assign({}, (drafts && drafts.byThread) || {}) };
+    if (drafts && drafts.free) next.free = Object.assign({}, drafts.free);
+    return next;
+  }
+
+  function saveDraft(drafts, threadId, text, now, title, lang) {
     var id = String(toInt(threadId, 0));
     if (id === '0') return drafts;
-    var next = { v: SCHEMA_VERSION, byThread: Object.assign({}, drafts.byThread) };
+    var next = nextDrafts(drafts);
     var clean = safeString(text, DRAFT_MAX_CHARS);
     if (!clean.trim()) {
       delete next.byThread[id];
       return next;
     }
-    next.byThread[id] = {
+    var entry = {
       text: clean,
       updatedAt: Math.max(0, toInt(now, 0)),
       title: safeString(title, 300) || (next.byThread[id] ? next.byThread[id].title : ''),
     };
+    var l = draftLangField(lang);
+    if (l) entry.lang = l;
+    next.byThread[id] = entry;
     return next;
   }
 
-  function draftFor(drafts, threadId) {
-    var id = String(threadId);
-    return drafts && drafts.byThread && Object.prototype.hasOwnProperty.call(drafts.byThread, id)
-      ? drafts.byThread[id]
-      : null;
+  function isFreeKey(key) { return /^n[0-9]{1,12}$/.test(String(key)); }
+
+  function draftFor(drafts, key) {
+    var id = String(key);
+    var bag = isFreeKey(id) ? (drafts && drafts.free) : (drafts && drafts.byThread);
+    return bag && Object.prototype.hasOwnProperty.call(bag, id) ? bag[id] : null;
   }
 
+  function draftLangOf(entry) { return entry && draftLangField(entry.lang) ? entry.lang : 'text'; }
+
   function deleteDraft(drafts, threadId) {
-    var next = { v: SCHEMA_VERSION, byThread: Object.assign({}, drafts.byThread) };
+    var next = nextDrafts(drafts);
     delete next.byThread[String(threadId)];
     return next;
   }
 
+  function newFreeDraft(drafts, now, lang) {
+    var next = nextDrafts(drafts);
+    next.free = next.free || {};
+    if (Object.keys(next.free).length >= FREE_DRAFTS_MAX) return { drafts: drafts, id: null };
+    // Ids stay within the 12 digits the normaliser accepts, wrapping rather
+    // than growing a thirteenth.
+    var n = Math.max(1, toInt(now, 0) % 1000000000000);
+    while (Object.prototype.hasOwnProperty.call(next.free, 'n' + n)) n = n >= 999999999999 ? 1 : n + 1;
+    var names = Object.keys(next.free).map(function (k) { return next.free[k].name; });
+    var num = 1;
+    while (names.indexOf('Untitled ' + num) !== -1) num += 1;
+    var entry = { name: 'Untitled ' + num, text: '', updatedAt: Math.max(0, toInt(now, 0)) };
+    var l = draftLangField(lang);
+    if (l) entry.lang = l;
+    next.free['n' + n] = entry;
+    return { drafts: next, id: 'n' + n };
+  }
+
+  function saveFreeDraft(drafts, id, text, now, name, lang) {
+    if (!isFreeKey(id) || !drafts.free || !drafts.free[id]) return drafts;
+    var next = nextDrafts(drafts);
+    var entry = {
+      name: safeString(name, FREE_NAME_MAX).trim() || next.free[id].name,
+      text: safeString(text, DRAFT_MAX_CHARS),
+      updatedAt: Math.max(0, toInt(now, 0)),
+    };
+    var l = draftLangField(lang);
+    if (l) entry.lang = l;
+    next.free[id] = entry;
+    return next;
+  }
+
+  function deleteFreeDraft(drafts, id) {
+    var next = nextDrafts(drafts);
+    if (next.free) delete next.free[String(id)];
+    return next;
+  }
+
   function draftList(drafts) {
+    var out = [];
     var ids = Object.keys((drafts && drafts.byThread) || {});
-    return ids.map(function (id) {
-      return {
-        threadId: id,
-        text: drafts.byThread[id].text,
-        updatedAt: drafts.byThread[id].updatedAt,
-        title: drafts.byThread[id].title,
-      };
-    }).sort(function (a, b) { return b.updatedAt - a.updatedAt; });
+    ids.forEach(function (id) {
+      var d = drafts.byThread[id];
+      out.push({ kind: 'thread', key: id, threadId: id, text: d.text, updatedAt: d.updatedAt, title: d.title, lang: draftLangOf(d) });
+    });
+    Object.keys((drafts && drafts.free) || {}).forEach(function (id) {
+      var f = drafts.free[id];
+      out.push({ kind: 'free', key: id, threadId: null, text: f.text, updatedAt: f.updatedAt, title: f.name, name: f.name, lang: draftLangOf(f) });
+    });
+    return out.sort(function (a, b) { return b.updatedAt - a.updatedAt; });
   }
 
   // -- export and import ----------------------------------------------------
@@ -2797,6 +2880,13 @@
         updatedAt: drafts.byThread[dids[j]].updatedAt,
         title: drafts.byThread[dids[j]].title,
       };
+      if (drafts.byThread[dids[j]].lang) payload.drafts[dids[j]].lang = drafts.byThread[dids[j]].lang;
+    }
+    // #58: free drafts travel with the rest of the user's work.
+    var fids = Object.keys((drafts && drafts.free) || {});
+    if (fids.length) {
+      payload.freeDrafts = {};
+      fids.forEach(function (id) { payload.freeDrafts[id] = Object.assign({}, drafts.free[id]); });
     }
     if (badges) payload.badges = exportBadges(badges);
     return EXPORT_PREFIX + b64EncodeUtf8(JSON.stringify(payload), btoaFn);
@@ -2921,7 +3011,7 @@
       }
     }
 
-    var nextDrafts = { v: SCHEMA_VERSION, byThread: Object.assign({}, drafts.byThread) };
+    var nextDraftsBag = nextDrafts(drafts);
     if (isPlainObject(payload.drafts)) {
       var dids = Object.keys(payload.drafts);
       for (var k = 0; k < dids.length && k < 500; k += 1) {
@@ -2931,13 +3021,26 @@
         var textValue = safeString(d.text, DRAFT_MAX_CHARS);
         if (!textValue) continue;
         var incomingAt = Math.max(0, toInt(d.updatedAt, 0));
-        var current = nextDrafts.byThread[dids[k]];
+        var current = nextDraftsBag.byThread[dids[k]];
         if (current && current.updatedAt >= incomingAt) continue;
-        nextDrafts.byThread[dids[k]] = {
+        nextDraftsBag.byThread[dids[k]] = {
           text: textValue, updatedAt: incomingAt, title: safeString(d.title, 300),
         };
+        var importedLang = draftLangField(d.lang);
+        if (importedLang) nextDraftsBag.byThread[dids[k]].lang = importedLang;
         addedDrafts += 1;
       }
+    }
+    if (isPlainObject(payload.freeDrafts)) {
+      var incomingFree = normaliseDrafts({ v: SCHEMA_VERSION, byThread: {}, free: payload.freeDrafts }).free || {};
+      nextDraftsBag.free = nextDraftsBag.free || {};
+      Object.keys(incomingFree).forEach(function (id) {
+        var have = nextDraftsBag.free[id];
+        if (have && have.updatedAt >= incomingFree[id].updatedAt) return;
+        if (!have && Object.keys(nextDraftsBag.free).length >= FREE_DRAFTS_MAX) return;
+        nextDraftsBag.free[id] = incomingFree[id];
+        addedDrafts += 1;
+      });
     }
 
     var nextBadges = badges ? normaliseBadges(badges) : null;
@@ -2953,7 +3056,7 @@
     return {
       ok: true,
       organizer: org,
-      drafts: nextDrafts,
+      drafts: nextDraftsBag,
       badges: nextBadges,
       summary: { addedFolders: addedFolders, changedThreads: changedThreads, addedDrafts: addedDrafts,
         addedBadges: addedBadges },
@@ -6899,6 +7002,7 @@
         autoRefreshMs: s.autoRefreshMs,
         enrichBudget: s.enrichBudget,
         autosaveDrafts: s.autosaveDrafts,
+        draftLang: s.draftLang,
         hideTornBox: s.hideTornBox,
         authorOnly: s.authorOnly,
         autoHideOnOpen: s.autoHideOnOpen,

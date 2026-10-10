@@ -103,6 +103,7 @@ const EXPORT_NAMES = [
   'UNFILED_KEY', 'folderOrderKeys', 'moveFolder', 'toggleFolderCollapsed', 'isFolderCollapsed',
   // engine: drafts
   'DRAFT_MAX_CHARS', 'saveDraft', 'draftFor', 'deleteDraft', 'draftList',
+  'newFreeDraft', 'saveFreeDraft', 'deleteFreeDraft', 'draftLangOf', 'FREE_DRAFTS_MAX', 'FREE_NAME_MAX', 'isRecoveredSettings',
   // engine: my posts
   'MINE_MAX_THREADS', 'freshMine', 'freshMineThread', 'normaliseMine', 'normaliseMineThread',
   'mineThreadFromApi', 'minePostFromApi', 'pickList', 'threadPostsTotal', 'parseThreadDetail',
