@@ -134,6 +134,37 @@ are proven to survive a save. `<h*>` is not proven.
   draft's source mode and puts the caret at the start of that line or block. It
   uses the panel's existing focus plan, so the caret survives the redraw.
 
+## 4a. Size, images in Preview, whitespace (amended after the plan review)
+
+**Size:**
+- A draft's source is at most `DRAFT_MAX_CHARS` (20000), as today.
+- Converting to HTML can make it longer. If a mode switch, a toolbar action or
+  the image fixer would produce a source over 20000, the panel refuses with a
+  notice, and the draft is unchanged:
+  "That would make this draft N characters, over the 20000 limit. Shorten it,
+  or keep it in Markdown."
+- Autosave skips a Torn-editor body whose HTML source is over the limit, so it
+  never stores a truncated post.
+- Nothing is ever silently cut.
+
+**Images in Preview:**
+- Preview does not load external images until the player taps
+  **Show images**. Until then each image is a placeholder naming its host.
+  This keeps the panel from sending requests to arbitrary hosts.
+- Torn's own emoji (site-relative SVGs) always show.
+- Loaded images use `referrerpolicy="no-referrer"`.
+- `tests/read-only.test.js` names the image hosts the link fixer writes, as
+  string rewrites that nothing fetches without the player's tap.
+
+**Whitespace:** HTML collapses runs of spaces, and so does Torn's own post. A
+Text draft's leading or repeated spaces therefore collapse when it becomes
+Markdown or HTML, exactly as they would on Torn. This is documented, not
+confirmed.
+
+**Unsaved edits:** typing marks the open draft dirty. Opening another draft,
+or moving to another thread, saves the dirty draft first, so switching never
+discards text.
+
 ## 5. The cleaner, `cleanTornHtml`
 
 One allowlist cleaner, pure and engine-side. Preview, Insert, Copy, HTML-mode
@@ -159,15 +190,21 @@ panel on torn.com.
 
 - Every other style property is dropped.
 - **Dropped with their contents:** `script`, `style`, `iframe`, `object`,
-  `embed`, `template`, comments, and TinyMCE's `data-mce-bogus` nodes.
+  `embed`, `template`, comments, and TinyMCE's `data-mce-bogus="all"`
+  elements.
+- **TinyMCE's other bogus elements** (`data-mce-bogus` with any other value)
+  are unwrapped, so the player's text inside them is kept. A bogus `<br>` is
+  dropped. (Amended after the plan review.)
 - **Unwrapped:** every other element, keeping its text.
 - **Removed:** every `on*` attribute and every `data-*` attribute.
 - **Output** is canonical: lower-case tags and fixed attribute order, so
   equality tests are meaningful.
-- **Input is capped** at `CLEAN_MAX_CHARS` (100000). A 20000-character
-  Markdown draft can expand to about five times that as HTML, so the cap sits
-  above `DRAFT_MAX_CHARS` (amended while planning). The tokenizer is linear,
-  with no backtracking regex over the whole input.
+- **Input is capped** at `CLEAN_MAX_CHARS` (1000000), a security bound that a
+  real draft never reaches. The worst Markdown expansion measured is about 38
+  times (an empty one-cell table per three characters), so a 20000-character
+  draft stays under 760000. A test pins this. (Amended after the plan review.)
+- The tokenizer is linear, with no backtracking regex over the whole input.
+  The worst case measured cleans in under 100ms.
 
 ## 6. Drafts and settings storage
 
@@ -210,6 +247,14 @@ path.
   - the broad fallbacks caught the Report box (#60).
 - If the selector misses, `replyBoxFound` is false and the panel offers Copy,
   as today.
+- **Several matches.** A thread page holds several TinyMCE editors. FCC takes
+  every exact-selector match and keeps the connected, visible ones (non-zero
+  size).
+  - One left: that one.
+  - Several: the one inside `.forums-new-post-wrap`, the reply and new-thread
+    form the owner's probe found.
+  - Still ambiguous: no reply box, so Copy. FCC never guesses between two
+    visible editors. (Amended after the plan review.)
 
 **Insert** (ADR 0002):
 - **The steps:**
@@ -269,8 +314,14 @@ path.
   with S, Size, Align, Quote, Image, Table and **?**, at 44px with 8px gaps.
 - The editor textarea text is 16px, so iOS does not zoom.
 - The Colour, Size, Align, Link, Image and Table pickers open inline in the
-  panel, never as browser dialogs. Each picker is a small form with a **Done**
-  and a **Cancel**.
+  panel, never as browser dialogs.
+  - A choice applies at once: a swatch, a size, an alignment, an emoji, or
+    the picker's Add, Insert or Use button.
+  - **Cancel** closes the picker without a change. There is no separate Done.
+    (Amended after the plan review.)
+  - A picker's typed fields (hex, link, image URL and description, table
+    size) are kept in the editor state as the player types, so a redraw never
+    empties them.
 - Every icon-only button has a word name (`aria-label` and `title`).
 - Emoji or arrows in labels are JS escapes. The source stays ASCII.
 
@@ -307,8 +358,14 @@ path.
       an image".
   - **For files:** "Have the file, not a link? Upload it with Torn's own Insert
     Image button after Insert."
+  - **The check runs when the player taps Check link.** That is a deliberate
+    action, not on every keystroke, because the panel does not redraw while a
+    field is being typed in. (Amended after the plan review: the earlier text
+    said "as the player pastes".)
   - **A preview thumbnail** of the fixed URL shows in the picker, so a dead link
-    is visible before it is inserted.
+    is visible before it is inserted. Tapping Check link is what loads it.
+    - The image is loaded with `referrerpolicy="no-referrer"`, so the host
+      never learns the Torn page it was viewed from.
   - **A Fix image link button** also sits in the Drafts toolbar's More drawer.
     It rewrites every fixable image URL already in the draft and reports how
     many it changed.

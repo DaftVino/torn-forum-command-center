@@ -36,6 +36,16 @@ DevTools.
 FCC finds the reply box as `#editor-wrapper .editor-content.mce-content-body`.
 It drops every textarea selector.
 
+**Choosing among matches.** A thread page holds several TinyMCE editors, so FCC
+does not take the first match.
+- It keeps only the connected matches with a non-zero size.
+- If several remain, it prefers the one inside `.forums-new-post-wrap`.
+- If that still leaves more than one, it reports no reply box, and the panel
+  offers Copy.
+
+Reading an element's size is part of the same access point. It adds no new
+place where FCC touches Torn's page.
+
 **Writing:**
 1. Move the selection to the end of that element with a `Range`.
 2. Dispatch one `ClipboardEvent('paste')` at it. The event carries the cleaned

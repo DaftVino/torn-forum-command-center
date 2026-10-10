@@ -73,11 +73,22 @@ existing `tests/load-userscript.js` vm harness, and `tests/mutation-check.mjs`.
     `head`, because a SIGPIPE once corrupted the baseline.
 - **Branch:** `feat/58-drafts-editor`, cut from `main` after the docs PR for
   `docs/58-editor-research` has merged. Never cut it from the docs branch.
-- **Sizes:**
-  - `DRAFT_MAX_CHARS` stays 20000 and applies to the stored source.
-  - The cleaner reads at most `CLEAN_MAX_CHARS` = 100000. This amends spec
-    section 5, which said 20000: Markdown output is up to about five times the
-    source.
+- **Sizes** (spec section 4a):
+  - `DRAFT_MAX_CHARS` stays 20000 and applies to the stored source. Any action
+    whose result would exceed it is refused visibly, through
+    `overLimitNotice(n)` (Task 10). Nothing is silently cut.
+  - The cleaner reads at most `CLEAN_MAX_CHARS` = 1000000. It is a security
+    bound that a real draft never reaches: the worst expansion measured is
+    about 38 times. Task 1 pins it.
+- **Line numbers in this plan drift.** They are from `62107f8`, and every
+  engine insertion moves what follows. Locate code by symbol, with
+  `grep -n "function name(" torn-forum-command-center.user.js`, then `Read`
+  with offset and limit. Regenerate `docs/code-map.md` with `/code-map` at the
+  end of Task 6 and Task 11, and again in Task 15.
+- **Every task that edits the userscript** runs the ASCII grep in its test
+  step, whether or not the step says so.
+- **`mutation.log` is never committed.** Task 0 adds it to `.gitignore`, and
+  every `git add` names its paths explicitly.
 
 ## Review Focus
 
@@ -231,10 +242,19 @@ because nothing in the script calls these yet.
 
 - [ ] **Step 6: Commit**
 
+Add `mutation.log` to `.gitignore` (one line) first.
+
 ```bash
-git add tests/load-userscript.js tests/harness.test.js
+git add tests/load-userscript.js tests/harness.test.js .gitignore
 git commit -m "test: harness models paste, selection and the async clipboard (#58)"
 ```
+
+**Harness notes for later tasks:**
+- The harness element's `getBoundingClientRect` returns width 0 for anything
+  but the panel. A test that needs a visible Torn editor overrides it on that
+  element, as `tinyBody` does in Task 7.
+- `doc.querySelectorAll` answers from the sandbox's `selectors` table.
+  Task 7's tests replace it directly.
 
 ---
 
@@ -282,12 +302,44 @@ const { exports: api } = loadUserscript();
 const clean = api.cleanTornHtml;
 const SAMPLE = fs.readFileSync(path.join(__dirname, '..', 'docs', 'reference', 'torn-forum-post-sample.html'), 'utf8');
 
-test('the 17 Torn colours and the 30 Torn emoji are the measured sets', () => {
-  assert.strictEqual(api.TORN_COLORS.length, 17);
-  assert.deepStrictEqual(api.TORN_COLORS[0], { name: 'red', light: '#f03e3e', dark: '#ff8787' });
-  assert.strictEqual(api.TORN_EMOJI.length, 30);
-  assert.ok(api.TORN_EMOJI.includes('zip_mouth') && api.TORN_EMOJI.includes('angel'));
+// Copied by hand from the owner's probes (findings doc, Q4 and the emoji
+// section), not from the production constant, so a typo in either fails.
+const MEASURED_COLORS = [
+  ['red', '#f03e3e', '#ff8787'], ['pink', '#d6336c', '#faa2c1'], ['grape', '#ae3ec9', '#e599f7'],
+  ['violet', '#7048e8', '#d0bfff'], ['indigo', '#4263eb', '#bac8ff'], ['blue', '#1c7ed6', '#a5d8ff'],
+  ['cyan', '#1098ad', '#99e9f2'], ['teal', '#0ca678', '#63e6be'], ['green', '#37b24d', '#8ce99a'],
+  ['lime', '#66a80f', '#a9e34b'], ['yellow', '#e67700', '#ffd43b'], ['orange', '#d9480f', '#ffa94d'],
+  ['gray1', '#333333', '#ffffff'], ['gray2', '#666666', '#dddddd'], ['gray3', '#999999', '#aaaaaa'],
+  ['gray4', '#cccccc', '#888888'], ['gray5', '#ffffff', '#000000'],
+];
+const MEASURED_EMOJI = ['angel', 'angry', 'authority', 'beard', 'beaten_up', 'blushing', 'bored_sleepy',
+  'confused', 'cool', 'cry', 'disappointed', 'dizzy', 'evil', 'grin', 'hushed', 'kissing', 'laughing',
+  'love_chemistry', 'money', 'moustache', 'mugger_masked', 'nerd', 'party', 'pirate', 'sick', 'smiley',
+  'tired', 'tongue', 'wink', 'zip_mouth'];
+
+test('the 17 Torn colours and the 30 Torn emoji are exactly the measured sets', () => {
+  assert.deepStrictEqual(api.TORN_COLORS.map((c) => [c.name, c.light, c.dark]), MEASURED_COLORS);
+  assert.deepStrictEqual(api.TORN_EMOJI.slice(), MEASURED_EMOJI);
   assert.strictEqual(api.PASTE_MARKER, '<!-- x-tinymce/html -->');
+});
+
+test('TinyMCE bogus elements: "all" goes with its content, others unwrap', () => {
+  assert.strictEqual(clean('<p><strong data-mce-bogus="1">hi</strong><span data-mce-bogus="all">caret</span></p>'), '<p>hi</p>');
+});
+
+test('cleaning the published sample keeps everything it shows', () => {
+  // Independent of the round trip: counted in the source, then in the output.
+  const c = clean(SAMPLE);
+  const count = (s, re) => (s.match(re) || []).length;
+  const body = SAMPLE.replace(/<!--[\s\S]*?-->/g, '');
+  assert.strictEqual(count(c, /var\(--te-text-color-/g), count(body, /var\(--te-text-color-/g));
+  assert.strictEqual(count(c, /<a href="https:\/\/greasyfork\.org/g), count(body, /<a href=/g));
+  assert.strictEqual(count(c, /class="table-wrap"/g), count(body, /class="table-wrap"/g));
+  assert.strictEqual(count(c, /<li>/g), count(body, /<li>/g));
+  assert.strictEqual(count(c, /text-align: center/g), count(body, /text-align: center/g));
+  for (const words of ['Education is one of', 'Tier 1 is the category', 'BIO2127', 'keep that education slot moving']) {
+    assert.ok(c.indexOf(words) !== -1, words);
+  }
 });
 
 test('allowed markup survives in canonical form', () => {
@@ -490,6 +542,15 @@ test('a bad link or image URL stays literal', () => {
 
 test('inline HTML in Markdown is cleaned', () => {
   assert.strictEqual(md('a <img src=x onerror=alert(1)> b'), '<p>a b</p>');
+});
+
+test('the size bound: no 20000-character draft reaches CLEAN_MAX_CHARS', () => {
+  // The worst expansions found while planning; a new dialect rule that beats
+  // them has to raise the bound deliberately.
+  for (const unit of ['|\n\n', '|\n>\n', '||\n\n', '| |\n\n', '# :cry:\n', '\n']) {
+    const src = unit.repeat(Math.floor(api.DRAFT_MAX_CHARS / unit.length));
+    assert.ok(api.mdToHtml(src).length < api.CLEAN_MAX_CHARS, JSON.stringify(unit));
+  }
 });
 
 test('hostile Markdown stays fast and shallow', () => {
@@ -717,6 +778,13 @@ test('deterministic hosts are rewritten exactly', () => {
     ['https://imgur.com/AbC12dE', 'https://i.imgur.com/AbC12dE.png'],
     ['https://www.reddit.com/media?url=https%3A%2F%2Fi.redd.it%2Fxyz.png', 'https://i.redd.it/xyz.png'],
     ['https://preview.redd.it/xyz.png?width=640&s=abc', 'https://i.redd.it/xyz.png'],
+    // Every other input shape the host-rules file lists.
+    ['https://drive.google.com/uc?id=' + ID + '&export=view', DRIVE],
+    ['https://drive.google.com/uc?export=download&id=' + ID, DRIVE],
+    ['https://giphy.com/embed/abc123XYZ', 'https://media.giphy.com/media/abc123XYZ/giphy.gif'],
+    ['https://github.com/o/r/raw/main/a.png', 'https://raw.githubusercontent.com/o/r/main/a.png'],
+    ['https://github.com/o/r/blob/main/a.png?raw=true', 'https://raw.githubusercontent.com/o/r/main/a.png'],
+    ['https://www.dropbox.com/scl/fi/abc/pic.png?rlkey=KEY&st=x&dl=1', 'https://www.dropbox.com/scl/fi/abc/pic.png?rlkey=KEY&st=x&raw=1'],
   ];
   for (const [input, want] of rows) {
     const r = fix(input);
@@ -728,7 +796,10 @@ test('deterministic hosts are rewritten exactly', () => {
 
 test('direct links pass as they are', () => {
   for (const u of [DRIVE, 'https://editor.torn.com/0de3-1.jpg', 'https://example.com/pic.JPG?x=1',
-    'https://i.imgur.com/x.gif', 'https://lh3.googleusercontent.com/pw/abc=w100']) {
+    'https://i.imgur.com/x.gif', 'https://lh3.googleusercontent.com/pw/abc=w100',
+    'https://dl.dropboxusercontent.com/s/abc/pic.png', 'https://raw.githubusercontent.com/o/r/main/a.png',
+    'https://media.giphy.com/media/abc/giphy.gif', 'https://i.gyazo.com/0123456789abcdef0123456789abcdef.png',
+    'https://i.redd.it/xyz.png']) {
     assert.strictEqual(fix(u).status, 'ok', u);
     assert.strictEqual(fix(u).url, u, u);
   }
@@ -757,6 +828,8 @@ test('expiring, insecure and non-image links are refused with a reason', () => {
   assert.match(fix('https://example.com/page').note, /web page/);
   assert.match(fix('https://drive.google.com/drive/folders/1abcdefghijklmnopqrstu').note, /folder/);
   assert.match(fix('https://github.com/o/r/blob/main/a.svg').note, /SVG/);
+  // A Reddit wrapper around a page link passes the inner verdict through.
+  assert.strictEqual(fix('https://www.reddit.com/media?url=https%3A%2F%2Fibb.co%2Fabc').status, 'howto');
   for (const u of ['', 'javascript:alert(1)', 'https://a.b/"onerror=x.png', 'https://' + 'a'.repeat(2100) + '.png']) {
     assert.strictEqual(fix(u).status, 'refused', u.slice(0, 40));
   }
@@ -767,6 +840,8 @@ test('Fix image link rewrites every fixable image in a draft', () => {
     { text: '![a](https://i.imgur.com/AbC12dE.png) ![b](https://x.y/z.png)', changed: 1 });
   assert.deepStrictEqual(api.fixAllImages('html', '<img src="https://drive.google.com/file/d/' + ID + '/view">'),
     { text: '<img src="https://drive.google.com/thumbnail?id=' + ID + '&amp;sz=w1000">', changed: 1 });
+  assert.deepStrictEqual(api.fixAllImages('html', "<img src='https://imgur.com/AbC12dE'>"),
+    { text: "<img src='https://i.imgur.com/AbC12dE.png'>", changed: 1 });
   assert.deepStrictEqual(api.fixAllImages('text', '![a](https://imgur.com/AbC12dE)'),
     { text: '![a](https://imgur.com/AbC12dE)', changed: 0 });
 });
@@ -775,7 +850,7 @@ test('a custom colour hard to read in a theme is flagged there', () => {
   assert.deepStrictEqual(api.colorWarnings('#ffd43b'), [{ theme: 'light', ratio: 1.4 }]);
   assert.deepStrictEqual(api.colorWarnings('#000000'), [{ theme: 'dark', ratio: 1.1 }]);
   assert.deepStrictEqual(api.colorWarnings('#777777').map((w) => w.theme), ['light', 'dark']);
-  assert.deepStrictEqual(api.colorWarnings('#1c7ed6'), [{ theme: 'dark', ratio: 4.1 }]);
+  assert.deepStrictEqual(api.colorWarnings('#1c7ed6'), [{ theme: 'light', ratio: 4.1 }]);
   assert.strictEqual(Math.round(api.contrastRatio('#000000', '#ffffff')), 21);
 });
 ```
@@ -796,6 +871,33 @@ Expected: PASS.
 
 If a contrast figure differs in the last digit, the reference's `Math.floor`
 is the rule. Correct the test's expected ratio, and never the rounding.
+
+`tests/read-only.test.js` ("every request goes to the Torn API and nowhere
+else") now fails. The fixer's source names the hosts it rewrites to. Extend
+the test deliberately, with a separate, named list. Never widen `allowed`:
+
+```js
+  // #58: hosts the image link fixer writes into a player's own image links.
+  // A pure string rewrite: nothing fetches them. Preview loads a player's
+  // image only after they tap Show images (spec section 4a), with no referrer.
+  const imageFixerHosts = new Set([
+    'drive.google.com', 'www.dropbox.com', 'raw.githubusercontent.com', 'media.giphy.com',
+    'i.gyazo.com', 'i.imgur.com', 'i.redd.it',
+  ]);
+  const stray = [...hosts].filter((h) => !allowed.has(h) && !imageFixerHosts.has(h));
+```
+
+In the same test, assert that each image-fixer host appears in the source only
+inside `function fixImageUrl`, so the list cannot be borrowed by anything that
+fetches:
+
+```js
+  const fixer = SOURCE.slice(SOURCE.indexOf('function fixImageUrl('), SOURCE.indexOf('function fixAllImages('));
+  for (const h of imageFixerHosts) {
+    const outside = SOURCE.split(fixer).join('').indexOf('https://' + h);
+    assert.strictEqual(outside, -1, h + ' appears outside the image fixer');
+  }
+```
 
 - [ ] **Step 5: Run the suite and commit**
 
@@ -843,8 +945,9 @@ test('a mark wraps the selection, or inserts a placeholder at the caret', () => 
   assert.deepStrictEqual(api.applyMark('md', 'hi', 2, 2, 'color', 'red'), { text: 'hi{red}text{/}', start: 7, end: 11 });
   assert.deepStrictEqual(api.applyMark('html', 'x', 0, 1, 'color', '#FF0000'),
     { text: '<span style="color: #ff0000;">x</span>', start: 30, end: 31 });
+  // '<a href="https://a.b">' is 22 characters long.
   assert.deepStrictEqual(api.applyMark('html', 'x', 0, 1, 'link', 'https://a.b'),
-    { text: '<a href="https://a.b">x</a>', start: 21, end: 22 });
+    { text: '<a href="https://a.b">x</a>', start: 22, end: 23 });
 });
 
 test('quote and alignment act on whole lines', () => {
@@ -968,13 +1071,32 @@ test('a v0.2.2 drafts blob loads unchanged and silently', () => {
   assert.strictEqual(api.draftLangOf(value.byThread[42]), 'text', 'an old draft is Text (Review Focus 5)');
 });
 
-test('a v0.2.2 settings blob loads silently, with the Markdown default', () => {
-  const env = loadUserscript();
-  const old = JSON.parse(JSON.stringify(env.exports.freshSettings()));
+test('a v0.2.2 settings blob loads silently through the real load path, with the Markdown default', () => {
+  // The real path: loadKey with isRecoveredSettings, which loadAll uses.
+  const old = JSON.parse(JSON.stringify(api.freshSettings()));
   delete old.draftLang;
-  const value = env.exports.normaliseSettings(old);
-  assert.strictEqual(value.draftLang, 'md');
-  assert.strictEqual(env.exports.isRecoveredValue(old, value), false);
+  const env = loadUserscript({ gmStore: [['tfcc:settings', JSON.stringify(old)]] });
+  const res = env.exports.loadKey(env.exports.STORAGE_KEYS.settings, env.exports.normaliseSettings, NOW,
+    env.exports.isRecoveredSettings);
+  assert.strictEqual(res.value.draftLang, 'md');
+  assert.strictEqual(res.recovered, false, 'no damage notice');
+});
+
+test('a v0.2.2 drafts blob loads silently through the real load path', () => {
+  const old = { v: 1, byThread: { 42: { text: 'x', updatedAt: 5, title: 'T' } } };
+  const env = loadUserscript({ gmStore: [['tfcc:drafts', JSON.stringify(old)]] });
+  const res = env.exports.loadKey(env.exports.STORAGE_KEYS.drafts, env.exports.normaliseDrafts, NOW);
+  assert.strictEqual(res.recovered, false);
+});
+
+test('the v0.2.2 normaliser keeps byThread text from a blob this build writes (downgrade)', () => {
+  const legacy = require('./fixtures/legacy-normalise-drafts-v0.2.2.js');
+  let d = api.saveDraft(api.freshDrafts(), 3, '**b**', NOW, 'T', 'md');
+  const made = api.newFreeDraft(d, NOW, 'md');
+  d = api.saveFreeDraft(made.drafts, made.id, 'f', NOW, 'F', 'md');
+  const back = legacy(JSON.parse(JSON.stringify(d)));
+  assert.strictEqual(back.byThread[3].text, '**b**');
+  assert.strictEqual(back.free, undefined, 'the documented downgrade loss');
 });
 
 test('draftLang is strict on the menu', () => {
@@ -1012,6 +1134,9 @@ test('free drafts: create, save, list, cap, delete', () => {
   let full = api.freshDrafts();
   for (let i = 0; i < api.FREE_DRAFTS_MAX; i += 1) full = api.newFreeDraft(full, NOW + i, 'md').drafts;
   assert.strictEqual(api.newFreeDraft(full, NOW, 'md').id, null);
+  // The largest id wraps instead of growing a 13th digit.
+  const edge = api.newFreeDraft(api.newFreeDraft(api.freshDrafts(), 999999999999, 'md').drafts, 999999999999, 'md');
+  assert.strictEqual(edge.id, 'n1');
 });
 
 test('a stored free-drafts blob normalises, and keeps an empty named draft', () => {
@@ -1036,6 +1161,25 @@ test('export and import carry free drafts and the language', () => {
 Before relying on the export test, check the real signatures of `encodeState`
 and `importState` (code map anchors). Adapt only the encoder and decoder
 arguments to match how `tests/share.test.js` calls them.
+
+Create the frozen downgrade fixture, `tests/fixtures/legacy-normalise-drafts-v0.2.2.js`.
+It is v0.2.2's `normaliseDrafts`, copied verbatim from the release tag, so it
+never changes with the code:
+
+```bash
+git show v0.2.2:torn-forum-command-center.user.js > "$TEMP/tfcc-v022.js"
+grep -n "function freshDrafts\|function normaliseDrafts\|function isPlainObject\|function toInt\|function safeString\|var DRAFT_MAX_CHARS\|var SCHEMA_VERSION" "$TEMP/tfcc-v022.js"
+```
+
+Copy those seven declarations, verbatim, into the fixture, in this wrapper:
+
+```js
+'use strict';
+// v0.2.2's draft normaliser, frozen: what an older build does with a blob this
+// build writes (spec section 6, downgrade). Copied from tag v0.2.2; never edit.
+/* <the seven declarations, verbatim> */
+module.exports = normaliseDrafts;
+```
 
 - [ ] **Step 2: Run them and watch them fail**
 
@@ -1172,8 +1316,10 @@ Replace the drafts helpers, from `function saveDraft(` through the end of
     var next = nextDrafts(drafts);
     next.free = next.free || {};
     if (Object.keys(next.free).length >= FREE_DRAFTS_MAX) return { drafts: drafts, id: null };
+    // Ids stay within the 12 digits the normaliser accepts, wrapping rather
+    // than growing a thirteenth.
     var n = Math.max(1, toInt(now, 0) % 1000000000000);
-    while (Object.prototype.hasOwnProperty.call(next.free, 'n' + n)) n += 1;
+    while (Object.prototype.hasOwnProperty.call(next.free, 'n' + n)) n = n >= 999999999999 ? 1 : n + 1;
     var names = Object.keys(next.free).map(function (k) { return next.free[k].name; });
     var num = 1;
     while (names.indexOf('Untitled ' + num) !== -1) num += 1;
@@ -1264,7 +1410,7 @@ Then, after the thread loop:
 ```
 
 Add these to `EXPORT_NAMES`:
-`'saveDraft', 'draftFor', 'deleteDraft', 'draftList', 'newFreeDraft', 'saveFreeDraft', 'deleteFreeDraft', 'draftLangOf', 'FREE_DRAFTS_MAX', 'FREE_NAME_MAX', 'encodeState', 'importState',`.
+`'saveDraft', 'draftFor', 'deleteDraft', 'draftList', 'newFreeDraft', 'saveFreeDraft', 'deleteFreeDraft', 'draftLangOf', 'FREE_DRAFTS_MAX', 'FREE_NAME_MAX', 'encodeState', 'importState', 'isRecoveredSettings',`.
 Skip any that are already listed.
 
 - [ ] **Step 4: Run the tests**
@@ -1277,9 +1423,12 @@ five-argument behaviour is unchanged.
 
 ```bash
 npm test
-git add torn-forum-command-center.user.js tests/load-userscript.js tests/editor-storage.test.js
+git add torn-forum-command-center.user.js tests/load-userscript.js tests/editor-storage.test.js tests/fixtures/legacy-normalise-drafts-v0.2.2.js
 git commit -m "feat: draft language, free drafts and the Default editor setting, loading old blobs silently (#58)"
 ```
+
+Then run `/code-map`, because the engine has grown, and commit `docs/code-map.md`
+as "docs: refresh the code map".
 
 ---
 
@@ -1314,10 +1463,11 @@ const { loadUserscript } = require('./load-userscript');
 
 const SEL = '#editor-wrapper .editor-content.mce-content-body';
 
-// A TinyMCE body: handles a marked paste by appending its HTML, the way the
-// owner observed TinyMCE do it (test B).
+// A visible TinyMCE body: handles a marked paste by appending its HTML, the
+// way the owner observed TinyMCE do it (test B).
 function tinyBody(env, initial) {
   const box = env.makeElement('div');
+  box.getBoundingClientRect = () => ({ width: 600, height: 160 });
   box.innerHTML = initial || '<p><br data-mce-bogus="1"></p>';
   const seen = [];
   box.addEventListener('paste', (ev) => {
@@ -1327,9 +1477,32 @@ function tinyBody(env, initial) {
     ev.preventDefault();
     box.innerHTML = box.innerHTML + html.slice('<!-- x-tinymce/html -->'.length);
   });
-  env.doc.querySelector = (sel) => (sel === SEL ? box : null);
+  env.doc.querySelectorAll = (sel) => (sel === SEL ? [box] : []);
   return { box, seen };
 }
+
+function body(env, w, inForm) {
+  const b = env.makeElement('div');
+  b.getBoundingClientRect = () => ({ width: w, height: w ? 100 : 0 });
+  b.closest = (sel) => (sel === '.forums-new-post-wrap' && inForm ? {} : null);
+  return b;
+}
+
+test('several TinyMCE bodies: the visible one, then the one in the reply form, else none', () => {
+  const env = loadUserscript();
+  const hidden = body(env, 0, false);
+  const shown = body(env, 600, false);
+  env.doc.querySelectorAll = () => [hidden, shown];
+  assert.strictEqual(env.exports.findReplyBox(env.doc), shown, 'a hidden edit box before the reply box is skipped');
+  const editBox = body(env, 600, false);
+  const reply = body(env, 600, true);
+  env.doc.querySelectorAll = () => [editBox, reply];
+  assert.strictEqual(env.exports.findReplyBox(env.doc), reply, 'two visible: the one in .forums-new-post-wrap');
+  env.doc.querySelectorAll = () => [body(env, 600, false), body(env, 600, false)];
+  assert.strictEqual(env.exports.findReplyBox(env.doc), null, 'ambiguous: never guess');
+  env.doc.querySelectorAll = () => { throw new Error('Torn changed something'); };
+  assert.strictEqual(env.exports.findReplyBox(env.doc), null);
+});
 
 test('Insert pastes the marked post into Torn\'s editor and reports success', () => {
   const env = loadUserscript();
@@ -1357,17 +1530,19 @@ test('Insert puts the caret at the end first, so nothing typed is replaced (Revi
 test('a long post is sent whole (Review Focus 3)', () => {
   const env = loadUserscript();
   const { seen } = tinyBody(env);
-  const md = ('{red}**word**{/} ').repeat(1200);
+  const md = ('{red}**word**{/} ').repeat(1100); // 18700 characters
   const html = env.exports.mdToHtml(md);
   assert.ok(md.length < env.exports.DRAFT_MAX_CHARS && html.length > env.exports.DRAFT_MAX_CHARS);
+  // The source survives conversion whole, independent of what Insert sends.
+  assert.strictEqual((html.match(/<strong>word<\/strong>/g) || []).length, 1100);
   env.exports.insertPost(env.doc, env.sandbox.window, html);
   assert.strictEqual(seen[0].clipboardData.getData('text/html'), '<!-- x-tinymce/html -->' + html);
 });
 
 test('an editor that ignores the paste is reported, and Copy is offered', () => {
   const env = loadUserscript();
-  const box = env.makeElement('div');
-  env.doc.querySelector = (sel) => (sel === SEL ? box : null);
+  const box = body(env, 600, true);
+  env.doc.querySelectorAll = (sel) => (sel === SEL ? [box] : []);
   const res = env.exports.insertPost(env.doc, env.sandbox.window, '<p>x</p>');
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.reason, 'refused');
@@ -1377,7 +1552,9 @@ test('an editor that ignores the paste is reported, and Copy is offered', () => 
 test('no editor on the page means Copy, never a Report box (#60)', () => {
   const env = loadUserscript();
   const reason = env.makeElement('textarea');
+  reason.getBoundingClientRect = () => ({ width: 100, height: 20 });
   env.doc.querySelector = (sel) => (/textarea/.test(sel) ? reason : null);
+  env.doc.querySelectorAll = (sel) => (/textarea/.test(sel) ? [reason] : []);
   assert.strictEqual(env.exports.findReplyBox(env.doc), null);
   const res = env.exports.insertPost(env.doc, env.sandbox.window, '<p>x</p>');
   assert.strictEqual(res.reason, 'noreplybox');
@@ -1413,7 +1590,38 @@ Expected: FAIL, `insertPost is not a function`.
   ]);
 ```
 
-Keep `findReplyBox` as it is. Then add:
+Replace `findReplyBox` with the version below (spec section 7, "Several
+matches"). It reads only the matched elements' size and ancestry. That is part
+of the same reply-box access point, and every call is guarded.
+
+```js
+  function isShown(el) {
+    try {
+      var r = el.getBoundingClientRect();
+      return !!r && r.width > 0 && r.height > 0;
+    } catch (e) { return false; }
+  }
+
+  // A thread page holds several TinyMCE editors (the owner's probe found five).
+  // Keep the connected, visible ones; if more than one is visible, the one in
+  // the reply or new-thread form; if that is still ambiguous, none, so the
+  // panel offers Copy rather than guessing.
+  function findReplyBox(doc) {
+    if (!doc || typeof doc.querySelectorAll !== 'function') return null;
+    var all;
+    try { all = Array.prototype.slice.call(doc.querySelectorAll(REPLY_SELECTORS[0]) || []); } catch (e) { return null; }
+    var shown = all.filter(function (el) {
+      return el && el.isConnected !== false && typeof el.getBoundingClientRect === 'function' && isShown(el);
+    });
+    if (shown.length === 1) return shown[0];
+    var inForm = shown.filter(function (el) {
+      try { return typeof el.closest === 'function' && !!el.closest('.forums-new-post-wrap'); } catch (e) { return false; }
+    });
+    return inForm.length === 1 ? inForm[0] : null;
+  }
+```
+
+Then add:
 
 ```js
   // The paste lands at the caret, so the caret goes to the end first: Insert
@@ -1477,12 +1685,21 @@ native setter and the `input` event:
 test('findReplyBox finds Torn\'s editor body and skips a detached one', () => {
   const env = loadUserscript();
   const body = env.makeElement('div');
-  env.doc.querySelector = (sel) => (sel === '#editor-wrapper .editor-content.mce-content-body' ? body : null);
+  body.getBoundingClientRect = () => ({ width: 600, height: 160 });
+  env.doc.querySelectorAll = (sel) => (sel === '#editor-wrapper .editor-content.mce-content-body' ? [body] : []);
   assert.strictEqual(env.exports.findReplyBox(env.doc), body);
   body.isConnected = false;
   assert.strictEqual(env.exports.findReplyBox(env.doc), null, 'a detached node is not a reply box');
 });
 ```
+
+Rewrite "a querySelector that throws does not take the script down" to stub
+`env.doc.querySelectorAll`, since that is now the call that can throw.
+
+In `tests/read-only.test.js`, in the focus audit ("the only focus call is on
+the reply box"), change both `'function insertDraft'` and the message
+`'inside insertDraft'` to `insertPost`. The one `box.focus()` call stays, so
+the count of two holds.
 
 In `tests/read-only.test.js`, replace the second test with:
 
@@ -1532,9 +1749,14 @@ bypassed" becomes "the paste is not marked as TinyMCE content":
     apply: (s) => s.replace("if (handled && String(box.innerHTML) !== before) return { ok: true };", 'return { ok: true };'),
   },
   {
-    name: 'the generic textarea fallback comes back (#60)',
+    name: 'the first matching editor is taken, hidden or not (#60 by another route)',
     suite: 'tests/editor-insert.test.js',
-    apply: (s) => s.replace("    '#editor-wrapper .editor-content.mce-content-body',\n  ]);", "    '#editor-wrapper .editor-content.mce-content-body',\n    'textarea',\n  ]);"),
+    apply: (s) => s.replace('    if (shown.length === 1) return shown[0];', '    if (all.length) return all[0];'),
+  },
+  {
+    name: 'two visible editors are guessed between',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace('    return inForm.length === 1 ? inForm[0] : null;', '    return shown[0] || null;'),
   },
 ```
 
@@ -1564,29 +1786,53 @@ git commit -m "fix: Insert pastes into Torn's TinyMCE editor, never a Report box
 - Test: `tests/editor-insert.test.js` (append)
 
 **Interfaces:**
-- Produces: `copyPost(doc, win, html)` returns `{ ok }`.
+- Produces: `copyPost(doc, win, html, done)` returns nothing. It calls
+  `done({ ok })` once the clipboard has answered, which may be after a promise
+  settles. The handler shows its notice from `done`, never before.
 
 - [ ] **Step 1: Write the failing test** (append to `tests/editor-insert.test.js`)
 
 ```js
-test('Copy writes the marked post as HTML and the source as plain text', () => {
+const settle = () => new Promise((r) => setImmediate(r));
+
+test('Copy writes the marked post as HTML and the source as plain text, then reports', async () => {
   const env = loadUserscript();
-  const res = env.exports.copyPost(env.doc, env.sandbox.window, '<p><strong>b</strong></p><p>c</p>');
-  assert.deepStrictEqual(res, { ok: true });
-  const w = env.clipboardLog.find((x) => x.op === 'write');
-  const item = w.items[0];
-  assert.deepStrictEqual(item.types.sort(), ['text/html', 'text/plain']);
+  const results = [];
+  env.exports.copyPost(env.doc, env.sandbox.window, '<p><strong>b</strong></p><p>c</p>', (r) => results.push(r));
+  assert.deepStrictEqual(results, [], 'not before the clipboard answers');
+  await settle();
+  assert.deepStrictEqual(results, [{ ok: true }]);
+  const item = env.clipboardLog.find((x) => x.op === 'write').items[0];
+  assert.deepStrictEqual(item.types.slice().sort(), ['text/html', 'text/plain']);
   assert.deepStrictEqual(item.map['text/html'].parts, ['<!-- x-tinymce/html --><p><strong>b</strong></p><p>c</p>']);
   assert.deepStrictEqual(item.map['text/plain'].parts, ['<p><strong>b</strong></p>\n<p>c</p>']);
 });
 
-test('Copy without the async clipboard falls back to the HTML source as text', () => {
+test('a refused rich copy falls back to text, and a refused text copy reports failure', async () => {
   const env = loadUserscript();
-  const win = Object.assign({}, env.sandbox.window, { ClipboardItem: undefined });
-  env.exports.copyPost(env.doc, win, '<p>x</p>');
-  assert.deepStrictEqual(env.clipboardLog.map((x) => [x.op, x.text]), [['writeText', '<p>x</p>']]);
+  const w = env.sandbox.window;
+  const results = [];
+  const win = Object.assign({}, w, { navigator: { clipboard: {
+    write: () => Promise.reject(new Error('denied')),
+    writeText: (t) => { env.clipboardLog.push({ op: 'writeText', text: t }); return Promise.resolve(); },
+  } } });
+  env.exports.copyPost(env.doc, win, '<p>x</p>', (r) => results.push(r));
+  await settle(); await settle();
+  assert.deepStrictEqual(results, [{ ok: true }]);
+  assert.deepStrictEqual(env.clipboardLog.map((x) => x.op), ['writeText']);
+  const results2 = [];
+  const win2 = Object.assign({}, w, { ClipboardItem: undefined, navigator: { clipboard: {
+    writeText: () => Promise.reject(new Error('denied')),
+  } } });
+  env.exports.copyPost(env.doc, win2, '<p>x</p>', (r) => results2.push(r));
+  await settle(); await settle();
+  assert.deepStrictEqual(results2, [{ ok: false }]);
 });
 ```
+
+The fallback calls `writeText` directly, not `copyText`. `copyText`'s
+`execCommand` path needs user activation, which has gone by the time a promise
+has rejected.
 
 - [ ] **Step 2: Run it and watch it fail**
 
@@ -1598,27 +1844,49 @@ Expected: FAIL, `copyPost is not a function`.
 ```js
   // #58: Copy puts the formatted post on the clipboard. Pasted into Torn's
   // editor, the marked HTML keeps its styles. Pasted as text, it is the HTML
-  // source, ready for Torn's code view. If the async clipboard refuses, the
-  // plain-text copy still happens.
-  function copyPost(doc, win, html) {
+  // source, ready for Torn's code view. The result is reported only once the
+  // clipboard has answered, so the panel never claims a copy that failed.
+  function copyPost(doc, win, html, done) {
     var source = htmlSource(html);
+    var report = function (ok) { try { if (typeof done === 'function') done({ ok: !!ok }); } catch (e) { /* never */ } };
+    var nav = win && win.navigator;
+    var clip = nav && nav.clipboard;
+    var asText = function () {
+      try {
+        if (clip && typeof clip.writeText === 'function') {
+          var t = clip.writeText(source);
+          if (t && typeof t.then === 'function') { t.then(function () { report(true); }, function () { report(false); }); return; }
+          report(true);
+          return;
+        }
+      } catch (e) { /* fall through to the textarea path */ }
+      report(copyText(doc, win, source).ok);
+    };
     try {
-      var nav = win && win.navigator;
       var Item = win && win.ClipboardItem;
       var BlobCtor = win && win.Blob;
-      if (nav && nav.clipboard && typeof nav.clipboard.write === 'function'
-        && typeof Item === 'function' && typeof BlobCtor === 'function') {
+      if (clip && typeof clip.write === 'function' && typeof Item === 'function' && typeof BlobCtor === 'function') {
         var item = new Item({
           'text/html': new BlobCtor([PASTE_MARKER + html], { type: 'text/html' }),
           'text/plain': new BlobCtor([source], { type: 'text/plain' }),
         });
-        var p = nav.clipboard.write([item]);
-        if (p && typeof p.then === 'function') p.then(null, function () { copyText(doc, win, source); });
-        return { ok: true };
+        var p = clip.write([item]);
+        if (p && typeof p.then === 'function') { p.then(function () { report(true); }, asText); return; }
+        report(true);
+        return;
       }
-    } catch (e) { /* fall through to plain text */ }
-    return copyText(doc, win, source);
+    } catch (e2) { /* fall through to plain text */ }
+    asText();
   }
+```
+
+The handler (Task 10) calls it like this:
+
+```js
+copyPost(doc, win, html, function (r) {
+  notice(r.ok ? 'Post copied. Paste it into Torn\'s reply box.' : 'Copy failed. Switch to HTML, select the text and copy it yourself.', r.ok ? 'info' : 'warn');
+  redraw();
+});
 ```
 
 Add `'copyPost'` to `EXPORT_NAMES`.
@@ -1658,24 +1926,39 @@ function autosaveEnv(drafts) {
   const env = loadUserscript({ location: Object.assign({}, require('./load-userscript').FORUMS_LOCATION, { hash: '#/p=threads&f=1&t=42&b=0&a=0' }) });
   const api = env.exports;
   const box = env.makeElement('div');
-  env.doc.querySelector = (sel) => (sel === SEL ? box : null);
+  box.getBoundingClientRect = () => ({ width: 600, height: 160 });
+  env.doc.querySelectorAll = (sel) => (sel === SEL ? [box] : []);
   api.state.route = api.parseForumRoute(env.win.location);
   if (drafts) api.state.drafts = drafts;
   api.attachAutosave(env.doc, env.win);
-  const type = (html) => {
+  const input = (html) => {
     box.innerHTML = html;
     box.dispatchEvent(new env.sandbox.window.Event('input', { bubbles: true }));
-    env.advanceTimersBy(api.AUTOSAVE_DEBOUNCE_MS + 10);
   };
-  return { env, api, type };
+  const type = (html) => { input(html); env.advanceTimersBy(api.AUTOSAVE_DEBOUNCE_MS + 10); };
+  return { env, api, box, input, type };
 }
 
 test('autosave saves Torn\'s editor as a cleaned HTML draft', () => {
   const { api, type } = autosaveEnv();
-  type('<p><strong data-mce-bogus="x">hi</strong></p>');
+  type('<p><strong data-mce-style="x">hi</strong></p>');
   const d = api.draftFor(api.state.drafts, 42);
   assert.strictEqual(d.lang, 'html');
   assert.strictEqual(d.text, '<p><strong>hi</strong></p>');
+});
+
+test('typing in thread 42 then moving to thread 43 before the debounce saves nothing to 43', () => {
+  const { env, api, input } = autosaveEnv();
+  input('<p>for 42</p>');
+  api.state.route = api.parseForumRoute({ hash: '#/p=threads&f=1&t=43&b=0&a=0', pathname: '/forums.php', host: 'www.torn.com' });
+  env.advanceTimersBy(api.AUTOSAVE_DEBOUNCE_MS + 10);
+  assert.strictEqual(api.draftFor(api.state.drafts, 43), null);
+});
+
+test('an editor body over the draft limit is not autosaved, so nothing is stored cut short', () => {
+  const { api, type } = autosaveEnv();
+  type('<p>' + 'x'.repeat(api.DRAFT_MAX_CHARS + 10) + '</p>');
+  assert.strictEqual(api.draftFor(api.state.drafts, 42), null);
 });
 
 test('autosave never overwrites a Markdown or Text draft', () => {
@@ -1702,22 +1985,67 @@ Check how the existing suites reach timers. If `env.advanceTimersBy` is not on
 
 Expected: FAIL. The current listener reads `box.value`.
 
-- [ ] **Step 3: Implement it.** Inside `attachAutosave`'s debounced callback,
-  replace everything from `var text = box.value ...` through `persist('drafts');` with:
+- [ ] **Step 3: Implement it.** Replace `attachAutosave` and `detachAutosave`,
+  and the two `var autosave...` lines above them, with:
 
 ```js
-          // #58: the box is TinyMCE's body, so its HTML is the post. It is
-          // cleaned like everything else, and saved as an HTML draft, but never
-          // over a Markdown or Text draft the player wrote in the panel.
+  // Autosave keeps its own record of which element, which listener and which
+  // thread it is serving. The panel redraws on every interaction, so attaching
+  // per draw would pile up listeners; and a timer must save to the thread it
+  // was started for, never to the one the player has since moved to.
+  var autosaveBox = null;
+  var autosaveTimer = null;
+  var autosaveListener = null;
+  var autosaveThread = null;
+
+  function attachAutosave(doc, win) {
+    void win;
+    if (!state.settings.autosaveDrafts || !state.route || !state.route.isThread) { detachAutosave(); return false; }
+    var box = findReplyBox(doc);
+    if (!box || typeof box.addEventListener !== 'function') { detachAutosave(); return false; }
+    var thread = String(state.route.threadId);
+    if (autosaveBox === box && autosaveThread === thread) return true;
+    detachAutosave();
+    autosaveBox = box;
+    autosaveThread = thread;
+    autosaveListener = function () {
+      if (autosaveTimer !== null) clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(function () {
+        autosaveTimer = null;
+        try {
+          if (!state.settings.autosaveDrafts) return;
+          if (!state.route || String(state.route.threadId) !== thread || autosaveBox !== box) return;
+          // #58: the box is TinyMCE's body, so its HTML is the post, cleaned
+          // like everything else and saved as an HTML draft, never over a
+          // Markdown or Text draft the player wrote in the panel.
           var post = cleanTornHtml(String(box.innerHTML || ''));
           // An empty editor never deletes a saved draft. Torn clears the box
           // after a successful post, and can hand back an empty body during a
           // re-render; either would otherwise wipe work the user still wants.
           if (!htmlToText(post).trim() && post.indexOf('<img') === -1) return;
-          var existing = draftFor(state.drafts, state.route.threadId);
+          var source = htmlSource(post);
+          // Over the draft limit: skip rather than store a truncated post.
+          if (source.length > DRAFT_MAX_CHARS) return;
+          var existing = draftFor(state.drafts, thread);
           if (existing && draftLangOf(existing) !== 'html') return;
-          state.drafts = saveDraft(state.drafts, state.route.threadId, htmlSource(post), Date.now(), '', 'html');
+          state.drafts = saveDraft(state.drafts, thread, source, Date.now(), '', 'html');
           persist('drafts');
+        } catch (e) { /* autosave must never throw onto Torn's page */ }
+      }, AUTOSAVE_DEBOUNCE_MS);
+    };
+    box.addEventListener('input', autosaveListener);
+    return true;
+  }
+
+  function detachAutosave() {
+    if (autosaveBox && autosaveListener && typeof autosaveBox.removeEventListener === 'function') {
+      try { autosaveBox.removeEventListener('input', autosaveListener); } catch (e) { /* the box is gone */ }
+    }
+    autosaveBox = null;
+    autosaveListener = null;
+    autosaveThread = null;
+    if (autosaveTimer !== null) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+  }
 ```
 
 In `tests/staleness.test.js`, change the `replyBox(env)` helper to build the
@@ -1728,7 +2056,8 @@ editor body:
 // setting its HTML and dispatching input, the way TinyMCE's own typing does.
 function replyBox(env) {
   const box = env.makeElement('div');
-  env.doc.querySelector = (sel) => (sel === '#editor-wrapper .editor-content.mce-content-body' ? box : null);
+  box.getBoundingClientRect = () => ({ width: 600, height: 160 });
+  env.doc.querySelectorAll = (sel) => (sel === '#editor-wrapper .editor-content.mce-content-body' ? [box] : []);
   Object.defineProperty(box, 'value', { get() { return box.innerHTML; }, set(v) { box.innerHTML = '<p>' + v + '</p>'; } });
   return box;
 }
@@ -1740,7 +2069,7 @@ such assertion, and update any test whose title says "textarea" to "reply box".
 
 In `tests/mutation-check.mjs`:
 - Update "autosave stops writing anything" to replace the new `saveDraft(...)`
-  line, `"          state.drafts = saveDraft(state.drafts, state.route.threadId, htmlSource(post), Date.now(), '', 'html');"`.
+  line, `"          state.drafts = saveDraft(state.drafts, thread, source, Date.now(), '', 'html');"`.
 - Update "an emptied reply box is autosaved over the draft" to remove the new
   empty-check line.
 - Add:
@@ -1750,6 +2079,16 @@ In `tests/mutation-check.mjs`:
     name: 'autosave overwrites a Markdown draft with Torn\'s HTML',
     suite: 'tests/editor-insert.test.js',
     apply: (s) => s.replace("          if (existing && draftLangOf(existing) !== 'html') return;\n", ''),
+  },
+  {
+    name: 'a pending autosave saves to whichever thread is open now',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace("if (!state.route || String(state.route.threadId) !== thread || autosaveBox !== box) return;", 'thread = String(state.route.threadId);'),
+  },
+  {
+    name: 'autosave stores an over-limit post, cut short',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace('          if (source.length > DRAFT_MAX_CHARS) return;\n', ''),
   },
 ```
 
@@ -1794,8 +2133,9 @@ git commit -m "fix: autosave reads Torn's editor and never overwrites a panel dr
   - `editorPostHtml()` returns the cleaned post for the open draft;
   - `renderEditorPane(model)` and `renderDraftList(model)` return HTML strings.
 - The new `data-act` values are `ed-mode`, `ed-mode-confirm`, `ed-mode-cancel`,
-  `ed-pv-theme`, `ed-jump`, `draft-new`, `draft-edit` and `ed-name`, which
-  carries data only.
+  `ed-pv-theme`, `ed-pv-images`, `ed-jump`, `draft-new`, `draft-edit` and
+  `ed-name`, which carries data only.
+- `previewImages(html, show)` is a pure engine function that returns HTML.
 
 - [ ] **Step 1: Write the failing tests** in `tests/editor-view.test.js`
 
@@ -1892,6 +2232,57 @@ test('+ New draft makes a free draft and opens it; Insert uses the editor\'s tex
   const list = api.panelHtml(api.buildPanelModel(NOW));
   assert.match(list, /tfcc-free/);
   assert.match(list, /data-act="draft-edit" data-id="n/);
+  // Insert sends the editor's converted post to Torn's editor.
+  const pasted = [];
+  const box = env.makeElement('div');
+  box.getBoundingClientRect = () => ({ width: 600, height: 160 });
+  box.addEventListener('paste', (ev) => { pasted.push(ev.clipboardData.getData('text/html')); ev.preventDefault(); box.innerHTML += 'x'; });
+  env.doc.querySelectorAll = (sel) => (sel === '#editor-wrapper .editor-content.mce-content-body' ? [box] : []);
+  h.onAction('draft-insert', el({ 'data-act': 'draft-insert', 'data-id': key }));
+  assert.deepStrictEqual(pasted, ['<!-- x-tinymce/html --><p><span style="color: var(--te-text-color-red);">hi</span></p>']);
+});
+
+test('opening another draft after typing, without Save, keeps what was typed', () => {
+  const env = loadUserscript({ location: FORUMS_LOCATION, now: NOW });
+  const api = drafts(env);
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onAction('draft-new', el({ 'data-act': 'draft-new' }));
+  const first = api.state.draftFocusId;
+  api.panelHtml(api.buildPanelModel(NOW));
+  h.onInput('draft-text', Object.assign(el({ 'data-act': 'draft-text', 'data-id': first }), { value: 'unsaved words', selectionStart: 0, selectionEnd: 0 }));
+  h.onAction('draft-new', el({ 'data-act': 'draft-new' }));
+  api.panelHtml(api.buildPanelModel(NOW));
+  assert.notStrictEqual(api.state.editor.key, first);
+  assert.strictEqual(api.draftFor(api.state.drafts, first).text, 'unsaved words');
+});
+
+test('a switch that would pass the draft limit is refused, and the draft is unchanged', () => {
+  const env = loadUserscript({ location: THREAD, now: NOW });
+  const api = drafts(env);
+  api.panelHtml(api.buildPanelModel(NOW));
+  const h = api.makeHandlers(env.doc, env.win);
+  const big = ':grin:\n'.repeat(2500); // 17500 characters, about 100000 as HTML
+  h.onInput('draft-text', Object.assign(el({ 'data-act': 'draft-text', 'data-id': '42' }), { value: big, selectionStart: 0, selectionEnd: 0 }));
+  h.onAction('ed-mode', el({ 'data-act': 'ed-mode', 'data-mode': 'html' }));
+  assert.strictEqual(api.state.editor.lang, 'md');
+  assert.strictEqual(api.state.editor.text, big);
+  assert.ok(api.state.notices.some((n) => /over the 20000 limit/.test(n.text)));
+});
+
+test('Preview shows a placeholder for an external image until Show images', () => {
+  const env = loadUserscript({ location: THREAD, now: NOW });
+  const api = drafts(env);
+  api.state.drafts = api.saveDraft(api.freshDrafts(), 42, '![a](https://i.imgur.com/x.png) :grin:', NOW, 'T', 'md');
+  api.panelHtml(api.buildPanelModel(NOW));
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onAction('ed-mode', el({ 'data-act': 'ed-mode', 'data-mode': 'preview' }));
+  let html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.doesNotMatch(html, /src="https:\/\/i\.imgur\.com/);
+  assert.match(html, /\[image from i\.imgur\.com\]/);
+  assert.match(html, /src="\/images\/emotions\/svg\/grin\.svg"/, 'Torn emoji always show');
+  h.onAction('ed-pv-images', el({ 'data-act': 'ed-pv-images' }));
+  html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /<img referrerpolicy="no-referrer" src="https:\/\/i\.imgur\.com\/x\.png"/);
 });
 ```
 
@@ -1909,7 +2300,7 @@ Expected: FAIL.
     editor: {
       key: null, lang: 'md', text: '', selStart: 0, selEnd: 0, mode: 'source', previewTheme: null,
       picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn', name: '', imageCheck: null,
-      pickerWarn: null,
+      pickerWarn: null, dirty: false, showImages: false, fields: {},
     },
 ```
 
@@ -1930,7 +2321,8 @@ After `renderDraftsView` (runtime section), add the helpers:
     state.editor = {
       key: key, lang: lang, text: text, selStart: text.length, selEnd: text.length, mode: 'source',
       previewTheme: null, picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn',
-      name: d && d.name ? d.name : '', imageCheck: null, pickerWarn: null,
+      name: d && d.name ? d.name : '', imageCheck: null, pickerWarn: null, dirty: false, showImages: false,
+      fields: {},
     };
     void now;
   }
@@ -1944,7 +2336,15 @@ After `renderDraftsView` (runtime section), add the helpers:
     if (!e.key) return;
     if (/^n[0-9]+$/.test(e.key)) state.drafts = saveFreeDraft(state.drafts, e.key, e.text, now, e.name, e.lang);
     else state.drafts = saveDraft(state.drafts, e.key, e.text, now, '', e.lang);
+    e.dirty = false;
     persist('drafts');
+  }
+
+  // Spec section 4a: nothing is ever silently cut. An action whose result
+  // would pass the draft limit is refused with this.
+  function overLimitNotice(n) {
+    notice('That would make this draft ' + n + ' characters, over the ' + DRAFT_MAX_CHARS
+      + ' limit. Shorten it, or keep it as it is.', 'warn');
   }
 ```
 
@@ -1953,7 +2353,11 @@ current key, then pass a copy:
 
 ```js
     var edKey = editorKeyFor({ draftFocusId: state.draftFocusId, route: state.route });
-    if (edKey !== state.editor.key) loadEditor(edKey, now);
+    if (edKey !== state.editor.key) {
+      // Spec 4a: switching drafts or threads never discards typed text.
+      if (state.editor.dirty && state.editor.key) saveEditor(now);
+      loadEditor(edKey, now);
+    }
 ```
 
 Put that block where `now` is in scope, at the start of `buildPanelModel`. Then
@@ -1996,8 +2400,10 @@ Add `themeResolved: null,` to the initial state.
     var e = model.editor;
     var theme = e.previewTheme || model.themeResolved || 'dark';
     var blocks = previewModel(e.lang, e.text);
+    var hasExternal = blocks.some(function (b) { return /<img src="https:/.test(b.html); });
     var out = ['<div class="tfcc-pvbar">'];
     out.push('<span class="tfcc-note">Preview as Torn shows it.</span>');
+    if (hasExternal && !e.showImages) out.push(btn('ed-pv-images', 'Show images'));
     for (var t = 0; t < 2; t += 1) {
       var th = t ? 'dark' : 'light';
       out.push('<button type="button" data-act="ed-pv-theme" data-theme="' + th + '" aria-pressed="'
@@ -2009,7 +2415,7 @@ Add `themeResolved: null,` to the initial state.
       // blocks[i].html is cleanTornHtml output: the allowlist is what makes
       // rendering player-typed HTML inside the panel safe (spec section 5).
       out.push('<div class="tfcc-pv-block" data-act="ed-jump" data-offset="' + blocks[i].offset
-        + '" title="Tap to edit here">' + blocks[i].html + '</div>');
+        + '" title="Tap to edit here">' + previewImages(blocks[i].html, e.showImages) + '</div>');
     }
     out.push('</div>');
     return out.join('');
@@ -2037,7 +2443,7 @@ Add `themeResolved: null,` to the initial state.
       out.push(renderPreview(model));
     } else {
       out.push('<textarea class="tfcc-draft" data-act="draft-text" data-id="' + escapeHtml(key)
-        + '" aria-label="Draft text">' + escapeHtml(e.text) + '</textarea>');
+        + '" maxlength="' + DRAFT_MAX_CHARS + '" aria-label="Draft text">' + escapeHtml(e.text) + '</textarea>');
     }
     out.push('<div class="tfcc-actions">');
     out.push(btn('draft-save', 'Save draft', ' data-id="' + escapeHtml(key) + '"'));
@@ -2084,6 +2490,32 @@ Add `themeResolved: null,` to the initial state.
     out.push(renderDraftList(model));
     return out.join('');
   }
+```
+
+Add the engine function `previewImages` to the Preview section of the engine
+(after `previewModel`), with its test in `tests/editor-convert.test.js`:
+
+```js
+  // Spec 4a: Preview loads no external image until the player asks. Torn's
+  // own emoji are same-site and always show. Input is cleaned HTML, whose img
+  // tags are always exactly <img src="..."> or <img src="..." alt="...">.
+  function previewImages(html, show) {
+    return String(html).replace(/<img src="(https:[^"]*)"( alt="[^"]*")?>/g, function (all, src, alt) {
+      if (show) return '<img referrerpolicy="no-referrer" src="' + src + '"' + (alt || '') + '>';
+      var host = (/^https:\/\/([^\/?#"]+)/.exec(src) || [])[1] || 'another site';
+      return '<span class="tfcc-img-ph">[image from ' + host + ']</span>';
+    });
+  }
+```
+
+```js
+test('previewImages holds external images back and never touches Torn emoji', () => {
+  const h = '<p><img src="https://i.imgur.com/x.png" alt="a"> <img src="/images/emotions/svg/grin.svg"></p>';
+  assert.strictEqual(api.previewImages(h, false),
+    '<p><span class="tfcc-img-ph">[image from i.imgur.com]</span> <img src="/images/emotions/svg/grin.svg"></p>');
+  assert.strictEqual(api.previewImages(h, true),
+    '<p><img referrerpolicy="no-referrer" src="https://i.imgur.com/x.png" alt="a"> <img src="/images/emotions/svg/grin.svg"></p>');
+});
 ```
 
 Task 11 defines `renderEditorToolbar`. Add this temporary stub now, and replace
@@ -2141,11 +2573,14 @@ the CSS builder (runtime):
           if (DRAFT_LANGS.indexOf(mode) === -1) return;
           if (mode === ed.lang) { ed.mode = 'source'; redraw(); return; }
           if (mode === 'text' && ed.lang !== 'text' && ed.text.trim()) { ed.confirmText = ed.lang; redraw(); return; }
-          ed.text = convertDraft(ed.text, ed.lang, mode);
+          var converted = convertDraft(ed.text, ed.lang, mode);
+          if (converted.length > DRAFT_MAX_CHARS) { overLimitNotice(converted.length); redraw(); return; }
+          ed.text = converted;
           ed.lang = mode; ed.mode = 'source'; ed.selStart = ed.selEnd = ed.text.length;
           if (ed.text.trim()) saveEditor(now);
           redraw(); return;
         }
+        if (act === 'ed-pv-images') { state.editor.showImages = true; redraw(); return; }
         if (act === 'ed-mode-confirm') {
           var ec = state.editor;
           ec.text = convertDraft(ec.text, ec.lang, 'text');
@@ -2181,8 +2616,11 @@ the CSS builder (runtime):
         }
         if (act === 'draft-copy' && id) {
           var cd = state.editor.key === id ? null : draftFor(state.drafts, id);
-          copyPost(doc, win, cd ? postHtml(cd.text, draftLangOf(cd)) : editorPostHtml());
-          notice('Post copied. Paste it into Torn\'s reply box.', 'info'); redraw(); return;
+          copyPost(doc, win, cd ? postHtml(cd.text, draftLangOf(cd)) : editorPostHtml(), function (r) {
+            notice(r.ok ? 'Post copied. Paste it into Torn\'s reply box.' : 'Copy failed. Switch to HTML, select the text and copy it yourself.', r.ok ? 'info' : 'warn');
+            redraw();
+          });
+          return;
         }
         if (act === 'draft-insert' && id) {
           if (state.editor.key === id && state.editor.text.trim()) saveEditor(now);
@@ -2201,12 +2639,17 @@ In `onInput`, before the `note-input`/`tag-input` filter, add:
 ```js
         if (act === 'draft-text') {
           var nn = function (v) { return typeof v === 'number' && isFinite(v) ? v : 0; };
-          state.editor.text = el && el.value !== undefined ? String(el.value) : '';
+          state.editor.text = el && el.value !== undefined ? String(el.value).slice(0, DRAFT_MAX_CHARS) : '';
           state.editor.selStart = nn(el && el.selectionStart);
           state.editor.selEnd = nn(el && el.selectionEnd);
+          state.editor.dirty = true;
           return;
         }
-        if (act === 'ed-name') { state.editor.name = el && el.value !== undefined ? String(el.value).slice(0, FREE_NAME_MAX) : ''; return; }
+        if (act === 'ed-name') {
+          state.editor.name = el && el.value !== undefined ? String(el.value).slice(0, FREE_NAME_MAX) : '';
+          state.editor.dirty = true;
+          return;
+        }
 ```
 
 In `restoreSelection`, before the `drawerEdit` logic, add:
@@ -2238,7 +2681,7 @@ all render:
 
 ```js
         if (view === 'drafts') {
-          api.state.editor.text = '# T';
+          api.state.editor.text = '# T\n![a](https://i.imgur.com/x.png)'; // an external image, so Show images renders
           for (const patch of [{ mode: 'source' }, { confirmText: 'md' }, { mode: 'preview', confirmText: null }]) {
             Object.assign(api.state.editor, patch);
             const hh = api.panelHtml(api.buildPanelModel(NOW));
@@ -2250,9 +2693,20 @@ all render:
         }
 ```
 
+Add the following to `EXPORT_NAMES`:
+
+```js
+  'editorKeyFor', 'loadEditor', 'editorPostHtml', 'saveEditor', 'overLimitNotice', 'previewImages',
+  'renderEditorPane', 'renderDraftList', 'renderModePill', 'renderPreview', 'teVars', 'EDITOR_MODES',
+  'buildPanelModel',
+```
+
+Skip `buildPanelModel` if it is already listed. `tests/handlers.test.js`
+already calls it, so check first.
+
 - [ ] **Step 7: Run the tests**
 
-Run: `node --test tests/editor-view.test.js tests/handlers.test.js tests/drafts.test.js`
+Run: `node --test tests/editor-view.test.js tests/editor-convert.test.js tests/handlers.test.js tests/drafts.test.js`
 Expected: PASS.
 
 `tests/wide-parity.test.js` now FAILS on the drafts view. Task 13 records the
@@ -2326,22 +2780,47 @@ test('a colour from the picker wraps the selection it was opened on', () => {
   assert.strictEqual(api.state.editor.picker, null);
 });
 
-test('a hard-to-read custom colour asks once, then applies', () => {
-  const { env, api, h } = editorAt('x', 'md', [0, 1]);
+// A picker field typed into: the panel's input event, as the browser sends it.
+const typeInto = (h, act, value) => h.onInput(act, Object.assign(el({ 'data-act': act }), { value }));
+
+test('a hard-to-read custom colour asks once, keeps the typed hex across the redraw, then applies', () => {
+  const { api, h } = editorAt('x', 'md', [0, 1]);
   h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'color' }));
-  env.doc.querySelector = (s) => (s === '[data-act="ed-hex-input"]' ? { value: '#ffd43b' } : null);
+  typeInto(h, 'ed-hex-input', '#ffd43b');
   h.onAction('ed-color', el({ 'data-act': 'ed-color', 'data-value': 'custom' }));
-  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /hard to read on Torn&#39;s light theme|hard to read on Torn's light theme/);
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /hard to read on Torn&#39;s light theme|hard to read on Torn's light theme/);
+  assert.match(html, /data-act="ed-hex-input"[^>]*value="#ffd43b"/, 'the redraw keeps what was typed');
   assert.strictEqual(api.state.editor.text, 'x');
   h.onAction('ed-color', el({ 'data-act': 'ed-color', 'data-value': 'custom' }));
   assert.strictEqual(api.state.editor.text, '{#ffd43b}x{/}');
 });
 
+test('picker fields are read from the editor state, never from the page', () => {
+  const { env, api, h } = editorAt('x', 'md', [0, 1]);
+  // Torn's page (or another script) holding an element with the same data-act
+  // must not be read.
+  env.doc.querySelector = (s) => (s === '[data-act="ed-link-input"]' ? { value: 'https://evil.example/' } : null);
+  h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'link' }));
+  typeInto(h, 'ed-link-input', 'https://a.b');
+  h.onAction('ed-link-apply', el({ 'data-act': 'ed-link-apply' }));
+  assert.strictEqual(api.state.editor.text, '[x](https://a.b)');
+});
+
+test('a toolbar edit that would pass the draft limit is refused', () => {
+  const { api, h } = editorAt('y'.repeat(19995), 'md', [0, 19995]);
+  h.onAction('ed-mark', el({ 'data-act': 'ed-mark', 'data-mark': 'bold' }));
+  h.onAction('ed-mark', el({ 'data-act': 'ed-mark', 'data-mark': 'bold' }));
+  h.onAction('ed-mark', el({ 'data-act': 'ed-mark', 'data-mark': 'bold' }));
+  assert.ok(api.state.editor.text.length <= api.DRAFT_MAX_CHARS);
+  assert.ok(api.state.notices.some((n) => /over the 20000 limit/.test(n.text)));
+});
+
 test('the image picker fixes a Drive link and inserts it; a page link shows how to fix it', () => {
-  const { env, api, h } = editorAt('', 'md', [0, 0]);
+  const { api, h } = editorAt('', 'md', [0, 0]);
   h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'image' }));
-  let url = 'https://drive.google.com/file/d/1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h/view?usp=sharing';
-  env.doc.querySelector = (s) => (s === '[data-act="ed-img-url"]' ? { value: url } : s === '[data-act="ed-img-alt"]' ? { value: 'pic' } : null);
+  typeInto(h, 'ed-img-url', 'https://drive.google.com/file/d/1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h/view?usp=sharing');
+  typeInto(h, 'ed-img-alt', 'pic');
   h.onAction('ed-img-check', el({ 'data-act': 'ed-img-check' }));
   const html = api.panelHtml(api.buildPanelModel(NOW));
   assert.match(html, /thumbnail\?id=1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h&amp;sz=w1000/);
@@ -2349,7 +2828,7 @@ test('the image picker fixes a Drive link and inserts it; a page link shows how 
   h.onAction('ed-img-insert', el({ 'data-act': 'ed-img-insert' }));
   assert.strictEqual(api.state.editor.text, '![pic](https://drive.google.com/thumbnail?id=1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h&sz=w1000)');
   h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'image' }));
-  url = 'https://ibb.co/8P0808s';
+  typeInto(h, 'ed-img-url', 'https://ibb.co/8P0808s');
   h.onAction('ed-img-check', el({ 'data-act': 'ed-img-check' }));
   const html2 = api.panelHtml(api.buildPanelModel(NOW));
   assert.match(html2, /Direct link/);
@@ -2448,7 +2927,8 @@ test('narrow shows five tools and More; the rest are in the drawer', () => {
     ['{red}text{/}', 'a Torn colour (red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange, gray1 to gray5)'],
     ['{#ff8800}text{/}', 'any colour'], ['{18}text{/}', 'text size, 8 to 36'], ['# Title', 'a big bold line (## and ### are smaller)'],
     [':::center', 'centre the lines up to the next :::'], ['> text', 'a quote'], ['- item', 'a list (1. for numbers)'],
-    ['[text](https://...)', 'a link'], ['![alt](https://...)', 'an image'], [':grin:', 'a Torn emoji'],
+    // No literal URLs here: read-only.test.js audits every http(s) host in the source.
+    ['[text](link address)', 'a link (https only)'], ['![description](image link)', 'an image'], [':grin:', 'a Torn emoji'],
     ['| a | b |', 'a table row; a --- row under the first makes it a header'], ['\\*', 'a literal mark character'],
   ]);
 
@@ -2456,6 +2936,10 @@ test('narrow shows five tools and More; the rest are in the drawer', () => {
 
   function renderPicker(model) {
     var e = model.editor;
+    // Typed fields live in the editor state (onInput), so a redraw re-renders
+    // what was typed instead of emptying it.
+    var F = e.fields || {};
+    var fv = function (k, d) { return escapeHtml(Object.prototype.hasOwnProperty.call(F, k) ? F[k] : d); };
     var out = ['<div class="tfcc-picker" role="group" aria-label="' + escapeHtml(e.picker) + '">'];
     if (e.picker === 'color') {
       var theme = model.themeResolved || 'dark';
@@ -2467,7 +2951,7 @@ test('narrow shows five tools and More; the rest are in the drawer', () => {
           + '<span class="tfcc-swatch" style="background: ' + c[theme] + ';" aria-hidden="true"></span></button>');
       }
       out.push('</div><label for="tfcc-ed-hex" class="tfcc-note">Custom colour</label>'
-        + '<input id="tfcc-ed-hex" type="text" data-act="ed-hex-input" placeholder="#ff8800" maxlength="7">'
+        + '<input id="tfcc-ed-hex" type="text" data-act="ed-hex-input" placeholder="#ff8800" maxlength="7" value="' + fv('ed-hex-input', '') + '">'
         + btn('ed-color', 'Use custom colour', ' data-value="custom"'));
       if (e.pickerWarn) {
         out.push('<p class="tfcc-note" role="alert">' + escapeHtml(e.pickerWarn) + ' Tap Use custom colour again to use it anyway.</p>');
@@ -2478,27 +2962,29 @@ test('narrow shows five tools and More; the rest are in the drawer', () => {
       ['left', 'center', 'right', 'justify'].forEach(function (a) { out.push(btn('ed-align', a.charAt(0).toUpperCase() + a.slice(1), ' data-value="' + a + '"')); });
     } else if (e.picker === 'link') {
       out.push('<label for="tfcc-ed-link" class="tfcc-note">Link address (https)</label>'
-        + '<input id="tfcc-ed-link" type="url" data-act="ed-link-input" placeholder="https://">' + btn('ed-link-apply', 'Add link'));
+        + '<input id="tfcc-ed-link" type="url" data-act="ed-link-input" value="' + fv('ed-link-input', '') + '">' + btn('ed-link-apply', 'Add link'));
     } else if (e.picker === 'image') {
       out.push('<label for="tfcc-ed-img" class="tfcc-note">Image link</label>'
-        + '<input id="tfcc-ed-img" type="url" data-act="ed-img-url" placeholder="https://">'
+        + '<input id="tfcc-ed-img" type="url" data-act="ed-img-url" value="' + fv('ed-img-url', '') + '">'
         + '<label for="tfcc-ed-alt" class="tfcc-note">Description (optional)</label>'
-        + '<input id="tfcc-ed-alt" type="text" data-act="ed-img-alt" maxlength="200">'
+        + '<input id="tfcc-ed-alt" type="text" data-act="ed-img-alt" maxlength="200" value="' + fv('ed-img-alt', '') + '">'
         + btn('ed-img-check', 'Check link'));
       var r = e.imageCheck;
       if (r) {
         if (r.status === 'fixed') out.push('<p class="tfcc-note">Fixed for Torn: <code>' + escapeHtml(r.url) + '</code></p>');
         if (r.note) out.push('<p class="tfcc-note">' + escapeHtml(r.note) + '</p>');
         if (r.status === 'ok' || r.status === 'fixed') {
-          out.push('<img class="tfcc-img-check" src="' + escapeHtml(r.url) + '" alt="Preview of the image">'
+          // Loaded because the player tapped Check link; no referrer (spec 4a).
+          out.push('<img class="tfcc-img-check" referrerpolicy="no-referrer" src="' + escapeHtml(r.url) + '" alt="Preview of the image">'
             + btn('ed-img-insert', 'Insert image'));
         }
       }
       out.push('<p class="tfcc-note">Have the file, not a link? Upload it with Torn\'s own Insert Image button after Insert.</p>');
     } else if (e.picker === 'table') {
-      out.push('<label for="tfcc-ed-cols" class="tfcc-note">Columns</label><input id="tfcc-ed-cols" type="number" min="1" max="8" value="2" data-act="ed-cols">'
-        + '<label for="tfcc-ed-rows" class="tfcc-note">Rows</label><input id="tfcc-ed-rows" type="number" min="1" max="30" value="2" data-act="ed-rows">'
-        + '<label for="tfcc-ed-head" class="tfcc-note">Header row</label><input id="tfcc-ed-head" type="checkbox" checked data-act="ed-header">'
+      out.push('<label for="tfcc-ed-cols" class="tfcc-note">Columns</label><input id="tfcc-ed-cols" type="number" min="1" max="8" value="' + fv('ed-cols', '2') + '" data-act="ed-cols">'
+        + '<label for="tfcc-ed-rows" class="tfcc-note">Rows</label><input id="tfcc-ed-rows" type="number" min="1" max="30" value="' + fv('ed-rows', '2') + '" data-act="ed-rows">'
+        + '<label for="tfcc-ed-head" class="tfcc-note">Header row</label><input id="tfcc-ed-head" type="checkbox"'
+        + (F['ed-header'] === false ? '' : ' checked') + ' data-act="ed-header">'
         + btn('ed-table-insert', 'Insert table'));
     } else if (e.picker === 'emoji') {
       out.push('<div class="tfcc-pill" role="group" aria-label="Emoji set">'
@@ -2545,7 +3031,15 @@ own textarea, never Torn's page:
             state.editor.text = String(f.value); state.editor.selStart = f.selectionStart; state.editor.selEnd = f.selectionEnd;
           }
         }
+        // A picker's typed value, from the editor state (onInput), never from a
+        // document query: Torn's page could hold the same data-act.
+        function field(k, d) {
+          var f = state.editor.fields || {};
+          return Object.prototype.hasOwnProperty.call(f, k) ? f[k] : d;
+        }
         function applyEdit(r) {
+          // Spec 4a: never silently cut, never store past the limit.
+          if (r.text.length > DRAFT_MAX_CHARS) { overLimitNotice(r.text.length); redraw(); return; }
           state.editor.text = r.text; state.editor.selStart = r.start; state.editor.selEnd = r.end;
           state.editor.picker = null; state.editor.pickerWarn = null; state.editor.imageCheck = null;
           state.focusIntent = ['textarea[data-act="draft-text"]'];
@@ -2554,8 +3048,9 @@ own textarea, never Torn's page:
         }
 ```
 
-Define `editorField`, `captureSelection` and `applyEdit` once, inside
-`makeHandlers`, next to `valueOf`. Then add the cases:
+Define `editorField`, `captureSelection`, `field` and `applyEdit` once, inside
+`makeHandlers`, next to `valueOf`. The editor's handlers never call `valueOf`.
+Then add the cases:
 
 ```js
         var E = state.editor;
@@ -2575,7 +3070,7 @@ Define `editorField`, `captureSelection` and `applyEdit` once, inside
         if (act === 'ed-color') {
           var cv = el.getAttribute('data-value');
           if (cv === 'custom') {
-            var hex = valueOf('ed-hex-input').trim().toLowerCase();
+            var hex = String(field('ed-hex-input', '')).trim().toLowerCase();
             if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(hex)) { notice('Type a colour like #ff8800.', 'warn'); redraw(); return; }
             var warns = colorWarnings(hex);
             var warnText = warns.length ? 'This colour is hard to read on Torn\'s ' + warns.map(function (w) { return w.theme; }).join(' and ')
@@ -2593,23 +3088,21 @@ Define `editorField`, `captureSelection` and `applyEdit` once, inside
           applyEdit(applyBlockMark(E.lang, E.text, E.selStart, E.selEnd, 'align', av)); return;
         }
         if (act === 'ed-link-apply') {
-          var href = safeHref(valueOf('ed-link-input'));
+          var href = safeHref(field('ed-link-input', ''));
           if (!href) { notice('Links must start with https:// or http://.', 'warn'); redraw(); return; }
           applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, 'link', href)); return;
         }
         if (act === 'ed-img-check') {
-          E.imageCheck = fixImageUrl(valueOf('ed-img-url'));
-          E.imageAlt = valueOf('ed-img-alt');
+          E.imageCheck = fixImageUrl(field('ed-img-url', ''));
           redraw(); return;
         }
         if (act === 'ed-img-insert') {
           var ic = E.imageCheck;
           if (!ic || (ic.status !== 'ok' && ic.status !== 'fixed')) return;
-          applyEdit(insertAtCaret(E.text, E.selStart, E.selEnd, imageSnippet(E.lang, ic.url, E.imageAlt || ''))); return;
+          applyEdit(insertAtCaret(E.text, E.selStart, E.selEnd, imageSnippet(E.lang, ic.url, String(field('ed-img-alt', ''))))); return;
         }
         if (act === 'ed-table-insert') {
-          var hdr = doc.querySelector('[data-act="ed-header"]');
-          var tbl = tableSkeleton(E.lang, toInt(valueOf('ed-cols'), 2), toInt(valueOf('ed-rows'), 2), !hdr || hdr.checked !== false);
+          var tbl = tableSkeleton(E.lang, toInt(field('ed-cols', 2), 2), toInt(field('ed-rows', 2), 2), field('ed-header', true) !== false);
           applyEdit(insertBlock(E.text, E.selStart, E.selEnd, tbl)); return;
         }
         if (act === 'ed-emoji-tab') { E.emojiTab = el.getAttribute('data-tab') === 'unicode' ? 'unicode' : 'torn'; redraw(); return; }
@@ -2622,6 +3115,7 @@ Define `editorField`, `captureSelection` and `applyEdit` once, inside
         if (act === 'ed-fix-images') {
           captureSelection();
           var fx = fixAllImages(E.lang, E.text);
+          if (fx.text.length > DRAFT_MAX_CHARS) { overLimitNotice(fx.text.length); redraw(); return; }
           E.text = fx.text;
           if (fx.changed && E.text.trim()) saveEditor(now);
           notice(fx.changed ? 'Fixed ' + fx.changed + ' image link' + (fx.changed === 1 ? '' : 's') + ' for Torn.' : 'No image links needed fixing.', 'info');
@@ -2648,10 +3142,31 @@ test('insertAtCaret replaces the selection and puts the caret after', () => {
 });
 ```
 
-Export `insertAtCaret`. `valueOf` reads `doc.querySelector`. The pickers'
-inputs are unique `data-act`s in the panel, so it finds the right one. The
-handlers test asserts that uniqueness for `key-input` and its siblings; add
-the picker inputs to that list.
+Export `insertAtCaret`, `renderEditorToolbar`, `renderPicker` and
+`EDITOR_TOOLS`.
+
+Mirror the picker fields into the editor state as the player types. In
+`onInput`, beside the `draft-text` case:
+
+```js
+        if (['ed-hex-input', 'ed-link-input', 'ed-img-url', 'ed-img-alt', 'ed-cols', 'ed-rows'].indexOf(act) !== -1) {
+          state.editor.fields = Object.assign({}, state.editor.fields);
+          state.editor.fields[act] = el && el.value !== undefined ? String(el.value).slice(0, URL_MAX_CHARS) : '';
+          return;
+        }
+```
+
+In the `onChange` chain, for the checkbox:
+
+```js
+        if (act === 'ed-header') {
+          state.editor.fields = Object.assign({}, state.editor.fields, { 'ed-header': !!el.checked });
+          return;
+        }
+```
+
+`loadEditor` resets `fields` to `{}`. That is right: a new draft starts with an
+empty picker.
 
 CSS, appended next to Task 10's lines:
 
@@ -2687,6 +3202,9 @@ Expected: PASS.
 git add torn-forum-command-center.user.js tests/editor-view.test.js tests/editor-ops.test.js tests/handlers.test.js tests/load-userscript.js
 git commit -m "feat: editor toolbar, pickers, image link fixer and emoji (#58)"
 ```
+
+Then run `/code-map`, because the runtime and view have grown, and commit
+`docs/code-map.md` as "docs: refresh the code map".
 
 ---
 
@@ -2807,6 +3325,20 @@ Fill `inserted` with every new CSS line verbatim, including the two
 `tfcc-pv-light`/`tfcc-pv-dark` lines with their 17 variables. Lines that hang
 entirely off `.tfcc-narrow` are not wide-visible, so leave them out.
 
+**The captured diff is not approved by being captured** (plan review). Before
+committing the list:
+1. Check each `to` against spec section 8 (Wide): the pill row, the toolbar
+   row, the pane, the action row, and All drafts with **+ New draft**. Any
+   markup the spec does not describe is a bug to fix, not a line to list.
+2. Render main's wide Drafts and Settings views beside the new ones with
+   `tests/render-preview.mjs`, and screenshot both with gstack browse. The
+   owner's brief allows gstack browse for local preview files; it is never
+   pointed at torn.com.
+3. Put the screenshots in the PR description under "Wide changes for
+   approval". The owner approves them in the PR review.
+4. Every CSS line in `inserted` must be one this plan's Tasks 10 and 11
+   wrote. A line the plan does not contain is not listed.
+
 - [ ] **Step 3: Wire it in.** In `tests/wide-parity.test.js`:
 - add `const D58 = require('./wide-58-diffs');` after `D53`;
 - in `expectedView`, apply `D58.literals` after `DREL.literals`;
@@ -2862,10 +3394,9 @@ git commit -m "test: wide parity list for the Drafts editor (#58)"
 
 ```js
   {
-    name: 'the cleaner keeps event handler attributes',
+    name: 'the cleaner takes any image source (data: URLs and bare names survive)',
     suite: 'tests/editor-clean.test.js',
-    apply: (s) => s.replace("case 'p': return el('p', { style: pickStyle(attrs.style, ['text-align']) });",
-      "case 'p': return el('p', { style: pickStyle(attrs.style, ['text-align']), onclick: attrs.onclick });"),
+    apply: (s) => s.replace('        var src = safeImgSrc(attrs.src);', '        var src = attrs.src;'),
   },
   {
     name: 'the cleaner accepts javascript: links',
@@ -2873,9 +3404,12 @@ git commit -m "test: wide parity list for the Drafts editor (#58)"
     apply: (s) => s.replace("/^https?:\\/\\/[^\\s<>\"'`]+$/i.test(u) ? u : '';", "u;"),
   },
   {
-    name: 'the cleaner drops nothing with its content (script survives as text)',
+    // Both guards at once: with only one removed, the other still drops the
+    // script's text, and the mutation would change nothing (plan review).
+    name: 'a script element\'s text reaches the post',
     suite: 'tests/editor-clean.test.js',
-    apply: (s) => s.replace("script: true, style: true, iframe: true,", "style: true, iframe: true,"),
+    apply: (s) => s.replace("script: true, style: true, iframe: true,", "style: true, iframe: true,")
+      .replace("        if (!tok.raw) top.children.push({ text: tok.text });", '        top.children.push({ text: tok.text });'),
   },
   {
     name: 'Markdown loses colour on the way back from HTML',
@@ -3024,7 +3558,9 @@ Expected:
 - [ ] **Step 6: Commit, push, and open the PR**
 
 ```bash
-git add -A -- . ':!.vscode'
+git status --short   # mutation.log is ignored; .vscode/ is the owner's and stays out
+git add CHANGELOG.md CLAUDE.md README.md docs/adr docs/qa-checklist.md docs/architecture.md \
+  docs/forum-post.md docs/designs/2026-10-09-drafts-rich-editor.md docs/code-map.md
 git commit -m "docs: Drafts editor in the README, forum post, QA checklist and ADRs (#58)"
 git push -u origin feat/58-drafts-editor
 ```
@@ -3042,3 +3578,43 @@ Open the PR with `gh pr create`. Title: "feat: Drafts rich editor (#58)".
 - the owner QA list, which blocks the release.
 
 **No attribution footer.** Check the body's last line before submitting.
+
+---
+
+## Plan review resolutions
+
+The Codex adversarial review is in
+`docs/records/review/2026-10-09-drafts-rich-editor-plan-codex.md`. Its verdict
+was "rework". Each finding is answered here. **Fixed** means this plan, the
+spec, ADR 0002 or the reference code changed.
+
+| # | Finding | Resolution |
+|---|---|---|
+| 1 | Blocker: the size rules break lossless conversion, and saving silently truncates | **Fixed.** Spec 4a: any result over `DRAFT_MAX_CHARS` is refused through `overLimitNotice`, at the mode switch, every toolbar edit, Fix image links and autosave. The textarea has `maxlength`. `CLEAN_MAX_CHARS` is 1000000, measured against the worst expansion found (38x) and pinned by a Task 2 test, so a real draft is never sliced |
+| 2 | Blocker: first-match reply box, with five TinyMCE editors | **Fixed.** `findReplyBox` takes every match, keeps the visible ones, prefers `.forums-new-post-wrap`, and refuses when ambiguous (spec 7, ADR 0002). Tests cover a hidden body first, two visible bodies, and an ambiguous pair. Two mutations guard it |
+| 3 | Major: Preview loads arbitrary external images | **Fixed.** Placeholders until the player taps Show images, with `referrerpolicy="no-referrer"`. Emoji always show. The read-only host audit gains a named image-fixer list confined to `fixImageUrl` (spec 4a, Tasks 4 and 10) |
+| 4 | Major: the legacy-settings test bypasses `isRecoveredSettings` | **Fixed.** The Task 6 tests go through `loadKey` with `isRecoveredSettings`, as `loadAll` does |
+| 5 | Major: an autosave timer saves to the thread open now | **Fixed.** The thread and box are captured per listener, the old listener is removed, and the stale route is checked. Test and mutation added |
+| 6 | Major: Copy reports success before the clipboard answers | **Fixed.** `copyPost` takes a `done` callback, called only on settlement. Rejected `write` falls back to `writeText`, and a rejected `writeText` reports failure. Tests added |
+| 7 | Major: the custom-colour confirmation loses the typed hex | **Fixed.** Picker fields live in `state.editor.fields` (via `onInput`) and render back. The test asserts the redrawn value |
+| 8 | Major: picker reads use document-wide `valueOf` | **Fixed.** Editor handlers read `field()` from state only. A test proves a same-named element on Torn's page is ignored |
+| 9 | Major: unsaved text is discarded when switching drafts | **Fixed.** A `dirty` flag, with a save before `loadEditor` changes key. Test added |
+| 10 | Major: the cleaner slices silently | **Fixed** by #1. The slice is a security bound that a real draft cannot reach, and a test proves it |
+| 11 | Major: Text to MD/HTML trims spaces | **Documented** (spec 4a). HTML, and so Torn's post, collapses whitespace anyway. Preserving spaces would mean emitting `&nbsp;` runs players did not ask for |
+| 12 | Major: `data-mce-bogus` handling contradicts the spec | **Fixed.** The spec now says `"all"` is dropped with its content and others are unwrapped. The reference code does that. A Task 1 test was added, and the Task 9 test no longer expects a bogus element to survive |
+| 13 | Major: image fixer gaps | **Fixed:** the Reddit wrapper passes non-fixable verdicts through, and `fixAllImages` accepts single quotes. Every documented input shape is now a row in the Task 4 table. **Kept:** the Imgur `.png` rewrite, with its GIF note. It is unverified, so release QA item 6 tests a JPG and a GIF, and a failure moves Imgur to "not derivable" before release |
+| 14 | Major: wrong offsets in the link selection test | **Fixed** (22 and 23) |
+| 15 | Major: the long-post fixture is over the limit | **Fixed.** 1100 repeats (18700 characters), plus an assertion that conversion preserved every unit |
+| 16 | Major: the read-only host audit and the `insertDraft` focus audit will fail | **Fixed.** Task 4 extends the host audit deliberately with a confined list. Task 7 retargets the focus audit to `insertPost` |
+| 17 | Major: missing exports | **Fixed.** Explicit export lists in Tasks 10 and 11 |
+| 18 | Major: two mutations change nothing | **Fixed.** Replaced with an image-source mutation, and a script mutation that removes both guards together |
+| 19 | Major: self-referential wide parity | **Fixed.** Each `to` is checked against spec 8, and the before and after screenshots go to the owner for approval in the PR. Only CSS lines the plan wrote may be listed |
+| 20 | Major: tests that pass for the wrong reason | **Fixed.** Full constant fixtures copied from the probes; an independent sample-preservation test; source-preservation counts in the long-post test; a real Insert in the free-draft test |
+| 21 | Major: no Done button; check "as the player pastes" | **Spec amended.** Choices apply at once and Cancel closes, so a Done would add nothing. The image check runs on the Check link tap, because the panel does not redraw on keystrokes |
+| 22 | Major: `fromCodePoint` and `repeat` are not ES5 | **Not changed.** The script already depends on ES2015 built-ins (`Object.assign` in the drafts code), and Torn PDA runs modern webviews. The plan's "ES5-style" means syntax, not built-ins |
+| 23 | Major: stale code-map anchors | **Fixed.** Global constraint: locate by symbol, because line numbers drift. The map is regenerated after Tasks 6, 11 and 15 |
+| 24 | Minor: a 13-digit free-draft id | **Fixed.** The id wraps within 12 digits. Test added |
+| 25 | Minor: gstack browse is disabled | **Not changed.** The owner's brief for this phase allows gstack browse for local preview files, never for torn.com. CLAUDE.md's "Off" entry concerns QA of the live site |
+| 26 | Minor: no legacy-normaliser test | **Fixed.** A frozen v0.2.2 `normaliseDrafts` fixture, copied from tag `v0.2.2`, with a downgrade test |
+| 27 | Minor: `git add -A` can commit `mutation.log` | **Fixed.** `mutation.log` is in `.gitignore`, and every `git add` names its paths |
+| 28 | Minor: the ASCII check is missing from some tasks | **Fixed.** A global rule: every userscript-editing task runs it |

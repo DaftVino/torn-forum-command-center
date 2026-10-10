@@ -50,7 +50,11 @@
   var HEADING_PX = Object.freeze({ 1: 24, 2: 18, 3: 16 });
   var PASTE_MARKER = '<!-- x-tinymce/html -->';
   var EDITOR_BG = Object.freeze({ light: '#ffffff', dark: '#111111' });
-  var CLEAN_MAX_CHARS = 100000;
+  // A security bound, never reached by a real draft: the source is capped at
+  // DRAFT_MAX_CHARS (20000), and the largest expansion found is an empty
+  // one-cell table per three characters ("|", newline, newline), about 38
+  // times. A test pins the bound with the worst inputs found.
+  var CLEAN_MAX_CHARS = 1000000;
   var URL_MAX_CHARS = 2000;
 
   // ---- HTML tokenizer ------------------------------------------------------
@@ -231,7 +235,7 @@
       case 'p': return el('p', { style: pickStyle(attrs.style, ['text-align']) });
       case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6':
         return el('p', { style: pickStyle(attrs.style, ['text-align']), heading: HEADING_TAGS[tag] });
-      case 'br': return attrs['data-mce-bogus'] !== undefined ? null : el('br');
+      case 'br': return el('br');
       case 'span': return el('span', { style: pickStyle(attrs.style, SPAN_PROPS) });
       case 'b': case 'strong': return el('strong');
       case 'i': case 'em': return el('em');
@@ -282,11 +286,14 @@
         continue;
       }
       if (tok.type === 'open') {
-        if (DROP_WITH_CONTENT[tok.tag]) {
+        // TinyMCE's own bookkeeping: "all" goes with its content, any other
+        // bogus element is unwrapped (its content is the player's).
+        var bogus = tok.attrs['data-mce-bogus'];
+        if (bogus === 'all' || DROP_WITH_CONTENT[tok.tag]) {
           if (!tok.selfClose) { skip = tok.tag; skipDepth = 1; }
           continue;
         }
-        var node = cleanElementFor(tok.tag, tok.attrs);
+        var node = bogus !== undefined ? null : cleanElementFor(tok.tag, tok.attrs);
         if (!node) {
           // Unwrapped, but still a container: a ghost shares its parent's
           // children, so its close tag ends what was opened inside it.
@@ -1185,7 +1192,7 @@
       var inner = '';
       try { inner = decodeURIComponent(queryParam(rest, 'url')); } catch (e) { inner = ''; }
       var r = fixImageUrl(inner, 1);
-      return r.status === 'refused' ? r : imageResult('fixed', r.url, r.host, r.note);
+      return r.status === 'ok' || r.status === 'fixed' ? imageResult('fixed', r.url, r.host, r.note) : r;
     }
     if (host === 'preview.redd.it') {
       return imageResult('fixed', 'https://i.redd.it' + path, host, 'Reddit images often refuse to show on other sites.');
@@ -1213,11 +1220,12 @@
         return a + r.url + b;
       });
     } else if (lang === 'html') {
-      src = src.replace(/(<img\b[^>]*?\bsrc=")([^"]*)(")/gi, function (all, a, url, b) {
+      // Single- or double-quoted src, as players type either.
+      src = src.replace(/(<img\b[^>]*?\bsrc=)(["'])([^"']*)\2/gi, function (all, a, q, url) {
         var r = fixImageUrl(url.replace(/&amp;/g, '&'));
         if (r.status !== 'fixed') return all;
         changed += 1;
-        return a + r.url.replace(/&/g, '&amp;') + b;
+        return a + q + r.url.replace(/&/g, '&amp;') + q;
       });
     }
     return { text: src, changed: changed };
