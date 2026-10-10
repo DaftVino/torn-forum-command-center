@@ -261,3 +261,30 @@ test('E2: Fix image links is one Undo step; a fix that changes nothing adds none
   click(env, '[data-act="ed-undo"]');
   assert.strictEqual(api.state.editor.text, text);
 });
+
+test('E2: a reload of newer stored text is its own Undo step, never skipped past', () => {
+  const { env, api } = bootEditor({ text: 'hello' });
+  highlight(env, 0, 5);
+  click(env, '[data-act="ed-mark"][data-mark="bold"]');
+  assert.strictEqual(api.state.editor.text, '**hello**');
+  assert.strictEqual(api.state.editor.dirty, false, 'the bold was saved, so the editor is clean');
+  // Torn's own reply box autosaves newer text into this thread's draft.
+  api.state.drafts = api.saveDraft(api.state.drafts, 42, 'autosaved newer', NOW + 1000, 'T', 'md');
+  redraw(env);
+  assert.strictEqual(api.state.editor.text, 'autosaved newer', 'the clean editor reloads what is stored');
+  click(env, '[data-act="ed-undo"]');
+  assert.strictEqual(api.state.editor.text, '**hello**', 'one Undo reverses exactly the reload');
+  redraw(env);
+  click(env, '[data-act="ed-undo"]');
+  assert.strictEqual(api.state.editor.text, 'hello', 'the next Undo reverses the bold');
+});
+
+test('E2: a reload that changes nothing the player sees adds no Undo step', () => {
+  const { env, api } = bootEditor({ text: 'hello' });
+  highlight(env, 0, 5);
+  click(env, '[data-act="ed-mark"][data-mark="bold"]');
+  // Same text and mode, a newer stamp: the signature changes, the text does not.
+  api.state.drafts = api.saveDraft(api.state.drafts, 42, '**hello**', NOW + 1000, 'T', 'md');
+  redraw(env);
+  assert.strictEqual(api.state.editor.undo.length, 1);
+});

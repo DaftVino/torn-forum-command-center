@@ -13,8 +13,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
     paragraph jumps back to it.
   - **Toolbar:** bold, italic, underline, strike, Torn's 17 text colors or a
     custom color, size, alignment, quote, link, image, table, emoji (Torn's
-    own and Unicode) and a Markdown help card. On a narrow panel it shows B,
-    I, U, Color, Link and More, and wraps to two rows at 320px.
+    own and Unicode) and a Markdown help card. On a narrow panel it shows
+    Undo, B, I, U, Color, Link and More, and wraps onto another row when
+    they do not fit.
   - **Image link fixer:** paste a Google Drive, Dropbox, GitHub, Giphy,
     Gyazo, Imgur or Reddit link, and the editor rewrites it into a link Torn
     can show. Hosts that cannot be rewritten get a one-line how-to. Image
@@ -44,7 +45,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 ### Changed
 
 - One status message at a time: a new message replaces the previous one, and
-  messages clear when you open another thread, change view or leave the page.
+  messages clear when you open another thread, forum page or panel view, or
+  leave the page.
 - Alignment and Quote apply to every selected line, and aligning anywhere in
   a table aligns the whole table. A Markdown table needs a header row to hold
   alignment; without one the editor says so and changes nothing.
@@ -58,7 +60,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   every toolbar and picker action, including after the More drawer opens.
 - The height you drag the editor to is kept across toolbar, picker and mode
   changes.
-- A failed save or a damaged store is never hidden by a later message.
+- A failed save's error is never replaced by the success message of the same
+  action (Save, Insert, Fix image links, Import, Clear post cache, the
+  resets). A warning, or the next thing you do, can still replace it. Damaged
+  stores found at load are named together in one message.
 - Insert into reply box now reaches Torn's reply editor. It had been writing
   into a hidden Report reason box since Torn's editor change (#60). Insert
   adds to what is already in the editor and never replaces it, and you

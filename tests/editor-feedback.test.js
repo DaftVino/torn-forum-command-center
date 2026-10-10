@@ -132,6 +132,18 @@ test('B2: a focused textarea\'s live selection still wins at click time', () => 
   assert.strictEqual(api.state.editor.text, 'one\ntwo\n*three*');
 });
 
+test('B2: the field the last selection event came from is trusted at click time, even unfocused', () => {
+  const { env, api } = bootEditor({ text: 'one\ntwo\nthree' });
+  const ta = highlight(env, 0, 3, 'mouseup');
+  ta.value = api.state.editor.text;
+  // Focus has gone to the toolbar; the selection moved with no event the
+  // panel saw. The same element, so its live selection is the player's.
+  assert.notStrictEqual(env.doc.activeElement, ta);
+  ta.selectionStart = 8; ta.selectionEnd = 13;
+  click(env, '[data-act="ed-mark"][data-mark="italic"]');
+  assert.strictEqual(api.state.editor.text, 'one\ntwo\n*three*');
+});
+
 // ---- B3/B4 through the toolbar ------------------------------------------
 
 test('B4: Align on a body row of a headerless Markdown table warns and changes nothing', () => {

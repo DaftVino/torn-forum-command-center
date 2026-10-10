@@ -29,11 +29,11 @@ const literals = [
     item: '58 drafts editor pane', view: 'drafts',
     from: '<div class="tfcc-section"><h4>Draft for this thread</h4>'
       + '<textarea class="tfcc-draft" data-act="draft-text" data-id="101">',
-    to: '<div class="tfcc-section tfcc-draft-editor"><h4>Draft for this thread '
+    to: '<div class="tfcc-section tfcc-draft-editor"><div class="tfcc-infobar"><h4>Draft for this thread</h4>'
       + '<button type="button" class="tfcc-info" data-act="info" data-info="drafts-editor" aria-expanded="false" '
       + 'aria-controls="tfcc-info-drafts-editor" aria-label="About drafts" title="About drafts">'
       + '<svg class="tfcc-gl" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">'
-      + '<path d="M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5v.5"/></svg></button></h4>'
+      + '<path d="M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5v.5"/></svg></button></div>'
       + '<p class="tfcc-note tfcc-infotext" id="tfcc-info-drafts-editor" hidden>'
       + 'A draft belongs to one thread, or is a free draft you can use for anything, such as a new thread. '
       + 'Save keeps it on this device only. Insert puts the post at the end of the reply box on Torn, and you still press Post yourself. '

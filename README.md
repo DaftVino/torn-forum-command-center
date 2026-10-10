@@ -82,8 +82,8 @@ button yourself.
   Show images, so the panel does not contact image hosts on its own.
 - **Toolbar.** Bold, italic, underline, strike, Torn's 17 text colors or a
   custom color, size, alignment, quote, link, image, table, emoji (Torn's own
-  and Unicode) and a Markdown help card. On a narrow panel it shows B, I, U,
-  Color, Link and More, and wraps to two rows at 320px.
+  and Unicode) and a Markdown help card. On a narrow panel it shows Undo, B,
+  I, U, Color, Link and More, and wraps onto another row when they do not fit.
 - **Markdown marks.**
 
 | You type | You get |
@@ -126,8 +126,12 @@ button yourself.
   and "Editor height (phone)": Small, Medium, Large or Extra large (Small is
   the old height). Desktop defaults to Large, phone to Medium.
 - **One message at a time.** A new status message replaces the previous one,
-  and messages clear when you open another thread, change view or leave the
-  page.
+  and messages clear when you open another thread, forum page or panel view,
+  or leave the page. If a save fails, its error stays: the same action's
+  success message never replaces it.
+- **Drafts info.** The `i` button beside "Draft for this thread" (or beside
+  a free draft's name) explains thread drafts, free drafts, Save, Insert,
+  Copy and autosave.
 - **Free drafts.** **+ New draft** creates a named draft tied to no thread,
   such as a new thread's opening post. All drafts lists both kinds.
 - **Insert and Copy.** Insert into reply box adds the formatted post to the end

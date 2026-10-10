@@ -566,7 +566,11 @@ Walk on Torn PDA and on desktop, signed in to a real account.
 - [ ] 11. Save as free draft on a thread draft creates "Untitled N" with the
       editor text and leaves the thread's draft unchanged.
 - [ ] 12. Status messages: only the latest shows, and it clears when you open
-      another thread or change view.
+      another thread, forum page or panel view (Threads, Drafts, Settings).
+- [ ] 13. At 320px, the narrow toolbar (Undo, B, I, U, Color, Link, More)
+      wraps cleanly with 44px targets. The drafts `i` button sits beside
+      "Draft for this thread" and beside a free draft's name, and opens its
+      text under them.
 
 ## Sign-off
 

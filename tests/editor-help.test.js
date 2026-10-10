@@ -91,14 +91,15 @@ test('C3: HTML mode shows the HTML key, with the strip note', () => {
 test('C4: a thread draft and a free draft both carry the drafts info button and its hidden text', () => {
   const { env, api } = boot('md');
   let html = redraw(env);
-  assert.match(html, /<h4>Draft for this thread <button[^>]*data-info="drafts-editor"[^>]*aria-label="About drafts"/);
+  // The info button sits in an infobar beside the heading, not inside it.
+  assert.match(html, /<div class="tfcc-infobar"><h4>Draft for this thread<\/h4><button[^>]*data-info="drafts-editor"[^>]*aria-label="About drafts"/);
   assert.match(html, /<p class="tfcc-note tfcc-infotext" id="tfcc-info-drafts-editor" hidden>[^<]*Save keeps it on this device only\./);
   click(env, '[data-act="info"][data-info="drafts-editor"]');
   html = redraw(env);
   assert.match(html, /id="tfcc-info-drafts-editor">/, 'opens on a tap');
   click(env, '[data-act="draft-new"]');
   html = redraw(env);
-  assert.match(html, /id="tfcc-ed-name"[^>]*><button[^>]*data-info="drafts-editor"/);
+  assert.match(html, /<div class="tfcc-infobar"><label class="tfcc-note" for="tfcc-ed-name">Draft name<\/label><button[^>]*data-info="drafts-editor"[^>]*><svg[\s\S]*?<\/button><\/div><input id="tfcc-ed-name"/);
   assert.match(html, /id="tfcc-info-drafts-editor"/);
   assert.ok(api.state.editor && /^n[0-9]+$/.test(api.state.editor.key));
 });

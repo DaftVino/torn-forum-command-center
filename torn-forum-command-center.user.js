@@ -5559,9 +5559,26 @@
     persist('settings');
   }
 
+  // True once a write failed during the current action: its error notice
+  // must not be replaced by that action's own success message. Every action
+  // entry (onAction, onChange, onInput, a thread link) and a route change
+  // clears it; persist sets it.
+  var persistFailed = false;
+
   function notice(text, kind) {
+    var k = kind || 'info';
+    // A failed save is never hidden by a later "done" in the same action;
+    // a warning or another error still replaces it.
+    if (k === 'info' && persistFailed) return;
     // One status message at a time: a new one replaces the previous.
-    state.notices = [{ text: safeString(text, 300), kind: kind || 'info' }];
+    state.notices = [{ text: safeString(text, 300), kind: k }];
+  }
+
+  // "A", "A and B", "A, B, and C": the comma before the last "and" keeps
+  // "Folders and tags" readable as one name.
+  function joinNames(names) {
+    if (names.length < 3) return names.join(' and ');
+    return names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
   }
 
   function loadAll(now) {
@@ -5588,7 +5605,7 @@
         if (pair[1].recovered) damaged.push(pair[0]);
       });
     // One slot for messages: every damaged store is named in a single notice.
-    if (damaged.length) notice(damaged.join(' and ') + ' were damaged and have been reset.', 'warn');
+    if (damaged.length) notice(joinNames(damaged) + ' were damaged and have been reset.', 'warn');
   }
 
   function persist(which) {
@@ -5604,7 +5621,7 @@
     var pair = map[which];
     if (!pair) return { ok: true };
     var res = saveKey(pair[0], pair[1]);
-    if (!res.ok) notice(res.detail || 'Could not save.', 'error');
+    if (!res.ok) { persistFailed = true; notice(res.detail || 'Could not save.', 'error'); }
     return res;
   }
 
@@ -7199,6 +7216,12 @@
       // An open picker and what was typed into it are the player's, not the
       // stored draft's: a reload never wipes them mid-edit.
       ['picker', 'fields', 'imageCheck', 'pickerWarn', 'emojiTab', 'moreOpen', 'height', 'undo'].forEach(function (k) { state.editor[k] = keep[k]; });
+      // With steps to undo, the reload is a step of its own: one Undo goes
+      // back to what the editor showed before it, never past the newer stored
+      // text. With none, Undo stays off, as on a freshly opened draft.
+      if (keep.undo && keep.undo.length && (keep.text !== state.editor.text || keep.lang !== state.editor.lang)) {
+        pushUndo(state.editor, keep);
+      }
     }
     var rows = state.rows;
     var query = parseQuery(state.searchQuery);
@@ -8318,12 +8341,16 @@
     var key = e.key;
     var out = ['<div class="tfcc-section tfcc-draft-editor">'];
     var isFree = /^n[0-9]+$/.test(key);
+    // The info button sits in an infobar beside the heading or the name's
+    // label, as every other info button does, never inside the heading.
     if (isFree) {
-      out.push('<label class="tfcc-note" for="tfcc-ed-name">Draft name</label>'
+      out.push('<div class="tfcc-infobar"><label class="tfcc-note" for="tfcc-ed-name">Draft name</label>'
+        + renderInfoButton('drafts-editor', model.openInfoId) + '</div>'
         + '<input id="tfcc-ed-name" type="text" maxlength="80" data-act="ed-name" data-id="' + escapeHtml(key)
-        + '" value="' + escapeHtml(e.name) + '">' + renderInfoButton('drafts-editor', model.openInfoId));
+        + '" value="' + escapeHtml(e.name) + '">');
     } else {
-      out.push('<h4>Draft for this thread ' + renderInfoButton('drafts-editor', model.openInfoId) + '</h4>');
+      out.push('<div class="tfcc-infobar"><h4>Draft for this thread</h4>'
+        + renderInfoButton('drafts-editor', model.openInfoId) + '</div>');
     }
     out.push(renderInfoText('drafts-editor', model.openInfoId, DRAFTS_INFO));
     out.push(renderModePill(e));
@@ -8425,8 +8452,11 @@
   var UNDO_MAX = 50;
   var TYPING_BURST_MS = 1000;
 
-  function pushUndo(e) {
-    var stack = (e.undo || []).concat([{ text: e.text, lang: e.lang, selStart: e.selStart, selEnd: e.selEnd }]);
+  // from: the state to snapshot when it is not e itself (a reload keeps the
+  // editor it replaced).
+  function pushUndo(e, from) {
+    var f = from || e;
+    var stack = (e.undo || []).concat([{ text: f.text, lang: f.lang, selStart: f.selStart, selEnd: f.selEnd }]);
     e.undo = stack.length > UNDO_MAX ? stack.slice(stack.length - UNDO_MAX) : stack;
     // Anything pushed here ends a typing burst: the next keystroke starts one.
     e.typingAt = 0;
@@ -8454,12 +8484,9 @@
     } else state.drafts = saveDraft(state.drafts, e.key, e.text, now, '', e.lang);
     e.dirty = false;
     e.src = draftSig(draftFor(state.drafts, e.key));
-    editorSaveFailed = !persist('drafts').ok;
+    persist('drafts');
     return true;
   }
-  // True when the last saveEditor could not write; the error notice it raised
-  // must not be replaced by a success message.
-  var editorSaveFailed = false;
 
   // Spec section 4a: nothing is ever silently cut. An action whose result
   // would pass the draft limit is refused with this.
@@ -10148,12 +10175,19 @@
     // #58: the panel's own draft textarea, for the selection at click time.
     // The editor's handlers never call valueOf.
     function editorField() { return draftFieldOf(doc.getElementById(PANEL_ID)); }
-    // Only a focused field's selection is the player's: a redraw (More, a
-    // picker) renders a fresh, unfocused textarea whose own selection means
-    // nothing, and the mirrored one (onSelect) stands (#58 B2).
+    // The textarea the last selection-mirror event (onSelect, onInput) came
+    // from. Its live selection is the player's even once focus has moved to a
+    // toolbar button.
+    var lastSelField = null;
+    // Only a focused field's selection, or that of the very field the last
+    // mirror event came from, is the player's: a redraw (More, a picker)
+    // renders a fresh textarea whose own selection means nothing, and the
+    // mirrored one (onSelect) stands (#58 B2).
     function captureSelection() {
       var f = editorField();
-      if (f && typeof f.selectionStart === 'number' && doc.activeElement === f) {
+      if (!f || typeof f.selectionStart !== 'number') return;
+      // The mirror's field counts only while it still holds the mirrored text.
+      if (doc.activeElement === f || (f === lastSelField && String(f.value) === state.editor.text)) {
         state.editor.text = String(f.value); state.editor.selStart = f.selectionStart; state.editor.selEnd = f.selectionEnd;
       }
     }
@@ -10190,8 +10224,9 @@
 
     // Every way the view changes goes through here, so the disclosures close
     // with it (spec section 6). Tapping the current view changes nothing.
+    // A message belongs to the view it was raised in: a view change clears it.
     function setView(v) {
-      if (v !== state.settings.view) applyTransient({ type: 'view' });
+      if (v !== state.settings.view) { applyTransient({ type: 'view' }); state.notices = []; }
       state.settings.view = v;
     }
 
@@ -10200,6 +10235,7 @@
       // not a control, so tests/handlers.test.js does not pair it.
       onThreadLink: function (link, click) {
         if (!isPlainActivation(click)) return;
+        persistFailed = false;
         var next = autoHideSettings(state.settings);
         if (next === state.settings) return;
         // The shelf renders in the collapsed header too; hiding the panel closes it.
@@ -10213,6 +10249,8 @@
         setTimeout(function () { if (isForumsPage(win.location)) redraw(); }, 0);
       },
       onAction: function (act, el) {
+        // A new action: an earlier failed write no longer holds back its notices.
+        persistFailed = false;
         var now = Date.now();
         var id = idOf(el);
         // E2: any action ends a typing burst; the next keystroke starts one.
@@ -10515,15 +10553,14 @@
           state.draftFocusId = made.id;
           redraw(); return;
         }
-        if (act === 'draft-edit' && id) { state.draftFocusId = id; state.settings.view = 'drafts'; redraw(); return; }
+        if (act === 'draft-edit' && id) { state.draftFocusId = id; setView('drafts'); redraw(); return; }
         if (act === 'draft-save' && id) {
           // Saved only if it stored: an open draft is written now; one not open
           // must still exist.
-          editorSaveFailed = false;
           if (state.editor.key === id ? !saveEditor(now) : !draftFor(state.drafts, id)) {
             notice('This draft no longer exists. Copy your text, then use + New draft.', 'warn'); redraw(); return;
           }
-          recompute(now); if (!editorSaveFailed) notice('Draft saved.', 'info'); redraw(); return;
+          recompute(now); notice('Draft saved.', 'info'); redraw(); return;
         }
         if (act === 'draft-delete' && id) {
           if (/^n[0-9]+$/.test(id)) state.drafts = deleteFreeDraft(state.drafts, id);
@@ -10541,10 +10578,9 @@
           return;
         }
         if (act === 'draft-insert' && id) {
-          editorSaveFailed = false;
           if (state.editor.key === id && state.editor.text.trim()) saveEditor(now);
           var ins = insertPost(doc, win, editorPostHtml());
-          if (!editorSaveFailed) notice(ins.ok ? 'Post inserted. Check it, then press Post.' : (ins.detail || 'Could not insert.'), ins.ok ? 'info' : 'warn');
+          notice(ins.ok ? 'Post inserted. Check it, then press Post.' : (ins.detail || 'Could not insert.'), ins.ok ? 'info' : 'warn');
           redraw(); return;
         }
         if (act === 'folder-add') {
@@ -10647,6 +10683,7 @@
       },
 
       onChange: function (act, el) {
+        persistFailed = false;
         var now = Date.now();
         var id = idOf(el);
         var value = el && el.value !== undefined ? String(el.value) : '';
@@ -10756,6 +10793,7 @@
       // select, keyup, mouseup and pointer events on the draft textarea.
       onSelect: function (act, el) {
         if (act !== 'draft-text' || !el) return;
+        lastSelField = el;
         var a = el.selectionStart;
         var b = el.selectionEnd;
         if (typeof a !== 'number' || typeof b !== 'number' || !isFinite(a) || !isFinite(b)) return;
@@ -10764,6 +10802,7 @@
         state.editor.selEnd = Math.max(0, Math.min(len, b));
       },
       onInput: function (act, el) {
+        persistFailed = false;
         // #43: the popup's field mirrors under the inline field's name.
         if (act === 'editor-input') act = el && el.getAttribute ? el.getAttribute('data-field') : null;
         if (act === 'draft-text') {
@@ -10788,6 +10827,7 @@
           state.editor.atLimit = atLimit;
           state.editor.selStart = nn(el && el.selectionStart);
           state.editor.selEnd = nn(el && el.selectionEnd);
+          lastSelField = el || null;
           state.editor.dirty = true;
           return;
         }
@@ -10838,13 +10878,14 @@
       stopDwell();
       state.route = null;
       state.notices = [];
+      persistFailed = false;
       return;
     }
     var now = Date.now();
     var capture = captureVisit(win.location, doc.title, now);
     if (capture.changed) { persist('organizer'); recompute(now); }
     // A message belongs to the place it was raised; navigating clears it.
-    if (routeKey(state.route) !== routeKey(capture.route)) state.notices = [];
+    if (routeKey(state.route) !== routeKey(capture.route)) { state.notices = []; persistFailed = false; }
     state.route = capture.route;
     startDwell(doc, win);
     sampleDwell(doc, win, now);
