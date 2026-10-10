@@ -87,3 +87,11 @@ test('the preview model maps each block to its source offset', () => {
   assert.deepStrictEqual(api.previewModel('html', '<p>a</p>\n  <h2>b</h2>').map((b) => b.offset), [0, 11]);
   assert.deepStrictEqual(api.previewModel('text', 'one\n\ntwo').map((b) => b.html), ['<p>one</p>', '<p>&nbsp;</p>', '<p>two</p>']);
 });
+
+test('previewImages holds external images back and never touches Torn emoji', () => {
+  const h = '<p><img src="https://i.imgur.com/x.png" alt="a"> <img src="/images/emotions/svg/grin.svg"></p>';
+  assert.strictEqual(api.previewImages(h, false),
+    '<p><span class="tfcc-img-ph">[image from i.imgur.com]</span> <img src="/images/emotions/svg/grin.svg"></p>');
+  assert.strictEqual(api.previewImages(h, true),
+    '<p><img referrerpolicy="no-referrer" src="https://i.imgur.com/x.png" alt="a"> <img src="/images/emotions/svg/grin.svg"></p>');
+});

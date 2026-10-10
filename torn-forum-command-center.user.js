@@ -4654,6 +4654,17 @@
     });
   }
 
+  // Spec 4a: Preview loads no external image until the player asks. Torn's
+  // own emoji are same-site and always show. Input is cleaned HTML, whose img
+  // tags are always exactly <img src="..."> or <img src="..." alt="...">.
+  function previewImages(html, show) {
+    return String(html).replace(/<img src="(https:[^"]*)"( alt="[^"]*")?>/g, function (all, src, alt) {
+      if (show) return '<img referrerpolicy="no-referrer" src="' + src + '"' + (alt || '') + '>';
+      var host = (/^https:\/\/([^\/?#"]+)/.exec(src) || [])[1] || 'another site';
+      return '<span class="tfcc-img-ph">[image from ' + host + ']</span>';
+    });
+  }
+
   // ---- conversion entry points -----------------------------------------------
 
   function postHtml(text, lang) {
@@ -5261,6 +5272,16 @@
     deepBusy: false,
     deepProgress: null,
     draftFocusId: null,
+    // #58: the draft open in the Drafts editor. Typing updates text and the
+    // selection here without a redraw (onInput), the way drawerEdit does.
+    editor: {
+      key: null, lang: 'md', text: '', selStart: 0, selEnd: 0, mode: 'source', previewTheme: null,
+      picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn', name: '', imageCheck: null,
+      pickerWarn: null, dirty: false, showImages: false, fields: {}, src: 'new|md',
+    },
+    // #58: the panel's resolved theme, set by applyThemeClass; Preview
+    // defaults to it.
+    themeResolved: null,
     pendingRedraw: false,
     generation: 0,
     mounted: false,
@@ -6204,6 +6225,7 @@
       var panel = doc.getElementById(PANEL_ID);
       if (!panel || !panel.classList) return null;
       var theme = resolveTheme(state.settings.theme, doc, win);
+      state.themeResolved = theme;
       panel.classList.remove('tfcc-theme-dark');
       panel.classList.remove('tfcc-theme-light');
       panel.classList.add('tfcc-theme-' + theme);
@@ -6236,6 +6258,12 @@
         }
       }
     } catch (e2) { /* same */ }
+  }
+
+  // The 17 Torn text colours for a Preview theme, as one declaration list, so
+  // a cleaned post's var(--te-text-color-*) resolves inside the panel.
+  function teVars(theme) {
+    return TORN_COLORS.map(function (c) { return '--te-text-color-' + c.name + ': ' + c[theme] + ';'; }).join(' ');
   }
 
   function panelStyleText() {
@@ -6759,6 +6787,20 @@
       '  min-width: 24px; min-height: 24px; padding: 0; border: 0; border-radius: 12px; background: transparent;',
       '  color: inherit; }',
       '#' + PANEL_ID + ' .tfcc-draft { width: 100%; min-height: 90px; resize: vertical; }',
+      '#' + PANEL_ID + ' .tfcc-pill { display: flex; gap: 0; margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-pill button { flex: 1 1 0; min-height: 32px; border-radius: 0; }',
+      '#' + PANEL_ID + ' .tfcc-pill button[aria-pressed="true"] { background: var(--tm-good-bg); color: var(--tm-text); }',
+      '#' + PANEL_ID + ' .tfcc-pvbar { display: flex; align-items: center; gap: var(--tfcc-gap-sm); margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-pv { border: 1px solid var(--tm-border); border-radius: 4px; padding: 8px; overflow-x: auto; }',
+      '#' + PANEL_ID + ' .tfcc-pv-light { background: #ffffff; color: #333333; ' + teVars('light') + ' }',
+      '#' + PANEL_ID + ' .tfcc-pv-dark { background: #111111; color: #dddddd; ' + teVars('dark') + ' }',
+      '#' + PANEL_ID + ' .tfcc-pv-block { cursor: text; }',
+      '#' + PANEL_ID + ' .tfcc-pv p { margin: 0; }',
+      '#' + PANEL_ID + ' .tfcc-pv img { max-width: 100%; }',
+      '#' + PANEL_ID + ' .tfcc-pv table { border-collapse: collapse; }',
+      '#' + PANEL_ID + ' .tfcc-pv th, #' + PANEL_ID + ' .tfcc-pv td { border: 1px solid currentColor; padding: 2px 6px; }',
+      '#' + PANEL_ID + ' .tfcc-pv blockquote { margin: 0 0 0 8px; padding-left: 8px; border-left: 3px solid currentColor; }',
+      '#' + PANEL_ID + ' .tfcc-confirm { margin-bottom: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + ' .tfcc-hit { border-left: 3px solid var(--tm-accent-text); padding-left: 8px;',
       '  margin-bottom: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + ' .tfcc-hit-text { white-space: pre-wrap; overflow-wrap: anywhere;',
@@ -6933,6 +6975,21 @@
 
   function buildPanelModel(now) {
     var s = state.settings;
+    var edKey = editorKeyFor({ draftFocusId: state.draftFocusId, route: state.route });
+    if (edKey !== state.editor.key) {
+      // Spec 4a: switching drafts or threads never discards typed text.
+      if (state.editor.dirty && state.editor.key) saveEditor(now);
+      loadEditor(edKey, now);
+    } else if (edKey && !state.editor.dirty && draftSig(draftFor(state.drafts, edKey)) !== state.editor.src) {
+      // The stored draft changed behind a clean editor (autosave from Torn's
+      // editor, an import, a setting read after boot): show what is stored,
+      // keeping the pane the player is looking at.
+      var keep = state.editor;
+      loadEditor(edKey, now);
+      state.editor.mode = keep.mode;
+      state.editor.previewTheme = keep.previewTheme;
+      state.editor.showImages = keep.showImages;
+    }
     var rows = state.rows;
     var query = parseQuery(state.searchQuery);
 
@@ -7042,6 +7099,8 @@
       route: state.route,
       draftFocusId: state.draftFocusId,
       replyBoxFound: state.replyBoxFound,
+      editor: Object.assign({}, state.editor),
+      themeResolved: state.themeResolved || null,
       settings: {
         autoRefreshMs: s.autoRefreshMs,
         enrichBudget: s.enrichBudget,
@@ -7812,54 +7871,171 @@
     return out.join('');
   }
 
-  function renderDraftsView(model) {
-    var out = [];
-    // The thread the user asked to write about wins over the one they happen to
-    // be looking at, so the Draft button on a row works from anywhere.
-    var current = model.draftFocusId
-      || (model.route && model.route.isThread ? String(model.route.threadId) : null);
-    if (current) {
-      out.push('<div class="tfcc-section"><h4>Draft for this thread</h4>');
-      var existing = '';
-      for (var d = 0; d < model.drafts.length; d += 1) {
-        if (model.drafts[d].threadId === current) existing = model.drafts[d].text;
-      }
-      out.push('<textarea class="tfcc-draft" data-act="draft-text" data-id="' + escapeHtml(current)
-        + '">' + escapeHtml(existing) + '</textarea>');
-      out.push('<div class="tfcc-actions">');
-      out.push(btn('draft-save', 'Save draft', ' data-id="' + escapeHtml(current) + '"'));
-      if (model.replyBoxFound) {
-        out.push(btn('draft-insert', 'Insert into reply box', ' data-id="' + escapeHtml(current) + '"'));
-      } else {
-        out.push(btn('draft-copy', 'Copy', ' data-id="' + escapeHtml(current) + '"'));
-      }
-      out.push(btn('draft-delete', 'Delete', ' data-id="' + escapeHtml(current) + '"'));
-      out.push('</div>');
-      if (!model.replyBoxFound) {
-        out.push('<p class="tfcc-note">No reply box here, so Copy replaces Insert.</p>');
-      }
-      out.push('</div>');
-    } else {
-      out.push('<p class="tfcc-note">Open a thread to write a draft for it.</p>');
-    }
+  var EDITOR_MODES = Object.freeze([['text', 'Text'], ['md', 'MD'], ['html', 'HTML'], ['preview', 'Preview']]);
 
-    out.push('<div class="tfcc-section"><h4>All drafts (' + model.drafts.length + ')</h4>');
+  function renderModePill(e) {
+    var out = ['<div class="tfcc-pill" role="group" aria-label="Editor mode">'];
+    for (var i = 0; i < EDITOR_MODES.length; i += 1) {
+      var m = EDITOR_MODES[i][0];
+      var on = m === 'preview' ? e.mode === 'preview' : e.mode === 'source' && e.lang === m;
+      out.push('<button type="button" data-act="ed-mode" data-mode="' + m + '" aria-pressed="' + (on ? 'true' : 'false')
+        + '">' + EDITOR_MODES[i][1] + '</button>');
+    }
+    out.push('</div>');
+    return out.join('');
+  }
+
+  function renderPreview(model) {
+    var e = model.editor;
+    var theme = e.previewTheme || model.themeResolved || 'dark';
+    var blocks = previewModel(e.lang, e.text);
+    var hasExternal = blocks.some(function (b) { return /<img src="https:/.test(b.html); });
+    var out = ['<div class="tfcc-pvbar">'];
+    out.push('<span class="tfcc-note">Preview as Torn shows it.</span>');
+    if (hasExternal && !e.showImages) out.push(btn('ed-pv-images', 'Show images'));
+    for (var t = 0; t < 2; t += 1) {
+      var th = t ? 'dark' : 'light';
+      out.push('<button type="button" data-act="ed-pv-theme" data-theme="' + th + '" aria-pressed="'
+        + (theme === th ? 'true' : 'false') + '">' + (t ? 'Dark' : 'Light') + '</button>');
+    }
+    out.push('</div><div class="tfcc-pv tfcc-pv-' + theme + '">');
+    if (!blocks.length) out.push('<p class="tfcc-note">Nothing to preview yet.</p>');
+    for (var i = 0; i < blocks.length; i += 1) {
+      // blocks[i].html is cleanTornHtml output: the allowlist is what makes
+      // rendering player-typed HTML inside the panel safe (spec section 5).
+      out.push('<div class="tfcc-pv-block" data-act="ed-jump" data-offset="' + blocks[i].offset
+        + '" title="Tap to edit here">' + previewImages(blocks[i].html, e.showImages) + '</div>');
+    }
+    out.push('</div>');
+    return out.join('');
+  }
+
+  // Task 11 replaces this stub with the toolbar.
+  function renderEditorToolbar(model) { void model; return ''; }
+
+  function renderEditorPane(model) {
+    var e = model.editor;
+    var key = e.key;
+    var out = ['<div class="tfcc-section tfcc-editor">'];
+    var isFree = /^n[0-9]+$/.test(key);
+    if (isFree) {
+      out.push('<label class="tfcc-note" for="tfcc-ed-name">Draft name</label>'
+        + '<input id="tfcc-ed-name" type="text" maxlength="80" data-act="ed-name" data-id="' + escapeHtml(key)
+        + '" value="' + escapeHtml(e.name) + '">');
+    } else {
+      out.push('<h4>Draft for this thread</h4>');
+    }
+    out.push(renderModePill(e));
+    if (e.confirmText) {
+      out.push('<div class="tfcc-confirm" role="alert"><p class="tfcc-note">Plain text drops the formatting. Switch anyway?</p>'
+        + btn('ed-mode-confirm', 'Switch') + btn('ed-mode-cancel', 'Cancel') + '</div>');
+    }
+    out.push(renderEditorToolbar(model));
+    if (e.mode === 'preview') {
+      out.push(renderPreview(model));
+    } else {
+      out.push('<textarea class="tfcc-draft" data-act="draft-text" data-id="' + escapeHtml(key)
+        + '" maxlength="' + DRAFT_MAX_CHARS + '" aria-label="Draft text">' + escapeHtml(e.text) + '</textarea>');
+    }
+    out.push('<div class="tfcc-actions">');
+    out.push(btn('draft-save', 'Save draft', ' data-id="' + escapeHtml(key) + '"'));
+    out.push(model.replyBoxFound
+      ? btn('draft-insert', 'Insert into reply box', ' data-id="' + escapeHtml(key) + '"')
+      : btn('draft-copy', 'Copy', ' data-id="' + escapeHtml(key) + '"'));
+    out.push(btn('draft-delete', 'Delete', ' data-id="' + escapeHtml(key) + '"'));
+    out.push('</div>');
+    if (!model.replyBoxFound) out.push('<p class="tfcc-note">No reply box here, so Copy replaces Insert.</p>');
+    out.push('</div>');
+    return out.join('');
+  }
+
+  function renderDraftList(model) {
+    var out = ['<div class="tfcc-section"><h4>All drafts (' + model.drafts.length + ')</h4>'];
+    out.push('<div class="tfcc-actions">' + btn('draft-new', '+ New draft') + '</div>');
     if (!model.drafts.length) out.push('<div class="tfcc-empty">No saved drafts.</div>');
     for (var i = 0; i < model.drafts.length; i += 1) {
       var dr = model.drafts[i];
-      out.push('<div class="tfcc-hit"><div><a href="https://www.torn.com/forums.php#/p=threads&t='
-        + escapeHtml(dr.threadId) + '&b=0&a=0"' + threadLinkAttr(dr.threadId) + '>'
-        + escapeHtml(dr.title || ('Thread ' + dr.threadId)) + '</a> '
-        + '<span class="tfcc-note">' + escapeHtml(formatRelativeTime(dr.updatedAt, model.now))
-        + '</span></div>');
+      var free = dr.kind === 'free';
+      out.push('<div class="tfcc-hit' + (free ? ' tfcc-free' : '') + '"><div>');
+      if (free) {
+        out.push('<strong>' + escapeHtml(dr.title) + '</strong> <span class="tfcc-note">(free)</span> ');
+      } else {
+        out.push('<a href="https://www.torn.com/forums.php#/p=threads&t=' + escapeHtml(dr.threadId) + '&b=0&a=0"'
+          + threadLinkAttr(dr.threadId) + '>' + escapeHtml(dr.title || ('Thread ' + dr.threadId)) + '</a> ');
+      }
+      out.push('<span class="tfcc-note">' + escapeHtml(formatRelativeTime(dr.updatedAt, model.now)) + '</span></div>');
       out.push('<div class="tfcc-hit-text">' + escapeHtml(dr.text.slice(0, 300)) + '</div>');
       out.push('<div class="tfcc-actions">'
-        + btn('draft-copy', 'Copy', ' data-id="' + escapeHtml(dr.threadId) + '"')
-        + btn('draft-delete', 'Delete', ' data-id="' + escapeHtml(dr.threadId) + '"')
+        + btn('draft-edit', 'Edit', ' data-id="' + escapeHtml(dr.key) + '"')
+        + btn('draft-copy', 'Copy', ' data-id="' + escapeHtml(dr.key) + '"')
+        + btn('draft-delete', 'Delete', ' data-id="' + escapeHtml(dr.key) + '"')
         + '</div></div>');
     }
     out.push('</div>');
     return out.join('');
+  }
+
+  function renderDraftsView(model) {
+    var out = [];
+    if (model.editor && model.editor.key) out.push(renderEditorPane(model));
+    else out.push('<p class="tfcc-note">Open a thread to write a draft for it, or start a new draft below.</p>');
+    out.push(renderDraftList(model));
+    return out.join('');
+  }
+
+  // The draft key the Drafts view edits: the thread the user asked to write
+  // about (or a free draft) wins over the thread they happen to be looking at,
+  // so the Draft button on a row works from anywhere.
+  function editorKeyFor(model) {
+    if (model.draftFocusId) return String(model.draftFocusId);
+    return model.route && model.route.isThread ? String(model.route.threadId) : null;
+  }
+
+  // Points the editor at a draft. A saved draft brings its own language; a new
+  // one opens in the Default editor mode (Settings).
+  function defaultDraftLang() {
+    return DRAFT_LANGS.indexOf(state.settings.draftLang) !== -1 ? state.settings.draftLang : 'md';
+  }
+
+  function loadEditor(key, now) {
+    var d = key ? draftFor(state.drafts, key) : null;
+    var lang = d ? draftLangOf(d) : defaultDraftLang();
+    var text = d ? d.text : '';
+    state.editor = {
+      key: key, lang: lang, text: text, selStart: text.length, selEnd: text.length, mode: 'source',
+      previewTheme: null, picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn',
+      name: d && d.name ? d.name : '', imageCheck: null, pickerWarn: null, dirty: false, showImages: false,
+      fields: {}, src: draftSig(d),
+    };
+    void now;
+  }
+
+  // What the editor last loaded or saved, so buildPanelModel can tell when the
+  // stored draft has changed behind a clean editor. A draft not yet stored is
+  // keyed by the Default editor mode it would open in.
+  function draftSig(d) {
+    return d ? [d.text, draftLangOf(d), d.name || '', d.updatedAt].join('\n|') : 'new|' + defaultDraftLang();
+  }
+
+  function editorPostHtml() { return postHtml(state.editor.text, state.editor.lang); }
+
+  // Saves the open draft. A blank thread draft is deleted, as before; a free
+  // draft keeps its name even when empty.
+  function saveEditor(now) {
+    var e = state.editor;
+    if (!e.key) return;
+    if (/^n[0-9]+$/.test(e.key)) state.drafts = saveFreeDraft(state.drafts, e.key, e.text, now, e.name, e.lang);
+    else state.drafts = saveDraft(state.drafts, e.key, e.text, now, '', e.lang);
+    e.dirty = false;
+    e.src = draftSig(draftFor(state.drafts, e.key));
+    persist('drafts');
+  }
+
+  // Spec section 4a: nothing is ever silently cut. An action whose result
+  // would pass the draft limit is refused with this.
+  function overLimitNotice(n) {
+    notice('That would make this draft ' + n + ' characters, over the ' + DRAFT_MAX_CHARS
+      + ' limit. Shorten it, or keep it as it is.', 'warn');
   }
 
   var BADGE_METRIC_LABELS = Object.freeze({
@@ -9329,6 +9505,13 @@
   }
 
   function restoreSelection(el) {
+    // #58: the Drafts editor keeps its own selection, so a redraw (a mode
+    // switch, a tap in Preview) puts the caret back where it belongs.
+    if (typeof el.getAttribute === 'function' && el.getAttribute('data-act') === 'draft-text'
+      && typeof el.setSelectionRange === 'function') {
+      try { el.setSelectionRange(state.editor.selStart, state.editor.selEnd); } catch (e) { /* not a text field */ }
+      return;
+    }
     var d = state.drawerEdit;
     if (!d || typeof el.setSelectionRange !== 'function' || typeof el.getAttribute !== 'function') return;
     // #43: the popup's field names its mirror in data-field.
@@ -9631,22 +9814,66 @@
           persist('settings');
           redraw(); return;
         }
+        if (act === 'ed-mode') {
+          var mode = el.getAttribute('data-mode');
+          var ed = state.editor;
+          if (mode === 'preview') { ed.mode = 'preview'; ed.picker = null; redraw(); return; }
+          if (DRAFT_LANGS.indexOf(mode) === -1) return;
+          if (mode === ed.lang) { ed.mode = 'source'; redraw(); return; }
+          if (mode === 'text' && ed.lang !== 'text' && ed.text.trim()) { ed.confirmText = ed.lang; redraw(); return; }
+          var converted = convertDraft(ed.text, ed.lang, mode);
+          if (converted.length > DRAFT_MAX_CHARS) { overLimitNotice(converted.length); redraw(); return; }
+          ed.text = converted;
+          ed.lang = mode; ed.mode = 'source'; ed.selStart = ed.selEnd = ed.text.length;
+          if (ed.text.trim()) saveEditor(now);
+          redraw(); return;
+        }
+        if (act === 'ed-pv-images') { state.editor.showImages = true; redraw(); return; }
+        if (act === 'ed-mode-confirm') {
+          var ec = state.editor;
+          ec.text = convertDraft(ec.text, ec.lang, 'text');
+          ec.lang = 'text'; ec.mode = 'source'; ec.confirmText = null; ec.selStart = ec.selEnd = ec.text.length;
+          if (ec.text.trim()) saveEditor(now);
+          redraw(); return;
+        }
+        if (act === 'ed-mode-cancel') { state.editor.confirmText = null; redraw(); return; }
+        if (act === 'ed-pv-theme') { state.editor.previewTheme = el.getAttribute('data-theme') === 'light' ? 'light' : 'dark'; redraw(); return; }
+        if (act === 'ed-jump') {
+          var off = Math.max(0, Math.min(state.editor.text.length, toInt(el.getAttribute('data-offset'), 0)));
+          state.editor.mode = 'source'; state.editor.selStart = state.editor.selEnd = off;
+          state.focusIntent = [attrSel('data-act', 'draft-text')];
+          redraw(); return;
+        }
+        if (act === 'draft-new') {
+          var made = newFreeDraft(state.drafts, now, state.settings.draftLang);
+          if (!made.id) { notice('You have ' + FREE_DRAFTS_MAX + ' free drafts. Delete one to make another.', 'warn'); redraw(); return; }
+          state.drafts = made.drafts; persist('drafts');
+          state.draftFocusId = made.id;
+          redraw(); return;
+        }
+        if (act === 'draft-edit' && id) { state.draftFocusId = id; state.settings.view = 'drafts'; redraw(); return; }
         if (act === 'draft-save' && id) {
-          state.drafts = saveDraft(state.drafts, id, valueOf('draft-text'), now, '');
-          persist('drafts'); recompute(now); notice('Draft saved.', 'info'); redraw(); return;
+          if (state.editor.key === id) saveEditor(now);
+          recompute(now); notice('Draft saved.', 'info'); redraw(); return;
         }
         if (act === 'draft-delete' && id) {
-          state.drafts = deleteDraft(state.drafts, id); persist('drafts'); recompute(now); redraw(); return;
+          if (/^n[0-9]+$/.test(id)) state.drafts = deleteFreeDraft(state.drafts, id);
+          else state.drafts = deleteDraft(state.drafts, id);
+          if (state.editor.key === id) { state.editor.key = null; if (state.draftFocusId === id) state.draftFocusId = null; }
+          persist('drafts'); recompute(now); redraw(); return;
         }
         if (act === 'draft-copy' && id) {
-          var d = draftFor(state.drafts, id);
-          copyText(doc, win, d ? d.text : '');
-          notice('Draft copied.', 'info'); redraw(); return;
+          var cd = state.editor.key === id ? null : draftFor(state.drafts, id);
+          copyPost(doc, win, cd ? postHtml(cd.text, draftLangOf(cd)) : editorPostHtml(), function (r) {
+            notice(r.ok ? 'Post copied. Paste it into Torn\'s reply box.' : 'Copy failed. Switch to HTML, select the text and copy it yourself.', r.ok ? 'info' : 'warn');
+            redraw();
+          });
+          return;
         }
         if (act === 'draft-insert' && id) {
-          var dd = draftFor(state.drafts, id);
-          var ins = insertPost(doc, win, dd ? postHtml(dd.text, draftLangOf(dd)) : '');
-          notice(ins.ok ? 'Draft inserted.' : (ins.detail || 'Could not insert.'), ins.ok ? 'info' : 'warn');
+          if (state.editor.key === id && state.editor.text.trim()) saveEditor(now);
+          var ins = insertPost(doc, win, editorPostHtml());
+          notice(ins.ok ? 'Post inserted. Check it, then press Post.' : (ins.detail || 'Could not insert.'), ins.ok ? 'info' : 'warn');
           redraw(); return;
         }
         if (act === 'folder-add') {
@@ -9839,6 +10066,19 @@
       onInput: function (act, el) {
         // #43: the popup's field mirrors under the inline field's name.
         if (act === 'editor-input') act = el && el.getAttribute ? el.getAttribute('data-field') : null;
+        if (act === 'draft-text') {
+          var nn = function (v) { return typeof v === 'number' && isFinite(v) ? v : 0; };
+          state.editor.text = el && el.value !== undefined ? String(el.value).slice(0, DRAFT_MAX_CHARS) : '';
+          state.editor.selStart = nn(el && el.selectionStart);
+          state.editor.selEnd = nn(el && el.selectionEnd);
+          state.editor.dirty = true;
+          return;
+        }
+        if (act === 'ed-name') {
+          state.editor.name = el && el.value !== undefined ? String(el.value).slice(0, FREE_NAME_MAX) : '';
+          state.editor.dirty = true;
+          return;
+        }
         if (act !== 'note-input' && act !== 'tag-input') return;
         var id = idOf(el);
         if (!id) return;

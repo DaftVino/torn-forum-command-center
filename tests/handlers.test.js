@@ -40,6 +40,10 @@ function renderedActions() {
   // Four rows under a cap of 3, so the Show all control renders too.
   api.state.settings.rowsShown = 3;
 
+  // #58: a free draft, so All drafts lists one and its editor can render.
+  const freeMade = api.newFreeDraft(api.state.drafts, NOW, 'md');
+  api.state.drafts = freeMade.drafts;
+
   const actions = new Set();
   // #33: the narrow layout renders controls the wide one does not (filters,
   // row-more, the drawer), so every view is rendered both ways, with a drawer
@@ -63,6 +67,28 @@ function renderedActions() {
         const re = /data-act="([a-z-]+)"/g;
         let m;
         while ((m = re.exec(html))) actions.add(m[1]);
+        if (view === 'drafts') {
+          // #58: the editor in source, asking before Text, and in Preview with
+          // an external image (so Show images renders); then a free draft's
+          // editor, whose name field renders only for a free draft.
+          api.state.editor.text = '# T\n![a](https://i.imgur.com/x.png)';
+          api.state.editor.lang = 'md'; // the thread draft is Text; Markdown, so the image renders
+          api.state.editor.dirty = true; // typed, so the editor keeps it across redraws
+          for (const patch of [{ mode: 'source' }, { confirmText: 'md' }, { mode: 'preview', confirmText: null }]) {
+            Object.assign(api.state.editor, patch);
+            const hh = api.panelHtml(api.buildPanelModel(NOW));
+            let mm;
+            const rr = /data-act="([a-z-]+)"/g;
+            while ((mm = rr.exec(hh))) actions.add(mm[1]);
+          }
+          Object.assign(api.state.editor, { mode: 'source', dirty: false });
+          api.state.draftFocusId = freeMade.id;
+          const hf = api.panelHtml(api.buildPanelModel(NOW));
+          let mf;
+          const rf = /data-act="([a-z-]+)"/g;
+          while ((mf = rf.exec(hf))) actions.add(mf[1]);
+          api.state.draftFocusId = null;
+        }
       }
     }
   }
@@ -106,7 +132,7 @@ test('every control the panel renders has a handler', () => {
   const handled = handledActions();
 
   // These carry data only; they are read by valueOf() rather than dispatched.
-  const dataOnly = ['key-input', 'draft-text', 'import-text', 'folder-name'];
+  const dataOnly = ['key-input', 'draft-text', 'import-text', 'folder-name', 'ed-name'];
 
   const dead = actions.filter((a) => handled.indexOf(a) === -1 && dataOnly.indexOf(a) === -1);
   assert.deepStrictEqual(dead, [], 'controls that render but do nothing: ' + dead.join(', '));
