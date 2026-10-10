@@ -29,8 +29,16 @@ Research for #58, the Drafts rich editor. It answers the five questions in
      33 characters, the length of the owner's FCC draft, while the real editor
      stayed empty.
    - Filed separately as a bug.
-3. **Pasting rich HTML strips every inline style.** That rules out "Copy as
-   rich text" as the way to hand over formatted posts.
+3. **A plain paste strips every inline style, but a marked paste keeps them.**
+   - Torn configures `paste_webkit_styles: 'none'`, so pasting rich HTML from
+     another page loses colours, sizes, alignment and underline.
+   - TinyMCE exempts content marked `<!-- x-tinymce/html -->` from that filter,
+     because it treats it as its own.
+   - Owner-observed (test B): a synthetic `paste` event carrying marked HTML,
+     dispatched at the editor body, kept every style. Torn's code-view mirror
+     updated too.
+   - That route needs no page globals, so no `unsafeWindow`. It writes only to
+     the reply box ADR 0001 already names.
 4. **Images in posts are hosted by Torn.** "The proper format" is an
    `https://editor.torn.com/...` URL, made by Torn's own Insert Image upload.
 
@@ -93,10 +101,22 @@ div.forums-new-post-wrap
       there keeps its styles.
   - **Native textarea setter and `input` event (FCC today).** It never reaches
     the editor; see Headline 2.
+  - **Synthetic paste, marked TinyMCE-internal (test B).** Owner-observed: every
+    style kept (`text-align`, a colour variable, `font-size`, underline,
+    `strong`), and Torn's code-view mirror updated.
+  - **TinyMCE's `insertContent` (test C).** Owner-observed: the same result. It
+    needs the page's `tinymce` global, which a Tampermonkey script with grants
+    reaches only through `unsafeWindow`.
+  - **Test A** (synthetic plain paste) was not run. Check 3a's real plain paste
+    already showed the stripping.
+  - **Not yet observed:** pressing Post after B, so it is unproven that the
+    server receives B's content. The mirror updating is strong evidence that
+    Torn's state saw the change.
 - **Torn persists an unsent editor body per thread.** Owner-observed: content
   pasted in 3a came back after page refreshes until the owner moved to another
   thread.
-  - Where Torn stores it is unknown.
+  - The configured plugins include TinyMCE's `autosave`, which keeps drafts in
+    `localStorage`. That is the likely mechanism; inferred, not confirmed.
   - This overlaps with what FCC's reply-box autosave was for.
 
 ## Q2. What does Torn keep, and what does it strip?
@@ -118,9 +138,9 @@ The owner pasted the rendered `torn-forum-post-sample.html`.
 - `text-decoration: underline`.
 
 The owner noticed the lost alignment. The probe shows the colours, sizes and
-underline went too: no element in the pasted body has a `style`. TinyMCE 6's
-default paste filter, `paste_webkit_styles: 'none'`, would explain it. That is
-an inference, not confirmed.
+underline went too: no element in the pasted body has a `style`. The cause is
+Torn's configuration, `paste_webkit_styles: 'none'`, which the light-mode probe
+read directly.
 
 ### In the editor (owner-observed, toolbar test)
 
@@ -139,6 +159,28 @@ Markup the editor itself produced and held:
 - The published sample's tables do have `div > div > div.table-wrap`.
   - Either Torn adds it on save or render, or the sample's author had it from
     an earlier paste. **Unknown which.**
+
+### The editor's configuration (owner-observed, light-mode probe)
+
+Read with `tinymce.get(id).options.get(...)`:
+
+| Option | Value |
+|---|---|
+| `plugins` | `autosave, autolink, table, lists`, plus Torn's own `PasteCleanupPlugin`, `EmbedYoutubePlugin`, `ProcessImagePlugin` and `PreserveFormattingPlugin` |
+| `valid_elements` | not set, so TinyMCE 6's default HTML5 schema applies |
+| `extended_valid_elements` | `i[class]` |
+| `invalid_elements`, `valid_styles` | not set, so the editor itself allows any inline style |
+| `paste_webkit_styles` | `none` |
+| `paste_remove_styles_if_webkit` | `true` |
+| `paste_data_images` | `true`: a pasted image file is accepted, and is presumably uploaded |
+| `font_size_formats` | `8pt 10pt 12pt 14pt 18pt 24pt 36pt` |
+| `color_map` | 22 entries, unread (they printed as objects) |
+
+- The toolbar is Torn's own React toolbar. TinyMCE's toolbar is off.
+- Its Change Font Size emitted `px` sizes in the toolbar test (10px, 18px), not
+  the `pt` list above.
+- `EmbedYoutubePlugin` suggests YouTube embeds are supported; the markup is
+  unknown.
 
 ### On save (server-side)
 
@@ -183,6 +225,10 @@ Markup the editor itself produced and held:
     Imgur page links, no image extension);
   - tell the player to upload through Torn's own Insert Image.
 
+**Owner-observed config.** Torn ships its own `ProcessImagePlugin`, and
+`paste_data_images` is on. Whether that plugin rehosts external images on
+`editor.torn.com` is what test D asks.
+
 **Unknown.**
 - Whether a direct external image URL renders after save, for example an
   `i.imgur.com/....png` or a GitHub raw PNG.
@@ -190,20 +236,35 @@ Markup the editor itself produced and held:
 
 ## Q4. The colour variables
 
-Owner-observed, **dark mode only**. There are 17 text colours. Their values
-match the Open Color palette (shades 2 to 5):
+Owner-observed in both themes. There are 17 text colours. The values come from
+the Open Color palette: light shades in dark mode, deep shades in light mode.
 
-| Variable | Dark value | Variable | Dark value |
-|---|---|---|---|
-| `--te-text-color-blue` | `#a5d8ff` | `--te-text-color-lime` | `#a9e34b` |
-| `--te-text-color-cyan` | `#99e9f2` | `--te-text-color-orange` | `#ffa94d` |
-| `--te-text-color-grape` | `#e599f7` | `--te-text-color-pink` | `#faa2c1` |
-| `--te-text-color-gray1` | `#ffffff` | `--te-text-color-red` | `#ff8787` |
-| `--te-text-color-gray2` | `#dddddd` | `--te-text-color-teal` | `#63e6be` |
-| `--te-text-color-gray3` | `#aaaaaa` | `--te-text-color-violet` | `#d0bfff` |
-| `--te-text-color-gray4` | `#888888` | `--te-text-color-yellow` | `#ffd43b` |
-| `--te-text-color-gray5` | `#000000` | `--te-text-color-green` | `#8ce99a` |
-| `--te-text-color-indigo` | `#bac8ff` | | |
+| Variable | Light | Dark |
+|---|---|---|
+| `--te-text-color-red` | `#f03e3e` | `#ff8787` |
+| `--te-text-color-pink` | `#d6336c` | `#faa2c1` |
+| `--te-text-color-grape` | `#ae3ec9` | `#e599f7` |
+| `--te-text-color-violet` | `#7048e8` | `#d0bfff` |
+| `--te-text-color-indigo` | `#4263eb` | `#bac8ff` |
+| `--te-text-color-blue` | `#1c7ed6` | `#a5d8ff` |
+| `--te-text-color-cyan` | `#1098ad` | `#99e9f2` |
+| `--te-text-color-teal` | `#0ca678` | `#63e6be` |
+| `--te-text-color-green` | `#37b24d` | `#8ce99a` |
+| `--te-text-color-lime` | `#66a80f` | `#a9e34b` |
+| `--te-text-color-yellow` | `#e67700` | `#ffd43b` |
+| `--te-text-color-orange` | `#d9480f` | `#ffa94d` |
+| `--te-text-color-gray1` | `#333333` | `#ffffff` |
+| `--te-text-color-gray2` | `#666666` | `#dddddd` |
+| `--te-text-color-gray3` | `#999999` | `#aaaaaa` |
+| `--te-text-color-gray4` | `#cccccc` | `#888888` |
+| `--te-text-color-gray5` | `#ffffff` | `#000000` |
+
+- The grays are relative to the page, not absolute:
+  - gray1 is the strongest text in both themes;
+  - gray5 is the page background colour in both themes, so text in it is
+    invisible.
+- The palette order above follows Open Color's hue wheel. Torn's picker order
+  is unknown.
 
 - **Why variables beat hex.** The variable resolves per theme. A post coloured
   `var(--te-text-color-red)` stays readable in a reader's light or dark mode.
@@ -213,7 +274,6 @@ match the Open Color palette (shades 2 to 5):
   `docs/forum-post.md`'s hex colours should become variables before posting.
 - The editor's other `--te-*` variables style its own chrome: background,
   buttons, tooltips. They are not for post content.
-- **Unknown:** the light-mode values.
 
 ## Q5. Torn PDA
 
@@ -230,17 +290,15 @@ match the Open Color palette (shades 2 to 5):
 
 ## What remains unknown
 
-1. What Torn's server strips on save. Test: post the toolbar test to a thread
-   the owner controls, then read it back through the API (`forum/{id}/posts`,
-   raw content). The API is the sanctioned channel.
-2. TinyMCE's configured `valid_elements`, `valid_styles` and paste options. The
-   committed probe now reads them with `editor.options.get(...)`.
-3. The light-mode values of the 17 colour variables.
-4. Whether an editor-API insert (`tinymce.get(id).insertContent(html)`) reaches
-   Torn's state, so that Post sends it. TornTools' comment suggests a plain DOM
-   write does not.
-5. Whether external direct image URLs survive save and render.
-6. Whether Torn adds `table-wrap` on save.
-7. Torn PDA's editor, clipboard and code view.
-8. Where Torn keeps its per-thread unsent body.
-9. Whether pasting HTML into Torn's code view keeps every style.
+1. What Torn's server strips on save. Test: post a sample to a thread the owner
+   controls, then read it back through the API (`forum/{id}/posts`, raw content).
+   The API is the sanctioned channel. Until then, FCC emits only constructs the
+   published sample proves survive a save.
+2. Whether Post sends what test B inserted. The code-view mirror updating is
+   strong evidence, not proof.
+3. Whether `ProcessImagePlugin` rehosts external images (test D), and whether
+   external direct image URLs render after save.
+4. Whether Torn adds `table-wrap` on save.
+5. Torn PDA's editor, clipboard and paste handling.
+6. YouTube embed markup (`EmbedYoutubePlugin`).
+7. The 22-entry `color_map` and Torn's picker order.
