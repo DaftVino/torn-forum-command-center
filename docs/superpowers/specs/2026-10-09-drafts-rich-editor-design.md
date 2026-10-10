@@ -63,8 +63,9 @@ Out of scope, by owner decision:
 Also out of scope:
 - emoji shortcodes;
 - YouTube embeds;
-- uploading images;
-- rewriting `docs/forum-post.md`'s hex colours, a follow-up once this ships.
+- uploading images.
+
+The README and forum-post updates are in scope, and they gate release (section 9).
 
 ## 3. The Markdown dialect
 
@@ -339,6 +340,20 @@ account:
 4. Old drafts and settings from v0.2.2 load with no damage notice.
 5. At 320px in PDA, the pill, toolbar, More drawer and pickers fit, with 44px
    targets.
+
+**Docs before release** (owner request, 2026-10-09). The release PR is blocked
+until these are done:
+- **`README.md`** describes the editor:
+  - the modes;
+  - the toolbar;
+  - the Markdown marks;
+  - free drafts;
+  - Insert and Copy;
+  - the Default editor setting.
+- **`docs/forum-post.md`** gains the editor in its feature list. Its own colours
+  move from hex to `var(--te-text-color-*)`, so the post reads well in both
+  themes.
+- **Screenshots** of the editor, if the README's set covers Drafts.
 
 ## 10. Risks
 
