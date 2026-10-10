@@ -5459,6 +5459,7 @@
       key: null, lang: 'md', text: '', selStart: 0, selEnd: 0, mode: 'source', previewTheme: null,
       picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn', name: '', imageCheck: null,
       pickerWarn: null, dirty: false, showImages: false, fields: {}, src: 'new|md', atLimit: false,
+      undo: [], typingAt: 0,
     },
     // #58: the panel's resolved theme, set by applyThemeClass; Preview
     // defaults to it.
@@ -6987,6 +6988,8 @@
       '#' + PANEL_ID + ' .tfcc-confirm { margin-bottom: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + ' .tfcc-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + ' .tfcc-tools button { min-width: 32px; min-height: 32px; }',
+      // E1: Save as free draft stands apart from Delete, in the accent color.
+      '#' + PANEL_ID + ' .tfcc-actions button.tfcc-tofree { margin-left: var(--tfcc-gap-lg); color: var(--tm-accent-text); }',
       '#' + PANEL_ID + ' .tfcc-picker { border: 1px solid var(--tm-border); border-radius: 4px; padding: 8px; margin-bottom: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + ' .tfcc-swatches, #' + PANEL_ID + ' .tfcc-emoji { display: flex; flex-wrap: wrap; gap: 4px; }',
       '#' + PANEL_ID + ' .tfcc-swatch { display: block; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--tm-border); }',
@@ -7186,7 +7189,7 @@
       state.editor.showImages = keep.showImages;
       // An open picker and what was typed into it are the player's, not the
       // stored draft's: a reload never wipes them mid-edit.
-      ['picker', 'fields', 'imageCheck', 'pickerWarn', 'emojiTab', 'moreOpen', 'height'].forEach(function (k) { state.editor[k] = keep[k]; });
+      ['picker', 'fields', 'imageCheck', 'pickerWarn', 'emojiTab', 'moreOpen', 'height', 'undo'].forEach(function (k) { state.editor[k] = keep[k]; });
     }
     var rows = state.rows;
     var query = parseQuery(state.searchQuery);
@@ -8140,11 +8143,18 @@
       + '" title="' + escapeHtml(t[3]) + '"' + (disabled ? ' disabled' : '') + '>' + escapeHtml(t[2]) + '</button>';
   }
 
+  // E2: Undo leads the toolbar, and is all of it in Text mode.
+  function undoButton(e) {
+    return toolButton(['ed-undo', '', 'Undo', 'Undo the last change', true], e.mode === 'preview' || !(e.undo && e.undo.length));
+  }
+
   function renderEditorToolbar(model) {
     var e = model.editor;
-    if (e.lang === 'text' && e.mode === 'source') return '';
+    if (e.lang === 'text' && e.mode === 'source') {
+      return '<div class="tfcc-tools" role="toolbar" aria-label="Formatting">' + undoButton(e) + '</div>';
+    }
     var disabled = e.mode === 'preview';
-    var out = ['<div class="tfcc-tools" role="toolbar" aria-label="Formatting">'];
+    var out = ['<div class="tfcc-tools" role="toolbar" aria-label="Formatting">', undoButton(e)];
     for (var i = 0; i < EDITOR_TOOLS.length; i += 1) {
       var t = EDITOR_TOOLS[i];
       if (model.narrow && !t[4]) continue;
@@ -8325,6 +8335,8 @@
       ? btn('draft-insert', 'Insert into reply box', ' data-id="' + escapeHtml(key) + '"')
       : btn('draft-copy', 'Copy', ' data-id="' + escapeHtml(key) + '"'));
     out.push(btn('draft-delete', 'Delete', ' data-id="' + escapeHtml(key) + '"'));
+    // E1: a thread draft's text can move to a new free draft.
+    if (!isFree) out.push(btn('draft-to-free', 'Save as free draft', ' class="tfcc-tofree" data-id="' + escapeHtml(key) + '"'));
     out.push('</div>');
     if (!model.replyBoxFound) out.push('<p class="tfcc-note">No reply box here, so Copy replaces Insert.</p>');
     out.push('</div>');
@@ -8387,9 +8399,22 @@
       key: key, lang: lang, text: text, selStart: text.length, selEnd: text.length, mode: 'source',
       previewTheme: null, picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn',
       name: d && d.name ? d.name : '', imageCheck: null, pickerWarn: null, dirty: false, showImages: false,
-      fields: {}, src: draftSig(d), atLimit: false, height: null,
+      fields: {}, src: draftSig(d), atLimit: false, height: null, undo: [], typingAt: 0,
     };
     void now;
+  }
+
+  // #58 E2: Undo. A snapshot of the text, mode and selection is pushed before
+  // each edit; a typing burst pushes one at its start. The stack belongs to
+  // the open draft: loadEditor starts a new one.
+  var UNDO_MAX = 50;
+  var TYPING_BURST_MS = 1000;
+
+  function pushUndo(e) {
+    var stack = (e.undo || []).concat([{ text: e.text, lang: e.lang, selStart: e.selStart, selEnd: e.selEnd }]);
+    e.undo = stack.length > UNDO_MAX ? stack.slice(stack.length - UNDO_MAX) : stack;
+    // Anything pushed here ends a typing burst: the next keystroke starts one.
+    e.typingAt = 0;
   }
 
   // What the editor last loaded or saved, so buildPanelModel can tell when the
@@ -10118,6 +10143,7 @@
     function applyEdit(r, now) {
       // Spec 4a: never silently cut, never store past the limit.
       if (r.text.length > DRAFT_MAX_CHARS) { overLimitNotice(r.text.length); redraw(); return; }
+      if (r.text !== state.editor.text) pushUndo(state.editor);
       state.editor.text = r.text; state.editor.selStart = r.start; state.editor.selEnd = r.end;
       state.editor.picker = null; state.editor.pickerWarn = null; state.editor.imageCheck = null;
       state.focusIntent = [attrSel('data-act', 'draft-text')];
@@ -10166,6 +10192,8 @@
       onAction: function (act, el) {
         var now = Date.now();
         var id = idOf(el);
+        // E2: any action ends a typing burst; the next keystroke starts one.
+        state.editor.typingAt = 0;
         if (act === 'refresh') {
           state.notices = [];
           // Refresh refreshes what the user is looking at: My posts runs its own
@@ -10321,6 +10349,7 @@
           if (mode === 'text' && ed.lang !== 'text' && ed.text.trim()) { ed.confirmText = ed.lang; redraw(); return; }
           var converted = convertDraft(ed.text, ed.lang, mode);
           if (converted.length > DRAFT_MAX_CHARS) { overLimitNotice(converted.length); redraw(); return; }
+          pushUndo(ed);
           ed.text = converted;
           ed.lang = mode; ed.mode = 'source'; ed.selStart = ed.selEnd = ed.text.length;
           if (ed.text.trim()) saveEditor(now);
@@ -10329,6 +10358,7 @@
         if (act === 'ed-pv-images') { state.editor.showImages = true; redraw(); return; }
         if (act === 'ed-mode-confirm') {
           var ec = state.editor;
+          pushUndo(ec);
           ec.text = convertDraft(ec.text, ec.lang, 'text');
           ec.lang = 'text'; ec.mode = 'source'; ec.confirmText = null; ec.selStart = ec.selEnd = ec.text.length;
           if (ec.text.trim()) saveEditor(now);
@@ -10421,10 +10451,39 @@
           captureSelection();
           var fx = fixAllImages(E.lang, E.text);
           if (fx.text.length > DRAFT_MAX_CHARS) { overLimitNotice(fx.text.length); redraw(); return; }
+          if (fx.text !== E.text) pushUndo(E);
           E.text = fx.text;
           if (fx.changed && E.text.trim()) saveEditor(now);
           notice(fx.changed ? 'Fixed ' + fx.changed + ' image link' + (fx.changed === 1 ? '' : 's') + ' for Torn.' : 'No image links needed fixing.', 'info');
           redraw(); return;
+        }
+        // E2: back one step: the text, mode and selection before the last edit.
+        if (act === 'ed-undo') {
+          if (!E.undo || !E.undo.length) return;
+          var snap = E.undo[E.undo.length - 1];
+          E.undo = E.undo.slice(0, -1);
+          E.text = snap.text; E.lang = snap.lang; E.selStart = snap.selStart; E.selEnd = snap.selEnd;
+          E.mode = 'source'; E.confirmText = null; E.picker = null; E.pickerWarn = null; E.imageCheck = null;
+          E.dirty = true;
+          state.focusIntent = [attrSel('data-act', 'draft-text')];
+          if (E.text.trim()) saveEditor(now);
+          redraw(); return;
+        }
+        // E1 (owner: move): the editor's text and mode become a new free
+        // draft, which opens. The thread's stored draft stays as it was; the
+        // unsaved typing goes with the free draft, so the editor is left clean
+        // and the key switch does not save it into the thread.
+        if (act === 'draft-to-free' && id) {
+          if (E.key !== id || /^n[0-9]+$/.test(id)) return;
+          captureSelection();
+          var mf = newFreeDraft(state.drafts, now, E.lang);
+          if (!mf.id) { notice('You have ' + FREE_DRAFTS_MAX + ' free drafts. Delete one to make another.', 'warn'); redraw(); return; }
+          var mfName = mf.drafts.free[mf.id].name;
+          state.drafts = saveFreeDraft(mf.drafts, mf.id, E.text, now, mfName, E.lang);
+          E.dirty = false;
+          state.draftFocusId = mf.id;
+          if (persist('drafts').ok) notice('Saved as ' + mfName + '. The thread draft is unchanged.', 'info');
+          recompute(now); redraw(); return;
         }
         if (act === 'draft-new') {
           var made = newFreeDraft(state.drafts, now, state.settings.draftLang);
@@ -10680,7 +10739,15 @@
         if (act === 'draft-text') {
           var nn = function (v) { return typeof v === 'number' && isFinite(v) ? v : 0; };
           var raw = el && el.value !== undefined ? String(el.value) : '';
-          state.editor.text = raw.slice(0, DRAFT_MAX_CHARS);
+          var typed = raw.slice(0, DRAFT_MAX_CHARS);
+          // E2: one Undo step per typing burst: a snapshot at its first
+          // keystroke; a pause or any other action ends it.
+          if (typed !== state.editor.text) {
+            var tnow = Date.now();
+            if (!state.editor.typingAt || tnow - state.editor.typingAt > TYPING_BURST_MS) pushUndo(state.editor);
+            state.editor.typingAt = tnow;
+          }
+          state.editor.text = typed;
           // Spec 4a: nothing is silently cut. maxlength and the slice keep the
           // stored source within the limit; the player hears about it once per
           // crossing, on the next redraw, not on every keystroke at the limit.

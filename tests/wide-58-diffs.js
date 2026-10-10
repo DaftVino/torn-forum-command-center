@@ -44,7 +44,20 @@ const literals = [
       + '<button type="button" data-act="ed-mode" data-mode="html" aria-pressed="false">HTML</button>'
       + '<button type="button" data-act="ed-mode" data-mode="preview" aria-pressed="false">Preview</button>'
       + '</div>'
+      // E2: in Text mode the toolbar row is just Undo, disabled until there
+      // is something to undo.
+      + '<div class="tfcc-tools" role="toolbar" aria-label="Formatting">'
+      + '<button type="button" data-act="ed-undo" aria-label="Undo the last change" title="Undo the last change" disabled>Undo</button>'
+      + '</div>'
       + '<textarea class="tfcc-draft" data-act="draft-text" data-id="101" maxlength="20000" aria-label="Draft text">',
+  },
+  // E1: a thread draft's action row ends with Save as free draft, after a gap.
+  {
+    item: '58e save as free draft', view: 'drafts',
+    from: '<button type="button" data-act="draft-delete" data-id="101">Delete</button></div><p class="tfcc-note">',
+    to: '<button type="button" data-act="draft-delete" data-id="101">Delete</button>'
+      + '<button type="button" data-act="draft-to-free" class="tfcc-tofree" data-id="101">Save as free draft</button>'
+      + '</div><p class="tfcc-note">',
   },
   // All drafts gains + New draft under its heading.
   {
@@ -105,6 +118,8 @@ const inserted = [
   // the image check thumbnail and the ? reference.
   '#tfcc-panel .tfcc-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--tfcc-gap-sm); }',
   '#tfcc-panel .tfcc-tools button { min-width: 32px; min-height: 32px; }',
+  // E1: Save as free draft, apart from Delete in a secondary color.
+  '#tfcc-panel .tfcc-actions button.tfcc-tofree { margin-left: var(--tfcc-gap-lg); color: var(--tm-accent-text); }',
   '#tfcc-panel .tfcc-picker { border: 1px solid var(--tm-border); border-radius: 4px; padding: 8px; margin-bottom: var(--tfcc-gap-sm); }',
   '#tfcc-panel .tfcc-swatches, #tfcc-panel .tfcc-emoji { display: flex; flex-wrap: wrap; gap: 4px; }',
   '#tfcc-panel .tfcc-swatch { display: block; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--tm-border); }',

@@ -1989,6 +1989,26 @@ const MUTATIONS = [
     suite: 'tests/editor-feedback.test.js',
     apply: (s) => s.replace('aria-label="Draft text"\' + hgt + \'>', 'aria-label="Draft text">'),
   },
+  {
+    name: 'Save as free draft also writes the typing into the thread draft',
+    suite: 'tests/editor-undo.test.js',
+    apply: (s) => s.replace('          E.dirty = false;\n          state.draftFocusId = mf.id;', '          state.draftFocusId = mf.id;'),
+  },
+  {
+    name: 'Undo restores the mode but not the previous text',
+    suite: 'tests/editor-undo.test.js',
+    apply: (s) => s.replace('          E.text = snap.text; E.lang = snap.lang;', '          E.lang = snap.lang;'),
+  },
+  {
+    name: 'every keystroke is its own Undo step',
+    suite: 'tests/editor-undo.test.js',
+    apply: (s) => s.replace('            if (!state.editor.typingAt || tnow - state.editor.typingAt > TYPING_BURST_MS) pushUndo(state.editor);', '            pushUndo(state.editor);'),
+  },
+  {
+    name: 'the Undo stack grows past 50 steps',
+    suite: 'tests/editor-undo.test.js',
+    apply: (s) => s.replace('  var UNDO_MAX = 50;', '  var UNDO_MAX = 60;'),
+  },
 ];
 
 let failures = 0;
