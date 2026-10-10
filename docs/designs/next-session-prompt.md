@@ -1,105 +1,58 @@
-# Next session — paste this into a fresh chat
+# Next session -- paste this into a fresh chat
 
-> Delete this file once Wave A is underway; it is a launch pad, not a document.
+> Delete this file in the first commit of the Drafts rich editor work; it is a launch pad, not a document.
 
 ## Start here
 
 Run `/orient` before anything else, including clarifying questions. Then
-implement the six merged feature plans in dependency waves, tracked on #20,
-with one agent per plan in its own worktree:
-
-- **Wave A**, in parallel: #8 auto-hide, then #2 My posts.
-- **Wave B**, in parallel once Wave A has merged: #3 rows cap, #4 author-only,
-  #10 reactions and karma, #9 badges. Merge them in that order, rebasing each
-  onto `main`.
+research Torn's forum text editor and design the Drafts rich editor (#58): a
+real editor in the Drafts view so players can write formatted Torn posts without
+writing code.
 
 ## Read first
 
 Read nothing else until you have these, in order:
 
-1. `docs/superpowers/plans/2026-10-08-auto-hide-on-open.md` (50.1K). The Wave A
-   lead plan: it introduces `isRecoveredValue`, which every later
-   settings-adding plan needs. Read it in slices: the header, Review Focus and
-   the `### Task` headings. The implementing agent reads the rest.
-2. `docs/superpowers/plans/2026-10-08-my-posts-view.md` (120.1K). The other
-   Wave A plan, and the dependency hub: `tfcc:mine`, `refreshMine` and
-   `threadPostsTotal`, which #3, #4 and #10 build on. Read it in slices: the
-   header, Review Focus, the `### Task` headings and the closing "If #3 has
-   merged first" section.
-3. `docs/reference/torn-api-live-findings-2026-10-08.md` (6.6K). The live API
-   behaviour every plan was corrected against: 16 findings, plus the owner's
-   page checks.
-4. `docs/code-map.md` (20.8K). The symbol index, current at `19b069f`. Grep it
-   for a symbol, then read the userscript around that anchor.
-5. `tests/custom-key.test.js` (7.5K). This coverage test fails until #2 adds
-   `forumthreads` and `forumposts`, and #10 adds `profile`, to
-   `CUSTOM_KEY_SELECTIONS`. That failure is intended.
-6. `docs/records/deliberate/2026-10-08-badges.md` (5.3K). The owner's binding
-   decisions for #9: a TCT day, strict streaks, and exactly 15 badges.
+1. `docs/designs/2026-10-09-drafts-rich-editor.md` (6.7K) -- the phase contract. It holds the owner's request, the five research questions to answer before designing, the known constraints, and the handoff log for everything shipped through v0.2.2.
+2. `docs/reference/torn-forum-post-sample.html` (4.1K) -- a real published post the owner supplied, whose tables Torn renders correctly. Its header lists the markup conventions it shows: `var(--te-text-color-*)` colours, the `table-wrap` divs, `<p>&nbsp;</p>` spacers, `target="_blank" rel="noopener"`.
+3. `docs/adr/0001-read-the-torn-api-not-the-forum-dom.md` (3.9K) -- FCC touches Torn's page in exactly two places, the mount and the reply box. An editor inside the panel adds no DOM path, but changing how the reply box is found or written changes one of the two.
+4. `docs/code-map.md` (63.1K) -- read it in slices, never whole. Grep it for `findReplyBox` (line 274), `insertDraft` (275) and `renderDraftsView` (329). Then read the userscript at those anchors with offset/limit.
+5. `docs/superpowers/specs/2026-10-09-mobile-condense-design.md` (101.4K) -- read section 14 only (from line 1156), by anchor. It defines the narrow layout rules the Drafts editor must meet at 320px in Torn PDA.
+6. `tests/drafts.test.js` (5.1K) -- what Drafts already promises: local drafts, reply-box autosave, Insert/Copy. The editor builds on these and must not break them.
 
 ## Branch
 
-`main`. Every plan, the live findings, the Minimal Access copy fix and the
-custom-key link are merged. Cut each feature branch from `main` as
-feat/<issue>-<slug>, for example feat/8-auto-hide, and never from another
-feature branch. Wave B branches are cut only after Wave A has merged.
+`main` -- everything is on it: the v0.2.2 release (245d856), the editor brief, the sample post, and a fresh code map. Cut the research and spec work from `main` as `docs/58-editor-research`, and the implementation as `feat/58-drafts-editor`. Never cut one from the other.
 
 ## Constraints
 
-- Never read `torn-forum-command-center.user.js` whole (153K). Grep the map,
-  then read slices. Give every agent this rule.
-- **No feature PR bumps the version.** Each one adds only an `[Unreleased]`
-  CHANGELOG entry, and the owner cuts one release commit and tag later. Two
-  feature PRs will conflict in `CHANGELOG.md`: keep both entries, Added before
-  Fixed.
-- **Do not revert. A thread's `posts` counts replies.** `threadPostsTotal` adds
-  1 exactly once. Never add it again (findings 3 and 4).
-- **Do not revert. `from` is inclusive, newest first, at most 20.** `offset`,
-  `limit` and `sort` are ignored. Go further back with the `prev` chain built
-  from `to`, which is also inclusive, and de-duplicate by id (findings 6-9 and
-  15).
-- **Do not revert. Minimal Access is the minimum key level** (finding 16).
-- **`isRecoveredValue` must be on `main` before #3, #4 or #9 merges.**
-  Otherwise every upgrading user sees "Settings were damaged".
-- **The default refresh stays at 13 requests or fewer.** The limiter holds 40
-  per minute, and the Settings text must state the real numbers.
-- Engine purity and ASCII-only source are enforced by tests. Every icon is
-  ASCII SVG.
-- Never automate a browser on torn.com. Torn's scripting rule risks a game
-  ban. Anything live goes through the API, using the owner's keys in
-  `~/.tfcc-key.txt`, which must never be printed or committed.
-- After each plan, run the mutation check as
-  `node tests/mutation-check.mjs > mutation.log 2>&1` and read the file. Never
-  pipe it into `head`.
+- Never read `torn-forum-command-center.user.js` whole (about 355K). Use the code map, then offset/limit slices. Give every agent this rule.
+- Never automate a browser on torn.com, because Torn's scripting rules risk a game ban. Research Torn's editor through the owner's own browser and DevTools (ask them for screenshots, the editor's DOM, or a saved post's stored HTML) and through public documentation. gstack browse is for the local `preview/*.html` files only.
+- The userscript source is ASCII only (`tests/metadata.test.js`). Emoji, arrows and typographic punctuation the editor emits are written as JS escapes.
+- FCC never posts. The editor produces markup, and Insert/Copy hands it to the player, who presses Torn's Post button. `tests/read-only.test.js` enforces no navigation, no `.click()` and no form submission.
+- Do not revert these; they are binding from earlier phases:
+  - wide-parity changes are exact-line entries in a `tests/wide-*-diffs.js` list, and the golden is never regenerated;
+  - `isRecoveredValue`, `isRecoveredOrganizer` and `canonicalClaims` make an upgrade with new or tidied fields silent, not "damaged";
+  - Match Torn resolves to the `tfcc-theme-light` or `tfcc-theme-dark` class.
+- A new setting or stored field must load from an older blob without a damage notice. Prove it with a test.
+- No version bump in a feature PR; add only an `[Unreleased]` CHANGELOG entry. A release is its own `chore(release)` PR, and the tag goes on the merged commit.
 - No attribution footer on any commit or PR.
 
 ## Exit criteria
 
-- Six feature PRs are merged to `main`, one each for #8, #2, #3, #4, #10 and
-  #9.
-- `npm test` passes on `main` after the last merge (the suite is at 309 now).
-- `npm run test:syntax` passes, and `node tests/mutation-check.mjs > mutation.log 2>&1` reports every promise guarded.
-- `docs/code-map.md` is regenerated and committed after the last merge.
-- Every remaining owner gate is recorded as a comment on #20.
+- The research findings are recorded in a committed `docs/reference/torn-forum-editor-findings-<date>.md`. It answers the brief's five questions, each marked "owner-observed" or "public docs", and lists what remains unknown.
+- A spec exists in `docs/superpowers/specs/` and a plan in `docs/superpowers/plans/`. The plan has had an adversarial review, recorded under `docs/records/review/`. If the reply-box access point changes shape, an ADR is committed under `docs/adr/`.
+- `npm test` passes (the suite is at 1023 now). If code changed, so do `npm run test:syntax` and `node tests/mutation-check.mjs > mutation.log 2>&1`, with the log read and every promise guarded.
 
 ## Unknowns and risks
 
-- **All six plans edit the same userscript.** Expect rebase conflicts inside
-  each wave. Merge serially in the stated order, and re-run the full
-  verification after each rebase rather than trusting the pre-rebase result.
-- **The custom-key link format is unverified.** The owner must paste one link
-  generated on torn.com/api.html before any release. This blocks the release,
-  not the implementation.
-- **v0.1.0 was never tagged.** `docs/qa-checklist.md` has still not been
-  walked on a real account, so the first tag will carry v0.1.0 and all six
-  features together. That needs the owner.
-- **Still unknown:**
-  - whether `rating` is net or likes-only;
-  - how `f=0` links, deleted threads and private forums behave;
-  - what the feed `type` values mean;
-  - whether Torn PDA shares storage across tabs.
-
-  Each plan treats these as unverified. None should be guessed into code.
-- **`.claude/worktrees/` is untracked:** agent worktrees from the planning
-  session. Remove them with `git worktree remove` once their branches are
-  merged. They are not repo content.
+- The central unknown: FCC finds the reply box as `textarea[name="postText"]`, but the sample's `--te-` colour variables suggest Torn's visible editor is a rich editor. Whether inserted HTML survives, and how, decides the whole design. Only the owner's own browser can answer it.
+- What Torn strips on save, the image format the owner calls "the proper format", and the full list of `--te-text-color-*` variables are all unverified.
+- `docs/forum-post.md` uses hex colours and bare tables. The research may show it needs Torn's conventions before it is posted.
+- Owner gates still open from the last session:
+  - upload v0.2.2 to Greasy Fork;
+  - host the forum-post images and fill the placeholders;
+  - settle whether `rating` is net or likes-only (it needs a topic post with a dislike).
+- Deferred and still open: #35 (takeover-only bottom dock) and #36 (Catch up selection mode).
+- The untracked `.vscode/` folder is the owner's editor settings. It was left uncommitted on purpose and is not part of this work.
+- The Codex CLI sandbox fails on this Windows machine ("setup refresh had errors"). For adversarial reviews, pipe the material on stdin with `codex exec ... --skip-git-repo-check -`.
