@@ -119,3 +119,10 @@ test('the cleaner bound is pinned, and the worst expansion found stays inside it
   const worst = '|\n\n'.repeat(Math.floor(20000 / 3));
   assert.ok(clean(worst).length < api.CLEAN_MAX_CHARS, 'expansion exceeded the bound');
 });
+
+test('deep nesting within the draft cap is bounded, not a stack overflow', () => {
+  assert.ok(clean('<b>'.repeat(6666) + 'x').indexOf('x') !== -1);
+  assert.ok(clean('<blockquote>'.repeat(5000) + 'x').indexOf('x') !== -1);
+  assert.ok(clean('<table><tr><td>'.repeat(2000) + 'x').indexOf('x') !== -1);
+  assert.ok(clean('<table><tr><td>'.repeat(60000)).length >= 0);
+});

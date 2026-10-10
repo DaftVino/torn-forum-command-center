@@ -3503,6 +3503,11 @@
   // times. A test pins the bound with the worst inputs found.
   var CLEAN_MAX_CHARS = 1000000;
   var URL_MAX_CHARS = 2000;
+  // Open-element depth past which a new element is unwrapped (a ghost). Far
+  // beyond any real post; it keeps the recursive serialisers off the call-stack
+  // limit, which Torn PDA's WebView reaches sooner than Node does.
+  var CLEAN_MAX_DEPTH = 100;
+  var STRUCT_TAGS = { table: 1, tbody: 1, thead: 1, tfoot: 1, tr: 1, ul: 1, ol: 1 };
 
   // ---- HTML tokenizer ------------------------------------------------------
 
@@ -3747,6 +3752,16 @@
           if (!tok.selfClose && !VOID_TAGS[tok.tag]) {
             stack.push({ tag: '#ghost', from: tok.tag, style: {}, children: top.children });
           }
+          continue;
+        }
+        if (stack.length > CLEAN_MAX_DEPTH && !tok.selfClose && node.tag !== 'br' && node.tag !== 'img') {
+          // Share the nearest ancestor that can hold text, so text under a
+          // capped table or list part is kept rather than lost.
+          var holder = top;
+          for (var h = stack.length - 1; h > 0; h -= 1) {
+            if (!STRUCT_TAGS[stack[h].tag]) { holder = stack[h]; break; }
+          }
+          stack.push({ tag: '#ghost', from: tok.tag, style: {}, children: holder.children });
           continue;
         }
         if (BLOCK_TAGS[node.tag]) closeUpTo(stack, ['p'], ['li', 'td', 'th', 'blockquote']);
