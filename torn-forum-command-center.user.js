@@ -496,6 +496,9 @@
       seeThrough: true,
       // #58: the mode a new draft opens in. Existing drafts keep their own.
       draftLang: 'md',
+      // #58 F1: default editor heights, desktop and phone (strict menu).
+      editorHeightWide: 'large',
+      editorHeightNarrow: 'medium',
     };
   }
 
@@ -544,6 +547,8 @@
     }
     // #58: strict on the menu; absent or off it takes the default.
     out.draftLang = DRAFT_LANGS.indexOf(raw.draftLang) !== -1 ? raw.draftLang : d.draftLang;
+    out.editorHeightWide = Object.prototype.hasOwnProperty.call(EDITOR_HEIGHTS, raw.editorHeightWide) ? raw.editorHeightWide : d.editorHeightWide;
+    out.editorHeightNarrow = Object.prototype.hasOwnProperty.call(EDITOR_HEIGHTS, raw.editorHeightNarrow) ? raw.editorHeightNarrow : d.editorHeightNarrow;
     return out;
   }
 
@@ -3572,6 +3577,10 @@
 
   // ---- #58 editor constants ----------------------------------------------
   var DRAFT_LANGS = Object.freeze(['md', 'html', 'text']);
+  // #58 F1: the editor textarea's default height, by Settings menu value.
+  // Small is the CSS min-height the box always had (90px).
+  var EDITOR_HEIGHTS = Object.freeze({ small: 90, medium: 160, large: 260, xlarge: 400 });
+  var EDITOR_HEIGHT_LABELS = Object.freeze([['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['xlarge', 'Extra large']]);
   var TORN_COLORS = Object.freeze([
     Object.freeze({ name: 'red', light: '#f03e3e', dark: '#ff8787' }),
     Object.freeze({ name: 'pink', light: '#d6336c', dark: '#faa2c1' }),
@@ -7307,6 +7316,8 @@
         enrichBudget: s.enrichBudget,
         autosaveDrafts: s.autosaveDrafts,
         draftLang: s.draftLang,
+        editorHeightWide: s.editorHeightWide,
+        editorHeightNarrow: s.editorHeightNarrow,
         hideTornBox: s.hideTornBox,
         authorOnly: s.authorOnly,
         autoHideOnOpen: s.autoHideOnOpen,
@@ -8325,7 +8336,11 @@
       out.push(renderPreview(model));
     } else {
       // B5: the height the player dragged it to survives every redraw.
-      var hgt = typeof e.height === 'number' && isFinite(e.height) && e.height > 0 ? ' style="height: ' + Math.round(e.height) + 'px;"' : '';
+      // F1: with no dragged height, the Settings default for this layout.
+      var setH = model.narrow ? model.settings.editorHeightNarrow : model.settings.editorHeightWide;
+      var useH = typeof e.height === 'number' && isFinite(e.height) && e.height > 0 ? e.height
+        : (Object.prototype.hasOwnProperty.call(EDITOR_HEIGHTS, setH) ? EDITOR_HEIGHTS[setH] : EDITOR_HEIGHTS[model.narrow ? 'medium' : 'large']);
+      var hgt = ' style="height: ' + Math.round(useH) + 'px;"';
       out.push('<textarea class="tfcc-draft" data-act="draft-text" data-id="' + escapeHtml(key)
         + '" maxlength="' + DRAFT_MAX_CHARS + '" aria-label="Draft text"' + hgt + '>' + escapeHtml(e.text) + '</textarea>');
     }
@@ -8653,6 +8668,14 @@
       + [['md', 'Markdown'], ['html', 'HTML'], ['text', 'Text']].map(function (o) {
         return '<option value="' + o[0] + '"' + (model.settings.draftLang === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
       }).join('') + '</select></div>');
+    [['tfcc-edh-wide', 'ed-height-wide', 'Editor height (desktop)', model.settings.editorHeightWide],
+      ['tfcc-edh-narrow', 'ed-height-narrow', 'Editor height (phone)', model.settings.editorHeightNarrow]].forEach(function (r) {
+      out.push('<div class="tfcc-kv"><label for="' + r[0] + '">' + r[2] + '</label>'
+        + '<select id="' + r[0] + '" data-act="' + r[1] + '">'
+        + EDITOR_HEIGHT_LABELS.map(function (o) {
+          return '<option value="' + o[0] + '"' + (r[3] === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+        }).join('') + '</select></div>');
+    });
     out.push(checkRow(model) + '<label for="tfcc-autohide">Hide the panel when I open a thread</label>'
       + '<input id="tfcc-autohide" type="checkbox" data-act="auto-hide"'
       + (model.settings.autoHideOnOpen ? ' checked' : '') + '>'
@@ -10682,6 +10705,13 @@
         }
         if (act === 'draft-lang') {
           if (DRAFT_LANGS.indexOf(value) !== -1) { state.settings.draftLang = value; persist('settings'); }
+          redraw(); return;
+        }
+        if (act === 'ed-height-wide' || act === 'ed-height-narrow') {
+          if (Object.prototype.hasOwnProperty.call(EDITOR_HEIGHTS, value)) {
+            state.settings[act === 'ed-height-wide' ? 'editorHeightWide' : 'editorHeightNarrow'] = value;
+            persist('settings');
+          }
           redraw(); return;
         }
         if (act === 'auto-hide') {

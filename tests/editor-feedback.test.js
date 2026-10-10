@@ -171,17 +171,17 @@ function dragTo(env, from, to, endOnWindow) {
 
 test('B5: a dragged editor height is kept across toolbar, picker and mode redraws', () => {
   const { env, api } = bootEditor({ text: 'hello' });
-  assert.doesNotMatch(redraw(env), /data-act="draft-text"[^>]*style=/, 'no height until the player drags');
-  dragTo(env, 120, 260);
-  assert.strictEqual(api.state.editor.height, 260);
+  assert.match(redraw(env), /data-act="draft-text"[^>]*style="height: 260px;"/, "the Settings default (desktop Large) until the player drags");
+  dragTo(env, 120, 333);
+  assert.strictEqual(api.state.editor.height, 333);
   click(env, '[data-act="ed-mark"][data-mark="bold"]');
-  assert.match(redraw(env), /aria-label="Draft text" style="height: 260px;">/);
+  assert.match(redraw(env), /aria-label="Draft text" style="height: 333px;">/);
   click(env, '[data-act="ed-picker"][data-picker="emoji"]');
-  assert.match(redraw(env), /style="height: 260px;"/);
+  assert.match(redraw(env), /style="height: 333px;"/);
   click(env, '[data-act="ed-mode"][data-mode="preview"]');
   redraw(env);
   click(env, '[data-act="ed-mode"][data-mode="md"]');
-  assert.match(redraw(env), /aria-label="Draft text" style="height: 260px;">/);
+  assert.match(redraw(env), /aria-label="Draft text" style="height: 333px;">/);
 });
 
 test('B5: a plain tap in the textarea records nothing; a drag that ends off the panel still counts', () => {
@@ -194,20 +194,20 @@ test('B5: a plain tap in the textarea records nothing; a drag that ends off the 
 
 test('B5: a failed measurement keeps the current height', () => {
   const { env, api } = bootEditor({ text: 'hello' });
-  dragTo(env, 120, 260);
+  dragTo(env, 120, 333);
   const ta = field(env);
   ta.getBoundingClientRect = () => { throw new Error('detached'); };
   panelOf(env).dispatchEvent({ type: 'pointerdown', target: ta, button: 0 });
   panelOf(env).dispatchEvent({ type: 'pointerup', target: ta, button: 0 });
-  assert.strictEqual(api.state.editor.height, 260);
+  assert.strictEqual(api.state.editor.height, 333);
 });
 
 test('B5: opening another draft starts at the default height again', () => {
   const { env, api } = bootEditor({ text: 'hello' });
-  dragTo(env, 120, 260);
+  dragTo(env, 120, 333);
   click(env, '[data-act="draft-new"]');
   const html = redraw(env);
   assert.notStrictEqual(api.state.editor.key, '42');
   assert.strictEqual(api.state.editor.height, null);
-  assert.doesNotMatch(html, /data-act="draft-text"[^>]*style=/);
+  assert.match(html, /data-act="draft-text"[^>]*style="height: 260px;"/);
 });

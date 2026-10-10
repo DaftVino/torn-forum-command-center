@@ -1878,6 +1878,18 @@ const MUTATIONS = [
       "    return 'md';"),
   },
   {
+    name: 'the height setting is ignored',
+    suite: 'tests/editor-height.test.js',
+    apply: (s) => s.replace("var setH = model.narrow ? model.settings.editorHeightNarrow : model.settings.editorHeightWide;",
+      "var setH = 'small';"),
+  },
+  {
+    name: 'the phone height uses the desktop setting',
+    suite: 'tests/editor-height.test.js',
+    apply: (s) => s.replace("var setH = model.narrow ? model.settings.editorHeightNarrow : model.settings.editorHeightWide;",
+      "var setH = model.settings.editorHeightWide;"),
+  },
+  {
     name: 'Preview shows the Markdown draft as raw lines',
     suite: 'tests/editor-view.test.js',
     apply: (s) => s.replace("return mdBlocks(src).map(function (b) { return { html: b.html, offset: starts[b.line] || 0 }; });",

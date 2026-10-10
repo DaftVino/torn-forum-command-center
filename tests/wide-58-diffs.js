@@ -49,7 +49,7 @@ const literals = [
       + '<div class="tfcc-tools" role="toolbar" aria-label="Formatting">'
       + '<button type="button" data-act="ed-undo" aria-label="Undo the last change" title="Undo the last change" disabled>Undo</button>'
       + '</div>'
-      + '<textarea class="tfcc-draft" data-act="draft-text" data-id="101" maxlength="20000" aria-label="Draft text">',
+      + '<textarea class="tfcc-draft" data-act="draft-text" data-id="101" maxlength="20000" aria-label="Draft text" style="height: 260px;">',
   },
   // E1: a thread draft's action row ends with Save as free draft, after a gap.
   {
@@ -80,7 +80,16 @@ const literals = [
     to: '<input id="tfcc-autosave" type="checkbox" data-act="autosave" checked></div>'
       + '<div class="tfcc-kv"><label for="tfcc-draftlang">Default editor for new drafts</label>'
       + '<select id="tfcc-draftlang" data-act="draft-lang"><option value="md" selected>Markdown</option>'
-      + '<option value="html">HTML</option><option value="text">Text</option></select></div>',
+      + '<option value="html">HTML</option><option value="text">Text</option></select></div>'
+      // F1: the default editor heights, desktop then phone.
+      + '<div class="tfcc-kv"><label for="tfcc-edh-wide">Editor height (desktop)</label>'
+      + '<select id="tfcc-edh-wide" data-act="ed-height-wide"><option value="small">Small</option>'
+      + '<option value="medium">Medium</option><option value="large" selected>Large</option>'
+      + '<option value="xlarge">Extra large</option></select></div>'
+      + '<div class="tfcc-kv"><label for="tfcc-edh-narrow">Editor height (phone)</label>'
+      + '<select id="tfcc-edh-narrow" data-act="ed-height-narrow"><option value="small">Small</option>'
+      + '<option value="medium" selected>Medium</option><option value="large">Large</option>'
+      + '<option value="xlarge">Extra large</option></select></div>',
   },
 ];
 
