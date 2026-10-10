@@ -4567,6 +4567,181 @@
     return htmlToMd(text);
   }
 
+  // ---- image link fixer (#58) ------------------------------------------------
+  // A pure string rewrite: no lookup, no request. Rules and their sources are in
+  // docs/reference/image-host-link-rules-2026-10-09.md.
+
+  var IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp)$/i;
+
+  var IMAGE_HOWTO = Object.freeze({
+    'photos.app.goo.gl': 'Google Photos links are pages. Open the photo, right-click it, choose Copy image address, and use that link (it starts with lh3.googleusercontent.com).',
+    'photos.google.com': 'Google Photos links are pages. Open the photo, right-click it, choose Copy image address, and use that link (it starts with lh3.googleusercontent.com).',
+    '1drv.ms': 'OneDrive links are pages. Open the image in OneDrive on the web, right-click it and choose Copy image address, or use another host.',
+    'onedrive.live.com': 'OneDrive links are pages. Open the image in OneDrive on the web, right-click it and choose Copy image address, or use another host.',
+    'ibb.co': 'That is the ImgBB page. On it, copy the Direct link field (it starts with i.ibb.co).',
+    'postimg.cc': 'That is the Postimages page. Copy its Direct link (it starts with i.postimg.cc).',
+    'postimages.org': 'That is the Postimages page. Copy its Direct link (it starts with i.postimg.cc).',
+    'prnt.sc': 'Lightshot links are pages. Open it, right-click the image and choose Copy image address.',
+    'tenor.com': 'Tenor links are pages. Right-click the GIF and choose Copy image address.',
+  });
+
+  function imageResult(status, url, host, note) {
+    return { status: status, url: url, host: host, note: note || '' };
+  }
+
+  function pathPart(rest) { return rest.split(/[?#]/)[0]; }
+
+  function queryParam(rest, name) {
+    var m = new RegExp('[?&]' + name + '=([^&#]*)').exec(rest);
+    return m ? m[1] : '';
+  }
+
+  function fixImageUrl(raw, depth) {
+    var u = String(raw || '').trim();
+    if (!u) return imageResult('refused', '', '', 'Paste an image link.');
+    if (u.length > URL_MAX_CHARS) return imageResult('refused', '', '', 'That link is too long.');
+    if (/^http:\/\//i.test(u)) return imageResult('refused', '', '', 'Torn needs an https link. Try the same link with https.');
+    var m = /^https:\/\/([^\/?#\s]+)([^\s"'<>`]*)$/i.exec(u);
+    if (!m) return imageResult('refused', '', '', 'That is not a web link.');
+    var host = m[1].toLowerCase().replace(/^www\./, '');
+    var rest = m[2];
+    var path = pathPart(rest);
+    var ext = IMAGE_EXT_RE.test(path);
+
+    if (host === 'editor.torn.com') return imageResult('ok', u, host, 'Uploaded to Torn.');
+    if (host === 'drive.google.com') {
+      var id = (/\/file\/(?:u\/[0-9]+\/)?d\/([A-Za-z0-9_-]{20,})/.exec(path) || [])[1] || '';
+      if (!id) id = /^\/(open|uc|thumbnail)$/.test(path) ? (/^[A-Za-z0-9_-]{20,}$/.exec(queryParam(rest, 'id')) || [''])[0] : '';
+      if (!id) return imageResult('refused', '', host, 'That is a Drive folder or page, not a file. Open the image file in Drive and copy its share link.');
+      var fixedDrive = 'https://drive.google.com/thumbnail?id=' + id + '&sz=w1000';
+      return imageResult(fixedDrive === u ? 'ok' : 'fixed', fixedDrive, host,
+        'The file must be shared as "Anyone with the link". Drive serves it 1000px wide.');
+    }
+    if (host === 'docs.google.com') return imageResult('refused', '', host, 'Google Docs pages are not images.');
+    if (host === 'dropbox.com') {
+      if (/^\/scl\/fo\//.test(path)) return imageResult('refused', '', host, 'That is a Dropbox folder. Share the image file itself.');
+      if (!/^\/(s|scl\/fi)\//.test(path)) return imageResult('refused', '', host, 'That Dropbox link is not a shared file.');
+      var query = rest.slice(path.length).replace(/^\?/, '').split('#')[0];
+      var params = query ? query.split('&').filter(function (q) { return q && !/^(dl|raw)=/.test(q); }) : [];
+      params.push('raw=1');
+      var fixedBox = 'https://www.dropbox.com' + path + '?' + params.join('&');
+      return imageResult(fixedBox === u ? 'ok' : 'fixed', fixedBox, host, 'The link must be public.');
+    }
+    if (host === 'dl.dropboxusercontent.com') return imageResult('ok', u, host, '');
+    if (host === 'github.com') {
+      var gh = /^\/([^\/]+)\/([^\/]+)\/(?:blob|raw)\/(.+)$/.exec(path);
+      if (!gh) return imageResult('refused', '', host, 'Open the image file on GitHub and copy that link.');
+      if (/\.svg$/i.test(gh[3])) return imageResult('refused', '', host, 'GitHub serves SVG files as text, so they will not show. Use a PNG.');
+      return imageResult('fixed', 'https://raw.githubusercontent.com/' + gh[1] + '/' + gh[2] + '/' + gh[3], host,
+        'Public repositories only.');
+    }
+    if (host === 'raw.githubusercontent.com') {
+      if (/\.svg$/i.test(path)) return imageResult('refused', '', host, 'GitHub serves SVG files as text, so they will not show. Use a PNG.');
+      return imageResult('ok', u, host, '');
+    }
+    if (host === 'giphy.com') {
+      var gi = /^\/(?:gifs|embed)\/(?:[^\/]*-)?([A-Za-z0-9]+)\/?$/.exec(path);
+      if (!gi) return imageResult('refused', '', host, 'Open the GIF on Giphy and copy its link.');
+      return imageResult('fixed', 'https://media.giphy.com/media/' + gi[1] + '/giphy.gif', host, '');
+    }
+    if (/^media[0-9]?\.giphy\.com$/.test(host)) return imageResult('ok', u, host, '');
+    if (host === 'gyazo.com') {
+      var gy = /^\/([0-9a-f]{32})\/?$/.exec(path);
+      if (!gy) return imageResult('refused', '', host, 'Use Share, then Copy Direct Link on Gyazo.');
+      return imageResult('fixed', 'https://i.gyazo.com/' + gy[1] + '.png', host,
+        'Right for screenshots. For a GIF or video capture, use Share, then Copy Direct Link.');
+    }
+    if (host === 'i.gyazo.com') return imageResult('ok', u, host, '');
+    if (host === 'imgur.com' || host === 'm.imgur.com') {
+      if (/^\/(a|gallery|t|r|user)\//.test(path)) {
+        return imageResult('howto', '', host, 'That is an Imgur album or gallery. Open the image, right-click it, choose Copy image address (it starts with i.imgur.com).');
+      }
+      var im = /^\/([A-Za-z0-9]{5,8})(?:\.[A-Za-z]{3,4})?\/?$/.exec(path);
+      if (!im) return imageResult('refused', '', host, 'Open the image on Imgur and copy its link.');
+      return imageResult('fixed', 'https://i.imgur.com/' + im[1] + '.png', host,
+        'If it is a GIF, change .png to .gif. Imgur is blocked in the UK, so UK readers see a broken image.');
+    }
+    if (host === 'i.imgur.com') return imageResult('ok', u, host, 'Imgur is blocked in the UK, so UK readers see a broken image.');
+    if (host === 'reddit.com' && path === '/media' && !(depth > 0)) {
+      var inner = '';
+      try { inner = decodeURIComponent(queryParam(rest, 'url')); } catch (e) { inner = ''; }
+      var r = fixImageUrl(inner, 1);
+      return r.status === 'ok' || r.status === 'fixed' ? imageResult('fixed', r.url, r.host, r.note) : r;
+    }
+    if (host === 'preview.redd.it') {
+      return imageResult('fixed', 'https://i.redd.it' + path, host, 'Reddit images often refuse to show on other sites.');
+    }
+    if (host === 'i.redd.it') return imageResult('ok', u, host, 'Reddit images often refuse to show on other sites.');
+    if (host === 'cdn.discordapp.com' || host === 'media.discordapp.net') {
+      return imageResult('refused', '', host, 'Discord links expire after about a day, so the image would break. Upload it somewhere lasting.');
+    }
+    if (Object.prototype.hasOwnProperty.call(IMAGE_HOWTO, host) || /\.sharepoint\.com$/.test(host)) {
+      return imageResult('howto', '', host, IMAGE_HOWTO[host] || IMAGE_HOWTO['onedrive.live.com']);
+    }
+    if (host === 'lh3.googleusercontent.com' || ext) return imageResult('ok', u, host, '');
+    return imageResult('refused', '', host, 'This looks like a web page, not an image. Open the image itself and copy its address.');
+  }
+
+  // Every image link in a draft that the fixer can rewrite, rewritten.
+  function fixAllImages(lang, text) {
+    var changed = 0;
+    var src = String(text || '');
+    if (lang === 'md') {
+      src = src.replace(/(!\[[^\]\n]*\]\()([^)\s]+)(\))/g, function (all, a, url, b) {
+        var r = fixImageUrl(url);
+        if (r.status !== 'fixed') return all;
+        changed += 1;
+        return a + r.url + b;
+      });
+    } else if (lang === 'html') {
+      // Single- or double-quoted src, as players type either.
+      src = src.replace(/(<img\b[^>]*?\bsrc=)(["'])([^"']*)\2/gi, function (all, a, q, url) {
+        var r = fixImageUrl(url.replace(/&amp;/g, '&'));
+        if (r.status !== 'fixed') return all;
+        changed += 1;
+        return a + q + r.url.replace(/&/g, '&amp;') + q;
+      });
+    }
+    return { text: src, changed: changed };
+  }
+
+  // ---- custom colour contrast (#58) ------------------------------------------
+
+  function hexRgb(hex) {
+    var h = String(hex || '').toLowerCase();
+    if (/^#[0-9a-f]{3}$/.test(h)) h = '#' + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2) + h.charAt(3) + h.charAt(3);
+    if (!/^#[0-9a-f]{6}$/.test(h)) return null;
+    return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  }
+
+  function relLuminance(rgb) {
+    var c = rgb.map(function (v) {
+      var s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+
+  function contrastRatio(a, b) {
+    var x = hexRgb(a);
+    var y = hexRgb(b);
+    if (!x || !y) return 0;
+    var l1 = relLuminance(x);
+    var l2 = relLuminance(y);
+    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  }
+
+  // The themes a custom colour is hard to read in (WCAG AA, 4.5:1), against the
+  // editor backgrounds the owner measured.
+  function colorWarnings(hex) {
+    var out = [];
+    ['light', 'dark'].forEach(function (theme) {
+      var r = contrastRatio(hex, EDITOR_BG[theme]);
+      if (r && r < 4.5) out.push({ theme: theme, ratio: Math.floor(r * 10) / 10 });
+    });
+    return out;
+  }
+
   // ---- ENGINE END ------------------------------------------------------
 
   // -- storage runtime -----------------------------------------------------

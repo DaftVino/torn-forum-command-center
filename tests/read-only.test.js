@@ -112,8 +112,21 @@ test('every request goes to the Torn API and nowhere else', () => {
     'greasyfork.org',    // the homepage in the metadata block
     'github.com',        // the namespace in the metadata block
   ]);
-  const stray = [...hosts].filter((h) => !allowed.has(h));
+  // #58: hosts the image link fixer writes into a player's own image links.
+  // A pure string rewrite: nothing fetches them. Preview loads a player's
+  // image only after they tap Show images (spec section 4a), with no referrer.
+  const imageFixerHosts = new Set([
+    'drive.google.com', 'www.dropbox.com', 'raw.githubusercontent.com', 'media.giphy.com',
+    'i.gyazo.com', 'i.imgur.com', 'i.redd.it',
+  ]);
+  const stray = [...hosts].filter((h) => !allowed.has(h) && !imageFixerHosts.has(h));
   assert.deepStrictEqual(stray, [], 'unexpected hosts in the source: ' + stray.join(', '));
+
+  const fixer = SOURCE.slice(SOURCE.indexOf('function fixImageUrl('), SOURCE.indexOf('function fixAllImages('));
+  for (const h of imageFixerHosts) {
+    const outside = SOURCE.split(fixer).join('').indexOf('https://' + h);
+    assert.strictEqual(outside, -1, h + ' appears outside the image fixer');
+  }
 });
 
 test('the declared network surface is one host', () => {
