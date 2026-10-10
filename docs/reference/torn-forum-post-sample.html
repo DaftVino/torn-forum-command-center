@@ -1,0 +1,119 @@
+<!--
+  A real, published Torn forum post supplied by the owner on 2026-10-09: the
+  Torn Education Scheduler beginner's guide. Torn renders its tables correctly.
+  It is reference input for #58 (the Drafts rich editor): it shows the markup
+  Torn's own forum editor produces and keeps.
+
+  Conventions visible here, to be confirmed by research before anything is
+  built on them:
+  - colours are Torn editor variables, e.g. color: var(--te-text-color-green),
+    --te-text-color-blue, --te-text-color-red, not hex values;
+  - font sizes are inline spans, e.g. <span style="font-size: 16px;">;
+  - alignment is <p style="text-align: center;">;
+  - a table sits inside <div><div><div class="table-wrap"><table><tbody>,
+    with <th> header cells in the first row;
+  - blank lines are <p>&nbsp;</p>;
+  - links carry target="_blank" rel="noopener";
+  - underline is <span style="text-decoration: underline;">;
+  - entities such as &rsquo; &ndash; &mdash; &amp; appear in the stored text.
+-->
+<p style="text-align: center;">
+  <span style="font-size: 18px; color: var(--te-text-color-green);"
+    ><strong>A beginner&rsquo;s guide to education - which courses to take first, and why </strong></span
+  >
+</p>
+<p style="text-align: center;">
+  <span style="font-size: 12px;"
+    ><strong
+      >script companion to
+      <a href="https://greasyfork.org/en/scripts/590070-torn-education-scheduler" target="_blank" rel="noopener"
+        >Torn Education Scheduler</a
+      ></strong
+    ></span
+  >
+</p>
+<p>&nbsp;</p>
+<p>
+  Education is one of Torn's slow, permanent upgrades. You can take only one course at a time, so the most important
+  beginner habit is simple: keep the slot active and have the next course ready before the current one ends.
+</p>
+<p>&nbsp;</p>
+<p>
+  <span style="font-size: 16px; color: var(--te-text-color-green);"><strong>How courses and degrees work</strong></span>
+</p>
+<p>&nbsp;</p>
+<p>Courses are arranged in categories such as Biology, Sports Science, History, and Computer Science.</p>
+<ul>
+  <li>Tier 1 is the category's starting course.</li>
+  <li>Tier 2 courses may require an earlier course in their branch.</li>
+  <li>
+    A tier 3 bachelor's course requires every tier 2 course in its category, not merely the course shown immediately
+    above it.
+  </li>
+</ul>
+<p>&nbsp;</p>
+<p>
+  <span style="font-size: 16px; color: var(--te-text-color-blue);"><strong>Start here: unlock blood bags</strong></span>
+</p>
+<p>&nbsp;</p>
+<p>
+  <span style="text-decoration: underline;"
+    >In the scheduler, select <strong>0-Start Here</strong> and press <strong>add</strong>.</span
+  >
+</p>
+<p>&nbsp;</p>
+<ol>
+  <li><strong>BIO1340</strong> &mdash; Introduction to Biochemistry &mdash; 7 days, $200</li>
+  <li><strong>BIO2127</strong> &mdash; Intravenous Therapy &mdash; 21 days, $3,500</li>
+</ol>
+<p>&nbsp;</p>
+<div>
+  <div>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr>
+            <th>Route</th>
+            <th>Base time</th>
+            <th>Base cost</th>
+            <th>At day 182</th>
+          </tr>
+          <tr>
+            <td>Foundation</td>
+            <td>28 days</td>
+            <td>$3,700</td>
+            <td>Complete</td>
+          </tr>
+          <tr>
+            <td>Fighting</td>
+            <td>231 days</td>
+            <td>$22,530</td>
+            <td>49 days left</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<p>&nbsp;</p>
+<p>
+  <span style="font-size: 16px; color: var(--te-text-color-red);"
+    ><strong>Plan it with Torn Education Scheduler</strong></span
+  >
+</p>
+<p>
+  <strong
+    >Install it here from:
+    <a href="https://greasyfork.org/en/scripts/590070-torn-education-scheduler" target="_blank" rel="noopener"
+      >Greasy Fork</a
+    >.<br
+  /></strong>
+</p>
+<p>&nbsp;</p>
+<p>Most importantly, keep that education slot moving.&nbsp;</p>
+<!--
+  Trimmed for length: the full post repeats these same structures (more
+  coloured headings, underlined preset lines, bold course-code paragraphs, a
+  second four-column table). Every distinct construct the post used is kept
+  above.
+-->
