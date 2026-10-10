@@ -8393,6 +8393,11 @@
     out.push(checkRow(model) + '<label for="tfcc-autosave">Autosave the reply box as a draft</label>'
       + '<input id="tfcc-autosave" type="checkbox" data-act="autosave"'
       + (model.settings.autosaveDrafts ? ' checked' : '') + '></div>');
+    out.push('<div class="tfcc-kv"><label for="tfcc-draftlang">Default editor for new drafts</label>'
+      + '<select id="tfcc-draftlang" data-act="draft-lang">'
+      + [['md', 'Markdown'], ['html', 'HTML'], ['text', 'Text']].map(function (o) {
+        return '<option value="' + o[0] + '"' + (model.settings.draftLang === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+      }).join('') + '</select></div>');
     out.push(checkRow(model) + '<label for="tfcc-autohide">Hide the panel when I open a thread</label>'
       + '<input id="tfcc-autohide" type="checkbox" data-act="auto-hide"'
       + (model.settings.autoHideOnOpen ? ' checked' : '') + '>'
@@ -10292,6 +10297,10 @@
           state.settings.autosaveDrafts = !!el.checked;
           persist('settings');
           if (!state.settings.autosaveDrafts) detachAutosave();
+          redraw(); return;
+        }
+        if (act === 'draft-lang') {
+          if (DRAFT_LANGS.indexOf(value) !== -1) { state.settings.draftLang = value; persist('settings'); }
           redraw(); return;
         }
         if (act === 'auto-hide') {

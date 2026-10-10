@@ -384,3 +384,20 @@ test('a stored draft changing behind a clean editor keeps the open picker and wh
   assert.ok(api.state.editor.imageCheck && api.state.editor.imageCheck.url === 'https://i.imgur.com/AbC12dE.png');
   assert.strictEqual(api.state.editor.fields['ed-img-url'], 'https://i.imgur.com/AbC12dE.png');
 });
+
+test('Settings offers the Default editor, and a change applies to new drafts only', () => {
+  const env = loadUserscript({ location: THREAD, now: NOW });
+  const api = env.exports;
+  api.state.settings.view = 'settings';
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /<select id="tfcc-draftlang" data-act="draft-lang">/);
+  assert.match(html, /<option value="md" selected>Markdown<\/option>/);
+  api.state.drafts = api.saveDraft(api.freshDrafts(), 42, '**b**', NOW, 'T', 'md');
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onChange('draft-lang', Object.assign(el({ 'data-act': 'draft-lang' }), { value: 'html' }));
+  assert.strictEqual(api.state.settings.draftLang, 'html');
+  api.state.route = api.parseForumRoute(env.win.location);
+  api.state.settings.view = 'drafts';
+  api.panelHtml(api.buildPanelModel(NOW));
+  assert.strictEqual(api.state.editor.lang, 'md', 'the saved draft keeps its own mode');
+});
