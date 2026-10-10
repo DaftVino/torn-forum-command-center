@@ -1977,6 +1977,34 @@ const MUTATIONS = [
     suite: 'tests/editor-view.test.js',
     apply: (s) => s.replace("          if (act === 'ed-img-url') state.editor.imageCheck = null;\n", ''),
   },
+  // ---- #58 feedback Batch H: the image link fixer and bare links --------------
+  {
+    name: 'a bare fixable link alone on its line is not converted',
+    suite: 'tests/editor-images.test.js',
+    apply: (s) => s.replace("          if (r.status === 'fixed') {\n            changed += 1;\n            return line.replace(t,",
+      "          if (r.status === 'never') {\n            changed += 1;\n            return line.replace(t,"),
+  },
+  {
+    name: 'Fix all converts links inside sentences',
+    suite: 'tests/editor-images.test.js',
+    apply: (s) => s.replace(String.raw`        if (/^https:\/\/\S+$/i.test(t)) {`, String.raw`        if (/https:\/\/\S+/i.test(t)) {`),
+  },
+  {
+    name: 'Fix all converts a bare link inside an open HTML block',
+    suite: 'tests/editor-images.test.js',
+    apply: (s) => s.replace('            if (stack.length) { left += countFixableLinks(seg, true); continue; }\n', ''),
+  },
+  {
+    name: 'a changed fixer address keeps the old check, so Insert uses the old URL',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("          if (act === 'ed-fix-url') state.editor.fixCheck = null;\n", ''),
+  },
+  {
+    name: 'Fix all in Text mode rewrites anyway instead of asking to switch',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("          if (E.lang === 'text') { notice('Switch to Markdown or HTML to add images.', 'warn'); redraw(); return; }\n          var fx =",
+      '          var fx ='),
+  },
   {
     name: 'the Copy result forces a redraw over the player typing',
     suite: 'tests/editor-view.test.js',

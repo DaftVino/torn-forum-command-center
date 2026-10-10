@@ -4809,9 +4809,32 @@
     return imageResult('refused', '', host, 'This looks like a web page, not an image. Open the image itself and copy its address.');
   }
 
-  // Every image link in a draft that the fixer can rewrite, rewritten.
+  // A bare https link in running text, without the punctuation that ends a
+  // sentence or closes link markup around it.
+  function bareLinksIn(text) {
+    var out = [];
+    var re = /https:\/\/[^\s<>"'`]+/gi;
+    var m;
+    while ((m = re.exec(text))) out.push(m[0].replace(/[).,;:!?\]]+$/, ''));
+    return out;
+  }
+
+  // How many links in this running text the fixer would rewrite if they stood
+  // alone: they are left as links, and counted so the notice can say so.
+  function countFixableLinks(text, decode) {
+    var n = 0;
+    bareLinksIn(text).forEach(function (u) {
+      if (fixImageUrl(decode ? u.replace(/&amp;/g, '&') : u).status === 'fixed') n += 1;
+    });
+    return n;
+  }
+
+  // Every image link in a draft that the fixer can rewrite, rewritten. A
+  // fixable bare link that stands alone on its line becomes an image; one in a
+  // sentence or inside link markup is left as it is and counted (leftAsLinks).
   function fixAllImages(lang, text) {
     var changed = 0;
+    var left = 0;
     var src = String(text || '');
     if (lang === 'md') {
       src = src.replace(/(!\[[^\]\n]*\]\()([^)\s]+)(\))/g, function (all, a, url, b) {
@@ -4820,6 +4843,19 @@
         changed += 1;
         return a + r.url + b;
       });
+      src = src.split('\n').map(function (line) {
+        var t = line.trim();
+        if (/^https:\/\/\S+$/i.test(t)) {
+          var r = fixImageUrl(t);
+          if (r.status === 'fixed') {
+            changed += 1;
+            return line.replace(t, '![](' + r.url + ')');
+          }
+          return line;
+        }
+        left += countFixableLinks(line.replace(/!\[[^\]\n]*\]\([^)\s]+\)/g, ''), false);
+        return line;
+      }).join('\n');
     } else if (lang === 'html') {
       // Single- or double-quoted src, as players type either.
       src = src.replace(/(<img\b[^>]*?\bsrc=)(["'])([^"']*)\2/gi, function (all, a, q, url) {
@@ -4828,8 +4864,45 @@
         changed += 1;
         return a + q + r.url.replace(/&/g, '&amp;') + q;
       });
+      if (src.length <= CLEAN_MAX_CHARS) {
+        var tokens = tokenizeHtml(src);
+        var stack = [];
+        var edits = [];
+        for (var i = 0; i < tokens.length; i += 1) {
+          var tk = tokens[i];
+          if (tk.type === 'open') {
+            if (!tk.selfClose) stack.push(tk.tag);
+          } else if (tk.type === 'close') {
+            var at = stack.lastIndexOf(tk.tag);
+            if (at !== -1) stack.length = at;
+          } else if (!tk.raw) {
+            var end = i + 1 < tokens.length ? tokens[i + 1].pos : src.length;
+            var seg = src.slice(tk.pos, end);
+            if (seg.indexOf('<') !== -1) continue; // a comment sits in here: leave it be
+            if (stack.length) { left += countFixableLinks(seg, true); continue; }
+            var lines = seg.split('\n');
+            var off = tk.pos;
+            for (var k = 0; k < lines.length; k += 1) {
+              var ln = lines[k];
+              var startsLine = k > 0 || off === 0 || src.charAt(off - 1) === '\n';
+              var endsLine = k < lines.length - 1 || end >= src.length || src.charAt(end) === '\n';
+              var tl = ln.trim();
+              var fixed = startsLine && endsLine && /^https:\/\/\S+$/i.test(tl) ? fixImageUrl(tl.replace(/&amp;/g, '&')) : null;
+              if (fixed && fixed.status === 'fixed') {
+                changed += 1;
+                var lead = ln.indexOf(tl);
+                edits.push({ from: off + lead, to: off + lead + tl.length, text: '<img src="' + fixed.url.replace(/&/g, '&amp;') + '">' });
+              } else {
+                left += countFixableLinks(ln, true);
+              }
+              off += ln.length + 1;
+            }
+          }
+        }
+        for (var e = edits.length - 1; e >= 0; e -= 1) src = src.slice(0, edits[e].from) + edits[e].text + src.slice(edits[e].to);
+      }
     }
-    return { text: src, changed: changed };
+    return { text: src, changed: changed, leftAsLinks: left };
   }
 
   // ---- custom color contrast (#58) ------------------------------------------
@@ -5468,6 +5541,7 @@
     editor: {
       key: null, lang: 'md', text: '', selStart: 0, selEnd: 0, mode: 'source', previewTheme: null,
       picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn', name: '', imageCheck: null,
+      fixOpen: false, fixCheck: null,
       pickerWarn: null, dirty: false, showImages: false, fields: {}, src: 'new|md', atLimit: false,
       undo: [], typingAt: 0,
     },
@@ -7020,6 +7094,7 @@
       '#' + PANEL_ID + ' .tfcc-picker { border: 1px solid var(--tm-border); border-radius: 4px; padding: 8px; margin-bottom: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + ' .tfcc-swatches, #' + PANEL_ID + ' .tfcc-emoji { display: flex; flex-wrap: wrap; gap: 4px; }',
       '#' + PANEL_ID + ' .tfcc-swatch { display: block; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--tm-border); }',
+      '#' + PANEL_ID + ' .tfcc-actions button.tfcc-fixopen { margin-left: auto; }',
       '#' + PANEL_ID + ' .tfcc-img-check { display: block; max-width: 100%; max-height: 160px; margin: 4px 0; }',
       '#' + PANEL_ID + ' .tfcc-key { border-collapse: collapse; width: 100%; }',
       '#' + PANEL_ID + ' .tfcc-key th, #' + PANEL_ID + ' .tfcc-key td { border: 1px solid var(--tm-border); padding: 2px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }',
@@ -7219,7 +7294,7 @@
       state.editor.showImages = keep.showImages;
       // An open picker and what was typed into it are the player's, not the
       // stored draft's: a reload never wipes them mid-edit.
-      ['picker', 'fields', 'imageCheck', 'pickerWarn', 'emojiTab', 'moreOpen', 'height', 'undo'].forEach(function (k) { state.editor[k] = keep[k]; });
+      ['picker', 'fields', 'imageCheck', 'fixOpen', 'fixCheck', 'pickerWarn', 'emojiTab', 'moreOpen', 'height', 'undo'].forEach(function (k) { state.editor[k] = keep[k]; });
       // With steps to undo, the reload is a step of its own: one Undo goes
       // back to what the editor showed before it, never past the newer stored
       // text. With none, Undo stays off, as on a freshly opened draft.
@@ -8163,7 +8238,6 @@
     ['ed-picker', 'data-picker="image"', '<span class="tfcc-emo" aria-hidden="true">\uD83D\uDDBC\uFE0F</span>', 'Insert image', false],
     ['ed-picker', 'data-picker="table"', '\u25A6', 'Insert table', false],
     ['ed-picker', 'data-picker="emoji"', '\u263A', 'Insert emoji', false],
-    ['ed-fix-images', '', 'Fix image links', 'Fix image links in this draft', false],
     ['ed-picker', 'data-picker="help"', '?', 'Markdown help', false],
   ]);
 
@@ -8257,6 +8331,36 @@
     return out.join('');
   }
 
+  // The result of a link check, shared by the Image picker and the fixer
+  // section: the converted link, the host's note, and (only after a check)
+  // the thumbnail with its buttons. withCopy also shows the ready link.
+  function renderImageCheck(out, r, insertBtn, withCopy) {
+    if (!r) return;
+    if (r.status === 'fixed') out.push('<p class="tfcc-note">Fixed for Torn: <code>' + escapeHtml(r.url) + '</code></p>');
+    else if (withCopy && r.status === 'ok') out.push('<p class="tfcc-note">Ready to use: <code>' + escapeHtml(r.url) + '</code></p>');
+    if (r.note) out.push('<p class="tfcc-note">' + escapeHtml(r.note) + '</p>');
+    if (r.status === 'ok' || r.status === 'fixed') {
+      // Loaded because the player tapped Check; no referrer (spec 4a).
+      out.push('<img class="tfcc-img-check" referrerpolicy="no-referrer" src="' + escapeHtml(r.url) + '" alt="Preview of the image">'
+        + (withCopy ? btn('ed-fix-copy', 'Copy link') : '') + insertBtn);
+    }
+  }
+
+  var FIX_ALL_NOTE = 'Rewrites image page links (Drive, Dropbox, Imgur...) in this draft into direct image links. Nothing is uploaded.';
+
+  // H1: the image link fixer, a section below the editor.
+  function renderFixer(e) {
+    var F = e.fields || {};
+    var v = escapeHtml(Object.prototype.hasOwnProperty.call(F, 'ed-fix-url') ? F['ed-fix-url'] : '');
+    var out = ['<div class="tfcc-picker tfcc-fixer" role="group" aria-label="Fix image link">'];
+    out.push('<label for="tfcc-ed-fix" class="tfcc-note">Image link</label>'
+      + '<input id="tfcc-ed-fix" type="url" data-act="ed-fix-url" value="' + v + '">' + btn('ed-fix-check', 'Check'));
+    renderImageCheck(out, e.fixCheck, btn('ed-fix-insert', 'Insert into draft'), true);
+    out.push('<div class="tfcc-actions">' + btn('ed-fix-all', 'Fix all links in this draft') + '</div>'
+      + '<p class="tfcc-note">' + FIX_ALL_NOTE + '</p></div>');
+    return out.join('');
+  }
+
   function pickerClose(picker) { return btn('ed-picker-close', picker === 'help' ? 'Close' : 'Cancel'); }
 
   function renderPicker(model) {
@@ -8294,16 +8398,7 @@
         + '<label for="tfcc-ed-alt" class="tfcc-note">Description (optional)</label>'
         + '<input id="tfcc-ed-alt" type="text" data-act="ed-img-alt" maxlength="200" value="' + fv('ed-img-alt', '') + '">'
         + btn('ed-img-check', 'Check link'));
-      var r = e.imageCheck;
-      if (r) {
-        if (r.status === 'fixed') out.push('<p class="tfcc-note">Fixed for Torn: <code>' + escapeHtml(r.url) + '</code></p>');
-        if (r.note) out.push('<p class="tfcc-note">' + escapeHtml(r.note) + '</p>');
-        if (r.status === 'ok' || r.status === 'fixed') {
-          // Loaded because the player tapped Check link; no referrer (spec 4a).
-          out.push('<img class="tfcc-img-check" referrerpolicy="no-referrer" src="' + escapeHtml(r.url) + '" alt="Preview of the image">'
-            + btn('ed-img-insert', 'Insert image'));
-        }
-      }
+      renderImageCheck(out, e.imageCheck, btn('ed-img-insert', 'Insert image'), false);
       out.push('<p class="tfcc-note">Have the file, not a link? Upload it with Torn\'s own Insert Image button after Insert.</p>');
     } else if (e.picker === 'table') {
       out.push('<label for="tfcc-ed-cols" class="tfcc-note">Columns</label><input id="tfcc-ed-cols" type="number" min="1" max="8" value="' + fv('ed-cols', '2') + '" data-act="ed-cols">'
@@ -8383,7 +8478,10 @@
     out.push(btn('draft-delete', 'Delete', ' data-id="' + escapeHtml(key) + '"'));
     // E1: a thread draft's text can move to a new free draft.
     if (!isFree) out.push(btn('draft-to-free', 'Save as free draft', ' class="tfcc-tofree" data-id="' + escapeHtml(key) + '"'));
+    // H1: the image link fixer opens from the right end of the row.
+    out.push(btn('ed-fix-open', 'Fix image link', ' class="tfcc-fixopen" aria-expanded="' + (e.fixOpen ? 'true' : 'false') + '"'));
     out.push('</div>');
+    if (e.fixOpen) out.push(renderFixer(e));
     if (!model.replyBoxFound) out.push('<p class="tfcc-note">No reply box here, so Copy replaces Insert.</p>');
     out.push('</div>');
     return out.join('');
@@ -8444,7 +8542,7 @@
     state.editor = {
       key: key, lang: lang, text: text, selStart: text.length, selEnd: text.length, mode: 'source',
       previewTheme: null, picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn',
-      name: d && d.name ? d.name : '', imageCheck: null, pickerWarn: null, dirty: false, showImages: false,
+      name: d && d.name ? d.name : '', imageCheck: null, fixOpen: false, fixCheck: null, pickerWarn: null, dirty: false, showImages: false,
       fields: {}, src: draftSig(d), atLimit: false, height: null, undo: [], typingAt: 0,
     };
     void now;
@@ -10512,14 +10610,38 @@
           if (!snip) return;
           applyEdit(insertAtCaret(E.text, E.selStart, E.selEnd, snip), now); return;
         }
-        if (act === 'ed-fix-images') {
+        if (act === 'ed-fix-open') { captureSelection(); E.fixOpen = !E.fixOpen; if (!E.fixOpen) E.fixCheck = null; redraw(); return; }
+        if (act === 'ed-fix-check') { E.fixCheck = fixImageUrl(field('ed-fix-url', '')); redraw(); return; }
+        if (act === 'ed-fix-copy') {
+          var fc = E.fixCheck;
+          if (!fc || (fc.status !== 'ok' && fc.status !== 'fixed')) return;
+          var cp = copyText(doc, win, fc.url);
+          notice(cp.ok ? 'Link copied.' : 'Copy failed. Select the link above and copy it yourself.', cp.ok ? 'info' : 'warn');
+          redraw(); return;
+        }
+        if (act === 'ed-fix-insert') {
+          var fi = E.fixCheck;
+          if (!fi) { notice('Check the image link first.', 'warn'); redraw(); return; }
+          if (fi.status !== 'ok' && fi.status !== 'fixed') return;
+          if (E.lang === 'text') { notice('Switch to Markdown or HTML to add images.', 'warn'); redraw(); return; }
           captureSelection();
+          applyEdit(insertAtCaret(E.text, E.selStart, E.selEnd, imageSnippet(E.lang, fi.url, '')), now); return;
+        }
+        if (act === 'ed-fix-all') {
+          captureSelection();
+          if (E.lang === 'text') { notice('Switch to Markdown or HTML to add images.', 'warn'); redraw(); return; }
           var fx = fixAllImages(E.lang, E.text);
           if (fx.text.length > DRAFT_MAX_CHARS) { overLimitNotice(fx.text.length); redraw(); return; }
           if (fx.text !== E.text) pushUndo(E);
           E.text = fx.text;
           if (fx.changed && E.text.trim()) saveEditor(now);
-          notice(fx.changed ? 'Fixed ' + fx.changed + ' image link' + (fx.changed === 1 ? '' : 's') + ' for Torn.' : 'No image links needed fixing.', 'info');
+          var fparts = [];
+          if (fx.changed) fparts.push('Fixed ' + fx.changed + ' image link' + (fx.changed === 1 ? '' : 's') + '.');
+          if (fx.leftAsLinks) {
+            fparts.push(fx.leftAsLinks === 1 ? '1 link in a sentence was left as a link.'
+              : fx.leftAsLinks + ' links in sentences were left as links.');
+          }
+          notice(fparts.length ? fparts.join(' ') : 'No image links found to fix.', 'info');
           redraw(); return;
         }
         // E2: back one step: the text, mode and selection before the last edit.
@@ -10842,11 +10964,12 @@
         }
         // #58: a picker's typed fields live in the editor state, so a redraw
         // re-renders them and the handlers never query the document.
-        if (['ed-hex-input', 'ed-link-input', 'ed-img-url', 'ed-img-alt', 'ed-cols', 'ed-rows'].indexOf(act) !== -1) {
+        if (['ed-hex-input', 'ed-link-input', 'ed-img-url', 'ed-fix-url', 'ed-img-alt', 'ed-cols', 'ed-rows'].indexOf(act) !== -1) {
           state.editor.fields = Object.assign({}, state.editor.fields);
           state.editor.fields[act] = el && el.value !== undefined ? String(el.value).slice(0, URL_MAX_CHARS) : '';
           // A changed address needs a new check: Insert never uses an old one.
           if (act === 'ed-img-url') state.editor.imageCheck = null;
+          if (act === 'ed-fix-url') state.editor.fixCheck = null;
           return;
         }
         if (act !== 'note-input' && act !== 'tag-input') return;

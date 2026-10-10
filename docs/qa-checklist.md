@@ -551,6 +551,11 @@ Walk on Torn PDA and on desktop, signed in to a real account.
       file; a Dropbox file; an Imgur single image, as a JPG and as a GIF; a
       GitHub image; a Gyazo screenshot. A host that fails is moved to "not
       derivable" before release.
+      Also: paste a bare Drive "view" link on its own line in Markdown (and
+      again in HTML), open Fix image link, press Fix all links in this draft,
+      Insert into the reply box and Post: the image renders. A link in the
+      middle of a sentence stays a link and the message counts it. Check the
+      Check, Copy link and Insert into draft buttons on a phone.
 - [ ] 7. On a phone (Torn PDA and mobile Safari/Chrome), tap in the draft to
       place the caret, or drag the selection handles, then press Bold and
       Quote: they act on the caret or highlighted range, also after More.

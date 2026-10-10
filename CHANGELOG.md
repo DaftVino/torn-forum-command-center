@@ -6,6 +6,14 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 
+- Image link fixer section (#58): "Fix image link" moves from the toolbar to
+  the right end of the Save / Insert / Delete row and opens a section with a
+  link field, Check (converted link, host note, thumbnail loaded only after
+  Check), Copy link, Insert into draft, and "Fix all links in this draft".
+- Fix all now also turns a fixable bare link that stands alone on its line
+  (for example a pasted Drive "view" link) into an image in Markdown and HTML.
+  A bare link in a sentence or inside link markup is left as a link and counted
+  in the message; Text mode asks you to switch to Markdown or HTML.
 - Drafts editor, owner round 2 (#58): toolbar buttons are symbols (B, I, U,
   S, A, aA, align, quote, link, picture, table, smiley, ?, curved-arrow Undo,
   and three dots for More) with the full name kept as the tooltip and

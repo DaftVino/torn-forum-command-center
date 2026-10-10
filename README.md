@@ -149,6 +149,14 @@ button yourself.
   cannot be rewritten, so the editor says how to copy the direct image address.
   Discord links expire and plain http links are refused, and unsafe hosts are
   refused.
+  Open it with **Fix image link** at the right end of the Save / Insert /
+  Delete row. The section checks one link (shows the converted link, a
+  thumbnail loaded only after you press Check, **Copy link** and **Insert into
+  draft**), and **Fix all links in this draft** rewrites every image link in
+  the draft. In Markdown and HTML, a fixable link that stands alone on its own
+  line, such as a Drive "view" link pasted by itself, becomes an image. A link
+  in the middle of a sentence or inside link markup is left as a link, and the
+  message says how many were left. Nothing is uploaded.
 - **Default editor.** In Settings, "Default editor for new drafts": Markdown
   (the default), HTML or Text. It applies to new drafts only.
 

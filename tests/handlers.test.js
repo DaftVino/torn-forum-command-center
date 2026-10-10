@@ -94,6 +94,13 @@ function renderedActions() {
             const rp = /data-act="([a-z-]+)"/g;
             while ((mp = rp.exec(hp))) actions.add(mp[1]);
           }
+          // H1: the image link fixer section, with a checked link (so Copy link and Insert into draft render).
+          Object.assign(api.state.editor, { mode: 'source', lang: 'md', picker: null, moreOpen: false, fixOpen: true, fixCheck: fixed });
+          const hx = api.panelHtml(api.buildPanelModel(NOW));
+          let mx;
+          const rx = /data-act="([a-z-]+)"/g;
+          while ((mx = rx.exec(hx))) actions.add(mx[1]);
+          Object.assign(api.state.editor, { fixOpen: false, fixCheck: null });
           Object.assign(api.state.editor, { picker: null, imageCheck: null, moreOpen: false, emojiTab: 'torn' });
           Object.assign(api.state.editor, { mode: 'source', dirty: false });
           api.state.draftFocusId = freeMade.id;
@@ -147,7 +154,7 @@ test('every control the panel renders has a handler', () => {
 
   // These carry data only; they are read by valueOf() rather than dispatched.
   const dataOnly = ['key-input', 'draft-text', 'import-text', 'folder-name', 'ed-name',
-    'ed-hex-input', 'ed-link-input', 'ed-img-url', 'ed-img-alt', 'ed-cols', 'ed-rows', 'ed-header'];
+    'ed-hex-input', 'ed-link-input', 'ed-img-url', 'ed-fix-url', 'ed-img-alt', 'ed-cols', 'ed-rows', 'ed-header'];
 
   const dead = actions.filter((a) => handled.indexOf(a) === -1 && dataOnly.indexOf(a) === -1);
   assert.deepStrictEqual(dead, [], 'controls that render but do nothing: ' + dead.join(', '));

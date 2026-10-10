@@ -90,7 +90,7 @@ test('E1: the editor is clean after the move, so switching back never writes the
 test('E1: the button shows on a thread draft only, after Delete, with its own class', () => {
   const { env } = bootEditor({ text: 'x' });
   const html = redraw(env);
-  assert.match(html, /data-act="draft-delete" data-id="42">Delete<\/button><button type="button" data-act="draft-to-free" class="tfcc-tofree" data-id="42">Save as free draft<\/button><\/div>/);
+  assert.match(html, /data-act="draft-delete" data-id="42">Delete<\/button><button type="button" data-act="draft-to-free" class="tfcc-tofree" data-id="42">Save as free draft<\/button><button type="button" data-act="ed-fix-open" class="tfcc-fixopen" aria-expanded="false">Fix image link<\/button><\/div>/);
   const narrow = bootEditor({ text: 'x', width: 343 });
   assert.match(redraw(narrow.env), /class="tfcc-tofree"/);
 });
@@ -248,14 +248,16 @@ test('E2: opening a different draft clears the Undo stack', () => {
   assert.strictEqual(api.state.editor.undo.length, 0, 'coming back is opening it again');
 });
 
-test('E2: Fix image links is one Undo step; a fix that changes nothing adds none', () => {
+test('E2: Fix all links is one Undo step; a fix that changes nothing adds none', () => {
   const text = '![a](https://imgur.com/AbC12dE)';
   const { env, api } = bootEditor({ text });
-  click(env, '[data-act="ed-fix-images"]');
+  api.state.editor.fixOpen = true;
+  redraw(env);
+  click(env, '[data-act="ed-fix-all"]');
   assert.notStrictEqual(api.state.editor.text, text);
   assert.strictEqual(api.state.editor.undo.length, 1);
   redraw(env);
-  click(env, '[data-act="ed-fix-images"]');
+  click(env, '[data-act="ed-fix-all"]');
   assert.strictEqual(api.state.editor.undo.length, 1, 'nothing left to fix, nothing to undo');
   redraw(env);
   click(env, '[data-act="ed-undo"]');

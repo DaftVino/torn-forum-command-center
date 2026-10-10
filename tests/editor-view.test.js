@@ -334,7 +334,7 @@ test('emoji: a Torn emoji inserts its shortcode; the tip names the system picker
 
 test('Fix image link rewrites the whole draft and says how many', () => {
   const { api, h } = editorAt('![a](https://imgur.com/AbC12dE)', 'md', [0, 0]);
-  h.onAction('ed-fix-images', el({ 'data-act': 'ed-fix-images' }));
+  h.onAction('ed-fix-all', el({ 'data-act': 'ed-fix-all' }));
   assert.strictEqual(api.state.editor.text, '![a](https://i.imgur.com/AbC12dE.png)');
   assert.ok(api.state.notices.some((n) => /1 image link/.test(n.text)));
 });
@@ -581,4 +581,104 @@ test('the narrow primary toolbar row fits one line at 343px and is right-aligned
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'torn-forum-command-center.user.js'), 'utf8');
   assert.match(src, /\.tfcc-narrow \.tfcc-tools \{ gap: 4px; justify-content: flex-end; \}/);
   assert.match(src, /\.tfcc-narrow \.tfcc-tools button \{ min-width: 40px; width: 40px; min-height: 44px;/);
+});
+
+// ---- H1: the image link fixer section ----------------------------------------
+
+const OWNER_LINK = 'https://drive.google.com/file/d/1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h/view?usp=sharing';
+
+test('H1: the Fix image link button ends the action row and opens a section below the editor', () => {
+  const { api, h } = editorAt('x', 'md', [1, 1]);
+  const closed = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(closed, /Save as free draft<\/button><button type="button" data-act="ed-fix-open" class="tfcc-fixopen" aria-expanded="false">Fix image link<\/button><\/div>/);
+  assert.doesNotMatch(closed, /tfcc-fixer|ed-fix-all|ed-fix-url/);
+  assert.doesNotMatch(closed, /data-act="ed-fix-images"/, 'the toolbar no longer carries it');
+  h.onAction('ed-fix-open', el({ 'data-act': 'ed-fix-open' }));
+  const open = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(open, /aria-expanded="true">Fix image link/);
+  assert.match(open, /<input id="tfcc-ed-fix" type="url" data-act="ed-fix-url" value="">/);
+  assert.match(open, /data-act="ed-fix-check">Check</);
+  assert.match(open, /data-act="ed-fix-all">Fix all links in this draft</);
+  assert.match(open, /Rewrites image page links \(Drive, Dropbox, Imgur\.\.\.\) in this draft into direct image links\. Nothing is uploaded\./);
+  assert.doesNotMatch(open, /tfcc-img-check/, 'no thumbnail before Check');
+  h.onAction('ed-fix-open', el({ 'data-act': 'ed-fix-open' }));
+  assert.doesNotMatch(api.panelHtml(api.buildPanelModel(NOW)), /tfcc-fixer/);
+});
+
+test('H1: Check shows the converted link, the note and a no-referrer thumbnail; Copy link and Insert use it', () => {
+  const { env, api } = editorAt('ab', 'md', [1, 1]);
+  const written = [];
+  const win = Object.assign({}, env.win, { navigator: { clipboard: { writeText: (t) => { written.push(t); } } } });
+  const h = api.makeHandlers(env.doc, win);
+  h.onAction('ed-fix-open', el({ 'data-act': 'ed-fix-open' }));
+  h.onInput('ed-fix-url', Object.assign(el({ 'data-act': 'ed-fix-url' }), { value: OWNER_LINK }));
+  assert.strictEqual(api.state.editor.fields['ed-fix-url'], OWNER_LINK);
+  assert.doesNotMatch(api.panelHtml(api.buildPanelModel(NOW)), /tfcc-img-check/);
+  h.onAction('ed-fix-check', el({ 'data-act': 'ed-fix-check' }));
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /Fixed for Torn: <code>https:\/\/drive\.google\.com\/thumbnail\?id=1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h&amp;sz=w1000<\/code>/);
+  assert.match(html, /Anyone with the link/);
+  assert.match(html, /<img class="tfcc-img-check" referrerpolicy="no-referrer" src="https:\/\/drive\.google\.com\/thumbnail/);
+  assert.match(html, /data-act="ed-fix-copy">Copy link<\/button><button type="button" data-act="ed-fix-insert">Insert into draft/);
+  assert.strictEqual(written.length, 0);
+  h.onAction('ed-fix-copy', el({ 'data-act': 'ed-fix-copy' }));
+  assert.deepStrictEqual(written, ['https://drive.google.com/thumbnail?id=1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h&sz=w1000']);
+  h.onAction('ed-fix-insert', el({ 'data-act': 'ed-fix-insert' }));
+  assert.strictEqual(api.state.editor.text, 'a![](https://drive.google.com/thumbnail?id=1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h&sz=w1000)b');
+  // A changed address needs a new check.
+  h.onInput('ed-fix-url', Object.assign(el({ 'data-act': 'ed-fix-url' }), { value: 'https://ibb.co/8P0808s' }));
+  assert.strictEqual(api.state.editor.fixCheck, null);
+});
+
+test('H1: a page link that cannot be fixed shows how, with no thumbnail, Copy or Insert', () => {
+  const { api, h } = editorAt('', 'md', [0, 0]);
+  h.onAction('ed-fix-open', el({ 'data-act': 'ed-fix-open' }));
+  h.onInput('ed-fix-url', Object.assign(el({ 'data-act': 'ed-fix-url' }), { value: 'https://ibb.co/8P0808s' }));
+  h.onAction('ed-fix-check', el({ 'data-act': 'ed-fix-check' }));
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /Direct link/);
+  assert.doesNotMatch(html, /tfcc-img-check|ed-fix-copy|ed-fix-insert/);
+  h.onAction('ed-fix-insert', el({ 'data-act': 'ed-fix-insert' }));
+  assert.strictEqual(api.state.editor.text, '');
+});
+
+test('H1: the section keeps what was typed across a redraw and has its own state from the Image picker', () => {
+  const { api, h } = editorAt('', 'md', [0, 0]);
+  h.onAction('ed-fix-open', el({ 'data-act': 'ed-fix-open' }));
+  h.onInput('ed-fix-url', Object.assign(el({ 'data-act': 'ed-fix-url' }), { value: OWNER_LINK }));
+  h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'image' }));
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /tfcc-fixer/);
+  assert.ok(html.indexOf(OWNER_LINK.replace(/&/g, '&amp;')) !== -1, 'the typed link survives the redraw');
+});
+
+test('H2: Fix all converts a bare link alone on its line and says what happened', () => {
+  const { api, h } = editorAt(OWNER_LINK, 'md', [0, 0]);
+  const say = () => api.state.notices.map((n) => n.text).join('|');
+  h.onAction('ed-fix-all', el({ 'data-act': 'ed-fix-all' }));
+  assert.strictEqual(api.state.editor.text, '![](https://drive.google.com/thumbnail?id=1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h&sz=w1000)');
+  assert.match(say(), /Fixed 1 image link\./);
+  assert.strictEqual(api.state.editor.undo.length, 1);
+});
+
+test('H2: Fix all says when links in sentences were left, and when there was nothing to fix', () => {
+  const sent = 'a ' + OWNER_LINK + ' b\nc ' + OWNER_LINK;
+  const a = editorAt(sent, 'md', [0, 0]);
+  a.h.onAction('ed-fix-all', el({ 'data-act': 'ed-fix-all' }));
+  assert.strictEqual(a.api.state.editor.text, sent);
+  assert.match(a.api.state.notices.map((n) => n.text).join('|'), /2 links in sentences were left as links\./);
+  const mix = editorAt(OWNER_LINK + '\nsee ' + OWNER_LINK, 'md', [0, 0]);
+  mix.h.onAction('ed-fix-all', el({ 'data-act': 'ed-fix-all' }));
+  assert.match(mix.api.state.notices.map((n) => n.text).join('|'), /Fixed 1 image link\. 1 link in a sentence was left as a link\./);
+  const none = editorAt('plain words', 'md', [0, 0]);
+  none.h.onAction('ed-fix-all', el({ 'data-act': 'ed-fix-all' }));
+  assert.match(none.api.state.notices.map((n) => n.text).join('|'), /No image links found to fix\./);
+  assert.strictEqual(none.api.state.editor.undo.length, 0);
+});
+
+test('H2: Text mode changes nothing and says to switch', () => {
+  const { api, h } = editorAt(OWNER_LINK, 'text', [0, 0]);
+  h.onAction('ed-fix-all', el({ 'data-act': 'ed-fix-all' }));
+  assert.strictEqual(api.state.editor.text, OWNER_LINK);
+  assert.match(api.state.notices.map((n) => n.text).join('|'), /Switch to Markdown or HTML to add images\./);
 });

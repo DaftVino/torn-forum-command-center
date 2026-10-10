@@ -59,6 +59,15 @@ const literals = [
       + '<button type="button" data-act="draft-to-free" class="tfcc-tofree" data-id="101">Save as free draft</button>'
       + '</div><p class="tfcc-note">',
   },
+  // H1: the image link fixer button ends the action row; its section renders
+  // only once opened, so nothing else changes while it is closed.
+  {
+    item: '58h fix image link button', view: 'drafts',
+    from: 'Save as free draft</button></div><p class="tfcc-note">',
+    to: 'Save as free draft</button>'
+      + '<button type="button" data-act="ed-fix-open" class="tfcc-fixopen" aria-expanded="false">Fix image link</button>'
+      + '</div><p class="tfcc-note">',
+  },
   // All drafts gains + New draft under its heading.
   {
     item: '58 new draft', view: 'drafts',
@@ -128,6 +137,8 @@ const inserted = [
   '#tfcc-panel .tfcc-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--tfcc-gap-sm); }',
   '#tfcc-panel .tfcc-tools button { min-width: 32px; min-height: 32px; }',
   // E1: Save as free draft, apart from Delete in a secondary color.
+  // H1: the image link fixer opens from the right end of the action row.
+  '#tfcc-panel .tfcc-actions button.tfcc-fixopen { margin-left: auto; }',
   '#tfcc-panel .tfcc-actions button.tfcc-tofree { margin-left: var(--tfcc-gap-lg); color: var(--tm-accent-text); }',
   '#tfcc-panel .tfcc-picker { border: 1px solid var(--tm-border); border-radius: 4px; padding: 8px; margin-bottom: var(--tfcc-gap-sm); }',
   '#tfcc-panel .tfcc-swatches, #tfcc-panel .tfcc-emoji { display: flex; flex-wrap: wrap; gap: 4px; }',

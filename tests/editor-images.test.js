@@ -81,13 +81,73 @@ test('expiring, insecure and non-image links are refused with a reason', () => {
 
 test('Fix image link rewrites every fixable image in a draft', () => {
   assert.deepStrictEqual(api.fixAllImages('md', '![a](https://imgur.com/AbC12dE) ![b](https://x.y/z.png)'),
-    { text: '![a](https://i.imgur.com/AbC12dE.png) ![b](https://x.y/z.png)', changed: 1 });
+    { text: '![a](https://i.imgur.com/AbC12dE.png) ![b](https://x.y/z.png)', changed: 1, leftAsLinks: 0 });
   assert.deepStrictEqual(api.fixAllImages('html', '<img src="https://drive.google.com/file/d/' + ID + '/view">'),
-    { text: '<img src="https://drive.google.com/thumbnail?id=' + ID + '&amp;sz=w1000">', changed: 1 });
+    { text: '<img src="https://drive.google.com/thumbnail?id=' + ID + '&amp;sz=w1000">', changed: 1, leftAsLinks: 0 });
   assert.deepStrictEqual(api.fixAllImages('html', "<img src='https://imgur.com/AbC12dE'>"),
-    { text: "<img src='https://i.imgur.com/AbC12dE.png'>", changed: 1 });
+    { text: "<img src='https://i.imgur.com/AbC12dE.png'>", changed: 1, leftAsLinks: 0 });
   assert.deepStrictEqual(api.fixAllImages('text', '![a](https://imgur.com/AbC12dE)'),
-    { text: '![a](https://imgur.com/AbC12dE)', changed: 0 });
+    { text: '![a](https://imgur.com/AbC12dE)', changed: 0, leftAsLinks: 0 });
+});
+
+// H2: the owner's case, a Drive /view link pasted on its own line.
+const OWNER = 'https://drive.google.com/file/d/1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h/view?usp=sharing';
+const OWNER_FIXED = 'https://drive.google.com/thumbnail?id=1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h&sz=w1000';
+
+test('H2: a fixable bare link alone on its line becomes an image in Markdown', () => {
+  assert.deepStrictEqual(api.fixAllImages('md', OWNER),
+    { text: '![](' + OWNER_FIXED + ')', changed: 1, leftAsLinks: 0 });
+  assert.deepStrictEqual(api.fixAllImages('md', 'Look:\n\n  ' + OWNER + '  \nbye'),
+    { text: 'Look:\n\n  ![](' + OWNER_FIXED + ')  \nbye', changed: 1, leftAsLinks: 0 });
+  assert.deepStrictEqual(api.fixAllImages('md', 'https://imgur.com/AbC12dE\nhttps://imgur.com/ZzY99xW'),
+    { text: '![](https://i.imgur.com/AbC12dE.png)\n![](https://i.imgur.com/ZzY99xW.png)', changed: 2, leftAsLinks: 0 });
+});
+
+test('H2: a fixable bare link alone on its line becomes an image in HTML', () => {
+  assert.deepStrictEqual(api.fixAllImages('html', OWNER),
+    { text: '<img src="' + OWNER_FIXED.replace('&', '&amp;') + '">', changed: 1, leftAsLinks: 0 });
+  assert.deepStrictEqual(api.fixAllImages('html', '<p>one</p>\n' + OWNER + '\n<p>two</p>'),
+    { text: '<p>one</p>\n<img src="' + OWNER_FIXED.replace('&', '&amp;') + '">\n<p>two</p>', changed: 1, leftAsLinks: 0 });
+  // A Dropbox page link: the query is rewritten to raw=1.
+  assert.deepStrictEqual(api.fixAllImages('html', 'https://dropbox.com/s/abc/pic.png?dl=0'.replace('dropbox.com', 'www.dropbox.com')),
+    { text: '<img src="https://www.dropbox.com/s/abc/pic.png?raw=1">', changed: 1, leftAsLinks: 0 });
+});
+
+test('H2: a fixable link in a sentence is left as a link and counted', () => {
+  const md = 'See ' + OWNER + ' for the map.';
+  assert.deepStrictEqual(api.fixAllImages('md', md), { text: md, changed: 0, leftAsLinks: 1 });
+  assert.deepStrictEqual(api.fixAllImages('md', 'x ' + OWNER + '.'), { text: 'x ' + OWNER + '.', changed: 0, leftAsLinks: 1 });
+  assert.deepStrictEqual(api.fixAllImages('html', md), { text: md, changed: 0, leftAsLinks: 1 });
+  const mixed = OWNER + '\nand ' + OWNER;
+  assert.deepStrictEqual(api.fixAllImages('md', mixed),
+    { text: '![](' + OWNER_FIXED + ')\nand ' + OWNER, changed: 1, leftAsLinks: 1 });
+  // Alone on its line, but after a tag on that same line: still in a sentence.
+  const tagged = '<strong>map</strong> ' + OWNER;
+  assert.deepStrictEqual(api.fixAllImages('html', tagged), { text: tagged, changed: 0, leftAsLinks: 1 });
+});
+
+test('H2: a link inside link markup is left as it is and counted', () => {
+  const md = '[the map](' + OWNER + ')';
+  assert.deepStrictEqual(api.fixAllImages('md', md), { text: md, changed: 0, leftAsLinks: 1 });
+  const a = '<a href="' + OWNER + '">the map</a>';
+  assert.deepStrictEqual(api.fixAllImages('html', a), { text: a, changed: 0, leftAsLinks: 0 });
+  const b = '<a href="' + OWNER + '">\n' + OWNER + '\n</a>';
+  assert.deepStrictEqual(api.fixAllImages('html', b), { text: b, changed: 0, leftAsLinks: 1 });
+  const p = '<p>\n' + OWNER + '\n</p>';
+  assert.deepStrictEqual(api.fixAllImages('html', p), { text: p, changed: 0, leftAsLinks: 1 });
+});
+
+test('H2: an already-direct link alone on its line is left as typed, uncounted', () => {
+  for (const lang of ['md', 'html']) {
+    const t = 'https://i.imgur.com/AbC12dE.png\n' + OWNER_FIXED;
+    assert.deepStrictEqual(api.fixAllImages(lang, t), { text: t, changed: 0, leftAsLinks: 0 }, lang);
+  }
+});
+
+test('H2: a link that cannot be fixed alone on a line is left as typed', () => {
+  const t = 'https://drive.google.com/drive/folders/abc';
+  assert.deepStrictEqual(api.fixAllImages('md', t), { text: t, changed: 0, leftAsLinks: 0 });
+  assert.deepStrictEqual(api.fixAllImages('text', OWNER), { text: OWNER, changed: 0, leftAsLinks: 0 });
 });
 
 test('a custom color near-invisible in a theme is flagged there; merely weak colors are not (#58)', () => {

@@ -265,7 +265,7 @@ test('Fix image links that cannot save keeps the error, not "Fixed 1 image link"
   api.state.drafts = api.saveDraft(api.freshDrafts(), 42, '![a](https://imgur.com/AbC12dE)', NOW, 'T', 'md');
   api.panelHtml(api.buildPanelModel(NOW));
   const h = api.makeHandlers(env.doc, env.win);
-  h.onAction('ed-fix-images', el({ 'data-act': 'ed-fix-images' }));
+  h.onAction('ed-fix-all', el({ 'data-act': 'ed-fix-all' }));
   assert.notStrictEqual(api.state.editor.text, '![a](https://imgur.com/AbC12dE)', 'the fix was made');
   assert.strictEqual(api.state.notices.length, 1);
   assert.strictEqual(api.state.notices[0].kind, 'error', shown(api));
