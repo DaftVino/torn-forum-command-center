@@ -1617,9 +1617,11 @@ const MUTATIONS = [
       '    if (!clean || hasTag(org, threadId, clean)) return org;\n    return toggleTag(org, threadId, clean);',
       '    if (!clean) return org;\n    return toggleTag(org, threadId, clean);')],
     ['Enter saves during IME composition (PR #44 review)', (s) => s.replace(
-      '        if (ev.isComposing === true || ev.keyCode === 229) return;\n', '')],
+      '// Escape dismisses it; neither is meant for the popup.\n        if (ev.isComposing === true || ev.keyCode === 229) return;\n',
+      '// Escape dismisses it; neither is meant for the popup.\n')],
     ['only isComposing counts as composition, not keyCode 229', (s) => s.replace(
-      'if (ev.isComposing === true || ev.keyCode === 229) return;', 'if (ev.isComposing === true) return;')],
+      'meant for the popup.\n        if (ev.isComposing === true || ev.keyCode === 229) return;',
+      'meant for the popup.\n        if (ev.isComposing === true) return;')],
     ['Escape no longer cancels the popup', (s) => s.replace("if (key !== 'Escape' && key !== 'Esc' && ", "if (key !== 'Esc' && ")],
     ['Enter no longer saves the popup', (s) => s.replace("!(key === 'Enter' && act === 'editor-input')", 'true')],
     ['opening the popup leaves focus on its button', (s) => s.replace(
@@ -2081,6 +2083,82 @@ const MUTATIONS = [
     name: 'the Undo stack grows past 50 steps',
     suite: 'tests/editor-undo.test.js',
     apply: (s) => s.replace('  var UNDO_MAX = 50;', '  var UNDO_MAX = 60;'),
+  },
+  // #58 round 2, Batch I: Enter and blank lines keep paragraphs and gaps.
+  {
+    name: 'Insert ignores the HTML line rule: typed lines merge into one paragraph again',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("    if (lang === 'html') return htmlSourcePost(text);", "    if (lang === 'html') return cleanTornHtml(text);"),
+  },
+  {
+    name: 'an empty line in HTML source is no longer a gap',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("      if (!lineUsed) segs.push({ html: '<p>&nbsp;</p>', offset: lineStart });", '      if (!lineUsed) segs.push({ html: \'\', offset: lineStart });'),
+  },
+  {
+    name: 'Preview of HTML source ignores the line rule (Preview and Insert disagree)',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("    if (lang === 'html') return htmlSourceBlocks(src);", "    if (lang === 'html') return [{ html: cleanTornHtml(src), offset: 0 }].filter(function (b) { return b.html; });"),
+  },
+  {
+    name: 'a switch from HTML to Markdown merges typed lines again',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('    var root = buildCleanTree(tokenizeHtml(htmlSourcePost(html)));', '    var root = buildCleanTree(tokenizeHtml(cleanTornHtml(html)));'),
+  },
+  {
+    name: 'Enter inside an HTML paragraph splits it but drops its alignment',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("      return ctx ? put(ctx.close + '</' + ctx.tag + '>\\n' + ctx.src + ctx.reopen) : null;", "      return ctx ? put(ctx.close + '</' + ctx.tag + '>\\n<' + ctx.tag + '>' + ctx.reopen) : null;"),
+  },
+  {
+    name: 'Enter inside an HTML paragraph or list item no longer splits it',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("      return ctx ? put(ctx.close + '</' + ctx.tag + '>\\n' + ctx.src + ctx.reopen) : null;", '      return null;'),
+  },
+  {
+    name: 'Enter on a Markdown bullet line no longer continues the list',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("    return put('\\n' + m[0]);\n  }", '    return null;\n  }'),
+  },
+  {
+    name: 'a numbered Markdown line continues with the same number',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("    if (ol) return put('\\n' + ol[1] + Math.min(parseInt(ol[2], 10) + 1, 999999999) + ol[3]);", "    if (ol) return put('\\n' + ol[1] + ol[2] + ol[3]);"),
+  },
+  {
+    name: 'Enter on an empty list marker keeps the marker, so the list never ends',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('      return { text: t.slice(0, lineStart) + after.slice(rest.length), start: lineStart, end: lineStart };', '      return null;'),
+  },
+  {
+    name: 'an IME composing Enter in the draft field is taken by the editor',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("          // An IME's Enter accepts a candidate; Ctrl, Cmd or Alt+Enter is not typing.\n          if (ev.isComposing === true || ev.keyCode === 229) return;\n", "          // An IME's Enter accepts a candidate; Ctrl, Cmd or Alt+Enter is not typing.\n"),
+  },
+  {
+    name: 'in the draft field only isComposing counts as composition, not keyCode 229',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("not typing.\n          if (ev.isComposing === true || ev.keyCode === 229) return;", "not typing.\n          if (ev.isComposing === true) return;"),
+  },
+  {
+    name: 'Ctrl or Cmd+Enter in the draft field is taken by the editor',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("          if (ev.key !== 'Enter' || ev.ctrlKey || ev.metaKey || ev.altKey) return;", "          if (ev.key !== 'Enter') return;"),
+  },
+  {
+    name: 'an Enter edit takes no Undo snapshot',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('        pushUndo(E);\n        E.text = r.text; E.selStart = r.start; E.selEnd = r.end;', '        E.text = r.text; E.selStart = r.start; E.selEnd = r.end;'),
+  },
+  {
+    name: 'an Enter edit redraws the panel, replacing the field under the caret',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('        if (!writeDraftField(el, before, r)) {', '        if (writeDraftField(el, before, r) || true) {'),
+  },
+  {
+    name: 'an Enter edit past the draft limit is stored anyway',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('        if (r.text.length > DRAFT_MAX_CHARS) {\n          overLimitNotice(r.text.length);', '        if (false) {\n          overLimitNotice(r.text.length);'),
   },
 ];
 

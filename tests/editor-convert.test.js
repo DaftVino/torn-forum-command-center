@@ -45,6 +45,20 @@ test('Markdown round-trips every cleaned fixture: nothing is lost', () => {
   }
 });
 
+// #58 round 2 (I1): HTML source is line-based, and the source this script lays
+// out (htmlSource: one block per line, no empty lines) must pass through that
+// rule unchanged, or a mode switch would add gaps or split blocks.
+test('htmlSource output is a fixed point of the HTML line rule for every round-trip fixture', () => {
+  for (const h of [SAMPLE, TOOLBAR].concat(EDGES)) {
+    const c = api.cleanTornHtml(h);
+    const src = api.htmlSource(c);
+    assert.strictEqual(api.postHtml(src, 'html'), c, h.slice(0, 60));
+    assert.strictEqual(api.previewModel('html', src).map((b) => b.html).join(''), c, 'Preview agrees: ' + h.slice(0, 60));
+    assert.strictEqual(api.convertDraft(src, 'html', 'html'), src);
+    assert.strictEqual(api.mdToHtml(api.convertDraft(src, 'html', 'md')), c, 'HTML source to Markdown: ' + h.slice(0, 60));
+  }
+});
+
 test('what Markdown can say is said in Markdown, not raw HTML', () => {
   assert.strictEqual(api.htmlToMd('<p><strong>b</strong> <span style="color: var(--te-text-color-red);">r</span></p>'),
     '**b** {red}r{/}');
