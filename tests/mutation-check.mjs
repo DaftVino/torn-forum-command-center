@@ -140,8 +140,10 @@ const MUTATIONS = [
     name: 'the debug report includes the raw state',
     suite: 'tests/debug-report.test.js',
     apply: (s) => s.replace(
-      "    return lines.join('\\n');",
-      "    return lines.join('\\n') + '\\n' + JSON.stringify(state.organizer) + JSON.stringify(state.drafts);",
+      // The first `return lines.join` in the file is the Markdown renderer's,
+      // so the target is anchored on the report's own last line.
+      "authorTooMany + ')',\n    ];\n    return lines.join('\\n');",
+      "authorTooMany + ')',\n    ];\n    return lines.join('\\n') + '\\n' + JSON.stringify(state.organizer) + JSON.stringify(state.drafts);",
     ),
   },
   {
@@ -1551,7 +1553,7 @@ const MUTATIONS = [
     ['the blur outlives the setting', (s) => s.replace(
       "'#' + PANEL_ID + '.tfcc-seethrough { background: var(--tfcc-base-bg);',\n      '  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',",
       "'#' + PANEL_ID + '.tfcc-seethrough { background: var(--tfcc-base-bg); }',\n      '#' + PANEL_ID + ' { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }',")],
-    ['see-through defaults off', (s) => s.replace('      seeThrough: true,\n    };', '      seeThrough: false,\n    };')],
+    ['see-through defaults off', (s) => s.replace('      seeThrough: true,\n', '      seeThrough: false,\n')],
     ['a junk see-through value is reported as damage', (s) => s.replace(
       "    var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now, isRecoveredSettings);",
       "    var s = loadKey(STORAGE_KEYS.settings, normaliseSettings, now);")],
@@ -1815,6 +1817,75 @@ const MUTATIONS = [
     name: 'two visible editors are guessed between',
     suite: 'tests/editor-insert.test.js',
     apply: (s) => s.replace('    return inForm.length === 1 ? inForm[0] : null;', '    return shown[0] || null;'),
+  },
+
+  // ---- #58 Task 14: the Drafts editor's promises ------------------------------
+  {
+    name: 'the cleaner takes any image source (data: URLs and bare names survive)',
+    suite: 'tests/editor-clean.test.js',
+    apply: (s) => s.replace('        var src = safeImgSrc(attrs.src);', '        var src = attrs.src;'),
+  },
+  {
+    name: 'the cleaner accepts javascript: links',
+    suite: 'tests/editor-clean.test.js',
+    apply: (s) => s.replace("u.length <= URL_MAX_CHARS && /^https?:\\/\\/[^\\s<>\"'`]+$/i.test(u) ? u : '';", 'u;'),
+  },
+  {
+    // Both guards at once: with only one removed, the other still drops the
+    // script's text, and the mutation would change nothing.
+    name: 'a script element\'s text reaches the post',
+    suite: 'tests/editor-clean.test.js',
+    apply: (s) => s.replace('    script: true, style: true, iframe: true,', '    style: true, iframe: true,')
+      .replace('        if (!tok.raw) {', '        if (true) {'),
+  },
+  {
+    name: 'the cleaner reads without a size bound',
+    suite: 'tests/editor-clean.test.js',
+    apply: (s) => s.replace('var s = String(html || \'\').slice(0, CLEAN_MAX_CHARS);', "var s = String(html || '');"),
+  },
+  {
+    name: 'adjacent text runs stop merging, so cleaning is no longer idempotent',
+    suite: 'tests/editor-clean.test.js',
+    apply: (s) => s.replace('          if (last && last.text !== undefined) last.text += tok.text;\n          else top.children.push({ text: tok.text });',
+      '          top.children.push({ text: tok.text });'),
+  },
+  {
+    name: 'Markdown loses colour on the way back from HTML',
+    suite: 'tests/editor-convert.test.js',
+    apply: (s) => s.replace("        out += '{' + key + '}' + inner + '{/}';", '        out += inner;'),
+  },
+  {
+    name: 'an older drafts blob is marked damaged: lang materialised as text',
+    suite: 'tests/editor-storage.test.js',
+    apply: (s) => s.replace('        if (lang) entry.lang = lang;\n        out.byThread[id] = entry;',
+      "        entry.lang = lang || 'text';\n        out.byThread[id] = entry;"),
+  },
+  {
+    name: 'the Default editor setting is ignored',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("    return DRAFT_LANGS.indexOf(state.settings.draftLang) !== -1 ? state.settings.draftLang : 'md';",
+      "    return 'md';"),
+  },
+  {
+    name: 'Preview shows the Markdown draft as raw lines',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("return mdBlocks(src).map(function (b) { return { html: b.html, offset: starts[b.line] || 0 }; });",
+      "return src.split('\\n').map(function (l, i) { return { html: l, offset: starts[i] || 0 }; });"),
+  },
+  {
+    name: 'the image fixer stops rewriting Drive links',
+    suite: 'tests/editor-images.test.js',
+    apply: (s) => s.replace("var fixedDrive = 'https://drive.google.com/thumbnail?id=' + id + '&sz=w1000';", 'var fixedDrive = u;'),
+  },
+  {
+    name: 'switching to Text no longer asks first',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("          if (mode === 'text' && ed.lang !== 'text' && ed.text.trim()) { ed.confirmText = ed.lang; redraw(); return; }\n", ''),
+  },
+  {
+    name: 'a conversion past the draft limit is stored instead of refused',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('          if (converted.length > DRAFT_MAX_CHARS) { overLimitNotice(converted.length); redraw(); return; }\n', ''),
   },
 ];
 

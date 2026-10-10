@@ -132,3 +132,10 @@ test('a dropped element between two text runs leaves one run, and cleaning is id
   assert.strictEqual(clean(x), '<p>a b</p>');
   assert.strictEqual(clean(clean(x)), clean(x));
 });
+
+test('input past CLEAN_MAX_CHARS is not read at all', () => {
+  const head = '<p>kept</p>' + 'x'.repeat(api.CLEAN_MAX_CHARS - 11);
+  const out = clean(head + '<p>beyond</p>');
+  assert.ok(out.indexOf('kept') !== -1);
+  assert.strictEqual(out.indexOf('beyond'), -1, 'the cleaner read past its bound');
+});
