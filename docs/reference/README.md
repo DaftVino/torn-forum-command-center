@@ -55,3 +55,20 @@ copy: it is the evidence for what the script was built against.
 `torn-api-live-findings-2026-10-08.md` records how the live API v2 behaved on
 2026-10-08, where it differs from the OpenAPI document, and which plans each
 finding affects. The redacted responses behind it are in `tests/fixtures/`.
+
+## Forum editor (#58)
+
+- `torn-forum-post-sample.html` is a real published post supplied by the owner.
+  Its header lists the markup conventions it shows.
+- `torn-forum-editor-findings-2026-10-09.md` records what Torn's forum editor
+  is: TinyMCE 6.8.5 inline, with 17 `--te-text-color-*` variables. It also
+  records what survives paste and what images need. Every claim is marked
+  owner-observed or public docs.
+- `torn-forum-editor-probe.js` produced the owner-observed half.
+  - It is a read-only DevTools snippet the owner pastes into the Console on a
+    page they opened themselves. It clicks, types and sends nothing.
+  - It is never run by automation, and is not part of the userscript.
+- `torn-forum-editor-insert-tests.js` defines `tfccTest('A' | 'B' | 'C')`. Each
+  test writes a short sample into the owner's own unsent reply editor in one of
+  three ways: plain paste, TinyMCE-marked paste, or the editor API. It then
+  reports which styles survived. It never posts.
