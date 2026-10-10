@@ -4238,6 +4238,335 @@
     return mdBlocks(md).map(function (b) { return b.html; }).join('');
   }
 
+  // ---- HTML to Markdown ------------------------------------------------------
+
+  // Characters inside raw HTML kept in Markdown are written as entities, so
+  // the Markdown reader never mistakes them for marks.
+  function rawForMd(html) {
+    return html.replace(/>([^<]*)</g, function (all, text) {
+      return '>' + text.replace(/[\\*+~{}\[\]:|!_`#]/g, function (ch) { return '&#' + ch.charCodeAt(0) + ';'; }) + '<';
+    });
+  }
+
+  function mdEscapeText(t, inTable) {
+    var s = String(t).replace(/[\\*{}\[\]<&`]/g, '\\$&').replace(/\+\+/g, '\\+\\+').replace(/~~/g, '\\~\\~');
+    s = s.replace(/:([a-z_]{2,20}):/g, function (all, name) {
+      return TORN_EMOJI.indexOf(name) !== -1 ? '\\:' + name + ':' : all;
+    });
+    if (inTable) s = s.replace(/\|/g, '\\|');
+    return s;
+  }
+
+  function mdLineStartEscape(line) {
+    if (/^(#{1,3}[ \t]|[-*+][ \t]|>|\||:::)/.test(line)) return '\\' + line;
+    var ol = /^([0-9]{1,9})([.)])([ \t])/.exec(line);
+    if (ol) return ol[1] + '\\' + ol[2] + line.slice(ol[1].length + 1);
+    return line;
+  }
+
+  function nodeHtml(node) {
+    return serInline([node]);
+  }
+
+  function mdFromInline(children, inTable) {
+    var out = '';
+    for (var i = 0; i < children.length; i += 1) {
+      var c = children[i];
+      if (c.text !== undefined) { out += mdEscapeText(c.text.replace(/[ \t\r\n\f]+/g, ' '), inTable); continue; }
+      if (c.tag === 'br') { out += '<br>'; continue; }
+      if (c.tag === 'img') {
+        var emoji = emojiFromSrc(c.src);
+        if (emoji) { out += ':' + emoji + ':'; continue; }
+        if (/[\])\s]/.test(c.alt) || /[()\s]/.test(c.src) || (inTable && /\|/.test(c.alt + c.src))) {
+          out += rawForMd(nodeHtml(c));
+        } else out += '![' + c.alt + '](' + c.src + ')';
+        continue;
+      }
+      var inner = mdFromInline(c.children, inTable);
+      if (inner === '' && c.tag !== 'a') continue;
+      if (c.tag === 'a') {
+        var hasImg = JSON.stringify(c.children).indexOf('"img"') !== -1;
+        if (hasImg || /[()\s]/.test(c.href) || /[\[\]]/.test(inner) || (inTable && /\|/.test(c.href))) {
+          out += rawForMd(nodeHtml(c));
+        } else out += '[' + inner + '](' + c.href + ')';
+        continue;
+      }
+      if (c.tag === 'strong' || c.tag === 'em') {
+        var d = c.tag === 'strong' ? '**' : '*';
+        if (/^\*|\*$/.test(inner) || /^[ \t]|[ \t]$/.test(inner)) out += rawForMd(nodeHtml(c));
+        else out += d + inner + d;
+        continue;
+      }
+      if (c.tag === 'span') {
+        // Canonical spans carry one property each (serInline).
+        var props = Object.keys(c.style);
+        if (props.length !== 1) { out += rawForMd(nodeHtml(c)); continue; }
+        var v = c.style[props[0]];
+        if (props[0] === 'text-decoration') {
+          var dd = v === 'underline' ? '++' : '~~';
+          if (/^[+~]|[+~]$/.test(inner) || /^[ \t]|[ \t]$/.test(inner)) out += rawForMd(nodeHtml(c));
+          else out += dd + inner + dd;
+          continue;
+        }
+        var key = props[0] === 'font-size' ? v.replace('px', '')
+          : /^var\(/.test(v) ? v.replace(/^var\(--te-text-color-|\)$/g, '') : v;
+        out += '{' + key + '}' + inner + '{/}';
+        continue;
+      }
+      out += inner;
+    }
+    return out;
+  }
+
+  function onlyChild(node, tag) {
+    var kids = node.children.filter(function (k) { return !isBlankText(k); });
+    return kids.length === 1 && kids[0].tag === tag ? kids[0] : null;
+  }
+
+  function headingLevel(p) {
+    var span = onlyChild(p, 'span');
+    if (!span || Object.keys(span.style).length !== 1 || !span.style['font-size']) return 0;
+    var strong = onlyChild(span, 'strong');
+    if (!strong) return 0;
+    var px = parseInt(span.style['font-size'], 10);
+    for (var lvl = 1; lvl <= 3; lvl += 1) if (HEADING_PX[lvl] === px) return { level: lvl, node: strong };
+    return 0;
+  }
+
+  function isBlankParagraph(p) {
+    return isBlankInline(serInline(trimEdges(p.children)));
+  }
+
+  function paragraphMd(p) {
+    if (isBlankParagraph(p)) return '';
+    var h = headingLevel(p);
+    if (h) return '#'.repeat(h.level) + ' ' + mdFromInline(trimEdges(h.node.children), false);
+    var line = mdFromInline(trimEdges(p.children), false);
+    return mdLineStartEscape(line);
+  }
+
+  function tableMd(table) {
+    if (Object.keys(table.style).length) return null;
+    var rows = tableRows(table);
+    if (!rows.length) return null;
+    var width = -1;
+    var headerForm = false;
+    var aligns = [];
+    for (var r = 0; r < rows.length; r += 1) {
+      var row = rows[r];
+      if (Object.keys(row.style).length) return null;
+      var cells = row.children.filter(function (k) { return !isBlankText(k); });
+      if (cells.some(function (k) { return k.tag !== 'td' && k.tag !== 'th'; })) return null;
+      if (width === -1) width = cells.length; else if (cells.length !== width) return null;
+      var allTh = cells.every(function (k) { return k.tag === 'th'; });
+      var anyTh = cells.some(function (k) { return k.tag === 'th'; });
+      if (r === 0) headerForm = allTh;
+      else if (anyTh) return null;
+      if (r === 0 && anyTh && !allTh) return null;
+      for (var k = 0; k < cells.length; k += 1) {
+        var st = cells[k].style;
+        var keys = Object.keys(st);
+        if (keys.some(function (x) { return x !== 'text-align'; })) return null;
+        var a = st['text-align'] || '';
+        if (r === 0) aligns[k] = a; else if (aligns[k] !== a) return null;
+        if (cells[k].children.some(function (x) { return x.tag && BLOCK_TAGS[x.tag]; })) return null;
+      }
+    }
+    if (!headerForm && aligns.some(function (a) { return a; })) return null;
+    var lines = [];
+    for (var r2 = 0; r2 < rows.length; r2 += 1) {
+      var cs = rows[r2].children.filter(function (k) { return !isBlankText(k); });
+      lines.push('| ' + cs.map(function (cell) { return mdFromInline(trimEdges(cell.children), true); }).join(' | ') + ' |');
+      if (r2 === 0 && headerForm) {
+        lines.push('| ' + aligns.map(function (a) {
+          return a === 'center' ? ':---:' : a === 'right' ? '---:' : a === 'left' ? ':---' : '---';
+        }).join(' | ') + ' |');
+      }
+    }
+    return lines;
+  }
+
+  function htmlToMd(html) {
+    var root = buildCleanTree(tokenizeHtml(cleanTornHtml(html)));
+    var lines = [];
+    var prevKind = null;
+    var align = null;
+    var setAlign = function (a) {
+      if (a === align) return;
+      if (align) lines.push(':::');
+      if (a) lines.push(':::' + a);
+      align = a;
+    };
+    for (var i = 0; i < root.children.length; i += 1) {
+      var b = root.children[i];
+      var kind = b.tag;
+      if (b.tag === 'p') {
+        setAlign(b.style['text-align'] || null);
+        lines.push(paragraphMd(b));
+        prevKind = 'p';
+        continue;
+      }
+      setAlign(null);
+      var raw = rawForMd(serBlock(b));
+      if (b.tag === 'ul' || b.tag === 'ol') {
+        var ok = prevKind !== b.tag;
+        var items = [];
+        for (var k = 0; ok && k < b.children.length; k += 1) {
+          var li = b.children[k];
+          if (li.tag !== 'li' || li.children.some(function (x) { return x.tag && BLOCK_TAGS[x.tag]; })) { ok = false; break; }
+          var text = mdFromInline(trimEdges(li.children), false);
+          items.push((b.tag === 'ul' ? '- ' : '1. ') + text);
+        }
+        if (ok) lines = lines.concat(items); else lines.push(raw);
+      } else if (b.tag === 'blockquote') {
+        var qok = prevKind !== 'blockquote';
+        var ql = [];
+        for (var q = 0; qok && q < b.children.length; q += 1) {
+          var qp = b.children[q];
+          if (qp.tag !== 'p' || Object.keys(qp.style).length || headingLevel(qp)) { qok = false; break; }
+          var qt = isBlankParagraph(qp) ? '' : mdFromInline(trimEdges(qp.children), false);
+          ql.push(qt === '' ? '>' : '> ' + qt);
+        }
+        if (qok) lines = lines.concat(ql); else lines.push(raw);
+      } else if (b.tag === 'table') {
+        var tl = tableMd(b);
+        if (tl && prevKind !== 'table') lines = lines.concat(tl); else lines.push(raw);
+      } else {
+        lines.push(raw);
+      }
+      prevKind = kind;
+    }
+    setAlign(null);
+    return lines.join('\n');
+  }
+
+  // ---- plain text ------------------------------------------------------------
+
+  function textToHtml(text) {
+    var src = String(text || '');
+    if (src === '') return '';
+    return cleanTornHtml(src.replace(/\r\n?/g, '\n').split('\n').map(function (line) {
+      return line.trim() === '' ? '<p>&nbsp;</p>' : '<p>' + escText(line) + '</p>';
+    }).join(''));
+  }
+
+  function textToMd(text) {
+    var src = String(text || '');
+    if (src === '') return '';
+    return src.replace(/\r\n?/g, '\n').split('\n').map(function (line) {
+      return line.trim() === '' ? '' : mdLineStartEscape(mdEscapeText(line.trim(), false));
+    }).join('\n');
+  }
+
+  function plainInline(children) {
+    var out = '';
+    for (var i = 0; i < children.length; i += 1) {
+      var c = children[i];
+      if (c.text !== undefined) out += c.text.replace(/[ \t\r\n\f]+/g, ' ');
+      else if (c.tag === 'br') out += '\n';
+      else if (c.tag === 'img') out += emojiFromSrc(c.src) ? ':' + emojiFromSrc(c.src) + ':' : (c.alt || '');
+      else out += plainInline(c.children);
+    }
+    return out;
+  }
+
+  function htmlToText(html) {
+    var root = buildCleanTree(tokenizeHtml(cleanTornHtml(html)));
+    var lines = [];
+    var walk = function (nodes, prefix) {
+      for (var i = 0; i < nodes.length; i += 1) {
+        var b = nodes[i];
+        if (b.tag === 'p') lines.push(prefix + plainInline(trimEdges(b.children)).replace(/\u00a0/g, ' ').trim());
+        else if (b.tag === 'blockquote') walk(b.children, prefix + '> ');
+        else if (b.tag === 'ul' || b.tag === 'ol') {
+          b.children.forEach(function (li) { if (li.tag === 'li') lines.push(prefix + '- ' + plainInline(li.children).trim()); });
+        } else if (b.tag === 'table') {
+          tableRows(b).forEach(function (r) {
+            lines.push(prefix + r.children.filter(function (c) { return c.tag; }).map(function (c) {
+              return plainInline(c.children).trim();
+            }).join(' | '));
+          });
+        }
+      }
+    };
+    walk(root.children, '');
+    return lines.join('\n');
+  }
+
+  // ---- Preview (#58) -----------------------------------------------------------
+
+  var HTML_BLOCK_OPEN = Object.freeze({
+    p: true, h1: true, h2: true, h3: true, h4: true, h5: true, h6: true, ul: true, ol: true,
+    blockquote: true, table: true, div: true,
+  });
+
+  // Where each top-level block starts in HTML the player typed, so a tap on
+  // the preview can put the caret there.
+  function htmlBlockOffsets(src) {
+    var toks = tokenizeHtml(src);
+    var depth = 0;
+    var out = [];
+    for (var i = 0; i < toks.length; i += 1) {
+      var t = toks[i];
+      if (t.type === 'open' && !t.selfClose) {
+        if (depth === 0 && HTML_BLOCK_OPEN[t.tag]) out.push(t.pos);
+        depth += 1;
+      } else if (t.type === 'close') {
+        depth = Math.max(0, depth - 1);
+      }
+    }
+    return out;
+  }
+
+  function lineOffsets(text) {
+    var out = [0];
+    for (var i = 0; i < text.length; i += 1) if (text.charAt(i) === '\n') out.push(i + 1);
+    return out;
+  }
+
+  // The post as Preview shows it: one entry per block, each with the source
+  // offset a tap returns the caret to.
+  function previewModel(lang, text) {
+    var src = String(text || '').replace(/\r\n?/g, '\n');
+    if (lang === 'md') {
+      var starts = lineOffsets(src);
+      return mdBlocks(src).map(function (b) { return { html: b.html, offset: starts[b.line] || 0 }; });
+    }
+    if (lang === 'html') {
+      var offs = htmlBlockOffsets(src);
+      var root = buildCleanTree(tokenizeHtml(src));
+      var parts = [];
+      for (var k = 0; k < root.children.length; k += 1) {
+        var h = serBlocks([root.children[k]]);
+        if (h) parts.push(h);
+      }
+      return parts.map(function (h, idx) {
+        return { html: h, offset: offs.length ? offs[Math.min(idx, offs.length - 1)] : 0 };
+      });
+    }
+    if (src === '') return [];
+    var lineStarts = lineOffsets(src);
+    return src.split('\n').map(function (line, idx) {
+      return { html: textToHtml(line === '' ? ' ' : line), offset: lineStarts[idx] };
+    });
+  }
+
+  // ---- conversion entry points -----------------------------------------------
+
+  function postHtml(text, lang) {
+    if (lang === 'md') return mdToHtml(text);
+    if (lang === 'html') return cleanTornHtml(text);
+    return textToHtml(text);
+  }
+
+  function convertDraft(text, from, to) {
+    if (from === to) return String(text || '');
+    if (to === 'text') return htmlToText(postHtml(text, from));
+    if (to === 'html') return htmlSource(postHtml(text, from));
+    if (from === 'text') return textToMd(text);
+    return htmlToMd(text);
+  }
+
   // ---- ENGINE END ------------------------------------------------------
 
   // -- storage runtime -----------------------------------------------------
