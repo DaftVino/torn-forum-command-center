@@ -6797,9 +6797,9 @@
       '  min-width: 24px; min-height: 24px; padding: 0; border: 0; border-radius: 12px; background: transparent;',
       '  color: inherit; }',
       '#' + PANEL_ID + ' .tfcc-draft { width: 100%; min-height: 90px; resize: vertical; }',
-      '#' + PANEL_ID + ' .tfcc-pill { display: flex; gap: 0; margin-bottom: var(--tfcc-gap-sm); }',
-      '#' + PANEL_ID + ' .tfcc-pill button { flex: 1 1 0; min-height: 32px; border-radius: 0; }',
-      '#' + PANEL_ID + ' .tfcc-pill button[aria-pressed="true"] { background: var(--tm-good-bg); color: var(--tm-text); }',
+      '#' + PANEL_ID + ' .tfcc-modes { display: flex; gap: 0; margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-modes button { flex: 1 1 0; min-height: 32px; border-radius: 0; }',
+      '#' + PANEL_ID + ' .tfcc-modes button[aria-pressed="true"] { background: var(--tm-good-bg); color: var(--tm-text); }',
       '#' + PANEL_ID + ' .tfcc-pvbar { display: flex; align-items: center; gap: var(--tfcc-gap-sm); margin-bottom: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + ' .tfcc-pv { border: 1px solid var(--tm-border); border-radius: 4px; padding: 8px; overflow-x: auto; }',
       '#' + PANEL_ID + ' .tfcc-pv-light { background: #ffffff; color: #333333; ' + teVars('light') + ' }',
@@ -6818,7 +6818,7 @@
       '#' + PANEL_ID + ' .tfcc-swatch { display: block; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--tm-border); }',
       '#' + PANEL_ID + ' .tfcc-img-check { display: block; max-width: 100%; max-height: 160px; margin: 4px 0; }',
       '#' + PANEL_ID + ' .tfcc-help dt { margin-top: 4px; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools button, #' + PANEL_ID + '.tfcc-narrow .tfcc-pill button { min-width: 44px; min-height: 44px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools button, #' + PANEL_ID + '.tfcc-narrow .tfcc-modes button { min-width: 44px; min-height: 44px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools { gap: 8px; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-draft, #' + PANEL_ID + '.tfcc-narrow .tfcc-picker input { font-size: 16px; }',
       '#' + PANEL_ID + ' .tfcc-hit { border-left: 3px solid var(--tm-accent-text); padding-left: 8px;',
@@ -7897,7 +7897,7 @@
   var EDITOR_MODES = Object.freeze([['text', 'Text'], ['md', 'MD'], ['html', 'HTML'], ['preview', 'Preview']]);
 
   function renderModePill(e) {
-    var out = ['<div class="tfcc-pill" role="group" aria-label="Editor mode">'];
+    var out = ['<div class="tfcc-modes" role="group" aria-label="Editor mode">'];
     for (var i = 0; i < EDITOR_MODES.length; i += 1) {
       var m = EDITOR_MODES[i][0];
       var on = m === 'preview' ? e.mode === 'preview' : e.mode === 'source' && e.lang === m;
@@ -8048,7 +8048,7 @@
         + (F['ed-header'] === false ? '' : ' checked') + ' data-act="ed-header">'
         + btn('ed-table-insert', 'Insert table'));
     } else if (e.picker === 'emoji') {
-      out.push('<div class="tfcc-pill" role="group" aria-label="Emoji set">'
+      out.push('<div class="tfcc-modes" role="group" aria-label="Emoji set">'
         + '<button type="button" data-act="ed-emoji-tab" data-tab="torn" aria-pressed="' + (e.emojiTab !== 'unicode') + '">Torn</button>'
         + '<button type="button" data-act="ed-emoji-tab" data-tab="unicode" aria-pressed="' + (e.emojiTab === 'unicode') + '">Unicode</button></div>');
       out.push('<div class="tfcc-emoji">');
@@ -8076,7 +8076,7 @@
   function renderEditorPane(model) {
     var e = model.editor;
     var key = e.key;
-    var out = ['<div class="tfcc-section tfcc-editor">'];
+    var out = ['<div class="tfcc-section tfcc-draft-editor">'];
     var isFree = /^n[0-9]+$/.test(key);
     if (isFree) {
       out.push('<label class="tfcc-note" for="tfcc-ed-name">Draft name</label>'
