@@ -126,3 +126,9 @@ test('deep nesting within the draft cap is bounded, not a stack overflow', () =>
   assert.ok(clean('<table><tr><td>'.repeat(2000) + 'x').indexOf('x') !== -1);
   assert.ok(clean('<table><tr><td>'.repeat(60000)).length >= 0);
 });
+
+test('a dropped element between two text runs leaves one run, and cleaning is idempotent', () => {
+  const x = '<p>a <img src=x onerror=alert(1)> b</p>';
+  assert.strictEqual(clean(x), '<p>a b</p>');
+  assert.strictEqual(clean(clean(x)), clean(x));
+});

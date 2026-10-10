@@ -287,7 +287,13 @@
       }
       var top = stack[stack.length - 1];
       if (tok.type === 'text') {
-        if (!tok.raw) top.children.push({ text: tok.text });
+        if (!tok.raw) {
+          // Adjacent text merges, so a dropped element between two runs
+          // leaves one run and cleaning stays idempotent.
+          var last = top.children[top.children.length - 1];
+          if (last && last.text !== undefined) last.text += tok.text;
+          else top.children.push({ text: tok.text });
+        }
         continue;
       }
       if (tok.type === 'open') {
@@ -618,6 +624,12 @@
         if (im && safeImgSrc(im.url)) {
           out += '<img src="' + escAttr(im.url) + '"' + (im.text ? ' alt="' + escAttr(im.text) + '"' : '') + '>';
           i = im.end;
+          continue;
+        }
+        if (im) {
+          // An image whose source is not allowed stays literal text, not a link.
+          out += '![';
+          i += 2;
           continue;
         }
       }

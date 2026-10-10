@@ -3734,7 +3734,13 @@
       }
       var top = stack[stack.length - 1];
       if (tok.type === 'text') {
-        if (!tok.raw) top.children.push({ text: tok.text });
+        if (!tok.raw) {
+          // Adjacent text merges, so a dropped element between two runs
+          // leaves one run and cleaning stays idempotent.
+          var last = top.children[top.children.length - 1];
+          if (last && last.text !== undefined) last.text += tok.text;
+          else top.children.push({ text: tok.text });
+        }
         continue;
       }
       if (tok.type === 'open') {
@@ -4098,19 +4104,7 @@
         }
         if (/^<\/?[a-zA-Z]/.test(s.slice(i, i + 3))) {
           var gt = s.indexOf('>', i);
-          if (gt !== -1 && gt < n) {
-            var rawTag = s.slice(i, gt + 1);
-            if (/^<img/i.test(rawTag) && cleanTornHtml(rawTag) === '') {
-              // The cleaner would drop this image; drop it here too and absorb
-              // the doubled space it leaves behind.
-              i = gt + 1;
-              if (out.slice(-1) === ' ' && s.charAt(i) === ' ') i += 1;
-              continue;
-            }
-            out += rawTag;
-            i = gt + 1;
-            continue;
-          }
+          if (gt !== -1 && gt < n) { out += s.slice(i, gt + 1); i = gt + 1; continue; }
         }
         out += '&lt;';
         i += 1;
