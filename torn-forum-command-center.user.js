@@ -5277,7 +5277,7 @@
     editor: {
       key: null, lang: 'md', text: '', selStart: 0, selEnd: 0, mode: 'source', previewTheme: null,
       picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn', name: '', imageCheck: null,
-      pickerWarn: null, dirty: false, showImages: false, fields: {}, src: 'new|md',
+      pickerWarn: null, dirty: false, showImages: false, fields: {}, src: 'new|md', atLimit: false,
     },
     // #58: the panel's resolved theme, set by applyThemeClass; Preview
     // defaults to it.
@@ -8005,7 +8005,7 @@
       key: key, lang: lang, text: text, selStart: text.length, selEnd: text.length, mode: 'source',
       previewTheme: null, picker: null, confirmText: null, moreOpen: false, emojiTab: 'torn',
       name: d && d.name ? d.name : '', imageCheck: null, pickerWarn: null, dirty: false, showImages: false,
-      fields: {}, src: draftSig(d),
+      fields: {}, src: draftSig(d), atLimit: false,
     };
     void now;
   }
@@ -10068,7 +10068,16 @@
         if (act === 'editor-input') act = el && el.getAttribute ? el.getAttribute('data-field') : null;
         if (act === 'draft-text') {
           var nn = function (v) { return typeof v === 'number' && isFinite(v) ? v : 0; };
-          state.editor.text = el && el.value !== undefined ? String(el.value).slice(0, DRAFT_MAX_CHARS) : '';
+          var raw = el && el.value !== undefined ? String(el.value) : '';
+          state.editor.text = raw.slice(0, DRAFT_MAX_CHARS);
+          // Spec 4a: nothing is silently cut. maxlength and the slice keep the
+          // stored source within the limit; the player hears about it once per
+          // crossing, on the next redraw, not on every keystroke at the limit.
+          var atLimit = raw.length >= DRAFT_MAX_CHARS;
+          if (atLimit && !state.editor.atLimit) {
+            notice('This draft is at the ' + DRAFT_MAX_CHARS + '-character limit; anything past it was not added.', 'warn');
+          }
+          state.editor.atLimit = atLimit;
           state.editor.selStart = nn(el && el.selectionStart);
           state.editor.selEnd = nn(el && el.selectionEnd);
           state.editor.dirty = true;

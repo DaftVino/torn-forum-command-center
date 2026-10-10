@@ -146,3 +146,89 @@ test('Preview shows a placeholder for an external image until Show images', () =
   html = api.panelHtml(api.buildPanelModel(NOW));
   assert.match(html, /<img referrerpolicy="no-referrer" src="https:\/\/i\.imgur\.com\/x\.png"/);
 });
+
+test('a dirty editor keeps its text when the stored draft changes behind it', () => {
+  const env = loadUserscript({ location: THREAD, now: NOW });
+  const api = drafts(env);
+  api.panelHtml(api.buildPanelModel(NOW));
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onInput('draft-text', Object.assign(el({ 'data-act': 'draft-text', 'data-id': '42' }), { value: 'typed', selectionStart: 5, selectionEnd: 5 }));
+  // Autosave from Torn's editor, or an import, replaces the stored draft.
+  api.state.drafts = api.saveDraft(api.freshDrafts(), 42, '<p>autosaved</p>', NOW + 1, 'T', 'html');
+  api.buildPanelModel(NOW);
+  assert.strictEqual(api.state.editor.text, 'typed');
+  assert.strictEqual(api.state.editor.dirty, true);
+});
+
+test('deleting a free draft removes it from the free drafts', () => {
+  const env = loadUserscript({ location: FORUMS_LOCATION, now: NOW });
+  const api = drafts(env);
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onAction('draft-new', el({ 'data-act': 'draft-new' }));
+  const key = api.state.draftFocusId;
+  api.panelHtml(api.buildPanelModel(NOW));
+  h.onInput('draft-text', Object.assign(el({ 'data-act': 'draft-text', 'data-id': key }), { value: 'unsaved', selectionStart: 0, selectionEnd: 0 }));
+  h.onAction('draft-delete', el({ 'data-act': 'draft-delete', 'data-id': key }));
+  assert.strictEqual(api.draftFor(api.state.drafts, key), null);
+  assert.ok(!Object.prototype.hasOwnProperty.call(api.state.drafts.free || {}, key));
+  assert.strictEqual(api.state.draftFocusId, null);
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.strictEqual(api.state.editor.key, null);
+  assert.strictEqual(api.draftFor(api.state.drafts, key), null, 'the dirty text is not saved back');
+  assert.doesNotMatch(html, /data-act="draft-text"/);
+});
+
+test('deleting the open thread draft closes it without saving the typed text back', () => {
+  const env = loadUserscript({ location: THREAD, now: NOW });
+  const api = drafts(env);
+  api.state.drafts = api.saveDraft(api.freshDrafts(), 42, 'saved', NOW, 'T', 'md');
+  api.state.draftFocusId = '42';
+  api.panelHtml(api.buildPanelModel(NOW));
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onInput('draft-text', Object.assign(el({ 'data-act': 'draft-text', 'data-id': '42' }), { value: 'typed more', selectionStart: 0, selectionEnd: 0 }));
+  h.onAction('draft-delete', el({ 'data-act': 'draft-delete', 'data-id': '42' }));
+  assert.strictEqual(api.state.draftFocusId, null);
+  api.buildPanelModel(NOW);
+  assert.strictEqual(api.draftFor(api.state.drafts, 42), null, 'the dirty text is not saved back');
+  assert.strictEqual(api.state.editor.text, '');
+  assert.strictEqual(api.state.editor.dirty, false);
+});
+
+test('+ New draft at the free-draft limit warns and changes nothing', () => {
+  const env = loadUserscript({ location: FORUMS_LOCATION, now: NOW });
+  const api = drafts(env);
+  let d = api.freshDrafts();
+  let first = null;
+  for (let i = 0; i < api.FREE_DRAFTS_MAX; i += 1) {
+    const made = api.newFreeDraft(d, NOW + i, 'md');
+    d = made.drafts;
+    if (!first) first = made.id;
+  }
+  api.state.drafts = d;
+  api.state.draftFocusId = first;
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onAction('draft-new', el({ 'data-act': 'draft-new' }));
+  assert.strictEqual(Object.keys(api.state.drafts.free).length, api.FREE_DRAFTS_MAX);
+  assert.strictEqual(api.state.draftFocusId, first);
+  assert.ok(api.state.notices.some((n) => n.kind === 'warn' && /You have 100 free drafts/.test(n.text)));
+});
+
+test('typing past the draft limit keeps the limit and says so once per crossing', () => {
+  const env = loadUserscript({ location: THREAD, now: NOW });
+  const api = drafts(env);
+  api.panelHtml(api.buildPanelModel(NOW));
+  const h = api.makeHandlers(env.doc, env.win);
+  const type = (v) => h.onInput('draft-text', Object.assign(el({ 'data-act': 'draft-text', 'data-id': '42' }), { value: v, selectionStart: 0, selectionEnd: 0 }));
+  const warned = () => api.state.notices.filter((n) => n.kind === 'warn' && /at the 20000-character limit; anything past it was not added/.test(n.text)).length;
+  type('a'.repeat(19999));
+  assert.strictEqual(warned(), 0);
+  type('a'.repeat(20500));
+  assert.strictEqual(api.state.editor.text.length, 20000);
+  assert.strictEqual(warned(), 1);
+  type('a'.repeat(20000));
+  assert.strictEqual(warned(), 1, 'not on every keystroke at the limit');
+  type('a'.repeat(19990));
+  type('a'.repeat(20001));
+  assert.strictEqual(warned(), 2, 'again after dropping below and crossing again');
+  assert.match(api.panelHtml(api.buildPanelModel(NOW)), /at the 20000-character limit/);
+});
