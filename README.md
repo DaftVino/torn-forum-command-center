@@ -76,8 +76,9 @@ button yourself.
   draft over 20000 characters is never cut: an action that would pass the
   limit is refused with a notice.
 - **Preview** shows the post the way Torn will, in Torn's light or dark theme
-  (the switch is in the Preview bar). Tapping a paragraph returns to the source
-  mode at that paragraph. Images in Preview stay as placeholders until you tap
+  (the switch is in the Preview bar). Tapping anywhere in the Preview, on a
+  paragraph, its text or the empty area, returns to the source mode at that
+  spot. Images in Preview stay as placeholders until you tap
   Show images, so the panel does not contact image hosts on its own.
 - **Toolbar.** Bold, italic, underline, strike, Torn's 17 text colors or a
   custom color, size, alignment, quote, link, image, table, emoji (Torn's own
@@ -95,7 +96,7 @@ button yourself.
 | `{#ff8800}text{/}` | any color |
 | `{18}text{/}` | text size, 8 to 36 |
 | `# Title` | a big bold line (`##` and `###` are smaller) |
-| `:::center` | centre the lines up to the next `:::` |
+| `:::center` | center the lines up to the next `:::` |
 | `> text` | a quote |
 | `- item` | a list (`1.` for numbers) |
 | `[text](link address)` | a link (https only) |
@@ -104,6 +105,29 @@ button yourself.
 | `\| a \| b \|` | a table row; a `---` row under the first makes it a header |
 | `\*` | a literal mark character |
 
+- **Help key.** The `?` button opens a compact key of what you type and what
+  you get, for the current mode (Markdown or HTML). While it is open the
+  button reads `X` and the picker's bottom button reads Close.
+- **Selection and alignment.** Bold, Quote, Align and the other tools act on
+  the range you highlighted, and on a phone you can tap to place the caret or
+  drag the selection handles first. Align and Quote cover every selected line.
+  Aligning anywhere in a table aligns the whole table; a Markdown table needs
+  a header row (the `---` row) to hold alignment, otherwise the editor says
+  so and changes nothing.
+- **Undo.** The first toolbar button, also shown in Text mode. It restores the
+  previous text, mode and selection, including after a mode switch. Typing is
+  one step per burst, the last 50 steps are kept, and they are cleared when
+  you open another draft. There is no Redo.
+- **Save as free draft.** On a thread draft, copies what is in the editor
+  into a new free draft ("Untitled N") and opens it. The thread's own saved
+  draft is left as it was.
+- **Editor height.** Drag the corner of the box to resize it; it keeps that
+  height until you open another draft. Settings has "Editor height (desktop)"
+  and "Editor height (phone)": Small, Medium, Large or Extra large (Small is
+  the old height). Desktop defaults to Large, phone to Medium.
+- **One message at a time.** A new status message replaces the previous one,
+  and messages clear when you open another thread, change view or leave the
+  page.
 - **Free drafts.** **+ New draft** creates a named draft tied to no thread,
   such as a new thread's opening post. All drafts lists both kinds.
 - **Insert and Copy.** Insert into reply box adds the formatted post to the end

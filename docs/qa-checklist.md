@@ -551,6 +551,22 @@ Walk on Torn PDA and on desktop, signed in to a real account.
       file; a Dropbox file; an Imgur single image, as a JPG and as a GIF; a
       GitHub image; a Gyazo screenshot. A host that fails is moved to "not
       derivable" before release.
+- [ ] 7. On a phone (Torn PDA and mobile Safari/Chrome), tap in the draft to
+      place the caret, or drag the selection handles, then press Bold and
+      Quote: they act on the caret or highlighted range, also after More.
+- [ ] 8. Drag-resize the editor box, then press toolbar buttons, pick an
+      emoji and switch modes: the height stays and the buttons still work.
+      Check iOS Safari, Firefox and Torn PDA.
+- [ ] 9. Settings: Editor height (desktop) and (phone) each change the box
+      height for that layout (Small, Medium, Large, Extra large); the
+      defaults are Large on desktop and Medium on phone.
+- [ ] 10. Undo: after a toolbar edit, a mode switch and a burst of typing, each
+      Undo steps back; it is disabled when there is nothing to undo, and it
+      works in Text mode.
+- [ ] 11. Save as free draft on a thread draft creates "Untitled N" with the
+      editor text and leaves the thread's draft unchanged.
+- [ ] 12. Status messages: only the latest shows, and it clears when you open
+      another thread or change view.
 
 ## Sign-off
 

@@ -22,12 +22,43 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   - **Free drafts:** drafts not tied to a thread, such as a new thread's
     opening post.
   - **Default editor setting** for new drafts.
+  - **Editor height settings:** "Editor height (desktop)" and "Editor height
+    (phone)", each Small, Medium, Large or Extra large. Small is the old
+    height. Desktop defaults to Large and phone to Medium. A height you drag
+    the box to wins for the rest of that draft's editing.
+  - **Undo** at the start of the toolbar, also in Text mode. It restores the
+    previous text, mode and selection, including after a mode switch. Typing
+    counts as one step per burst, up to 50 steps, cleared when you open
+    another draft. There is no Redo.
+  - **Save as free draft** on a thread draft: what is in the editor becomes a
+    new free draft ("Untitled N") and opens; the thread's saved draft stays
+    as it was.
+  - **Help keys:** the `?` button shows a compact key for the current mode,
+    Markdown or HTML, and reads `X` while it is open.
+  - A short **drafts info** button explains thread drafts, free drafts, Save,
+    Insert and Copy.
   - A draft over the 20000 character limit is never cut. An action that
     would pass it is refused with a notice, and typing or pasting at the
     limit shows a one-time notice.
 
+### Changed
+
+- One status message at a time: a new message replaces the previous one, and
+  messages clear when you open another thread, change view or leave the page.
+- Alignment and Quote apply to every selected line, and aligning anywhere in
+  a table aligns the whole table. A Markdown table needs a header row to hold
+  alignment; without one the editor says so and changes nothing.
+- US spelling throughout (organize, color).
+
 ### Fixed
 
+- Tapping anywhere in Preview, including the text inside a paragraph, returns
+  to the source at that spot. It did nothing when the tap landed on text.
+- The editor uses the range you highlighted, not the last typed caret, for
+  every toolbar and picker action, including after the More drawer opens.
+- The height you drag the editor to is kept across toolbar, picker and mode
+  changes.
+- A failed save or a damaged store is never hidden by a later message.
 - Insert into reply box now reaches Torn's reply editor. It had been writing
   into a hidden Report reason box since Torn's editor change (#60). Insert
   adds to what is already in the editor and never replaces it, and you
