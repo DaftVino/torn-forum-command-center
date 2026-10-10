@@ -4,7 +4,7 @@
 
 # Torn Forum Command Center
 
-Forum Command Center, or FCC, turns Torn's small subscribed-threads box into a full forum workspace. It runs on the forums page in desktop Tampermonkey and Torn PDA, using Torn's official API to organise followed threads, show what is new, preserve reply drafts, and search discussions you care about.
+Forum Command Center, or FCC, turns Torn's small subscribed-threads box into a full forum workspace. It runs on the forums page in desktop Tampermonkey and Torn PDA, using Torn's official API to organize followed threads, show what is new, preserve reply drafts, and search discussions you care about.
 
 FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or automate gameplay. Its folders, tags, notes, drafts, read markers, badges, and settings stay on your device.
 
@@ -28,7 +28,7 @@ FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or auto
 
 ### A complete forum workspace
 
-- **Threads** brings subscribed and manually organised threads into one sortable, filterable list.
+- **Threads** brings subscribed and manually organized threads into one sortable, filterable list.
 - **Catch up** shows new activity since your catch-up point, grouped by folder.
 - **My posts** lists threads you started or posted in, whether or not you follow them.
 - **Search** covers thread metadata and can search cached post bodies.
@@ -38,12 +38,12 @@ FCC is read-only. It does not post, reply, vote, subscribe, unsubscribe, or auto
 - Filter by folder, tag, unread state, or query.
 - Rows shown can cap Threads, Catch up, and My posts. Search and Drafts remain uncapped, and Expand shows every row.
 
-### Folders, tags, and personal organisation
+### Folders, tags, and personal organization
 
 - Create and reorder folders, including the built-in **Unfiled** group.
 - Let a folder claim one or more forums. New subscriptions from a claimed forum file themselves automatically; filing a thread by hand always wins.
 - A forum can belong to only one folder. Removing a claim affects future filing and does not move threads already filed.
-- Folders organise only threads you subscribe to or file by hand. They never add every thread from a forum.
+- Folders organize only threads you subscribe to or file by hand. They never add every thread from a forum.
 - Catch up follows the folder order, and each group can be collapsed.
 - Add tags and private notes, pin threads, set personal priority, and archive or unarchive without deleting local work.
 
@@ -79,10 +79,10 @@ button yourself.
   (the switch is in the Preview bar). Tapping a paragraph returns to the source
   mode at that paragraph. Images in Preview stay as placeholders until you tap
   Show images, so the panel does not contact image hosts on its own.
-- **Toolbar.** Bold, italic, underline, strike, Torn's 17 text colours or a
-  custom colour, size, alignment, quote, link, image, table, emoji (Torn's own
+- **Toolbar.** Bold, italic, underline, strike, Torn's 17 text colors or a
+  custom color, size, alignment, quote, link, image, table, emoji (Torn's own
   and Unicode) and a Markdown help card. On a narrow panel it shows B, I, U,
-  Colour, Link and More, and wraps to two rows at 320px.
+  Color, Link and More, and wraps to two rows at 320px.
 - **Markdown marks.**
 
 | You type | You get |
@@ -91,8 +91,8 @@ button yourself.
 | `*italic*` | italic |
 | `++underline++` | underline |
 | `~~strike~~` | strike through |
-| `{red}text{/}` | a Torn colour (red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange, gray1 to gray5) |
-| `{#ff8800}text{/}` | any colour |
+| `{red}text{/}` | a Torn color (red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange, gray1 to gray5) |
+| `{#ff8800}text{/}` | any color |
 | `{18}text{/}` | text size, 8 to 36 |
 | `# Title` | a big bold line (`##` and `###` are smaller) |
 | `:::center` | centre the lines up to the next `:::` |
@@ -124,7 +124,7 @@ button yourself.
 - My posts checks the opening posts of started threads for thumbs up and thumbs down.
 - Until a thread has been checked, Torn's thread rating is displayed only as **net**. The project does not assume whether that source value means net reactions or likes alone.
 - The reactions display also shows forum karma.
-- Fifteen local badges cover setup, organisation, focused thread visits, explored forums, backlog clearing, and Catch up streaks.
+- Fifteen local badges cover setup, organization, focused thread visits, explored forums, backlog clearing, and Catch up streaks.
 - Badge streaks use TCT/UTC days. Badges make no API request of their own.
 - Badge progress can be disabled, exported, imported, or reset.
 
@@ -219,7 +219,7 @@ Exports or imports the workspace, reports post-cache size, clears cached posts, 
 - It requests only `GM_getValue`, `GM_setValue`, and `GM_xmlhttpRequest`.
 - Its only allowed connection host is `api.torn.com`.
 - Every network request is a GET. There are no POST, PUT, or DELETE requests, no third-party requests, and no telemetry.
-- FCC does not scrape Torn forum pages. Route capture uses the current address and page title; draft support reads the reply box on the page you are viewing, and the Match Torn theme (the default) reads the page background colour.
+- FCC does not scrape Torn forum pages. Route capture uses the current address and page title; draft support reads the reply box on the page you are viewing, and the Match Torn theme (the default) reads the page background color.
 - The script does not simulate account actions, submit forms, open windows, or navigate on its own. Inserting a draft stops at the reply box; the player presses Torn's Post button.
 - Auto refresh stops while the page is hidden or the window is unfocused.
 - A refused or invalid key is disabled instead of being retried repeatedly.
@@ -269,7 +269,7 @@ Release remains blocked on [`docs/qa-checklist.md`](docs/qa-checklist.md), which
 
 ### Do not read the userscript whole
 
-The userscript is intentionally organised around marked Engine and Runtime sections. Do not dump the entire file into a review or assistant context.
+The userscript is intentionally organized around marked Engine and Runtime sections. Do not dump the entire file into a review or assistant context.
 
 Use targeted searches first, then read only the relevant function or marked section. For example:
 

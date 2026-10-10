@@ -29,7 +29,7 @@ const SOURCE_PATH = path.join(__dirname, '..', 'torn-forum-command-center.user.j
 const EXPORT_NAMES = [
   // #58 editor operations
   'wrapSelection', 'insertBlock', 'markPair', 'applyMark', 'applyBlockMark', 'tableSkeleton', 'emojiSnippet', 'imageSnippet', 'UNICODE_EMOJI',
-  // #58 image link fixer and colour contrast
+  // #58 image link fixer and color contrast
   'fixImageUrl', 'fixAllImages', 'hexRgb', 'contrastRatio', 'colorWarnings', 'IMAGE_HOWTO',
   // identity and routing
   'SCRIPT_VERSION', 'STORAGE_KEYS', 'isForumsPage', 'parseForumRoute',
@@ -107,7 +107,7 @@ const EXPORT_NAMES = [
   // engine: my posts
   'MINE_MAX_THREADS', 'freshMine', 'freshMineThread', 'normaliseMine', 'normaliseMineThread',
   'mineThreadFromApi', 'minePostFromApi', 'pickList', 'threadPostsTotal', 'parseThreadDetail',
-  'mergeMineSnapshot', 'applyMineDetail', 'mineUnreadFor', 'isOrganised',
+  'mergeMineSnapshot', 'applyMineDetail', 'mineUnreadFor', 'isOrganized',
   'mineLookupTargets', 'mineIsDue', 'viewRows',
   // runtime: my posts
   'MINE_TTL_MS', 'MINE_PAGE_LIMIT', 'refreshMine',

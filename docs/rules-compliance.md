@@ -152,7 +152,7 @@ breaks each one in turn and confirms the suite notices.
 
 The two things to turn off first, in order, are auto-refresh (already off by
 default) and the draft insert. Neither is load-bearing: the workspace, the
-organiser, catch-up and search all work without them.
+organizer, catch-up and search all work without them.
 
 ## Archived source
 

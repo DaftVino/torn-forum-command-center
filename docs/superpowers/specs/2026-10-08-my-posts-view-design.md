@@ -58,8 +58,8 @@ are the same in both palettes. Only the border differs, because a light grey
 fill on the light panel is not itself a visible boundary.
 
 New tokens, defined in the dark block and overridden where noted in the light
-block (so `tests/style.test.js` "light overrides every colour the dark theme
-sets" keeps passing - every `--tfcc-mine-*` colour must appear in both blocks):
+block (so `tests/style.test.js` "light overrides every color the dark theme
+sets" keeps passing - every `--tfcc-mine-*` color must appear in both blocks):
 
 | Token | Dark | Light | Purpose |
 |---|---|---|---|
@@ -80,7 +80,7 @@ Measured WCAG ratios (sRGB relative luminance, the formula
 | fill `#d9d9d9` vs dark panel `#1f1f1f` | 11.68 | 3 (non-text) |
 | border `#5c5c5c` vs light panel `#f2f2f2` | 5.97 | 3 (non-text) |
 
-Pressed must not be signalled by colour alone, because the generic
+Pressed must not be signalled by color alone, because the generic
 `button[aria-pressed="true"] { background: var(--tm-good-bg) }` is overridden
 here. Pressed adds `box-shadow: inset 0 -3px 0 var(--tfcc-mine-text)`, an
 underline bar at 8.49:1 against the pressed fill.
@@ -140,24 +140,24 @@ Above the bar, one line of context:
 
 ### Which rows appear in Threads
 
-`mergeThreads` today builds rows from subscribed + organiser entries + drafts.
+`mergeThreads` today builds rows from subscribed + organizer entries + drafts.
 My posts adds a fourth source. Without a rule, every thread the user ever
 posted in would flood Threads as "not subscribed". The rule, as a pure
 predicate computed at merge into `row.inThreads`:
 
 ```
-inThreads = subscribed || !mineRole || organised
-organised = folderId || tags.length || pinned || priority != 0
+inThreads = subscribed || !mineRole || organized
+organized = folderId || tags.length || pinned || priority != 0
             || note || archived || hasDraft
 ```
 
-`lastSeenTotal` and `lastVisitedAt` deliberately do **not** count as organised,
+`lastSeenTotal` and `lastVisitedAt` deliberately do **not** count as organized,
 so Mark read on a My posts row, or visiting one of your own threads, does not
 pull it into Threads.
 
 **Behaviour change, stated:** an unsubscribed thread that is also one of the
 user's own, whose only local state is a visit or a read marker, moves from
-Threads to My posts. Nothing is deleted; anything organised stays in both.
+Threads to My posts. Nothing is deleted; anything organized stays in both.
 
 Threads, Catch up, the header badge, `totals.unread`, Catch up's Mark all read
 and Search all use `inThreads` rows only. `markall` in particular must iterate
@@ -312,7 +312,7 @@ tfcc:mine = {
 - **Cap:** `MINE_MAX_THREADS = 200`, ordered by `max(myLastPostAt, lastPostAt)`
   descending. Threads that fall out of the latest page are **kept** until the
   cap evicts them, so the list does not churn.
-- **Not exported.** It is a cache, like `tfcc:feed`. Organiser state for these
+- **Not exported.** It is a cache, like `tfcc:feed`. Organizer state for these
   threads (pins, tags, read markers) lives in `tfcc:organizer` as for any
   thread, and is exported as today.
 - **Reset everything** clears it. **Reset folders and tags** does not.
@@ -542,7 +542,7 @@ vice versa. Every detail passes through `scrubDetail`.
 - **Engine purity.** Every new decision function lives in the engine section
   and takes `now` as an argument: `normaliseMineThreadRow`,
   `normaliseMinePostRow`, `freshMine`, `normaliseMine`, `mergeMineSnapshot`,
-  `threadPostsTotal`, `parseThreadDetail`, `applyMineDetail`, `mineUnreadFor`, `isOrganised`,
+  `threadPostsTotal`, `parseThreadDetail`, `applyMineDetail`, `mineUnreadFor`, `isOrganized`,
   `mineLookupTargets`, `viewRows`. `tests/purity.test.js` covers them with no
   change. All network, storage and rendering stays in the runtime section.
 - **Read-only.** Two more GETs to `api.torn.com`. No write verbs, no new
@@ -573,7 +573,7 @@ New suites:
   `user-forumsubscribedthreads.json`, written failing first), `mergeMineSnapshot`
   (first-sight baseline, own-post baseline advance, retain and cap at 200,
   order, `new_posts` kept), `parseThreadDetail`, `mineUnreadFor` (subscribed,
-  `new_posts`, local, unchecked), `isOrganised`,
+  `new_posts`, local, unchecked), `isOrganized`,
   `mineLookupTargets` (budget, TTL, subscribed and started-with-total excluded,
   order), `viewRows` per view.
 - `tests/mine-refresh.test.js` - runtime: exact request sequence and params
@@ -598,7 +598,7 @@ Extended suites:
   My posts-only row; opening My posts triggers the fetch once per TTL.
 - `tests/style.test.js` - the three `.tfcc-nav-mine` rules exist with the
   specificities above, `margin-left: auto`, every `--tfcc-mine-*` token defined
-  in both theme blocks, pressed carries a non-colour cue.
+  in both theme blocks, pressed carries a non-color cue.
 - `tests/storage.test.js` - `tfcc:mine` round-trips; an upgrade with no
   `tfcc:mine` reports nothing damaged; a corrupt `tfcc:mine` resets only itself.
 - `tests/staleness.test.js` - Reset everything mid-fetch drops the late answer.

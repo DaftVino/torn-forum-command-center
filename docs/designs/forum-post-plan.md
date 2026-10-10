@@ -28,7 +28,7 @@ The design uses Torn-forum HTML only: `p`, `strong`, `em`, `span`, `ul`, `ol`, `
    - paste and save it.
 5. Feature tour:
    - all six views;
-   - folders and personal organisation;
+   - folders and personal organization;
    - unread and Catch up;
    - appearance;
    - narrow/mobile layout;
@@ -56,7 +56,7 @@ The design uses Torn-forum HTML only: `p`, `strong`, `em`, `span`, `ul`, `ol`, `
 | View names | `VIEWS` |
 | Badge count and rules | `BADGES`; architecture Badges section |
 | TCT day basis | `DAY_MS`, `tctDay`, and architecture Badges section |
-| Logo artwork and colour | `LOGO_SVG` |
+| Logo artwork and color | `LOGO_SVG` |
 | Version, if ever added to the post | Userscript `@version` |
 
 The post deliberately does not identify Torn's thread `rating` as either net reactions or likes-only. The source says that question remains unresolved, so the post describes the displayed label without assigning it an unverified meaning.

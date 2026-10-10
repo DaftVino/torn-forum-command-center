@@ -14,10 +14,10 @@
 // literals: each entry replaces `from` (required exactly once in the view
 // after every earlier list) with `to`, in the named view.
 
-// 1. The priority number's own colour (#45 item 1, owner): the logo's muted
+// 1. The priority number's own color (#45 item 1, owner): the logo's muted
 //    blue tuned per theme (--tfcc-prio), in place of the meta grey. The two
 //    token lines are insertions into the theme blocks; this is the one edit.
-const PRIO = '45 priority colour';
+const PRIO = '45 priority color';
 
 const css = [
   { item: PRIO, from: '#tfcc-panel .tfcc-prio { flex: none; color: var(--tm-meta); font-size: var(--tfcc-text-sm);',
@@ -96,7 +96,7 @@ const literals = [
     item: '45 folder note', view: 'settings',
     from: FOLDER_NOTE,
     // The owner's rewrite: what a folder is, how to use one, why it helps.
-    to: 'hidden>Folders organise only threads you subscribe to (and ones you file by hand); they never add other '
+    to: 'hidden>Folders organize only threads you subscribe to (and ones you file by hand); they never add other '
       + 'threads from a forum. To use them: add a folder below; optionally claim a forum, so new subscriptions from '
       + 'that forum file themselves into it; or file a thread from the folder menu on its row. Filing by hand always '
       + 'wins over a claim. The arrows set the order, Unfiled included. This helps because Catch up groups threads '

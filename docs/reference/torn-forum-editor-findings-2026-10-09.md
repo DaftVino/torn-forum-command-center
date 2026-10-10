@@ -31,7 +31,7 @@ Research for #58, the Drafts rich editor. It answers the five questions in
    - Filed separately as a bug.
 3. **A plain paste strips every inline style, but a marked paste keeps them.**
    - Torn configures `paste_webkit_styles: 'none'`, so pasting rich HTML from
-     another page loses colours, sizes, alignment and underline.
+     another page loses colors, sizes, alignment and underline.
    - TinyMCE exempts content marked `<!-- x-tinymce/html -->` from that filter,
      because it treats it as its own.
    - Owner-observed (test B): a synthetic `paste` event carrying marked HTML,
@@ -102,7 +102,7 @@ div.forums-new-post-wrap
   - **Native textarea setter and `input` event (FCC today).** It never reaches
     the editor; see Headline 2.
   - **Synthetic paste, marked TinyMCE-internal (test B).** Owner-observed: every
-    style kept (`text-align`, a colour variable, `font-size`, underline,
+    style kept (`text-align`, a color variable, `font-size`, underline,
     `strong`), and Torn's code-view mirror updated.
   - **TinyMCE's `insertContent` (test C).** Owner-observed: the same result. It
     needs the page's `tinymce` global, which a Tampermonkey script with grants
@@ -137,7 +137,7 @@ The owner pasted the rendered `torn-forum-post-sample.html`.
 - `text-align`;
 - `text-decoration: underline`.
 
-The owner noticed the lost alignment. The probe shows the colours, sizes and
+The owner noticed the lost alignment. The probe shows the colors, sizes and
 underline went too: no element in the pasted body has a `style`. The cause is
 Torn's configuration, `paste_webkit_styles: 'none'`, which the light-mode probe
 read directly.
@@ -243,9 +243,9 @@ Read with `tinymce.get(id).options.get(...)`:
 - **Unicode emoji** (for example from Windows' Win+. panel) also work in posts.
   They are plain text characters.
 
-## Q4. The colour variables
+## Q4. The color variables
 
-Owner-observed in both themes. There are 17 text colours. The values come from
+Owner-observed in both themes. There are 17 text colors. The values come from
 the Open Color palette: light shades in dark mode, deep shades in light mode.
 
 | Variable | Light | Dark |
@@ -270,17 +270,17 @@ the Open Color palette: light shades in dark mode, deep shades in light mode.
 
 - The grays are relative to the page, not absolute:
   - gray1 is the strongest text in both themes;
-  - gray5 is the page background colour in both themes, so text in it is
+  - gray5 is the page background color in both themes, so text in it is
     invisible.
 - The palette order above follows Open Color's hue wheel. Torn's picker order
   is unknown.
 
-- **Why variables beat hex.** The variable resolves per theme. A post coloured
+- **Why variables beat hex.** The variable resolves per theme. A post colored
   `var(--te-text-color-red)` stays readable in a reader's light or dark mode.
-  A hex colour is fixed: `#ff8787` on Torn's light background is pale, and
+  A hex color is fixed: `#ff8787` on Torn's light background is pale, and
   gray1 `#ffffff` would vanish.
 - That is why the toolbar emits variables. It is also why
-  `docs/forum-post.md`'s hex colours should become variables before posting.
+  `docs/forum-post.md`'s hex colors should become variables before posting.
 - The editor's other `--te-*` variables style its own chrome: background,
   buttons, tooltips. They are not for post content.
 

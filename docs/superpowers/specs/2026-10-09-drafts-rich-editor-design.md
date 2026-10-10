@@ -13,7 +13,7 @@ section 9.
 ## 1. Problem
 
 The Drafts view holds plain-text reply drafts, and Insert and Copy hand them
-over. A player who wants a well-formatted Torn post, with colours, a table, a
+over. A player who wants a well-formatted Torn post, with colors, a table, a
 centred heading or an image, has to build it in Torn's own editor. Torn's
 editor has no table button, no Markdown, no drafts that outlive a page, and no
 way to see a post in both themes.
@@ -29,13 +29,13 @@ box.
   - The pill shows one pane at a time, never a preview under the editor
     (owner's request).
   - New drafts open in the **Default editor** mode, set in Settings.
-- **A toolbar:** Bold, Italic, Underline, Strike, Colour, Size, Align, Quote,
+- **A toolbar:** Bold, Italic, Underline, Strike, Color, Size, Align, Quote,
   Link, Image, Table.
   - In **MD** and **HTML** each button wraps the selection, or inserts at the
     caret, in that language's marks.
   - In **Preview** the toolbar is disabled.
   - In **Text** the toolbar is hidden.
-- **Preview** renders the post as Torn will, using Torn's measured colours for
+- **Preview** renders the post as Torn will, using Torn's measured colors for
   either theme.
   - A light/dark switch sits in the Preview bar, not beside the pill.
   - It defaults to the panel's resolved theme.
@@ -311,10 +311,10 @@ path.
 **Narrow** (spec section 14 rules apply, at 320px in Torn PDA):
 - The pill is one row of four 44px segments, labelled `Text`, `MD`, `HTML`,
   `Preview`.
-- The toolbar shows B, I, U, Colour and Link, plus **More**. More opens a drawer
+- The toolbar shows B, I, U, Color and Link, plus **More**. More opens a drawer
   with S, Size, Align, Quote, Image, Table and **?**, at 44px with 8px gaps.
 - The editor textarea text is 16px, so iOS does not zoom.
-- The Colour, Size, Align, Link, Image and Table pickers open inline in the
+- The Color, Size, Align, Link, Image and Table pickers open inline in the
   panel, never as browser dialogs.
   - A choice applies at once: a swatch, a size, an alignment, an emoji, or
     the picker's Add, Insert or Use button.
@@ -327,7 +327,7 @@ path.
 - Emoji or arrows in labels are JS escapes. The source stays ASCII.
 
 **Pickers:**
-- **Colour:** the 17 Torn swatches, each named, plus a hex field.
+- **Color:** the 17 Torn swatches, each named, plus a hex field.
   - A custom hex under 4.5:1 contrast against either theme's editor background
     shows a warning naming the theme. The backgrounds are `--te-background-color`,
     `#fff` light and `#111` dark, both measured.
@@ -459,7 +459,7 @@ until these are done:
   - free drafts;
   - Insert and Copy;
   - the Default editor setting.
-- **`docs/forum-post.md`** gains the editor in its feature list. Its own colours
+- **`docs/forum-post.md`** gains the editor in its feature list. Its own colors
   move from hex to `var(--te-text-color-*)`, so the post reads well in both
   themes.
 - **Screenshots** of the editor, if the README's set covers Drafts.

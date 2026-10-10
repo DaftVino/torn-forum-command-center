@@ -35,19 +35,19 @@ const D13 = require('./wide-13d-diffs');
 // golden is compared with the setting OFF (tests/wide-seed.js), where every
 // wide row is main's; the test "what clip on adds" below pins the rest.
 const D41 = require('./wide-41-diffs');
-// #43: the owner's wide changes (info hover notes, the My posts colour, the
+// #43: the owner's wide changes (info hover notes, the My posts color, the
 // semi-transparent backgrounds, the bare info icon), applied last. Each
 // markup entry states how many places it changes; each CSS entry replaces
 // one line of main's stylesheet, required exactly once.
 const D43 = require('./wide-43-diffs');
-// #45: the priority colour, the reorderable folder list and the collapsible
+// #45: the priority color, the reorderable folder list and the collapsible
 // Catch up groups, applied after #43 (tests/wide-45-diffs.js).
 const D45 = require('./wide-45-diffs');
 // #47: several forums per folder (the claim menu's name, the folder note,
 // the chip rules), applied after #45 (tests/wide-47-diffs.js). The tighter
 // narrow Settings adds nothing here: it is narrow-only.
 const D47 = require('./wide-47-diffs');
-// #53: the logo's per-theme colour token (tests/wide-53-diffs.js). The
+// #53: the logo's per-theme color token (tests/wide-53-diffs.js). The
 // narrow reactions pill adds nothing here: it is narrow-only.
 const D53 = require('./wide-53-diffs');
 // #58: the Drafts rich editor (tests/wide-58-diffs.js): the editor pane, + New

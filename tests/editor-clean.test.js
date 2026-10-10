@@ -25,7 +25,7 @@ const MEASURED_EMOJI = ['angel', 'angry', 'authority', 'beard', 'beaten_up', 'bl
   'love_chemistry', 'money', 'moustache', 'mugger_masked', 'nerd', 'party', 'pirate', 'sick', 'smiley',
   'tired', 'tongue', 'wink', 'zip_mouth'];
 
-test('the 17 Torn colours and the 30 Torn emoji are exactly the measured sets', () => {
+test('the 17 Torn colors and the 30 Torn emoji are exactly the measured sets', () => {
   assert.deepStrictEqual(api.TORN_COLORS.map((c) => [c.name, c.light, c.dark]), MEASURED_COLORS);
   assert.deepStrictEqual(api.TORN_EMOJI.slice(), MEASURED_EMOJI);
   assert.strictEqual(api.PASTE_MARKER, '<!-- x-tinymce/html -->');

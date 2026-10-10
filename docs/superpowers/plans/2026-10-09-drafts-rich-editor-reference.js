@@ -1260,7 +1260,7 @@
     return { text: src, changed: changed };
   }
 
-  // ---- custom colour contrast (#58) ------------------------------------------
+  // ---- custom color contrast (#58) ------------------------------------------
 
   function hexRgb(hex) {
     var h = String(hex || '').toLowerCase();
@@ -1286,7 +1286,7 @@
     return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
   }
 
-  // The themes a custom colour is hard to read in (WCAG AA, 4.5:1), against the
+  // The themes a custom color is hard to read in (WCAG AA, 4.5:1), against the
   // editor backgrounds the owner measured.
   function colorWarnings(hex) {
     var out = [];

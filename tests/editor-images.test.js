@@ -90,7 +90,7 @@ test('Fix image link rewrites every fixable image in a draft', () => {
     { text: '![a](https://imgur.com/AbC12dE)', changed: 0 });
 });
 
-test('a custom colour hard to read in a theme is flagged there', () => {
+test('a custom color hard to read in a theme is flagged there', () => {
   assert.deepStrictEqual(api.colorWarnings('#ffd43b'), [{ theme: 'light', ratio: 1.4 }]);
   assert.deepStrictEqual(api.colorWarnings('#000000'), [{ theme: 'dark', ratio: 1.1 }]);
   assert.deepStrictEqual(api.colorWarnings('#777777').map((w) => w.theme), ['light', 'dark']);

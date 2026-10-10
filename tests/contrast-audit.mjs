@@ -7,10 +7,10 @@
  * Renders each preview in a real browser and measures the WCAG contrast ratio
  * of every element's text against its effective background. The unit tests
  * assert on the CSS text; this measures what a browser actually paints, which
- * is the only way to catch a colour nobody set.
+ * is the only way to catch a color nobody set.
  *
  * It found the bug it was written for: links in the Search and Drafts views had
- * no colour rule of their own, so they fell back to the browser default of
+ * no color rule of their own, so they fell back to the browser default of
  * rgb(0, 0, 238) - all but black against the dark panel. Only .tfcc-row-title a
  * had ever been styled.
  *
@@ -69,7 +69,7 @@ const SCRIPT = `
   // #43: the panel and its rows are translucent, so a background is the
   // composite of every layer down to the first opaque one, or down to the
   // page. An underlay preview names what is under the page (data-underlay):
-  // a pattern lists each of its colours, and the worst for the text wins.
+  // a pattern lists each of its colors, and the worst for the text wins.
   const underlays = (() => {
     const u = document.body.getAttribute('data-underlay');
     if (!u) return null;
@@ -112,7 +112,7 @@ const SCRIPT = `
   };
   panel.querySelectorAll('*').forEach((el) => {
     // Only elements that paint their own text, so a container is not blamed
-    // for the contrast of a child that sets its own colour.
+    // for the contrast of a child that sets its own color.
     const own = Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim());
     if (!own) return;
     // #33: the nav numeral is decorative (aria-hidden) and below 3:1 by the
@@ -437,7 +437,7 @@ const SCRIPT = `
     else if (multiLine(el)) openWhole += 1;
   });
   // #39: the drawer emoji, monochrome per theme with the thumbs' filter, and
-  // the colour that filter paints (white on dark, black on light) at 3:1 or
+  // the color that filter paints (white on dark, black on light) at 3:1 or
   // better against what it sits on (WCAG 1.4.11, a meaningful graphic).
   const light = panel.classList.contains('tfcc-theme-light');
   const emos = Array.from(panel.querySelectorAll('.tfcc-emo'));
@@ -484,7 +484,7 @@ const SCRIPT = `
   }
   // #41: the archive icon paints its path in the button's currentColor, in
   // both themes, at 3:1 or better against the button (WCAG 1.4.11), and no
-  // filter recolours it.
+  // filter recolors it.
   const icos = Array.from(panel.querySelectorAll('svg.tfcc-archico'));
   for (const el of icos) {
     const path = el.querySelector('path');
@@ -492,7 +492,7 @@ const SCRIPT = `
     const own = parse(getComputedStyle(el.parentElement).color);
     if (getComputedStyle(el).filter !== 'none') polishBad.push('the archive icon has a filter');
     if (!fill || !own || fill.r !== own.r || fill.g !== own.g || fill.b !== own.b) {
-      polishBad.push('the archive icon is ' + getComputedStyle(path).fill + ', not its button\\'s colour');
+      polishBad.push('the archive icon is ' + getComputedStyle(path).fill + ', not its button\\'s color');
       continue;
     }
     const r = ratio(fill, effectiveBg(el, fill));
@@ -655,7 +655,7 @@ for (const page of pages) {
   // started row whose red "started" (#30) must have been measured.
   const missing = [];
   if (!seen.logo) missing.push('the FCC logo');
-  else if (!seen.logoRatio) missing.push('the FCC logo colour');
+  else if (!seen.logoRatio) missing.push('the FCC logo color');
   else if (/^(threads-dark|threads-light|narrow-threads-375-)/.test(page)) console.log(`.. ${page}: logo ${seen.logoRatio}:1`);
   if (page.startsWith('mine-') && !seen.started) missing.push('a red "started" tag');
   // #45: every Threads page, wide and narrow, has a row with a priority, so

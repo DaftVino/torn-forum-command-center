@@ -23,7 +23,7 @@ for history.
 The pink dashed line marks roughly one screen of Torn PDA web view (560px from
 the top of the frame).
 
-The mockups reuse the panel's real colour tokens, logo, karma icon and class
+The mockups reuse the panel's real color tokens, logo, karma icon and class
 names. The `m-*` classes are the proposal. All files are ASCII.
 
 To redo the screenshots, use gstack browse: `viewport 1210x1300`,

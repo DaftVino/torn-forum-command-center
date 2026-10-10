@@ -89,7 +89,7 @@ test('nothing is evaluated on load: no backfill', () => {
   assert.strictEqual(Object.keys(env.exports.state.badges.earned).length, 0);
 });
 
-test('an organiser change evaluates, and earns with a toast', () => {
+test('an organizer change evaluates, and earns with a toast', () => {
   const env = loadUserscript({ location: forums(), now: NOW });
   const api = env.exports;
   const h = api.makeHandlers(env.doc, env.win);

@@ -103,7 +103,7 @@
     + '"/></svg>';
   // The owner's FCC logo (#30), in place of the header's title text. No id,
   // no aria-labelledby and no <title>: a fixed id would collide on Torn's page,
-  // so the accessible name is an aria-label. The fill is the owner's colour;
+  // so the accessible name is an aria-label. The fill is the owner's color;
   // the .tfcc-logo rules repeat it so a host "svg * { fill }" cannot win.
   // The viewBox is cropped to the letters (x 10-116, y 9-54 of the original
   // 127x66 art), so the drawn edges, not blank margin, meet the chip height.
@@ -1747,7 +1747,7 @@
 
   // What pulls a My posts thread into Threads. A read marker and a visit
   // deliberately do not, or marking your own thread read would file it.
-  function isOrganised(entry, hasDraft) {
+  function isOrganized(entry, hasDraft) {
     if (hasDraft) return true;
     if (!entry) return false;
     return !!(entry.folderId || entry.tags.length || entry.pinned || entry.priority !== 0
@@ -1915,7 +1915,7 @@
         up: rec && typeof rec.up === 'number' ? rec.up : null,
         down: rec && typeof rec.down === 'number' ? rec.down : null,
         rating: rec && typeof rec.rating === 'number' ? rec.rating : null,
-        inThreads: !!api || !rec || isOrganised(entry, !!draft),
+        inThreads: !!api || !rec || isOrganized(entry, !!draft),
         unreadSource: unreadSource,
       });
     }
@@ -3527,7 +3527,7 @@
   }
 
   // Icons are SVG paths written in ASCII: no emoji, no icon font, no <text>.
-  // Frames carry the tier by shape as well as colour.
+  // Frames carry the tier by shape as well as color.
   var BADGE_FRAMES = Object.freeze({
     bronze: 'M1 8a7 7 0 1 0 14 0a7 7 0 1 0 -14 0zM2.5 8a5.5 5.5 0 1 1 11 0a5.5 5.5 0 1 1 -11 0z',
     silver: 'M8 0.8L14.2 4.4V11.6L8 15.2L1.8 11.6V4.4ZM8 2.5L12.7 5.2V10.8L8 13.5L3.3 10.8V5.2Z',
@@ -3558,12 +3558,12 @@
   // glyph names a BADGE_GLYPHS entry. framed draws the tier frame around it.
   function badgeIcon(cls, glyph, size, framed) {
     var px = toInt(size, 16);
-    var colour = cls === 'locked' ? 'tfcc-locked' : (cls === 'plain' ? '' : 'tfcc-tier-' + cls);
+    var color = cls === 'locked' ? 'tfcc-locked' : (cls === 'plain' ? '' : 'tfcc-tier-' + cls);
     var frameKey = cls === 'locked' ? 'bronze' : cls;
     var paths = [];
     if (framed && Object.prototype.hasOwnProperty.call(BADGE_FRAMES, frameKey)) paths.push(BADGE_FRAMES[frameKey]);
     if (Object.prototype.hasOwnProperty.call(BADGE_GLYPHS, glyph)) paths.push(BADGE_GLYPHS[glyph]);
-    return '<svg class="tfcc-ico' + (colour ? ' ' + colour : '') + '" viewBox="0 0 16 16" width="' + px
+    return '<svg class="tfcc-ico' + (color ? ' ' + color : '') + '" viewBox="0 0 16 16" width="' + px
       + '" height="' + px + '" aria-hidden="true" focusable="false">'
       + paths.map(function (d) { return '<path d="' + d + '"/>'; }).join('') + '</svg>';
   }
@@ -4821,7 +4821,7 @@
     return { text: src, changed: changed };
   }
 
-  // ---- custom colour contrast (#58) ------------------------------------------
+  // ---- custom color contrast (#58) ------------------------------------------
 
   function hexRgb(hex) {
     var h = String(hex || '').toLowerCase();
@@ -4847,7 +4847,7 @@
     return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
   }
 
-  // The themes a custom colour is hard to read in (WCAG AA, 4.5:1), against the
+  // The themes a custom color is hard to read in (WCAG AA, 4.5:1), against the
   // editor backgrounds the owner measured.
   function colorWarnings(hex) {
     var out = [];
@@ -6247,7 +6247,7 @@
     try {
       if (!win || typeof win.getComputedStyle !== 'function') return null;
       var candidates = [doc && doc.body, doc && doc.documentElement];
-      // "Could not read a colour" and "read a transparent colour" are different
+      // "Could not read a color" and "read a transparent color" are different
       // answers. Only the second means the browser is painting its own white
       // canvas; the first has to fall through to the other signals.
       var readAny = false;
@@ -6261,7 +6261,7 @@
         var m = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/.exec(raw);
         if (!m) continue;
         readAny = true;
-        // A transparent element paints nothing, so the colour comes from
+        // A transparent element paints nothing, so the color comes from
         // further out. Keep looking rather than reading it as black.
         if (m[4] !== undefined && Number(m[4]) < 0.5) continue;
         var lum = 0.2126 * Number(m[1]) + 0.7152 * Number(m[2]) + 0.0722 * Number(m[3]);
@@ -6337,7 +6337,7 @@
     } catch (e2) { /* same */ }
   }
 
-  // The 17 Torn text colours for a Preview theme, as one declaration list, so
+  // The 17 Torn text colors for a Preview theme, as one declaration list, so
   // a cleaned post's var(--te-text-color-*) resolves inside the panel.
   function teVars(theme) {
     return TORN_COLORS.map(function (c) { return '--te-text-color-' + c.name + ': ' + c[theme] + ';'; }).join(' ');
@@ -6345,7 +6345,7 @@
 
   function panelStyleText() {
     return [
-      // Colour values follow Torn Bookie Live Scores' default scheme so the two
+      // Color values follow Torn Bookie Live Scores' default scheme so the two
       // scripts read as a family. --tm-* means "matches Bookie"; --tfcc-* is
       // local to this script. No font is set: the panel inherits Torn's, which
       // is what makes it look like part of the page rather than bolted on.
@@ -6366,7 +6366,7 @@
       // lightened for dark: 6.91:1 on the row, 7.52:1 on the panel. The logo
       // blue itself is 3.49:1 here, too low for 12px text.
       '  --tfcc-prio: #8db3d9;',
-      // #53 (owner): the logo's colour, per theme. Dark keeps #5C768F.
+      // #53 (owner): the logo's color, per theme. Dark keeps #5C768F.
       '  --tfcc-logo: #5c768f;',
       // #43 (owner): the "See-through background" setting's two base layers,
       // --tm-bg and --tm-bg-2 with alpha: the panel's own background at 50%
@@ -6377,7 +6377,7 @@
       // #33: the narrow header button size; fitHeader overrides it inline.
       '  --tfcc-hb: 44px;',
       // #33 nav numerals, v1 tint (spec 13f). The same in both themes, because
-      // the colour is the cell's own text colour. contrast is in style.test.js.
+      // the color is the cell's own text color. contrast is in style.test.js.
       '  --tfcc-navnum-opacity: 0.14; --tfcc-navnum-opacity-selected: 0.09;',
       '  --tfcc-navlab-opacity: 0.9; --tfcc-navlab-opacity-selected: 0.96; --tfcc-navnum-size: 40px;',
       '}',
@@ -6408,10 +6408,10 @@
       '#' + PANEL_ID + ' * { box-sizing: border-box; }',
       // Inheritance is the weakest source in CSS: a value is inherited only
       // when NO rule matches. Torn styles bare elements - td, h4, p, code - so
-      // any such rule of theirs beat our panel's inherited colour and painted
+      // any such rule of theirs beat our panel's inherited color and painted
       // black text on the dark panel. background needs its own reset because it
       // is not inherited at all, which is how a host `code { background: #eee }`
-      // survived the colour fix and left grey text on a grey block.
+      // survived the color fix and left grey text on a grey block.
       // Both declarations are (1,0,0), so every rule below still wins.
       '#' + PANEL_ID + ' * { color: inherit; background: transparent; }',
       '#' + PANEL_ID + ' code, #' + PANEL_ID + ' pre {',
@@ -6423,7 +6423,7 @@
       '  overflow-y: auto; overflow-x: hidden; padding: 12px; }',
       // #43 (owner): "See-through background", one class on the panel. Only
       // the panel's base and the row cards go translucent; text and every
-      // control stay opaque (alpha on the colour, never opacity). The blur is
+      // control stay opaque (alpha on the color, never opacity). The blur is
       // a readability aid for a busy page under it; it cannot help a plain
       // one, so contrast was measured without it, and a browser without it
       // simply shows the page. Expand covers the page, so it stays solid.
@@ -6497,7 +6497,7 @@
       // the button.tfcc-nav-mine margin at (1,1,1).
       '#' + PANEL_ID + ' .tfcc-nav button.tfcc-reactions { margin-left: auto; }',
       '#' + PANEL_ID + ' .tfcc-nav .tfcc-reactions + button.tfcc-nav-mine { margin-left: 0; }',
-      // The thumbs (#30) drawn in one colour: white on the dark panel (the
+      // The thumbs (#30) drawn in one color: white on the dark panel (the
       // default tokens are dark), black on the light one.
       '#' + PANEL_ID + ' .tfcc-thumb { filter: grayscale(1) brightness(0) invert(1); }',
       '#' + PANEL_ID + '.tfcc-theme-light .tfcc-thumb { filter: grayscale(1) brightness(0); }',
@@ -6526,7 +6526,7 @@
       '#' + PANEL_ID + ' .tfcc-nav { display: flex; gap: var(--tfcc-gap-sm); flex-wrap: wrap;',
       '  margin-bottom: var(--tfcc-gap); }',
       // My posts stands apart from the other five by place only: last, and
-      // pushed right. Its colours are every nav button's (#43, owner): the
+      // pushed right. Its colors are every nav button's (#43, owner): the
       // normal fill, and the selected fill only while it is the current view.
       // Its old light-grey fill read as selected.
       '#' + PANEL_ID + ' button.tfcc-nav-mine { margin-left: auto; }',
@@ -6589,7 +6589,7 @@
       // #43 (owner): an info button is a bare icon, at every width. It keeps
       // its 44px target and a transparent border (so its box does not move);
       // only the fill and the outline go. Hover and open tint the icon in the
-      // accent colour instead of filling a box; focus keeps the panel ring.
+      // accent color instead of filling a box; focus keeps the panel ring.
       '#' + PANEL_ID + ' button.tfcc-info { display: inline-flex; align-items: center; justify-content: center;',
       '  flex: none; min-width: 44px; min-height: 44px; padding: 0; border-color: transparent; background: transparent; }',
       '#' + PANEL_ID + ' button.tfcc-info:hover { background: transparent; color: var(--tm-accent-text); }',
@@ -6807,7 +6807,7 @@
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-emo { display: block; font-size: 16px; line-height: 1;',
       '  filter: grayscale(1) brightness(0) invert(1); }',
       '#' + PANEL_ID + '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }',
-      // #41: the archive icon, in the button's own text colour in both themes.
+      // #41: the archive icon, in the button's own text color in both themes.
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-archico { display: block; flex: none; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-archico path { fill: currentColor; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-vh { font-size: var(--tfcc-text); margin: 2px 0 6px 0; }',
@@ -8005,7 +8005,7 @@
     ['ed-mark', 'data-mark="bold"', 'B', 'Bold', true],
     ['ed-mark', 'data-mark="italic"', 'I', 'Italic', true],
     ['ed-mark', 'data-mark="underline"', 'U', 'Underline', true],
-    ['ed-picker', 'data-picker="color"', 'Colour', 'Text colour', true],
+    ['ed-picker', 'data-picker="color"', 'Color', 'Text color', true],
     ['ed-picker', 'data-picker="link"', 'Link', 'Insert link', true],
     ['ed-mark', 'data-mark="strike"', 'S', 'Strike through', false],
     ['ed-picker', 'data-picker="size"', 'Size', 'Text size', false],
@@ -8052,8 +8052,8 @@
 
   var MD_HELP = Object.freeze([
     ['**bold**', 'bold'], ['*italic*', 'italic'], ['++underline++', 'underline'], ['~~strike~~', 'strike through'],
-    ['{red}text{/}', 'a Torn colour (red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange, gray1 to gray5)'],
-    ['{#ff8800}text{/}', 'any colour'], ['{18}text{/}', 'text size, 8 to 36'], ['# Title', 'a big bold line (## and ### are smaller)'],
+    ['{red}text{/}', 'a Torn color (red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange, gray1 to gray5)'],
+    ['{#ff8800}text{/}', 'any color'], ['{18}text{/}', 'text size, 8 to 36'], ['# Title', 'a big bold line (## and ### are smaller)'],
     [':::center', 'centre the lines up to the next :::'], ['> text', 'a quote'], ['- item', 'a list (1. for numbers)'],
     // No literal URLs here: read-only.test.js audits every http(s) host in the source.
     ['[text](link address)', 'a link (https only)'], ['![description](image link)', 'an image'], [':grin:', 'a Torn emoji'],
@@ -8078,11 +8078,11 @@
           + (c.name === 'gray5' ? ', matches the page background' : '') + '" title="' + c.name + '">'
           + '<span class="tfcc-swatch" style="background: ' + c[theme] + ';" aria-hidden="true"></span></button>');
       }
-      out.push('</div><label for="tfcc-ed-hex" class="tfcc-note">Custom colour</label>'
+      out.push('</div><label for="tfcc-ed-hex" class="tfcc-note">Custom color</label>'
         + '<input id="tfcc-ed-hex" type="text" data-act="ed-hex-input" placeholder="#ff8800" maxlength="7" value="' + fv('ed-hex-input', '') + '">'
-        + btn('ed-color', 'Use custom colour', ' data-value="custom"'));
+        + btn('ed-color', 'Use custom color', ' data-value="custom"'));
       if (e.pickerWarn) {
-        out.push('<p class="tfcc-note" role="alert">' + escapeHtml(e.pickerWarn) + ' Tap Use custom colour again to use it anyway.</p>');
+        out.push('<p class="tfcc-note" role="alert">' + escapeHtml(e.pickerWarn) + ' Tap Use custom color again to use it anyway.</p>');
       }
     } else if (e.picker === 'size') {
       for (var s = 0; s < SIZE_PICKS.length; s += 1) out.push(btn('ed-size', SIZE_PICKS[s] + 'px', ' data-value="' + SIZE_PICKS[s] + '"'));
@@ -8290,7 +8290,7 @@
     out.push('<div class="tfcc-infobar"><span class="tfcc-note">Recorded on this device only. No request is made.'
       + '</span>' + renderInfoButton('settings-badges', model.openInfoId) + '</div>');
     out.push(renderInfoText('settings-badges', model.openInfoId, 'Earned from what you do here: focused visits '
-      + 'to threads, finishing Torn days with Catch up empty, and organising. A visit counts once a Torn day, '
+      + 'to threads, finishing Torn days with Catch up empty, and organizing. A visit counts once a Torn day, '
       + 'after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent '
       + 'anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days '
       + 'with it off.'));
@@ -8346,7 +8346,7 @@
     // rather than buried in a readme because that is where the terms put it.
     out.push('<table class="tfcc-tos"><tbody>');
     out.push('<tr><th>Who can see your data</th><td>Nobody. It never leaves this device.</td></tr>');
-    out.push('<tr><th>What it is used for</th><td>Public community tool: listing and organising the '
+    out.push('<tr><th>What it is used for</th><td>Public community tool: listing and organizing the '
       + 'forum threads you subscribe to.</td></tr>');
     out.push('<tr><th>Storage</th><td>Key and cached thread data are stored in this browser only. '
       + 'Not shared, not uploaded, not included in an export.</td></tr>');
@@ -8504,7 +8504,7 @@
     // up groups by folder in the order (groupCatchUp), the Threads folder
     // filter, encodeState, and the First folder badge (ownFoldersFilled).
     out.push(renderInfoText('settings-folders', model.openInfoId, ''
-      + 'Folders organise only threads you subscribe to (and ones you file by hand); they never add other threads '
+      + 'Folders organize only threads you subscribe to (and ones you file by hand); they never add other threads '
       + 'from a forum. To use them: add a folder below; optionally claim one or more forums, so new subscriptions '
       + 'from them file themselves into it; a forum belongs to one folder at a time, and removing a claim leaves '
       + 'the threads already filed where they are; or file a thread from the folder menu on its row. Filing by '
@@ -8769,7 +8769,7 @@
     return s.current + ' ' + plural(s.current, 'day', 'days');
   }
 
-  // One chip: a cup in the best earned tier's colour, the count, then the
+  // One chip: a cup in the best earned tier's color, the count, then the
   // streak. Its children ignore pointer events, because click delegation
   // reads data-act from the event target and an SVG child has none.
   function renderBadgeChip(model) {
@@ -10131,9 +10131,9 @@
           var colV = el.getAttribute('data-value');
           if (colV === 'custom') {
             var hex = String(field('ed-hex-input', '')).trim().toLowerCase();
-            if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(hex)) { notice('Type a colour like #ff8800.', 'warn'); redraw(); return; }
+            if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(hex)) { notice('Type a color like #ff8800.', 'warn'); redraw(); return; }
             var warns = colorWarnings(hex);
-            var warnText = warns.length ? 'This colour is hard to read on Torn\'s ' + warns.map(function (w) { return w.theme; }).join(' and ')
+            var warnText = warns.length ? 'This color is hard to read on Torn\'s ' + warns.map(function (w) { return w.theme; }).join(' and ')
               + ' theme (contrast ' + warns.map(function (w) { return w.ratio; }).join(' and ') + ' to 1).' : '';
             if (warnText && E.pickerWarn !== warnText) { E.pickerWarn = warnText; redraw(); return; }
             applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, 'color', hex), now); return;

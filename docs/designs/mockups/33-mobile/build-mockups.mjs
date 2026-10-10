@@ -789,11 +789,11 @@ const FIT_SCRIPT = `<script>
 // ---- Nav count variants (owner feedback: numeral behind the label) -----------
 // The count is a large numeral layered behind a one-line label. Three ways to
 // keep the label at AA (4.5:1) where it crosses the numeral:
-//   v1 tint  - numeral in the label's own colour at 14% opacity; label at 90%.
+//   v1 tint  - numeral in the label's own color at 14% opacity; label at 90%.
 //   v2 ghost - numeral as an outline (text stroke) at 45%; label solid.
 //   v3 halo  - numeral in the unread green at 35%; label at 92% with a halo
 //              of the cell's own background.
-// The in-page script composites the real computed colours and prints the
+// The in-page script composites the real computed colors and prints the
 // ratios under each block: label over the cell, label over the numeral.
 const NAV_CSS = `
 body.nv-body { display: block; }
@@ -823,8 +823,8 @@ body.nv-body { display: block; }
 #tfcc-panel.nv-v2 .nv-num { color: transparent; -webkit-text-stroke: 1.5px var(--nv-ink); opacity: 0.45; }
 /* v4: the numeral is itself legible (3:1 or better against the cell, the
    large-text threshold, because it IS the count), and the label is solid with
-   a crisp 1.5px halo in the cell colour, so the label's adjacent pixels are
-   the cell, not the numeral. Numeral colours chosen per cell state. */
+   a crisp 1.5px halo in the cell color, so the label's adjacent pixels are
+   the cell, not the numeral. Numeral colors chosen per cell state. */
 #tfcc-panel.nv-v4 button.nv { --nv-numc: #6b6b6b; }
 #tfcc-panel.nv-v4.tfcc-theme-light button.nv { --nv-numc: #8c8c8c; }
 #tfcc-panel.nv-v4 button.nv[aria-pressed="true"] { --nv-numc: #000000; }
@@ -837,7 +837,7 @@ body.nv-body { display: block; }
 #tfcc-panel.nv-v3 .nv-num { color: var(--tm-good-text); opacity: 0.35; }
 #tfcc-panel.nv-v3 .nv-lab { opacity: 0.92; text-shadow: 0 0 2px var(--nv-cell), 0 0 2px var(--nv-cell), 0 0 3px var(--nv-cell); }
 /* Green on the green selected cell is the failing case: there the numeral
-   takes the label colour, faintly. */
+   takes the label color, faintly. */
 #tfcc-panel.nv-v3 button.nv[aria-pressed="true"] .nv-num { color: currentColor; opacity: 0.1; }
 `;
 
@@ -868,10 +868,10 @@ function nvFrame(variant, theme, width) {
     + '<p class="nv-res">measuring...</p></div>';
 }
 const NV_LABELS = {
-  v1: 'v1 tint: numeral in the label colour at 14%, label at 90% opacity',
+  v1: 'v1 tint: numeral in the label color at 14%, label at 90% opacity',
   v2: 'v2 ghost: numeral as a 1.5px outline at 45%, solid label',
   v3: 'v3 halo: numeral in the unread green at 35%, label at 92% with a soft background halo',
-  v4: 'v4 legible numeral: numeral at 3:1+ against the cell (it is the count), solid label with a crisp cell-colour halo',
+  v4: 'v4 legible numeral: numeral at 3:1+ against the cell (it is the count), solid label with a crisp cell-color halo',
 };
 function nvPage() {
   const cells = [];
@@ -881,7 +881,7 @@ function nvPage() {
   }
   return '<div class="nv-grid">' + cells.join('\n') + '</div>' + NV_SCRIPT;
 }
-// Composites the computed colours the way the browser paints them and prints
+// Composites the computed colors the way the browser paints them and prints
 // the WCAG ratios. "over numeral" is the label against the numeral painted on
 // the cell: the worst pixel the label can sit on. The v3 halo is NOT credited.
 const NV_SCRIPT = `<script>
@@ -896,7 +896,7 @@ const NV_SCRIPT = `<script>
   document.querySelectorAll('[id="tfcc-panel"]').forEach(function (p) {
     var worst = 99, where = '', lines = [], numWorst = 99, numWhere = '', halo = 99;
     // Only v4's halo is solid (zero-blur offsets), so only v4 gets halo credit:
-    // its label's adjacent pixels are the cell colour.
+    // its label's adjacent pixels are the cell color.
     var crisp = p.classList.contains('nv-v4');
     p.querySelectorAll('button.nv').forEach(function (b) {
       var bg = parse(getComputedStyle(b).backgroundColor);

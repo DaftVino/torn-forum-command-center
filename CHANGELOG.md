@@ -11,10 +11,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
     Switching converts the draft without losing anything. Preview shows the
     post the way Torn will, in its light or dark theme, and tapping a
     paragraph jumps back to it.
-  - **Toolbar:** bold, italic, underline, strike, Torn's 17 text colours or a
-    custom colour, size, alignment, quote, link, image, table, emoji (Torn's
+  - **Toolbar:** bold, italic, underline, strike, Torn's 17 text colors or a
+    custom color, size, alignment, quote, link, image, table, emoji (Torn's
     own and Unicode) and a Markdown help card. On a narrow panel it shows B,
-    I, U, Colour, Link and More, and wraps to two rows at 320px.
+    I, U, Color, Link and More, and wraps to two rows at 320px.
   - **Image link fixer:** paste a Google Drive, Dropbox, GitHub, Giphy,
     Gyazo, Imgur or Reddit link, and the editor rewrites it into a link Torn
     can show. Hosts that cannot be rewritten get a one-line how-to. Image
@@ -89,7 +89,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Collapsible Catch up groups (#45). Each folder group's heading, Unfiled's
   too, is a toggle that hides or shows its rows; the choice is remembered on
   this device and is not exported. Mark all read still covers hidden rows.
-- The Settings folder note now explains what folders are (they organise
+- The Settings folder note now explains what folders are (they organize
   only threads you subscribe to, or file by hand, and never add other threads
   from a forum), how to use them and why they help (#45).
 - Settings, author-only mode: its explanation now leads with what it does (a
@@ -183,7 +183,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   keyboard is composing). Save adds a tag and never removes one: a tag the
   thread already has is kept, with "Already tagged". A saved note shows
   as a bar under the Note button. Desktop rows keep their inline fields.
-- The My posts nav button uses the same colours as the other nav buttons, at
+- The My posts nav button uses the same colors as the other nav buttons, at
   every width: the normal fill, and the selected fill only while My posts is
   the current view, and the same weight (no longer bold alone on desktop).
   Its light-grey fill made it look selected. (#43)
@@ -202,7 +202,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   measured figures are in the #43 pull request. Settings, Appearance: **See-
   through background**, on by default, turns it off.
 - The narrow drawer's Archive button shows an archive box (UXWing's "archive
-  files" icon, inline and in the theme's text colour) instead of the
+  files" icon, inline and in the theme's text color) instead of the
   wastebasket, so it reads as archive, not delete. (#41)
 - Narrow view polish (#39). In the narrow layout only:
   - Catch up's "Mark all read", "Set catch-up point to now" and its info
@@ -237,7 +237,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - The custom key link also asks for `user` profile, read only by the karma
   fallback. (#10)
 - The panel header shows the owner's FCC logo in place of the "Forum Command
-  Center" text, inline, in its own colour `#5C768F`, one title line tall, with
+  Center" text, inline, in its own color `#5C768F`, one title line tall, with
   "Forum Command Center" as its accessible name. (#30)
 - A thread row's priority moved out of the action row to sit right after the
   title: the adjustment as a number (0 by default), then small + and -
@@ -338,7 +338,7 @@ First release. Blocked on the signed-in QA gate in `docs/qa-checklist.md`.
 ### Fixed before release
 
 - **The API key disclosure table was black text on the dark panel.** Its cells
-  took their colour by inheritance, and inheritance is the weakest source in
+  took their color by inheritance, and inheritance is the weakest source in
   CSS: a value is inherited only when no rule matches, so any bare `td` rule on
   Torn's own stylesheet beat it. The panel now resets `color` and `background`
   on every descendant, and states both outright on the cells. `background`
@@ -361,14 +361,14 @@ First release. Blocked on the signed-in QA gate in `docs/qa-checklist.md`.
   not written at all, and a redraw the user did not ask for is deferred while an
   input inside the panel has focus and flushed when focus leaves.
 
-- Links in the Search and Drafts views had no colour rule of their own and fell
+- Links in the Search and Drafts views had no color rule of their own and fell
   back to the browser default `rgb(0, 0, 238)`, which reads as black against the
-  dark panel. Every anchor is now coloured in every state, including `:visited`,
+  dark panel. Every anchor is now colored in every state, including `:visited`,
   which would otherwise have gone purple.
-- Dropdown options carry the panel colours. On some platforms the popup is drawn
+- Dropdown options carry the panel colors. On some platforms the popup is drawn
   by the OS and defaults to black on white regardless of the select.
 - The panel no longer tells people to create a **Minimal** access key. The API
-  docs colour-code both selections it needs as Minimal Access, but Torn's key
+  docs color-code both selections it needs as Minimal Access, but Torn's key
   page does not offer that as a choice, so it now names the selections instead:
   a Custom key with `forumsubscribedthreads` and `forumfeed`, or Limited Access.
 

@@ -2415,7 +2415,7 @@ In `renderBadgeCatalogue(model)`, replace the `out.push('<p class="tfcc-note">Ea
     out.push('<div class="tfcc-infobar"><span class="tfcc-note">Recorded on this device only. No request is made.'
       + '</span>' + renderInfoButton('settings-badges', model.openInfoId) + '</div>');
     out.push(renderInfoText('settings-badges', model.openInfoId, 'Earned from what you do here: focused visits '
-      + 'to threads, finishing Torn days with Catch up empty, and organising. A visit counts once a Torn day, '
+      + 'to threads, finishing Torn days with Catch up empty, and organizing. A visit counts once a Torn day, '
       + 'after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent '
       + 'anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days '
       + 'with it off.'));
@@ -2599,11 +2599,11 @@ module.exports = [
   },
   {
     item: "26 badges", view: "settings",
-    from: "<p class=\"tfcc-note\">Earned from what you do here: focused visits to threads, finishing Torn days with Catch up empty, and organising. A visit counts once a Torn day, after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days with it off.</p>",
+    from: "<p class=\"tfcc-note\">Earned from what you do here: focused visits to threads, finishing Torn days with Catch up empty, and organizing. A visit counts once a Torn day, after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days with it off.</p>",
     to: "<div class=\"tfcc-infobar\"><span class=\"tfcc-note\">Recorded on this device only. No request is made.</span>"
       + INFO("settings-badges", "About badges")
       + "</div>"
-      + HID("settings-badges", "Earned from what you do here: focused visits to threads, finishing Torn days with Catch up empty, and organising. A visit counts once a Torn day, after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days with it off."),
+      + HID("settings-badges", "Earned from what you do here: focused visits to threads, finishing Torn days with Catch up empty, and organizing. A visit counts once a Torn day, after 15 seconds with the page in front of you. A day is a Torn day, from 00:00 TCT. Nothing is sent anywhere, and no request is made. Turning this off stops recording, and a streak does not survive days with it off."),
   },
 ];
 ```
@@ -3111,8 +3111,8 @@ test('the v1 nav tokens are the owner\'s values (#33, spec 13f)', () => {
 
 test('every nav label stays at 4.5:1 over the numeral painted on its cell, in both themes (#33)', () => {
   // The same composite the mockup's in-page script measures: the numeral is
-  // the cell's text colour at the numeral opacity over the cell; the label is
-  // the text colour at the label opacity over that numeral.
+  // the cell's text color at the numeral opacity over the cell; the label is
+  // the text color at the label opacity over that numeral.
   const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
   const toHex = (c) => '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
   const mix = (fg, bg, a) => fg.map((v, i) => v * a + bg[i] * (1 - a));
@@ -3135,9 +3135,9 @@ test('every nav label stays at 4.5:1 over the numeral painted on its cell, in bo
   }
 });
 
-test('the numeral takes its colour from the cell and has no outline (#33)', () => {
+test('the numeral takes its color from the cell and has no outline (#33)', () => {
   const num = blockFor('#tfcc-panel.tfcc-narrow .tfcc-navnum');
-  assert.doesNotMatch(num, /(^|[^-])color\s*:/, 'no colour of its own: currentColor is the cell\'s text');
+  assert.doesNotMatch(num, /(^|[^-])color\s*:/, 'no color of its own: currentColor is the cell\'s text');
   assert.doesNotMatch(css, /-webkit-text-stroke/, 'an outline is how v2 vanished');
   assert.match(num, /opacity: var\(--tfcc-navnum-opacity\)/);
   assert.match(blockFor('#tfcc-panel.tfcc-narrow .tfcc-navgrid button[aria-pressed="true"] .tfcc-navnum'),
@@ -3210,7 +3210,7 @@ In the `#tfcc-panel {` token block, after `'  --tfcc-hb: 44px;',` add:
 
 ```js
       // #33 nav numerals, v1 tint (spec 13f). The same in both themes, because
-      // the colour is the cell's own text colour. contrast is in style.test.js.
+      // the color is the cell's own text color. contrast is in style.test.js.
       '  --tfcc-navnum-opacity: 0.14; --tfcc-navnum-opacity-selected: 0.09;',
       '  --tfcc-navlab-opacity: 0.9; --tfcc-navlab-opacity-selected: 0.96; --tfcc-navnum-size: 40px;',
 ```

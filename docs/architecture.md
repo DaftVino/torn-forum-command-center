@@ -153,7 +153,7 @@ counts every post (live findings 3 and 4). Every stored total is therefore
 `posts + 1`, converted in `threadPostsTotal` and nowhere else.
 
 **Population.** A My posts thread appears in Threads only when
-`subscribed || organised`, where organised is a folder, a tag, a pin, a
+`subscribed || organized`, where organized is a folder, a tag, a pin, a
 priority, a note, archived or a draft. A read marker or a visit does not count,
 so marking your own thread read does not file it in Threads. Threads, Catch up,
 the header badge and Catch up's Mark all read use the Threads population only.
@@ -335,15 +335,15 @@ every element we emit. Two rules make that survivable.
 `#tfcc-panel * { color: inherit; background: transparent; }` is the floor.
 Inheritance is the weakest source in CSS - a value is inherited only when no
 rule matches - so a bare `td { color: #000 }` on the host beats an inherited
-colour and paints black text on the dark panel, which is exactly what happened
+color and paints black text on the dark panel, which is exactly what happened
 to the API key disclosure table. `background` needs its own reset because it is
 not inherited at all, which is how a host `code { background: #eee }` survived
-the colour fix and left grey text on a grey block. Both declarations are
+the color fix and left grey text on a grey block. Both declarations are
 (1,0,0) specificity, so every class rule and every explicit element rule below
 still wins.
 
 Elements a host page is most likely to have opinions about - table cells, `code`
-- state their colour and background outright rather than relying on that floor.
+- state their color and background outright rather than relying on that floor.
 
 `tests/render-preview.mjs` renders every view twice, once plain and once under a
 stylesheet that sets bare element rules the way a real host does. The plain
@@ -370,7 +370,7 @@ callbacks rather than renders, or the overlap would hide whichever one broke.
 ## Badges
 
 Fifteen local badges (issue #9). Every rule is a pure engine function of the
-`tfcc:badges` record, organiser facts and `now`; a day is a Torn (UTC) day and
+`tfcc:badges` record, organizer facts and `now`; a day is a Torn (UTC) day and
 streaks are strict. One runtime choke point, `recordBadgeEvent`, re-reads the
 key, applies one event and writes, so tabs usually see each other's work; this
 is best effort, not atomic. A focused thread visit is 15 s on one thread

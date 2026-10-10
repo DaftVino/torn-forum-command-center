@@ -121,7 +121,7 @@ this map is current whatever the stamp says.
 - `torn-forum-command-center.user.js:1689` — `authorStateFor()` (function)
 - `torn-forum-command-center.user.js:1691` — `unchecked()` (function)
 - `torn-forum-command-center.user.js:1720` — `mineUnreadFor()` (function)
-- `torn-forum-command-center.user.js:1750` — `isOrganised()` (function)
+- `torn-forum-command-center.user.js:1750` — `isOrganized()` (function)
 - `torn-forum-command-center.user.js:1762` — `resolveLastActivity()` (function)
 - `torn-forum-command-center.user.js:1786` — `categoryIndex()` (function)
 - `torn-forum-command-center.user.js:1795` — `feedIndex()` (function)
@@ -845,7 +845,7 @@ this map is current whatever the stamp says.
 38.3 KB · 735 lines
 
 - `tests/style.test.js:10` — `blockFor()` (function)
-- `tests/style.test.js:37` — `colourTokens()` (function)
+- `tests/style.test.js:37` — `colorTokens()` (function)
 - `tests/style.test.js:207` — `requiresMinimal()` (function)
 - `tests/style.test.js:424` — `tokenValue()` (function)
 - `tests/style.test.js:429` — `ratio()` (function)

@@ -142,7 +142,7 @@ const css = api.panelStyleText();
 
 // A stand-in for Torn's own stylesheet. Every one of these is the kind of bare
 // element rule a large site really does ship, and every one of them beats an
-// inherited colour, because inheritance only applies when NO rule matches.
+// inherited color, because inheritance only applies when NO rule matches.
 // Without this the previews were far too clean to catch the bug they were
 // meant to catch: the disclosure table's cells were readable here and black on
 // the real site.
@@ -188,7 +188,7 @@ const TEXT_200 = '#tfcc-panel { --tfcc-text: 28px; --tfcc-text-sm: 24px; }';
 // #43: what shows through the translucent panel. We cannot read Torn's page
 // (ADR 0001), so the panel is judged over the extremes: pure black, pure
 // white, and a busy mid-grey stripe. colors are what the audit composites
-// over (each stripe colour in turn, so a pattern is judged by its worst).
+// over (each stripe color in turn, so a pattern is judged by its worst).
 const UNDERLAYS = {
   black: { css: '#000000', colors: '0,0,0' },
   white: { css: '#ffffff', colors: '255,255,255' },

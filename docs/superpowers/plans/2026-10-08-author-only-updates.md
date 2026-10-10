@@ -927,7 +927,7 @@ test('the author-only toggle saves, survives a reload, and turning it off restor
 ```
 
   The second note is always shown, not only when the setting is on, so the user reads the limits before turning it on. The settings test above renders with the setting off and relies on that.
-- [ ] **Step 4: Run `npm test`.** Expected: PASS. `.tfcc-unchecked` reuses the `.tfcc-note` colours, so no new colour is introduced. `tests/contrast-audit.mjs` needs the gstack browse binary, which this repo does not use (CLAUDE.md "Off"). If it is not available it exits with a message: record that in the PR, and leave the contrast check to the QA checklist.
+- [ ] **Step 4: Run `npm test`.** Expected: PASS. `.tfcc-unchecked` reuses the `.tfcc-note` colors, so no new color is introduced. `tests/contrast-audit.mjs` needs the gstack browse binary, which this repo does not use (CLAUDE.md "Off"). If it is not available it exits with a message: record that in the PR, and leave the contrast check to the QA checklist.
 - [ ] **Step 5: Commit** with `git commit -am "feat: author-only badges, catch-up group and settings copy (#4)"`
 
 ### Task 7: The runtime lookup: `checkAuthorPosts` and target selection in `refreshAll`

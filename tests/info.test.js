@@ -56,7 +56,7 @@ const OWNER_13D = {
       'Only thread links in this panel do this, and only a plain click.',
       'Each row\'s title and summary stay on one line',
       'The panel shows Torn\'s page through it.',
-      'Folders organise only threads you subscribe to',
+      'Folders organize only threads you subscribe to',
       'Earned from what you do here',
     ],
     visible: [

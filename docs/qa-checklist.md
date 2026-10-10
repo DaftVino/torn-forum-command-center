@@ -155,7 +155,7 @@ Walk on Torn PDA, portrait, on the narrowest phone you have, then landscape.
       Enter: the note is saved and the drawer closes.
 - [ ] The drawer shows a pin, a check mark, a pencil and an archive box (a
       box with a down arrow, #41) on one row, in white on the dark theme and
-      black on the light theme (no colour emoji). TalkBack reads them as "Pin" (or "Unpin"), "Mark read", "Draft"
+      black on the light theme (no color emoji). TalkBack reads them as "Pin" (or "Unpin"), "Mark read", "Draft"
       (or "Edit draft") and "Archive" (or "Unarchive"). A pinned row's pin
       button is underlined.
 - [ ] The archive box archives, it does not delete: the thread leaves the list
@@ -387,7 +387,7 @@ Torn PDA and desktop (#10).
 - [ ] After a day without opening My posts, the line shows `(1d ago)`.
 - [ ] Karma: the endless-knot icon and a number follow the thumbs, with no word
       "karma" on screen. Before My posts has ever loaded it shows `-`, not 0.
-- [ ] The icon takes the text colour in Dark, Light and Match Torn (visible,
+- [ ] The icon takes the text color in Dark, Light and Match Torn (visible,
       not black on dark).
 - [ ] The karma figure equals the karma on your Torn profile (owner check 2).
 - [ ] A test account with no threads and no posts: opening My posts shows the
@@ -418,7 +418,7 @@ Tampermonkey, on the same build.
       and Drafts views falling back to the browser default blue, which reads as
       black against the dark panel. It renders each view twice, the second time
       under a stylesheet that fights ours the way Torn's does; the plain
-      previews were too clean to catch either colour bug.
+      previews were too clean to catch either color bug.
 - [ ] Keyboard only: tab through the panel. Focus is always visible.
 - [ ] With "Hide the panel when I open a thread" on: a plain click on a thread
       collapses the panel and opens the thread; Ctrl-click and middle-click open

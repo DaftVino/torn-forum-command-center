@@ -329,7 +329,7 @@ const MUTATIONS = [
     ),
   },
   {
-    name: 'anchors lose their colour and fall back to browser blue',
+    name: 'anchors lose their color and fall back to browser blue',
     suite: 'tests/style.test.js',
     apply: (s) => s.replace(
       "      '#' + PANEL_ID + ' a, #' + PANEL_ID + ' a:link, #' + PANEL_ID + ' a:visited,',",
@@ -345,7 +345,7 @@ const MUTATIONS = [
     ),
   },
   {
-    name: 'dropdown options lose the panel colours',
+    name: 'dropdown options lose the panel colors',
     suite: 'tests/style.test.js',
     apply: (s) => s.replace(
       "      '#' + PANEL_ID + ' option { background: var(--tm-bg-3); color: var(--tm-text); }',",
@@ -393,7 +393,7 @@ const MUTATIONS = [
     ),
   },
   {
-    name: 'panel content takes its colour from the host page again',
+    name: 'panel content takes its color from the host page again',
     suite: 'tests/style.test.js',
     apply: (s) => s.replace(
       "      '#' + PANEL_ID + ' * { color: inherit; background: transparent; }',",
@@ -401,7 +401,7 @@ const MUTATIONS = [
     ),
   },
   {
-    name: 'table cells go back to inheriting their colour',
+    name: 'table cells go back to inheriting their color',
     suite: 'tests/style.test.js',
     apply: (s) => s.replace(
       "      '  color: var(--tm-text); background: transparent; }',",
@@ -563,7 +563,7 @@ const MUTATIONS = [
     apply: (s) => s.replace("+ '\" title=\"' + escapeHtml(INFO_KEYS[key]) + '\">'", "+ '\" title=\"' + escapeHtml(key) + '\">'"),
   },
   {
-    name: '#43: the wide My posts colour leaves the listed replacement',
+    name: '#43: the wide My posts color leaves the listed replacement',
     suite: 'tests/wide-parity.test.js',
     apply: (s) => s.replace("' button.tfcc-nav-mine { margin-left: auto; }',",
       "' button.tfcc-nav-mine { margin-left: auto; font-weight: bold; }',"),
@@ -620,7 +620,7 @@ const MUTATIONS = [
   {
     name: 'every My posts thread floods Threads',
     suite: 'tests/merge.test.js',
-    apply: (s) => s.replace('        inThreads: !!api || !rec || isOrganised(entry, !!draft),', '        inThreads: true,'),
+    apply: (s) => s.replace('        inThreads: !!api || !rec || isOrganized(entry, !!draft),', '        inThreads: true,'),
   },
   {
     name: 'the My posts staleness guard is removed',
@@ -991,7 +991,7 @@ const MUTATIONS = [
         "    out.push(renderReactions(model));\n    out.push('</div>');\n    return out.join('');\n  }\n\n  // The thread's priority adjustment") },
   { name: 'the thumbs are read aloud as emoji names', suite: 'tests/panel.test.js',
     apply: (s) => s.replace('<span class="tfcc-thumb" aria-hidden="true">', '<span class="tfcc-thumb">') },
-  { name: 'the thumbs keep their colours in the dark theme', suite: 'tests/style.test.js',
+  { name: 'the thumbs keep their colors in the dark theme', suite: 'tests/style.test.js',
     apply: (s) => s.replace(' .tfcc-thumb { filter: grayscale(1) brightness(0) invert(1); }', ' .tfcc-thumb { }') },
   { name: '"started" loses its red class', suite: 'tests/panel.test.js',
     apply: (s) => s.replace('<span class="tfcc-tag tfcc-started">started</span>', '<span class="tfcc-tag">started</span>') },
@@ -1140,13 +1140,13 @@ const MUTATIONS = [
     ['the pill gets a border', (s) => s.replace(
       "'  border: 0; border-radius: 999px; background: var(--tm-bg-2);", "'  border: 1px solid var(--tm-border); border-radius: 999px; background: var(--tm-bg-2);")],
   ].map(([name, apply]) => ({ name: '#53: ' + name, suite: 'tests/narrow-view.test.js', apply })),
-  // #53 (owner): the logo's per-theme colour.
+  // #53 (owner): the logo's per-theme color.
   ...[
     ['the light logo is the raw #5C768F again', (s) => s.replace(
       "'  --tfcc-logo: #2e4a66;',", "'  --tfcc-logo: #5c768f;',")],
     ['the light logo goes black', (s) => s.replace(
       "'  --tfcc-logo: #2e4a66;',", "'  --tfcc-logo: #141414;',")],
-    ['the dark logo changes colour', (s) => s.replace(
+    ['the dark logo changes color', (s) => s.replace(
       "'  --tfcc-logo: #5c768f;',", "'  --tfcc-logo: #8db3d9;',")],
     ['the logo rule ignores the token', (s) => s.replace(
       "'  color: var(--tfcc-logo); }',", "'  color: #5c768f; }',")],
@@ -1410,8 +1410,8 @@ const MUTATIONS = [
     ['the drawer emoji reach screen readers', (s) => s.replace('\'<span class="tfcc-emo" aria-hidden="true">\'', '\'<span class="tfcc-emo">\'')],
     ['the archive button is named Delete', (s) => s.replace("emojiButton('archive', row.archived ? 'Unarchive' : 'Archive'", "emojiButton('archive', row.archived ? 'Unarchive' : 'Delete'")],
     ['a pinned row is not marked on its Pin button', (s) => s.replace("class=\"tfcc-emobtn' + (on ? ' tfcc-on' : '')", "class=\"tfcc-emobtn' + ''")],
-    ['the drawer emoji stay in colour on dark', (s) => s.replace("      '  filter: grayscale(1) brightness(0) invert(1); }',", "      '  filter: none; }',")],
-    ['the drawer emoji stay in colour on light', (s) => s.replace('.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }', '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: none; }')],
+    ['the drawer emoji stay in color on dark', (s) => s.replace("      '  filter: grayscale(1) brightness(0) invert(1); }',", "      '  filter: none; }',")],
+    ['the drawer emoji stay in color on light', (s) => s.replace('.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: grayscale(1) brightness(0); }', '.tfcc-narrow.tfcc-theme-light .tfcc-emo { filter: none; }')],
     ['drawer buttons go under the 24px floor', (s) => s.replace('.tfcc-drawer button { min-height: 32px; min-width: 32px;', '.tfcc-drawer button { min-height: 20px; min-width: 20px;')],
     ['the drawer buttons may wrap', (s) => s.replace('.tfcc-drawer-btns { display: flex; flex-wrap: nowrap; align-items: center;', '.tfcc-drawer-btns { display: flex; flex-wrap: wrap; align-items: center;')],
     ['a drawer field is shortened by its font', (s) => s.replace("      '  padding: 4px 8px; }',", "      '  padding: 4px 8px; font-size: 12px; }',")],
@@ -1421,9 +1421,9 @@ const MUTATIONS = [
       "row.archived ? 'Unarchive' : 'Archive', ARCHIVE_SVG,", "row.archived ? 'Unarchive' : 'Archive', emojiIcon('" + String.fromCharCode(92) + "uD83D" + String.fromCharCode(92) + "uDDD1'),")],
     ['the archive icon reaches screen readers', (s) => s.replace(
       ' width="18" height="18" aria-hidden="true"', ' width="18" height="18"')],
-    ['the archive icon takes a fixed colour', (s) => s.replace(
+    ['the archive icon takes a fixed color', (s) => s.replace(
       'focusable="false"><path fill="currentColor" fill-rule="evenodd"', 'focusable="false"><path fill="#000" fill-rule="evenodd"')],
-    ['a host svg fill rule can recolour the archive icon', (s) => s.replace(
+    ['a host svg fill rule can recolor the archive icon', (s) => s.replace(
       ".tfcc-narrow .tfcc-archico path { fill: currentColor; }',", ".tfcc-narrow .tfcc-archico path { }',")],
     ['the archive icon is drawn through the emoji filter', (s) => s.replace(
       ".tfcc-narrow .tfcc-archico { display: block; flex: none; }',", ".tfcc-narrow .tfcc-archico { display: block; flex: none; filter: invert(1); }',")],
@@ -1656,7 +1656,7 @@ const MUTATIONS = [
     ['group DOM ids collide again (PR #46 review)', (s) => s.replace(
       "return '_' + ('000' + c.charCodeAt(0).toString(16)).slice(-4);", "return '_';")],
     ['the folder note drops the subscribed-only sentence', (s) => s.replace(
-      "      + 'Folders organise only threads you subscribe to (and ones you file by hand); they never add other threads '\n      + 'from a forum. ",
+      "      + 'Folders organize only threads you subscribe to (and ones you file by hand); they never add other threads '\n      + 'from a forum. ",
       "      + '")],
     ['the narrow group toggle drops below 44px', (s) => s.replace(
       "'.tfcc-narrow button.tfcc-grp { min-height: 44px; }'", "'.tfcc-narrow button.tfcc-grp { min-height: 32px; }'")],
@@ -1692,7 +1692,7 @@ const MUTATIONS = [
       "      '  font: inherit; font-weight: bold; font-style: italic; text-align: left; cursor: pointer; }',"),
   },
   {
-    name: '#45: a second wide rule for the priority number overrides its colour',
+    name: '#45: a second wide rule for the priority number overrides its color',
     suite: 'tests/wide-parity.test.js',
     apply: (s) => s.replace("      '#' + PANEL_ID + ' .tfcc-section h4.tfcc-grphead { margin: 0; }',",
       "      '#' + PANEL_ID + ' .tfcc-section h4.tfcc-grphead { margin: 0; }',\n      '#' + PANEL_ID + ' .tfcc-prio { color: var(--tm-meta); }',"),
@@ -1703,7 +1703,7 @@ const MUTATIONS = [
     apply: (s) => s.replace("'  --tfcc-prio: #2e5680;',", "'  --tfcc-prio: #2e5681;',"),
   },
   {
-    name: '#45: the priority colour changes wide CSS outside its listed replacement',
+    name: '#45: the priority color changes wide CSS outside its listed replacement',
     suite: 'tests/wide-parity.test.js',
     apply: (s) => s.replace("' .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: var(--tfcc-text-sm);'",
       "' .tfcc-prio { flex: none; color: var(--tfcc-prio); font-size: 11px;'"),
@@ -1850,7 +1850,7 @@ const MUTATIONS = [
       '          top.children.push({ text: tok.text });'),
   },
   {
-    name: 'Markdown loses colour on the way back from HTML',
+    name: 'Markdown loses color on the way back from HTML',
     suite: 'tests/editor-convert.test.js',
     apply: (s) => s.replace("        out += '{' + key + '}' + inner + '{/}';", '        out += inner;'),
   },

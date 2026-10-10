@@ -45,10 +45,10 @@ const markup = [
   },
 ];
 
-// 2. My posts takes every nav button's colours (#43 item 4, owner: its
+// 2. My posts takes every nav button's colors (#43 item 4, owner: its
 //    light-grey fill looked selected). Its rule keeps only its placement;
-//    its hover and pressed rules and its five colour tokens go.
-const MINE = '43 My posts colour';
+//    its hover and pressed rules and its five color tokens go.
+const MINE = '43 My posts color';
 
 const css = [
   { item: MINE, from: '  --tfcc-mine-bg: #d9d9d9; --tfcc-mine-hover: #c8c8c8; --tfcc-mine-pressed: #b0b0b0;', times: 2, to: [] },
@@ -57,7 +57,7 @@ const css = [
   { item: MINE, from: '#tfcc-panel button.tfcc-nav-mine { margin-left: auto; background: var(--tfcc-mine-bg);',
     to: ['#tfcc-panel button.tfcc-nav-mine { margin-left: auto; }'] },
   // Its font-weight: bold goes with it (PR #44 review): the owner asked for
-  // its colours to match, and matching means its weight is the other nav
+  // its colors to match, and matching means its weight is the other nav
   // buttons' too, normal on wide and the narrow grid's bold on narrow, where
   // every cell already shares one rule. tests/style.test.js and the contrast
   // audit check the weights are equal.

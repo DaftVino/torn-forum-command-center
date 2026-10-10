@@ -252,7 +252,7 @@ test('Bold wraps the selection in the draft\'s language', () => {
   assert.strictEqual(api.state.editor.text, 'hello **world**');
 });
 
-test('a colour from the picker wraps the selection it was opened on', () => {
+test('a color from the picker wraps the selection it was opened on', () => {
   const { api, h } = editorAt('hi there', 'html', [3, 8]);
   h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'color' }));
   h.onAction('ed-color', el({ 'data-act': 'ed-color', 'data-value': 'red' }));
@@ -263,7 +263,7 @@ test('a colour from the picker wraps the selection it was opened on', () => {
 // A picker field typed into: the panel's input event, as the browser sends it.
 const typeInto = (h, act, value) => h.onInput(act, Object.assign(el({ 'data-act': act }), { value }));
 
-test('a hard-to-read custom colour asks once, keeps the typed hex across the redraw, then applies', () => {
+test('a hard-to-read custom color asks once, keeps the typed hex across the redraw, then applies', () => {
   const { api, h } = editorAt('x', 'md', [0, 1]);
   h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'color' }));
   typeInto(h, 'ed-hex-input', '#ffd43b');

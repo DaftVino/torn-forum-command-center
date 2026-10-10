@@ -116,7 +116,7 @@ In `EXPORT_NAMES`, after the `// engine: drafts` group, add:
   // engine: my posts
   'MINE_MAX_THREADS', 'freshMine', 'freshMineThread', 'normaliseMine', 'normaliseMineThread',
   'mineThreadFromApi', 'minePostFromApi', 'pickList', 'threadPostsTotal', 'parseThreadDetail',
-  'mergeMineSnapshot', 'applyMineDetail', 'mineUnreadFor', 'isOrganised',
+  'mergeMineSnapshot', 'applyMineDetail', 'mineUnreadFor', 'isOrganized',
   'mineLookupTargets', 'mineIsDue', 'viewRows', 'ACTIVITY_SOURCES',
   // runtime: my posts
   'MINE_TTL_MS', 'MINE_PAGE_LIMIT', 'refreshMine',
@@ -820,14 +820,14 @@ git commit -m "feat: My posts snapshot merge and local unread baseline (#2)"
 ### Task 4: My posts rows in `mergeThreads`
 
 **Files:**
-- Modify: `torn-forum-command-center.user.js` - `ACTIVITY_SOURCES`, `resolveLastActivity`, `mergeThreads`, runtime `recompute`; new engine functions `mineUnreadFor`, `isOrganised` placed directly after `unreadFor`.
+- Modify: `torn-forum-command-center.user.js` - `ACTIVITY_SOURCES`, `resolveLastActivity`, `mergeThreads`, runtime `recompute`; new engine functions `mineUnreadFor`, `isOrganized` placed directly after `unreadFor`.
 - Test: `tests/mine.test.js`, `tests/merge.test.js`
 
 **Interfaces:**
 - Consumes: `MineSnapshot`, `unreadFor(apiRow, entry)`.
 - Produces:
   - `mineUnreadFor(apiRow, entry, rec) -> { tornUnread, postsTotal, lastSeenTotal, dismissed, unread, unreadSource }`, `unreadSource` in `'torn' | 'local' | 'unchecked'`. `'torn'` covers both a subscribed row (`posts.new`) and a started row carrying `new_posts` (spec "new", rule 2).
-  - `isOrganised(entry, hasDraft) -> boolean`
+  - `isOrganized(entry, hasDraft) -> boolean`
   - `mergeThreads({ ..., mine })` rows gain `mineRole: 'started' | 'posted' | null`, `inThreads: boolean`, `unreadSource: 'torn' | 'local' | 'unchecked' | 'none'`
   - `resolveLastActivity(entry, feedAt, now, maxAgeMs, extra)` where `extra = { mineAt, ownPostAt }` is optional
   - `ACTIVITY_SOURCES = ['enriched', 'feed', 'mine', 'enriched-stale', 'own-post', 'visit', 'none']`
@@ -904,12 +904,12 @@ test('an unknown total is unchecked, not a checked zero', () => {
   assert.strictEqual(u.unreadSource, 'unchecked');
 });
 
-test('only organising state counts as organised; a read marker or a visit does not', () => {
-  assert.strictEqual(api.isOrganised(api.normaliseThreadEntry({ lastSeenTotal: 5, lastVisitedAt: 9 }), false), false);
+test('only organizing state counts as organized; a read marker or a visit does not', () => {
+  assert.strictEqual(api.isOrganized(api.normaliseThreadEntry({ lastSeenTotal: 5, lastVisitedAt: 9 }), false), false);
   for (const e of [{ pinned: true }, { tags: ['x'] }, { folderId: 'guides' }, { priority: 1 }, { note: 'n' }, { archived: true }]) {
-    assert.strictEqual(api.isOrganised(api.normaliseThreadEntry(e), false), true, JSON.stringify(e));
+    assert.strictEqual(api.isOrganized(api.normaliseThreadEntry(e), false), true, JSON.stringify(e));
   }
-  assert.strictEqual(api.isOrganised(api.normaliseThreadEntry(null), true), true, 'a draft is organising');
+  assert.strictEqual(api.isOrganized(api.normaliseThreadEntry(null), true), true, 'a draft is organizing');
 });
 ```
 
@@ -923,7 +923,7 @@ function mineSnap(threads) {
   return s;
 }
 
-test('My posts threads become rows with a role, outside Threads unless subscribed or organised', () => {
+test('My posts threads become rows with a role, outside Threads unless subscribed or organized', () => {
   const rows = api.mergeThreads({
     subscribed: [sub(1)],
     organizer: org({ 3: { pinned: true }, 4: { lastSeenTotal: 2, lastVisitedAt: NOW } }),
@@ -1026,7 +1026,7 @@ After `unreadFor`:
 
   // What pulls a My posts thread into Threads. A read marker and a visit
   // deliberately do not, or marking your own thread read would file it.
-  function isOrganised(entry, hasDraft) {
+  function isOrganized(entry, hasDraft) {
     if (hasDraft) return true;
     if (!entry) return false;
     return !!(entry.folderId || entry.tags.length || entry.pinned || entry.priority !== 0
@@ -1059,7 +1059,7 @@ In `mergeThreads`:
 5. In the pushed row: `title` gains `|| (rec && rec.title)` before the `'Thread ' + id` fallback; `firstSeenAt: entry.firstSeenAt || (rec ? rec.firstSeenAt : 0)`; `isLocked: entry.isLocked || !!(rec && rec.isLocked)`; and three new fields:
    ```js
         mineRole: rec ? (rec.started ? 'started' : 'posted') : null,
-        inThreads: !!api || !rec || isOrganised(entry, !!draft),
+        inThreads: !!api || !rec || isOrganized(entry, !!draft),
         unreadSource: unreadSource,
    ```
 
@@ -1217,7 +1217,7 @@ If `makeHandlers` is not in `EXPORT_NAMES`, add it in this task (grep first).
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `node --test tests/mine.test.js tests/search.test.js tests/panel.test.js tests/handlers.test.js`
-Expected: FAIL, `api.viewRows is not a function`, `model.mine` undefined, organiser entry `50` present.
+Expected: FAIL, `api.viewRows is not a function`, `model.mine` undefined, organizer entry `50` present.
 
 - [ ] **Step 3: Implement**
 
@@ -2112,7 +2112,7 @@ test('My posts is right-aligned, light grey with dark text, in both themes', () 
   assert.match(rule('#tfcc-panel button.tfcc-nav-mine:hover'), /background:\s*var\(--tfcc-mine-hover\)/);
   const pressed = rule('#tfcc-panel button.tfcc-nav-mine[aria-pressed="true"]');
   assert.match(pressed, /background:\s*var\(--tfcc-mine-pressed\)/);
-  assert.match(pressed, /box-shadow:\s*inset 0 -3px 0 var\(--tfcc-mine-text\)/, 'pressed needs a non-colour cue');
+  assert.match(pressed, /box-shadow:\s*inset 0 -3px 0 var\(--tfcc-mine-text\)/, 'pressed needs a non-color cue');
 });
 
 test('the My posts rules come after, and are at least as specific as, the generic button rules', () => {
@@ -2121,7 +2121,7 @@ test('the My posts rules come after, and are at least as specific as, the generi
   assert.ok(generic !== -1 && mine > generic, 'a later rule of equal or higher specificity must win');
 });
 
-test('every My posts colour token is set in both theme blocks, to the agreed values', () => {
+test('every My posts color token is set in both theme blocks, to the agreed values', () => {
   const dark = { bg: '#d9d9d9', hover: '#c8c8c8', pressed: '#b0b0b0', text: '#141414', border: '#d9d9d9' };
   const light = Object.assign({}, dark, { border: '#5c5c5c' });
   const darkBlock = css.slice(0, css.indexOf('.tfcc-theme-light {'));
@@ -2161,7 +2161,7 @@ After the `.tfcc-nav` rule:
       // light grey with dark text in every theme. Each rule names the button
       // element so it is (1,1,1) or more and beats the generic button,
       // :hover and aria-pressed rules above. Pressed is shown by an underline
-      // bar as well as the fill, so it never depends on colour alone.
+      // bar as well as the fill, so it never depends on color alone.
       // Measured: text on fill 13.05, on hover 11.01, on pressed 8.49; fill
       // on the dark panel 11.68; light border on the light panel 5.97.
       '#' + PANEL_ID + ' button.tfcc-nav-mine { margin-left: auto; background: var(--tfcc-mine-bg);',
@@ -2172,7 +2172,7 @@ After the `.tfcc-nav` rule:
       '  color: var(--tfcc-mine-text); box-shadow: inset 0 -3px 0 var(--tfcc-mine-text); }',
 ```
 
-Check the existing tests that might object: "every rule is scoped to something this script owns" (these are), "no rule paints black text" (`#141414` is not matched), "the light theme overrides every colour the dark theme sets" (both blocks set all five).
+Check the existing tests that might object: "every rule is scoped to something this script owns" (these are), "no rule paints black text" (`#141414` is not matched), "the light theme overrides every color the dark theme sets" (both blocks set all five).
 
 In `tests/render-preview.mjs`, where it seeds state before looping `api.VIEWS` (read lines 100-160), add a My posts seed equivalent to `seedMine` in Task 5 (three threads: one local-count unread, one started and quiet, one unchecked) so the `mine` previews show every mark.
 
@@ -2391,7 +2391,7 @@ Each `apply` must match text that exists in the source **exactly**; a mutation t
   {
     name: 'every My posts thread floods Threads',
     suite: 'tests/merge.test.js',
-    apply: (s) => s.replace('        inThreads: !!api || !rec || isOrganised(entry, !!draft),', '        inThreads: true,'),
+    apply: (s) => s.replace('        inThreads: !!api || !rec || isOrganized(entry, !!draft),', '        inThreads: true,'),
   },
   {
     name: 'the My posts staleness guard is removed',

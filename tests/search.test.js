@@ -41,8 +41,8 @@ test('every documented prefix parses, including negated', () => {
 test('an unknown prefix is treated as text rather than dropped silently', () => {
   // Dropping it would quietly widen the search and show results the user did
   // not ask for, which is worse than looking for the literal string.
-  const q = api.parseQuery('colour:red');
-  assert.deepStrictEqual(q.terms, [{ type: 'text', value: 'colour:red', negated: false }]);
+  const q = api.parseQuery('color:red');
+  assert.deepStrictEqual(q.terms, [{ type: 'text', value: 'color:red', negated: false }]);
 });
 
 test('an empty query matches everything rather than nothing', () => {

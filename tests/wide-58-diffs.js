@@ -15,6 +15,12 @@
 // inserted: the complete new stylesheet lines a wide panel may now see.
 
 const literals = [
+  // US spelling (Batch A, owner): the Settings transparency table says organizing.
+  {
+    item: '58b US spelling organizing', view: 'settings',
+    from: 'Public community tool: listing and organising the forum threads you subscribe to.',
+    to: 'Public community tool: listing and organizing the forum threads you subscribe to.',
+  },
   // The drafts view: main's "Draft for this thread" section becomes the editor
   // pane: the mode pill (Text | MD | HTML | Preview, the draft's mode pressed),
   // then the textarea, held to DRAFT_MAX_CHARS and given a word name (plan
@@ -60,7 +66,7 @@ const literals = [
 const inserted = [
   // Task 10: the mode pill (pressed uses --tm-good-bg, as every pressed
   // button does; there is no --tm-accent-bg token), the preview bar and pane
-  // with Torn's measured colours for each theme, and the Text confirm.
+  // with Torn's measured colors for each theme, and the Text confirm.
   '#tfcc-panel .tfcc-modes { display: flex; gap: 0; margin-bottom: var(--tfcc-gap-sm); }',
   '#tfcc-panel .tfcc-modes button { flex: 1 1 0; min-height: 32px; border-radius: 0; }',
   '#tfcc-panel .tfcc-modes button[aria-pressed="true"] { background: var(--tm-good-bg); color: var(--tm-text); }',

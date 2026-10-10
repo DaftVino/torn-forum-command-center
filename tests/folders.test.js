@@ -225,7 +225,7 @@ test('the folder note says what folders are, how to use them and why', () => {
   const { env } = bootNarrow({ width: 900 });
   const s = settingsHtml(env);
   const info = /id="tfcc-info-settings-folders" hidden>([^<]*)<\/p>/.exec(s)[1];
-  assert.strictEqual(info, 'Folders organise only threads you subscribe to (and ones you file by hand); they never add '
+  assert.strictEqual(info, 'Folders organize only threads you subscribe to (and ones you file by hand); they never add '
     + 'other threads from a forum. To use them: add a folder below; optionally claim one or more forums, so new '
     + 'subscriptions from them file themselves into it; a forum belongs to one folder at a time, and removing a claim '
     + 'leaves the threads already filed where they are; or file a thread from the folder menu on its row. Filing by '
@@ -236,9 +236,9 @@ test('the folder note says what folders are, how to use them and why', () => {
     + 'First folder badge.');
 });
 
-test('the folder note says folders organise only the threads you follow', () => {
+test('the folder note says folders organize only the threads you follow', () => {
   const { env } = bootNarrow({ width: 900 });
-  assert.match(settingsHtml(env), /Folders organise only threads you subscribe to \(and ones you file by hand\); they never add other threads from a forum\./);
+  assert.match(settingsHtml(env), /Folders organize only threads you subscribe to \(and ones you file by hand\); they never add other threads from a forum\./);
 });
 
 test('an arrow reorders, saves, and drives the Catch up groups and every folder menu', () => {

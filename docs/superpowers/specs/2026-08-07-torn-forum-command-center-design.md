@@ -11,7 +11,7 @@ tags, pinned threads, read/unread tracking, catch-up since last visit, locally
 saved reply drafts, and search across the threads you follow — including the
 author-plus-text search Torn's own UI never exposes.
 
-Organisation lives in script storage and never leaves the browser. Thread data
+Organization lives in script storage and never leaves the browser. Thread data
 comes from the official Torn API v2 forum endpoints with a Minimal-access key.
 
 ## Why this shape
@@ -60,7 +60,7 @@ sections. `tests/purity.test.js` reads the engine section and fails on a
 forbidden reference, exactly as the Education Scheduler does.
 
 - **Engine** — pure functions. Normalisers, the merge of API feed with local
-  organiser state, the unread model, sorting, query parsing, search matching,
+  organizer state, the unread model, sorting, query parsing, search matching,
   cache eviction, export and import. No DOM, no network, no `GM_*`, no ambient
   clock: every function that needs the time takes it as an argument.
 - **Runtime** — script storage, the API adapter, the rate limiter, the capture
@@ -73,7 +73,7 @@ Torn API v2 ──► adapter ──► feed snapshot (tfcc:feed)
                                    │
 local capture (location + title) ──┤
                                    ▼
-organiser (tfcc:organizer) ──► merge (pure) ──► view model ──► panel
+organizer (tfcc:organizer) ──► merge (pure) ──► view model ──► panel
 drafts (tfcc:drafts) ─────────────┘
 post cache (tfcc:postcache) ──► deep search (pure) ──┘
 ```
@@ -164,7 +164,7 @@ so a corrupt post cache can never cost the user their folders.
 | `tfcc:feed` | The last API snapshot, so the panel paints instantly on open. |
 | `tfcc:postcache` | Deep-search post cache. LRU by thread, capped at 2000 posts and ~1.5 MB serialised. |
 
-Per-thread organiser state survives unsubscribing: the captured title, forum
+Per-thread organizer state survives unsubscribing: the captured title, forum
 and author stay, and the row moves to an "Unsubscribed" state rather than
 vanishing with the user's notes.
 
@@ -286,7 +286,7 @@ which is what makes it read as part of the page.
 
 ### Export and import
 
-A versioned `TFCC1:` string carrying folders, per-thread organiser state and
+A versioned `TFCC1:` string carrying folders, per-thread organizer state and
 drafts. It excludes the API key and the post cache. Import validates the schema
 version, shape and sizes, then reports what it will add and change and applies
 only on confirm. Hostile input is rejected with a named reason, never partially
