@@ -35,16 +35,13 @@ function bounded(promise) {
   return Promise.race([promise, ticks.then(() => ({ ok: 'never-settled' }))]);
 }
 
-// A textarea whose value is a plain own property. Setting the React prototype
-// here would be wrong: `value` is defined on that prototype as an accessor, and
-// the element's own data property would shadow it, so the listener would read
-// an empty string no matter what the test typed.
+// Torn's reply box: TinyMCE's contenteditable body (ADR 0002). Tests "type" by
+// setting its HTML and dispatching input, the way TinyMCE's own typing does.
 function replyBox(env) {
-  const box = env.makeElement('textarea');
-  // Torn's reply box is a TinyMCE body now (ADR 0002); autosave's read of it
-  // is rewritten in a later task, so this stand-in only has to be found.
+  const box = env.makeElement('div');
   box.getBoundingClientRect = () => ({ width: 600, height: 160 });
   env.doc.querySelectorAll = (sel) => (sel === '#editor-wrapper .editor-content.mce-content-body' ? [box] : []);
+  Object.defineProperty(box, 'value', { get() { return box.innerHTML; }, set(v) { box.innerHTML = v ? '<p>' + v + '</p>' : '<p><br data-mce-bogus="1"></p>'; } });
   return box;
 }
 
@@ -199,7 +196,7 @@ test('the reply box autosaves what the user types', async () => {
   box.dispatchEvent({ type: 'input' });
   env.advanceTimersBy(3000);
 
-  assert.strictEqual(api.draftFor(api.state.drafts, 77).text, 'a reply I am part way through writing');
+  assert.strictEqual(api.draftFor(api.state.drafts, 77).text, '<p>a reply I am part way through writing</p>');
   assert.ok(env.gmStore.has('tfcc:drafts'), 'and it survives a reload');
 });
 
@@ -217,12 +214,12 @@ test('autosave is debounced rather than writing on every keystroke', () => {
   assert.strictEqual(api.draftFor(api.state.drafts, 77), null, 'nothing written yet');
 
   env.advanceTimersBy(3000);
-  assert.strictEqual(api.draftFor(api.state.drafts, 77).text, 'abcd', 'one write, with the final text');
+  assert.strictEqual(api.draftFor(api.state.drafts, 77).text, '<p>abcd</p>', 'one write, with the final text');
 });
 
 test('an emptied reply box does not delete the saved draft', () => {
   // Torn clears the reply box after a successful post, and it can hand back an
-  // empty textarea mid-render. Either would otherwise wipe the draft.
+  // empty editor body mid-render. Either would otherwise wipe the draft.
   const env = loadUserscript({ location: forums({ hash: '#/p=threads&t=77' }), now: NOW });
   const api = env.exports;
   const box = replyBox(env);
@@ -236,7 +233,7 @@ test('an emptied reply box does not delete the saved draft', () => {
   box.dispatchEvent({ type: 'input' });
   env.advanceTimersBy(3000);
 
-  assert.strictEqual(api.draftFor(api.state.drafts, 77).text, 'something worth keeping');
+  assert.strictEqual(api.draftFor(api.state.drafts, 77).text, '<p>something worth keeping</p>');
 });
 
 test('autosave does nothing when the setting is off', () => {

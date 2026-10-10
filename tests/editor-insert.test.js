@@ -148,3 +148,63 @@ test('a refused rich copy falls back to text, and a refused text copy reports fa
   await settle(); await settle();
   assert.deepStrictEqual(JSON.parse(JSON.stringify(results2)), [{ ok: false }]);
 });
+
+function autosaveEnv(drafts) {
+  const env = loadUserscript({ location: Object.assign({}, require('./load-userscript').FORUMS_LOCATION, { hash: '#/p=threads&f=1&t=42&b=0&a=0' }) });
+  const api = env.exports;
+  const box = env.makeElement('div');
+  box.getBoundingClientRect = () => ({ width: 600, height: 160 });
+  env.doc.querySelectorAll = (sel) => (sel === SEL ? [box] : []);
+  api.state.route = api.parseForumRoute(env.win.location);
+  if (drafts) api.state.drafts = drafts;
+  api.attachAutosave(env.doc, env.win);
+  const input = (html) => {
+    box.innerHTML = html;
+    box.dispatchEvent(new env.sandbox.window.Event('input', { bubbles: true }));
+  };
+  const type = (html) => { input(html); env.advanceTimersBy(api.AUTOSAVE_DEBOUNCE_MS + 10); };
+  return { env, api, box, input, type };
+}
+
+test('autosave saves Torn\'s editor as a cleaned HTML draft', () => {
+  const { api, type } = autosaveEnv();
+  type('<p><strong data-mce-style="x">hi</strong></p>');
+  const d = api.draftFor(api.state.drafts, 42);
+  assert.strictEqual(d.lang, 'html');
+  assert.strictEqual(d.text, '<p><strong>hi</strong></p>');
+});
+
+test('typing in thread 42 then moving to thread 43 before the debounce saves nothing to 43', () => {
+  const { env, api, input } = autosaveEnv();
+  input('<p>for 42</p>');
+  // The navigation observer re-reads location and would re-point the route (or
+  // detach the listener) first, so the route changes only just before the timer
+  // fires. That reaches the guard on the timer itself, which is what is tested.
+  env.advanceTimersBy(api.AUTOSAVE_DEBOUNCE_MS - 20);
+  api.state.route = api.parseForumRoute({ hash: '#/p=threads&f=1&t=43&b=0&a=0', pathname: '/forums.php', host: 'www.torn.com' });
+  env.advanceTimersBy(40);
+  assert.strictEqual(api.draftFor(api.state.drafts, 42), null, 'and nothing for 42 either: the route is no longer 42');
+  assert.strictEqual(api.draftFor(api.state.drafts, 43), null);
+});
+
+test('an editor body over the draft limit is not autosaved, so nothing is stored cut short', () => {
+  const { api, type } = autosaveEnv();
+  type('<p>' + 'x'.repeat(api.DRAFT_MAX_CHARS + 10) + '</p>');
+  assert.strictEqual(api.draftFor(api.state.drafts, 42), null);
+});
+
+test('autosave never overwrites a Markdown or Text draft', () => {
+  for (const lang of ['md', undefined]) {
+    const { api, type } = autosaveEnv(
+      require('./load-userscript').loadUserscript().exports.saveDraft({ v: 1, byThread: {} }, 42, '**mine**', 1, 'T', lang));
+    type('<p>torn side</p>');
+    assert.strictEqual(api.draftFor(api.state.drafts, 42).text, '**mine**', String(lang));
+  }
+});
+
+test('an empty editor never deletes or overwrites a draft', () => {
+  const { api, type } = autosaveEnv();
+  type('<p>keep</p>');
+  type('<p><br data-mce-bogus="1"></p>');
+  assert.strictEqual(api.draftFor(api.state.drafts, 42).text, '<p>keep</p>');
+});

@@ -189,14 +189,29 @@ const MUTATIONS = [
     name: 'autosave stops writing anything',
     suite: 'tests/staleness.test.js',
     apply: (s) => s.replace(
-      "          state.drafts = saveDraft(state.drafts, state.route.threadId, text, Date.now(), '');",
-      '          void text;',
+      "          state.drafts = saveDraft(state.drafts, thread, source, Date.now(), '', 'html');",
+      '          void source;',
     ),
   },
   {
     name: 'an emptied reply box is autosaved over the draft',
     suite: 'tests/staleness.test.js',
-    apply: (s) => s.replace('          if (!text.trim()) return;', ''),
+    apply: (s) => s.replace("          if (!htmlToText(post).trim() && post.indexOf('<img') === -1) return;\n", ''),
+  },
+  {
+    name: 'autosave overwrites a Markdown draft with Torn\'s HTML',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace("          if (existing && draftLangOf(existing) !== 'html') return;\n", ''),
+  },
+  {
+    name: 'a pending autosave saves to whichever thread is open now',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace("if (!state.route || String(state.route.threadId) !== thread || autosaveBox !== box) return;", 'thread = String(state.route.threadId);'),
+  },
+  {
+    name: 'autosave stores an over-limit post, cut short',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace('          if (source.length > DRAFT_MAX_CHARS) return;\n', ''),
   },
   {
     name: 'a late refresh redraws onto whatever page the user went to',

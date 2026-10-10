@@ -6082,48 +6082,61 @@
     }
   }
 
-  // Autosave keeps its own record of which element it is listening to. The
-  // panel redraws on every interaction, so attaching per draw would pile up a
-  // listener each time and write the same draft over and over.
+  // Autosave keeps its own record of which element, which listener and which
+  // thread it is serving. The panel redraws on every interaction, so attaching
+  // per draw would pile up listeners; and a timer must save to the thread it
+  // was started for, never to the one the player has since moved to.
   var autosaveBox = null;
   var autosaveTimer = null;
+  var autosaveListener = null;
+  var autosaveThread = null;
 
   function attachAutosave(doc, win) {
-    if (!state.settings.autosaveDrafts || !state.route || !state.route.isThread) {
-      autosaveBox = null;
-      return false;
-    }
+    void win;
+    if (!state.settings.autosaveDrafts || !state.route || !state.route.isThread) { detachAutosave(); return false; }
     var box = findReplyBox(doc);
-    if (!box || typeof box.addEventListener !== 'function') {
-      autosaveBox = null;
-      return false;
-    }
-    if (autosaveBox === box) return true;
+    if (!box || typeof box.addEventListener !== 'function') { detachAutosave(); return false; }
+    var thread = String(state.route.threadId);
+    if (autosaveBox === box && autosaveThread === thread) return true;
+    detachAutosave();
     autosaveBox = box;
-
-    box.addEventListener('input', function () {
+    autosaveThread = thread;
+    autosaveListener = function () {
       if (autosaveTimer !== null) clearTimeout(autosaveTimer);
       autosaveTimer = setTimeout(function () {
         autosaveTimer = null;
         try {
           if (!state.settings.autosaveDrafts) return;
-          if (!state.route || !state.route.isThread) return;
-          var text = box.value === undefined || box.value === null ? '' : String(box.value);
-          // An empty box never deletes a saved draft. Torn clears the reply box
-          // after a successful post, and can hand back an empty textarea during
-          // a re-render; either would otherwise wipe work the user still wants.
-          // Deleting a draft is what the Delete button is for.
-          if (!text.trim()) return;
-          state.drafts = saveDraft(state.drafts, state.route.threadId, text, Date.now(), '');
+          if (!state.route || String(state.route.threadId) !== thread || autosaveBox !== box) return;
+          // #58: the box is TinyMCE's body, so its HTML is the post, cleaned
+          // like everything else and saved as an HTML draft, never over a
+          // Markdown or Text draft the player wrote in the panel.
+          var post = cleanTornHtml(String(box.innerHTML || ''));
+          // An empty editor never deletes a saved draft. Torn clears the box
+          // after a successful post, and can hand back an empty body during a
+          // re-render; either would otherwise wipe work the user still wants.
+          if (!htmlToText(post).trim() && post.indexOf('<img') === -1) return;
+          var source = htmlSource(post);
+          // Over the draft limit: skip rather than store a truncated post.
+          if (source.length > DRAFT_MAX_CHARS) return;
+          var existing = draftFor(state.drafts, thread);
+          if (existing && draftLangOf(existing) !== 'html') return;
+          state.drafts = saveDraft(state.drafts, thread, source, Date.now(), '', 'html');
           persist('drafts');
         } catch (e) { /* autosave must never throw onto Torn's page */ }
       }, AUTOSAVE_DEBOUNCE_MS);
-    });
+    };
+    box.addEventListener('input', autosaveListener);
     return true;
   }
 
   function detachAutosave() {
+    if (autosaveBox && autosaveListener && typeof autosaveBox.removeEventListener === 'function') {
+      try { autosaveBox.removeEventListener('input', autosaveListener); } catch (e) { /* the box is gone */ }
+    }
     autosaveBox = null;
+    autosaveListener = null;
+    autosaveThread = null;
     if (autosaveTimer !== null) { clearTimeout(autosaveTimer); autosaveTimer = null; }
   }
 
