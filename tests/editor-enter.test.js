@@ -160,6 +160,49 @@ test('I2: Enter inside a list item splits the item', () => {
   assert.strictEqual(html(r.text), '<ul><li>a</li><li>b</li></ul>');
 });
 
+test('round 2 fix: Enter on an empty list item ends the list, as an empty Markdown marker does', () => {
+  // The owner's case: Enter, Enter at the end of a list.
+  const src = '<ul>\n<li>a</li>\n</ul>';
+  const one = enter('html', src, caretAt(src, 'a') + 1);
+  assert.strictEqual(one.text, '<ul>\n<li>a</li>\n<li></li>\n</ul>');
+  const two = enter('html', one.text, one.start);
+  assert.strictEqual(two.text, '<ul>\n<li>a</li>\n</ul>\n', 'the empty item and its line are gone');
+  assert.strictEqual(two.start, two.text.length, 'the caret is on a new top-level line after </ul>');
+  assert.strictEqual(two.end, two.start);
+  assert.strictEqual(html(two.text + 'next'), '<ul><li>a</li></ul><p>next</p>', 'what is typed there is a paragraph');
+  assert.strictEqual(html(two.text), api.postHtml('- a\n', 'md'), 'Insert posts no empty bullet, as Markdown\'s ended list');
+  // Numbered lists, one-line markup, and text after the list.
+  const ol = '<ol><li>a</li><li></li></ol>\n<p>after</p>';
+  const r = enter('html', ol, ol.indexOf('</li></ol>'));
+  assert.strictEqual(r.text, '<ol><li>a</li></ol>\n\n<p>after</p>');
+  assert.strictEqual(r.start, '<ol><li>a</li></ol>\n'.length);
+  // Whitespace and open inline tags before the caret still count as empty.
+  const nested = '<ul>\n<li>a</li>\n<li> <strong><em></em></strong></li>\n</ul>';
+  const n = enter('html', nested, nested.indexOf('</em>'));
+  assert.strictEqual(n.text, '<ul>\n<li>a</li>\n</ul>\n');
+  // A nested list's empty item leaves only the inner list.
+  const inner = '<ul><li>a<ul><li>b</li><li></li></ul></li></ul>';
+  const i = enter('html', inner, inner.lastIndexOf('<li></li>') + 4);
+  assert.strictEqual(i.text, '<ul><li>a<ul><li>b</li></ul>\n</li></ul>');
+  // A nested list after the empty item is skipped: the caret goes after the
+  // item's own list.
+  const before = '<ul><li></li><li>b<ul><li>c</li></ul></li></ul>x';
+  const k = enter('html', before, 8);
+  assert.strictEqual(k.text, '<ul><li>b<ul><li>c</li></ul></li></ul>\nx');
+  assert.strictEqual(k.start, k.text.indexOf('x'));
+});
+
+test('round 2 fix: a list item with anything in it still continues the list', () => {
+  for (const [src, at, want] of [
+    ['<ul>\n<li>a</li>\n</ul>', 10,'<ul>\n<li>a</li>\n<li></li>\n</ul>'],
+    ['<ol><li><strong>x</strong></li></ol>', 26, '<ol><li><strong>x</strong></li>\n<li></li></ol>'],
+    ['<ul><li><img src="https://x.test/a.png"></li></ul>', 40, '<ul><li><img src="https://x.test/a.png"></li>\n<li></li></ul>'],
+    ['<ul><li>a</li></ul>', 8, '<ul><li></li>\n<li>a</li></ul>'],
+  ]) {
+    assert.strictEqual(enter('html', src, at).text, want, JSON.stringify(src));
+  }
+});
+
 test('I2: inline elements open at the caret close before the split and reopen after it', () => {
   const src = '<p><strong><em>ab</em></strong></p>';
   const r = enter('html', src, caretAt(src, 'b'));
@@ -389,6 +432,18 @@ test('I5: Undo reverses an Enter edit', () => {
   assert.strictEqual(a.state.editor.selStart, src.indexOf('b'), 'the caret goes back where it was');
 });
 
+test('round 2 fix: Enter twice at the end of an HTML list ends it in the panel', () => {
+  const src = '<ul>\n<li>a</li>\n</ul>';
+  const { env, api: a } = bootEditor('html', src);
+  press(env, 10);
+  assert.strictEqual(a.state.editor.text, '<ul>\n<li>a</li>\n<li></li>\n</ul>');
+  const { ta, prevented } = press(env, 20);
+  assert.strictEqual(prevented, 1);
+  assert.strictEqual(ta.value, '<ul>\n<li>a</li>\n</ul>\n');
+  assert.deepStrictEqual(ta.selection, [22, 22], "the caret is on the new line after </ul>");
+  assert.doesNotMatch(a.editorPostHtml(), /<li><\/li>/, 'no empty bullet reaches Insert');
+});
+
 test('I2: Shift+Enter in HTML inserts <br>', () => {
   const { env, api: a } = bootEditor('html', '<p>ab</p>');
   const { ta, prevented } = press(env, 4, { shiftKey: true });
@@ -576,4 +631,30 @@ test('an Enter edit that reaches the limit marks the draft at the limit, as typi
   press(env, 5);
   assert.strictEqual(a.state.editor.text.length, api.DRAFT_MAX_CHARS);
   assert.strictEqual(a.state.editor.atLimit, true);
+});
+
+test('round 2 fix: Enter in the fixer\'s Image link field runs Check and never reaches the draft', () => {
+  const src = '<p>ab</p>';
+  const { env, api: a } = bootEditor('html', src);
+  const ta = fieldOf(env);
+  ta.value = src;
+  ta.selectionStart = 4;
+  ta.selectionEnd = 4;
+  click(env, '[data-act="ed-fix-open"]');
+  const input = panelOf(env).querySelector('[data-act="ed-fix-url"]');
+  assert.ok(input, 'the fixer section is open');
+  input.value = 'https://drive.google.com/file/d/1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h/view?usp=sharing';
+  let prevented = 0;
+  const key = (extra) => panelOf(env).dispatchEvent(Object.assign({ type: 'keydown', key: 'Enter', target: input, preventDefault() { prevented += 1; } }, extra || {}));
+  key({ key: 'a' });
+  assert.strictEqual(prevented, 0, 'other keys are typing');
+  assert.strictEqual(a.state.editor.fixCheck, null);
+  key();
+  assert.strictEqual(prevented, 1, 'the form-less field has no newline to keep');
+  assert.ok(a.state.editor.fixCheck, 'Check ran on the typed link');
+  assert.match(a.state.editor.fixCheck.url || JSON.stringify(a.state.editor.fixCheck), /drive\.google\.com\/thumbnail\?id=1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h/);
+  assert.strictEqual(a.state.editor.text, src, 'the draft was not split');
+  assert.strictEqual(a.state.editor.undo.length, 0);
+  key({ isComposing: true });
+  assert.strictEqual(prevented, 1, 'an IME Enter is the IME\'s');
 });

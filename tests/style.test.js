@@ -694,9 +694,10 @@ test('every narrow control outside the header has a real 44px box (#33, spec pri
     if (!/button|select|input|tfcc-linkbtn/.test(sel) || headerOrTitle.test(sel)) continue;
     for (const prop of ['min-height', 'min-width']) {
       const m = new RegExp(prop + ':\\s*([0-9.]+)px').exec(body);
-      // #58 (owner): the symbol toolbar buttons are 40px wide x 44px tall so the primary row
-      // fits one line on a phone; the 44px height is kept.
-      const floor = prop === 'min-width' && /tfcc-tools button/.test(sel) ? 40 : 44;
+      // #58 (owner): the symbol toolbar buttons are up to 40px wide x 44px tall and shrink
+      // to a 32px floor so the primary row always fits one line on a phone (WCAG 2.5.8
+      // asks 24px); the 44px height is kept.
+      const floor = prop === 'min-width' && /tfcc-tools button/.test(sel) ? 32 : 44;
       if (m) assert.ok(Number(m[1]) >= floor, sel + ' sets ' + prop + ' ' + m[1] + 'px');
     }
   }

@@ -2201,6 +2201,46 @@ const MUTATIONS = [
     suite: 'tests/editor-enter.test.js',
     apply: (s) => s.replace('        if (r.text.length > DRAFT_MAX_CHARS) {\n          overLimitNotice(r.text.length);', '        if (false) {\n          overLimitNotice(r.text.length);'),
   },
+  {
+    name: 'Enter on an empty HTML list item adds another empty item instead of ending the list',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("      if (ctx.tag === 'li' && nb.length === before.length) {", '      if (false) {'),
+  },
+  {
+    name: 'an HTML list item with only an image counts as empty and ends the list',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("      return /^<(?:img|br|hr)\\b/i.test(tag) ? 'x' : '';", "      return '';"),
+  },
+  {
+    name: 'an empty nested list item ends the outer list, not its own',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("      if (tk.type === 'open' && !tk.selfClose) depth += 1;\n", ''),
+  },
+  {
+    name: 'the narrow primary toolbar row wraps again',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace(".tfcc-narrow .tfcc-tools:not(.tfcc-tools-more) { flex-wrap: nowrap; }", '.tfcc-narrow .tfcc-tools:not(.tfcc-tools-more) { }'),
+  },
+  {
+    name: 'the narrow toolbar buttons cannot shrink (fixed 40px)',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('.tfcc-narrow .tfcc-tools button { flex: 0 1 40px; min-width: 32px;', '.tfcc-narrow .tfcc-tools button { flex: 0 0 40px; min-width: 40px;'),
+  },
+  {
+    name: 'the narrow toolbar buttons shrink below the 32px floor',
+    suite: 'tests/style.test.js',
+    apply: (s) => s.replace('.tfcc-narrow .tfcc-tools button { flex: 0 1 40px; min-width: 32px;', '.tfcc-narrow .tfcc-tools button { flex: 0 1 40px; min-width: 24px;'),
+  },
+  {
+    name: 'Enter in the fixer Image link field does not run Check',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("          handlers.onAction('ed-fix-check', t);\n", ''),
+  },
+  {
+    name: 'Fix all says links were left "in sentences" again',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("' links were left as links (not on a line of their own).'", "' links in sentences were left as links.'"),
+  },
 ];
 
 let failures = 0;

@@ -5408,7 +5408,7 @@
     var stack = [];
     for (var i = 0; i < toks.length; i += 1) {
       var t = toks[i];
-      if (t.type === 'open' && !t.selfClose && !RAW_TEXT_TAGS[t.tag]) stack.push({ tag: t.tag, src: head.slice(t.pos, t.end) });
+      if (t.type === 'open' && !t.selfClose && !RAW_TEXT_TAGS[t.tag]) stack.push({ tag: t.tag, src: head.slice(t.pos, t.end), end: info.open + t.end });
       else if (t.type === 'close') {
         for (var k = stack.length - 1; k >= 0; k -= 1) if (stack[k].tag === t.tag) { stack.length = k; break; }
       }
@@ -5418,6 +5418,7 @@
       var inner = stack.slice(j + 1);
       return {
         tag: stack[j].tag, src: stack[j].src, inner: inner.slice(),
+        at: stack[j].end - stack[j].src.length, openEnd: stack[j].end,
         reopen: inner.map(function (x) { return x.src; }).join(''),
         close: inner.reverse().map(function (x) { return '</' + x.tag + '>'; }).join(''),
       };
@@ -5431,8 +5432,45 @@
   //   HTML: inside <p ...>a|b</p> on the caret's line, the paragraph splits and
   //   keeps its opening tag (its alignment); inside <li>a|b</li>, the item
   //   splits. Shift+Enter is a line break, <br>.
+  //   An EMPTY item (only whitespace and open inline tags before the caret,
+  //   only closing tags after it) is removed and the caret goes to a new
+  //   top-level line after the list's close, which ends the list as an empty
+  //   Markdown marker does (htmlEmptyItemExit).
   //   Markdown: a list or quote line continues on the next line; a line that
   //   is only the marker loses it, which ends the list or quote.
+  function htmlEmptyItemExit(before, after, ctx) {
+    var between = before.slice(ctx.openEnd).replace(/<[a-zA-Z][a-zA-Z0-9]*(?:[ \t][^<>]*)?>/g, function (tag) {
+      return /^<(?:img|br|hr)\b/i.test(tag) ? 'x' : '';
+    });
+    if (between.trim() !== '') return null;
+    var close = /^(?:\s*<\/[a-zA-Z][a-zA-Z0-9]*[ \t]*>)*?\s*<\/li[ \t]*>/i.exec(after);
+    if (!close) return null;
+    var head = before.slice(0, ctx.at);
+    var tail = after.slice(close[0].length);
+    // The item had its own line: that line goes with it.
+    if (/(^|\n)[ \t]*$/.test(head) && /^[ \t]*(\n|$)/.test(tail)) {
+      head = head.replace(/[ \t]*$/, '');
+      tail = tail.replace(/^[ \t]*\n?/, '');
+    }
+    // The close of the list holding the item: the first </ul> or </ol> at
+    // this item's depth. The caret goes on a new line after it.
+    var toks = tokenizeHtml(tail);
+    var depth = 0;
+    for (var i = 0; i < toks.length; i += 1) {
+      var tk = toks[i];
+      if (tk.tag !== 'ul' && tk.tag !== 'ol') continue;
+      if (tk.type === 'open' && !tk.selfClose) depth += 1;
+      else if (tk.type === 'close') {
+        if (depth === 0) {
+          var c = head.length + tk.end + 1;
+          return { text: head + tail.slice(0, tk.end) + '\n' + tail.slice(tk.end), start: c, end: c };
+        }
+        depth -= 1;
+      }
+    }
+    return null;
+  }
+
   function editorEnter(lang, text, start, end, shift) {
     if (lang !== 'html' && lang !== 'md') return null;
     var t = String(text || '');
@@ -5449,8 +5487,14 @@
       if (shift) return put('<br>');
       // The caret inside a tag's own markup: the browser's newline.
       if (head.lastIndexOf('<') > head.lastIndexOf('>')) return null;
-      var ctx = enterContext(before.replace(/\r\n?/g, '\n'));
+      var nb = before.replace(/\r\n?/g, '\n');
+      var ctx = enterContext(nb);
       if (!ctx) return null;
+      // An empty item ends the list (positions hold only without CRs).
+      if (ctx.tag === 'li' && nb.length === before.length) {
+        var exit = htmlEmptyItemExit(before, after, ctx);
+        if (exit) return exit;
+      }
       // Enter at the end of a heading (a size span holding bold) starts a
       // plain paragraph, not another heading.
       var closing = /^(?:<\/[a-zA-Z][a-zA-Z0-9]*[ \t]*>)*/.exec(after)[0];
@@ -7342,10 +7386,13 @@
       '#' + PANEL_ID + ' .tfcc-key { border-collapse: collapse; width: 100%; }',
       '#' + PANEL_ID + ' .tfcc-key th, #' + PANEL_ID + ' .tfcc-key td { border: 1px solid var(--tm-border); padding: 2px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-modes button { min-width: 44px; min-height: 44px; }',
-      // Symbol buttons: 40 x 44 with 4px gaps, so Undo B I U Color Link More
-      // (7 x 40 + 6 x 4 = 304) fit one row of the 343px panel; right-aligned.
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools button { min-width: 40px; width: 40px; min-height: 44px; padding: 0; }',
+      // Symbol buttons: up to 40 wide, 44 tall, 4px gaps, right-aligned. The
+      // primary row (Undo B I U Color Link More) never wraps: its buttons
+      // shrink to a 32px floor, so 7 x 32 + 6 x 4 = 248 fits the 284px row a
+      // 320px screen leaves. The More drawer may still wrap.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools button { flex: 0 1 40px; min-width: 32px; width: 40px; min-height: 44px; padding: 0; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools { gap: 4px; justify-content: flex-end; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools:not(.tfcc-tools-more) { flex-wrap: nowrap; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-draft, #' + PANEL_ID + '.tfcc-narrow .tfcc-picker input { font-size: 16px; }',
       '#' + PANEL_ID + ' .tfcc-hit { border-left: 3px solid var(--tm-accent-text); padding-left: 8px;',
       '  margin-bottom: var(--tfcc-gap-sm); }',
@@ -8493,6 +8540,10 @@
     return [t[0], t[1], t[2], e.lang === 'html' ? 'HTML help' : 'Markdown help', t[4]];
   }
 
+  // t[1] (extra attributes) and t[2] (the button's face) are emitted
+  // unescaped: they must stay trusted constant markup from the tool tables
+  // (a styled letter or a JS-escaped symbol), never user or API text. Only
+  // the name (t[3]) is escaped.
   function toolButton(t, disabled) {
     return '<button type="button" data-act="' + t[0] + '"' + (t[1] ? ' ' + t[1] : '') + ' aria-label="' + escapeHtml(t[3])
       + '" title="' + escapeHtml(t[3]) + '"' + (disabled ? ' disabled' : '') + '>' + t[2] + '</button>';
@@ -10043,6 +10094,18 @@
           if (handlers.onDraftEnter(t, ev.shiftKey === true) && typeof ev.preventDefault === 'function') ev.preventDefault();
           return;
         }
+        // Enter in the fixer's Image link field runs Check, as pressing Check
+        // does; it never reaches the draft's Enter. The field is read first,
+        // so the check uses what is on screen.
+        if (act === 'ed-fix-url') {
+          if (ev.isComposing === true || ev.keyCode === 229) return;
+          if (ev.key !== 'Enter' || ev.ctrlKey || ev.metaKey || ev.altKey || ev.shiftKey) return;
+          if (typeof handlers.onAction !== 'function') return;
+          if (typeof ev.preventDefault === 'function') ev.preventDefault();
+          if (typeof handlers.onInput === 'function') handlers.onInput('ed-fix-url', t);
+          handlers.onAction('ed-fix-check', t);
+          return;
+        }
         if (act !== 'editor-input' && act !== 'editor-save' && act !== 'editor-cancel') return;
         // PR #44 review: during IME composition Enter accepts a candidate and
         // Escape dismisses it; neither is meant for the popup.
@@ -10937,8 +11000,8 @@
           var fparts = [];
           if (fx.changed) fparts.push('Fixed ' + fx.changed + ' image link' + (fx.changed === 1 ? '' : 's') + '.');
           if (fx.leftAsLinks) {
-            fparts.push(fx.leftAsLinks === 1 ? '1 link in a sentence was left as a link.'
-              : fx.leftAsLinks + ' links in sentences were left as links.');
+            fparts.push(fx.leftAsLinks === 1 ? '1 link was left as a link (not on a line of its own).'
+              : fx.leftAsLinks + ' links were left as links (not on a line of their own).');
           }
           notice(fparts.length ? fparts.join(' ') : 'No image links found to fix.', 'info');
           redraw(); return;

@@ -570,17 +570,27 @@ test('toolbar buttons show symbols and keep their full names in aria-label and t
   assert.match(nHtml, /data-act="ed-more" aria-expanded="true" aria-label="More tools" title="More tools">\u22EF<\/button>/);
 });
 
-test('the narrow primary toolbar row fits one line at 343px and is right-aligned (#58)', () => {
+test('the narrow primary toolbar row always fits one line, down to a 320px screen, and is right-aligned (#58)', () => {
   const { api } = editorAt('', 'md', [0, 0]);
   api.state.narrow = true;
   const html = api.panelHtml(api.buildPanelModel(NOW));
   const row = /<div class="tfcc-tools" role="toolbar"[^>]*>(.*?)<\/div>/.exec(html)[1];
   const n = (row.match(/<button/g) || []).length;
   assert.strictEqual(n, 7, 'Undo, B, I, U, Color, Link, More');
-  assert.ok(n * 40 + (n - 1) * 4 <= 319, 'the row fits the 343px panel minus its padding');
+  // The row's budget: a 343px panel leaves the editor row 307px (36px go to
+  // the panel's border and padding and the .tfcc-section's border and
+  // padding), so the smallest supported panel, a 320px screen, leaves
+  // 320 - 36 = 284px. The row never wraps and its buttons shrink to a 32px
+  // floor, so at worst it needs n x 32 + (n - 1) x 4 gaps.
+  const BUDGET_320 = 320 - (343 - 307);
+  assert.strictEqual(BUDGET_320, 284);
+  assert.ok(n * 32 + (n - 1) * 4 <= BUDGET_320, 'the shrunk row fits a 320px screen');
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'torn-forum-command-center.user.js'), 'utf8');
   assert.match(src, /\.tfcc-narrow \.tfcc-tools \{ gap: 4px; justify-content: flex-end; \}/);
-  assert.match(src, /\.tfcc-narrow \.tfcc-tools button \{ min-width: 40px; width: 40px; min-height: 44px;/);
+  assert.match(src, /\.tfcc-narrow \.tfcc-tools:not\(\.tfcc-tools-more\) \{ flex-wrap: nowrap; \}/, 'the primary row never wraps');
+  assert.match(src, /\.tfcc-narrow \.tfcc-tools button \{ flex: 0 1 40px; min-width: 32px; width: 40px; min-height: 44px;/,
+    'buttons are 40px when there is room and shrink to 32px, never below');
+  assert.doesNotMatch(src, /\.tfcc-tools-more \{[^}]*nowrap/, 'the More drawer may still wrap');
 });
 
 // ---- H1: the image link fixer section ----------------------------------------
@@ -661,15 +671,15 @@ test('H2: Fix all converts a bare link alone on its line and says what happened'
   assert.strictEqual(api.state.editor.undo.length, 1);
 });
 
-test('H2: Fix all says when links in sentences were left, and when there was nothing to fix', () => {
+test('H2: Fix all says when links not on a line of their own were left, and when there was nothing to fix', () => {
   const sent = 'a ' + OWNER_LINK + ' b\nc ' + OWNER_LINK;
   const a = editorAt(sent, 'md', [0, 0]);
   a.h.onAction('ed-fix-all', el({ 'data-act': 'ed-fix-all' }));
   assert.strictEqual(a.api.state.editor.text, sent);
-  assert.match(a.api.state.notices.map((n) => n.text).join('|'), /2 links in sentences were left as links\./);
+  assert.match(a.api.state.notices.map((n) => n.text).join('|'), /2 links were left as links \(not on a line of their own\)\./);
   const mix = editorAt(OWNER_LINK + '\nsee ' + OWNER_LINK, 'md', [0, 0]);
   mix.h.onAction('ed-fix-all', el({ 'data-act': 'ed-fix-all' }));
-  assert.match(mix.api.state.notices.map((n) => n.text).join('|'), /Fixed 1 image link\. 1 link in a sentence was left as a link\./);
+  assert.match(mix.api.state.notices.map((n) => n.text).join('|'), /Fixed 1 image link\. 1 link was left as a link \(not on a line of its own\)\./);
   const none = editorAt('plain words', 'md', [0, 0]);
   none.h.onAction('ed-fix-all', el({ 'data-act': 'ed-fix-all' }));
   assert.match(none.api.state.notices.map((n) => n.text).join('|'), /No image links found to fix\./);
