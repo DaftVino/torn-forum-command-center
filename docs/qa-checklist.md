@@ -554,8 +554,10 @@ Walk on Torn PDA and on desktop, signed in to a real account.
       Also: paste a bare Drive "view" link on its own line in Markdown (and
       again in HTML), open Fix image link, press Fix all links in this draft,
       Insert into the reply box and Post: the image renders. A link in the
-      middle of a sentence stays a link and the message counts it. Check the
-      Check, Copy link and Insert into draft buttons on a phone.
+      middle of a sentence stays a link and the message says it was left
+      "not on a line of its own". Check the Check, Copy link and Insert into
+      draft buttons on a phone, and that Enter in the Image link field runs
+      Check without adding a line to the draft.
 - [ ] 7. On a phone (Torn PDA and mobile Safari/Chrome), tap in the draft to
       place the caret, or drag the selection handles, then press Bold and
       Quote: they act on the caret or highlighted range, also after More.
@@ -572,9 +574,11 @@ Walk on Torn PDA and on desktop, signed in to a real account.
       editor text and leaves the thread's draft unchanged.
 - [ ] 12. Status messages: only the latest shows, and it clears when you open
       another thread, forum page or panel view (Threads, Drafts, Settings).
-- [ ] 13. At 320px on a phone, the narrow toolbar symbols (Undo, B, I, U,
-      Color, Link, More) sit on ONE row, right-aligned, 40px wide by 44px
-      tall, and More opens the rest (also right-aligned). Long-press shows
+- [ ] 13. On phones at 375px and at 320px, the narrow toolbar symbols (Undo,
+      B, I, U, Color, Link, More) always sit on ONE row, right-aligned, 44px
+      tall and up to 40px wide (narrower, never under 32px, when the screen
+      is tight), and More opens the rest (also right-aligned; it may wrap
+      to a second row). Long-press shows
       the full names. A custom color like #ff1111 gives no warning; #ffd43b
       on the light theme does. The drafts `i` button sits beside
       "Draft for this thread" and beside a free draft's name, and opens its
@@ -584,7 +588,9 @@ Walk on Torn PDA and on desktop, signed in to a real account.
       Preview shows one, two, a gap, three; Insert and Post keep the gap.
       Inside `<p style="text-align: center;">ab</p>`, Enter between a and b
       gives two centered paragraphs; Shift+Enter gives a line break. In a list
-      item Enter starts a new item. In Markdown, Enter on `- item` starts
+      item Enter starts a new item; Enter again on that empty item removes
+      it and puts the caret on a new line after `</ul>` (no empty bullet in
+      Preview or the post). In Markdown, Enter on `- item` starts
       `- `, on `1. item` starts `2. `, and Enter on an empty `- ` ends the
       list. Text mode: each line a paragraph, an empty line a gap. Check with
       a phone keyboard (Torn PDA, Gboard and iOS) and with an IME (Japanese or

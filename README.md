@@ -86,7 +86,9 @@ button yourself.
   A with a color bar, aA, an align glyph, a quote mark, a link, a picture, a
   table, a smiley, ?, and a curved arrow for Undo); each keeps its full name
   as its tooltip and screen-reader label. On a narrow panel it shows Undo, B,
-  I, U, Color, Link and More in one right-aligned row; More opens the rest.
+  I, U, Color, Link and More in one right-aligned row that always fits, on
+  phones down to a 320px screen (the buttons narrow a little rather than
+  wrap); More opens the rest.
   A custom color is only questioned when it is nearly invisible on Torn's
   light or dark theme.
 - **Markdown marks.**
@@ -113,7 +115,8 @@ button yourself.
 - **Enter and blank lines.** Enter starts a new paragraph, an empty line adds
   a gap, in every mode, with no markup to learn. In HTML mode a line of text
   outside a tag is a paragraph; Enter inside `<p ...>` splits it and keeps
-  its alignment, Enter inside `<li>` starts a new item, and Shift+Enter is a
+  its alignment, Enter inside `<li>` starts a new item, Enter on an empty
+  item ends the list (as in Markdown), and Shift+Enter is a
   line break (`<br>`). Inside an open list, table or quote a new line is only
   a space, so a list can be typed over several lines; an empty line inside a
   paragraph ends the paragraph. In Markdown, Enter on a
@@ -164,8 +167,9 @@ button yourself.
   draft**), and **Fix all links in this draft** rewrites every image link in
   the draft. In Markdown and HTML, a fixable link that stands alone on its own
   line, such as a Drive "view" link pasted by itself, becomes an image. A link
-  in the middle of a sentence or inside link markup is left as a link, and the
-  message says how many were left. Nothing is uploaded.
+  that is not on a line of its own (in a sentence, or inside link markup) is
+  left as a link, and the message says how many were left. Enter in the Image
+  link field runs Check. Nothing is uploaded.
 - **Default editor.** In Settings, "Default editor for new drafts": Markdown
   (the default), HTML or Text. It applies to new drafts only.
 

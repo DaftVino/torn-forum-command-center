@@ -14,7 +14,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   several lines stay whole. Preview, Insert, Copy and mode switches all use
   the same rule, and the HTML this script lays out passes through unchanged.
 - Enter in the HTML editor splits the paragraph or list item at the caret and
-  keeps its alignment; Shift+Enter inserts `<br>`. Enter in Markdown continues
+  keeps its alignment; Enter on an empty list item ends the list, leaving the
+  caret on a new line after it, so no empty bullet is posted; Shift+Enter
+  inserts `<br>`. Enter in Markdown continues
   a `-`, `1.` or `>` line and ends the list or quote on an empty marker. Each
   is one Undo step, edits the field in place (the caret and a phone's
   keyboard stay put), leaves an IME's Enter alone, and ignores Ctrl, Cmd and
@@ -27,15 +29,19 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   the right end of the Save / Insert / Delete row and opens a section with a
   link field, Check (converted link, host note, thumbnail loaded only after
   Check), Copy link, Insert into draft, and "Fix all links in this draft".
+  Enter in the link field runs Check.
 - Fix all now also turns a fixable bare link that stands alone on its line
   (for example a pasted Drive "view" link) into an image in Markdown and HTML.
-  A bare link in a sentence or inside link markup is left as a link and counted
-  in the message; Text mode asks you to switch to Markdown or HTML.
+  A bare link not on a line of its own (in a sentence or inside link markup)
+  is left as a link and counted in the message ("left as links (not on a line
+  of their own)"); Text mode asks you to switch to Markdown or HTML.
 - Drafts editor, owner round 2 (#58): toolbar buttons are symbols (B, I, U,
   S, A, aA, align, quote, link, picture, table, smiley, ?, curved-arrow Undo,
   and three dots for More) with the full name kept as the tooltip and
   screen-reader label. On phones the primary row (Undo, B, I, U, Color, Link,
-  More) fits one line and is right-aligned, as is the More drawer.
+  More) always fits one line, down to a 320px screen: its buttons are up to
+  40px wide and narrow to 32px rather than wrap. It is right-aligned, as is
+  the More drawer.
 - A custom color is now questioned only when it is near-invisible on a theme
   (under 2.5:1 contrast), with the line "This color may be hard to see on
   Torn's light theme." Colors like #ff1111 no longer warn.
