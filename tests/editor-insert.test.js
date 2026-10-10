@@ -112,3 +112,39 @@ test('a browser without DataTransfer is told to use Copy', () => {
   const res = env.exports.insertPost(env.doc, win, '<p>x</p>');
   assert.strictEqual(res.reason, 'unsupported');
 });
+
+const settle = () => new Promise((r) => setImmediate(r));
+
+test('Copy writes the marked post as HTML and the source as plain text, then reports', async () => {
+  const env = loadUserscript();
+  const results = [];
+  env.exports.copyPost(env.doc, env.sandbox.window, '<p><strong>b</strong></p><p>c</p>', (r) => results.push(r));
+  assert.deepStrictEqual(results, [], 'not before the clipboard answers');
+  await settle();
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(results)), [{ ok: true }]);
+  const item = env.clipboardLog.find((x) => x.op === 'write').items[0];
+  assert.deepStrictEqual(item.types.slice().sort(), ['text/html', 'text/plain']);
+  assert.deepStrictEqual(Array.from(item.map['text/html'].parts), ['<!-- x-tinymce/html --><p><strong>b</strong></p><p>c</p>']);
+  assert.deepStrictEqual(Array.from(item.map['text/plain'].parts), ['<p><strong>b</strong></p>\n<p>c</p>']);
+});
+
+test('a refused rich copy falls back to text, and a refused text copy reports failure', async () => {
+  const env = loadUserscript();
+  const w = env.sandbox.window;
+  const results = [];
+  const win = Object.assign({}, w, { navigator: { clipboard: {
+    write: () => Promise.reject(new Error('denied')),
+    writeText: (t) => { env.clipboardLog.push({ op: 'writeText', text: t }); return Promise.resolve(); },
+  } } });
+  env.exports.copyPost(env.doc, win, '<p>x</p>', (r) => results.push(r));
+  await settle(); await settle();
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(results)), [{ ok: true }]);
+  assert.deepStrictEqual(Array.from(env.clipboardLog.map((x) => x.op)), ['writeText']);
+  const results2 = [];
+  const win2 = Object.assign({}, w, { ClipboardItem: undefined, navigator: { clipboard: {
+    writeText: () => Promise.reject(new Error('denied')),
+  } } });
+  env.exports.copyPost(env.doc, win2, '<p>x</p>', (r) => results2.push(r));
+  await settle(); await settle();
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(results2)), [{ ok: false }]);
+});

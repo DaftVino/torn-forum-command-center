@@ -9240,6 +9240,43 @@
     }
   }
 
+  // #58: Copy puts the formatted post on the clipboard. Pasted into Torn's
+  // editor, the marked HTML keeps its styles. Pasted as text, it is the HTML
+  // source, ready for Torn's code view. The result is reported only once the
+  // clipboard has answered, so the panel never claims a copy that failed.
+  function copyPost(doc, win, html, done) {
+    var source = htmlSource(html);
+    var report = function (ok) { try { if (typeof done === 'function') done({ ok: !!ok }); } catch (e) { /* never */ } };
+    var nav = win && win.navigator;
+    var clip = nav && nav.clipboard;
+    var asText = function () {
+      try {
+        if (clip && typeof clip.writeText === 'function') {
+          var t = clip.writeText(source);
+          if (t && typeof t.then === 'function') { t.then(function () { report(true); }, function () { report(false); }); return; }
+          report(true);
+          return;
+        }
+      } catch (e) { /* fall through to the textarea path */ }
+      report(copyText(doc, win, source).ok);
+    };
+    try {
+      var Item = win && win.ClipboardItem;
+      var BlobCtor = win && win.Blob;
+      if (clip && typeof clip.write === 'function' && typeof Item === 'function' && typeof BlobCtor === 'function') {
+        var item = new Item({
+          'text/html': new BlobCtor([PASTE_MARKER + html], { type: 'text/html' }),
+          'text/plain': new BlobCtor([source], { type: 'text/plain' }),
+        });
+        var p = clip.write([item]);
+        if (p && typeof p.then === 'function') { p.then(function () { report(true); }, asText); return; }
+        report(true);
+        return;
+      }
+    } catch (e2) { /* fall through to plain text */ }
+    asText();
+  }
+
   // Every asynchronous redraw goes through here. A refresh takes seconds, and
   // the user can leave the forums in that time; drawing unconditionally would
   // mount the panel onto whatever page they went to.

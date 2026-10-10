@@ -129,7 +129,7 @@ const EXPORT_NAMES = [
   'VIEWS', 'buildPanelModel', 'loadingModel', 'errorModel', 'noopHandlers',
   'renderPanel', 'panelStyleText', 'THEMES', 'resolveTheme', 'measurePageTheme', 'applyThemeClass', 'observeTheme',
   // runtime: drafts insertion
-  'findReplyBox', 'insertPost', 'caretToEnd',
+  'findReplyBox', 'insertPost', 'caretToEnd', 'copyPost',
   // runtime: debug
   'gatherDebugContext', 'buildDebugReport',
   // #58: Drafts rich editor
