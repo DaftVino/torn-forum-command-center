@@ -68,3 +68,7 @@ finding affects. The redacted responses behind it are in `tests/fixtures/`.
   - It is a read-only DevTools snippet the owner pastes into the Console on a
     page they opened themselves. It clicks, types and sends nothing.
   - It is never run by automation, and is not part of the userscript.
+- `torn-forum-editor-insert-tests.js` defines `tfccTest('A' | 'B' | 'C')`. Each
+  test writes a short sample into the owner's own unsent reply editor in one of
+  three ways: plain paste, TinyMCE-marked paste, or the editor API. It then
+  reports which styles survived. It never posts.
