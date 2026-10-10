@@ -1775,6 +1775,32 @@ const MUTATIONS = [
     ['a Settings rule shrinks text', (s) => s.replace(
       "'.tfcc-narrow .tfcc-set p.tfcc-note { margin: 0 0 8px 0; }'", "'.tfcc-narrow .tfcc-set p.tfcc-note { margin: 0 0 8px 0; font-size: 11px; }'")],
   ].map(([name, apply]) => ({ name: '#47: ' + name, suite: 'tests/settings-spacing.test.js', apply })),
+  // ---- #58 Task 7: Insert through Torn's TinyMCE editor ---------------------
+  {
+    name: 'the inserted paste loses TinyMCE internal marker, so Torn strips the styles',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace("data.setData('text/html', PASTE_MARKER + html);", "data.setData('text/html', html);"),
+  },
+  {
+    name: 'Insert no longer moves the caret to the end, so it can replace what was typed',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace('      caretToEnd(doc, win, box);\n', ''),
+  },
+  {
+    name: 'an ignored paste is reported as inserted',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace("if (handled && String(box.innerHTML) !== before) return { ok: true };", 'return { ok: true };'),
+  },
+  {
+    name: 'the first matching editor is taken, hidden or not (#60 by another route)',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace('    if (shown.length === 1) return shown[0];', '    if (all.length) return all[0];'),
+  },
+  {
+    name: 'two visible editors are guessed between',
+    suite: 'tests/editor-insert.test.js',
+    apply: (s) => s.replace('    return inForm.length === 1 ? inForm[0] : null;', '    return shown[0] || null;'),
+  },
 ];
 
 let failures = 0;

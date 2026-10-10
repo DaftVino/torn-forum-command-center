@@ -6004,50 +6004,81 @@
 
   // ---- reply box and drafts ----------------------------------------------
 
+  // Torn's reply box is TinyMCE 6.8.5 in inline mode: a contenteditable div,
+  // not a textarea (docs/reference/torn-forum-editor-findings-2026-10-09.md).
+  // These hooks are unhashed, and TornTools uses the same selector. There is
+  // no textarea fallback on purpose: the old broad fallbacks matched a hidden
+  // Report reason box and wrote the draft there (#60). A miss offers Copy.
   var REPLY_SELECTORS = Object.freeze([
-    // Torn's own reply editor, most specific first. Every one of these is a
-    // guess against markup research could not confirm, so failure here has to
-    // be visible and harmless: the panel falls back to a copy button.
-    'textarea[name="postText"]',
-    '#quickReplyText',
-    '.forums-thread-wrap textarea',
-    '#forums-page-wrap textarea',
-    'textarea',
+    '#editor-wrapper .editor-content.mce-content-body',
   ]);
 
-  function findReplyBox(doc) {
-    if (!doc || typeof doc.querySelector !== 'function') return null;
-    for (var i = 0; i < REPLY_SELECTORS.length; i += 1) {
-      var el = null;
-      try { el = doc.querySelector(REPLY_SELECTORS[i]); } catch (e) { el = null; }
-      if (el && el.isConnected !== false) return el;
-    }
-    return null;
+  function isShown(el) {
+    try {
+      var r = el.getBoundingClientRect();
+      return !!r && r.width > 0 && r.height > 0;
+    } catch (e) { return false; }
   }
 
-  // React owns the value of its own textarea. Assigning .value directly updates
-  // the DOM but not React's state, and the next render throws the text away.
-  // Going through the prototype's native setter and then dispatching a bubbling
-  // input event is what makes React accept the change.
-  function insertDraft(doc, win, text) {
+  // A thread page holds several TinyMCE editors (the owner's probe found five).
+  // Keep the connected, visible ones; if more than one is visible, the one in
+  // the reply or new-thread form; if that is still ambiguous, none, so the
+  // panel offers Copy rather than guessing.
+  function findReplyBox(doc) {
+    if (!doc || typeof doc.querySelectorAll !== 'function') return null;
+    var all;
+    try { all = Array.prototype.slice.call(doc.querySelectorAll(REPLY_SELECTORS[0]) || []); } catch (e) { return null; }
+    var shown = all.filter(function (el) {
+      return el && el.isConnected !== false && typeof el.getBoundingClientRect === 'function' && isShown(el);
+    });
+    if (shown.length === 1) return shown[0];
+    var inForm = shown.filter(function (el) {
+      try { return typeof el.closest === 'function' && !!el.closest('.forums-new-post-wrap'); } catch (e) { return false; }
+    });
+    return inForm.length === 1 ? inForm[0] : null;
+  }
+
+  // The paste lands at the caret, so the caret goes to the end first: Insert
+  // adds to what the player has typed and never replaces it.
+  function caretToEnd(doc, win, box) {
+    try {
+      var sel = win && typeof win.getSelection === 'function' ? win.getSelection() : null;
+      if (!sel || !doc || typeof doc.createRange !== 'function') return;
+      var range = doc.createRange();
+      range.selectNodeContents(box);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) { /* the paste still lands, at TinyMCE's own caret */ }
+  }
+
+  // ADR 0002. One synthetic paste, marked as TinyMCE's own content so Torn's
+  // paste_webkit_styles: 'none' filter keeps the styles (owner-observed, test
+  // B). TinyMCE calls preventDefault on a paste it handles, so dispatchEvent
+  // returning false, and the body having changed, together mean it landed.
+  // The player still presses Post.
+  function insertPost(doc, win, html) {
     var box = findReplyBox(doc);
     if (!box) {
       return { ok: false, reason: 'noreplybox', detail: 'No reply box found on this page. Use Copy instead.' };
     }
+    var DT = win && win.DataTransfer;
+    var CE = win && win.ClipboardEvent;
+    if (typeof DT !== 'function' || typeof CE !== 'function') {
+      return { ok: false, reason: 'unsupported', detail: 'This browser cannot insert for you. Use Copy instead.' };
+    }
     try {
-      var proto = win && win.HTMLTextAreaElement ? win.HTMLTextAreaElement.prototype : null;
-      var desc = proto ? Object.getOwnPropertyDescriptor(proto, 'value') : null;
-      if (desc && typeof desc.set === 'function') {
-        desc.set.call(box, text);
-      } else {
-        box.value = text;
-      }
-      var EventCtor = win && win.Event ? win.Event : null;
-      if (EventCtor) box.dispatchEvent(new EventCtor('input', { bubbles: true }));
+      var before = String(box.innerHTML);
       if (typeof box.focus === 'function') box.focus();
-      return { ok: true };
+      caretToEnd(doc, win, box);
+      var data = new DT();
+      data.setData('text/html', PASTE_MARKER + html);
+      data.setData('text/plain', htmlToText(html));
+      var handled = box.dispatchEvent(new CE('paste', { clipboardData: data, bubbles: true, cancelable: true })) === false;
+      if (handled && String(box.innerHTML) !== before) return { ok: true };
+      return { ok: false, reason: 'refused', detail: 'Torn\'s editor did not accept the insert. Use Copy instead.' };
     } catch (e) {
-      return { ok: false, reason: 'insert', detail: 'Could not write into the reply box.' };
+      return { ok: false, reason: 'insert', detail: 'Could not write into the reply box. Use Copy instead.' };
     }
   }
 
@@ -9564,7 +9595,7 @@
         }
         if (act === 'draft-insert' && id) {
           var dd = draftFor(state.drafts, id);
-          var ins = insertDraft(doc, win, dd ? dd.text : '');
+          var ins = insertPost(doc, win, dd ? postHtml(dd.text, draftLangOf(dd)) : '');
           notice(ins.ok ? 'Draft inserted.' : (ins.detail || 'Could not insert.'), ins.ok ? 'info' : 'warn');
           redraw(); return;
         }

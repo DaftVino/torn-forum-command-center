@@ -147,7 +147,7 @@ test('every querySelector call site in the source is one of the known ones', () 
   const calls = Array.from(src.matchAll(/(\w+)\.querySelector(?:All)?\(([^()]*)\)/g), (m) => m[1] + '(' + m[2] + ')');
   assert.deepStrictEqual(calls.slice().sort(), [
     'doc(MOUNT_SELECTORS[i])',
-    'doc(REPLY_SELECTORS[i])',
+    'doc(REPLY_SELECTORS[0])',
     "doc('[data-act=\"' + act + '\"]')",
     "panel('.tfcc-chip')",
     "panel('.tfcc-hcount')",

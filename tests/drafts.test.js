@@ -67,61 +67,19 @@ test('a stored drafts blob with junk in it loads only the real drafts', () => {
   assert.deepStrictEqual(Object.keys(d.byThread), ['1']);
 });
 
-test('insertDraft writes through the native setter so React notices', () => {
-  // Assigning .value directly updates the DOM but not React's state, and the
-  // next render throws the text away. This is the whole reason the function
-  // exists rather than being one line at the call site.
+test("findReplyBox finds Torn's editor body and skips a detached one", () => {
   const env = loadUserscript();
-  const box = env.makeElement('textarea');
-  Object.setPrototypeOf(box, env.sandbox.HTMLTextAreaElement.prototype);
-  env.doc.querySelector = (sel) => (sel === 'textarea[name="postText"]' ? box : null);
-
-  const res = env.exports.insertDraft(env.doc, env.sandbox, 'my reply');
-  assert.strictEqual(res.ok, true);
-  assert.deepStrictEqual(env.nativeSetterCalls, ['my reply']);
+  const body = env.makeElement('div');
+  body.getBoundingClientRect = () => ({ width: 600, height: 160 });
+  env.doc.querySelectorAll = (sel) => (sel === '#editor-wrapper .editor-content.mce-content-body' ? [body] : []);
+  assert.strictEqual(env.exports.findReplyBox(env.doc), body);
+  body.isConnected = false;
+  assert.strictEqual(env.exports.findReplyBox(env.doc), null, 'a detached node is not a reply box');
 });
 
-test('insertDraft dispatches a bubbling input event', () => {
+test('a querySelectorAll that throws does not take the script down', () => {
   const env = loadUserscript();
-  const box = env.makeElement('textarea');
-  Object.setPrototypeOf(box, env.sandbox.HTMLTextAreaElement.prototype);
-  const seen = [];
-  box.addEventListener('input', (ev) => seen.push({ type: ev.type, bubbles: ev.bubbles }));
-  env.doc.querySelector = (sel) => (sel === 'textarea[name="postText"]' ? box : null);
-
-  env.exports.insertDraft(env.doc, env.sandbox, 'text');
-  assert.deepStrictEqual(seen, [{ type: 'input', bubbles: true }]);
-});
-
-test('with no reply box the panel is told to offer Copy instead of throwing', () => {
-  // Every selector here is a guess against markup research could not confirm,
-  // so failing to find one has to be a visible, harmless fallback.
-  const env = loadUserscript();
-  env.doc.querySelector = () => null;
-  const res = env.exports.insertDraft(env.doc, env.sandbox, 'text');
-  assert.strictEqual(res.ok, false);
-  assert.strictEqual(res.reason, 'noreplybox');
-  assert.match(res.detail, /Copy/);
-});
-
-test('findReplyBox prefers the most specific selector and skips detached nodes', () => {
-  const env = loadUserscript();
-  const specific = env.makeElement('textarea');
-  const generic = env.makeElement('textarea');
-  env.doc.querySelector = (sel) => {
-    if (sel === 'textarea[name="postText"]') return specific;
-    if (sel === 'textarea') return generic;
-    return null;
-  };
-  assert.strictEqual(env.exports.findReplyBox(env.doc), specific);
-
-  specific.isConnected = false;
-  assert.strictEqual(env.exports.findReplyBox(env.doc), generic, 'a detached node is not a reply box');
-});
-
-test('a querySelector that throws does not take the script down', () => {
-  const env = loadUserscript();
-  env.doc.querySelector = () => { throw new Error('Torn changed something'); };
+  env.doc.querySelectorAll = () => { throw new Error('Torn changed something'); };
   assert.doesNotThrow(() => env.exports.findReplyBox(env.doc));
   assert.strictEqual(env.exports.findReplyBox(env.doc), null);
 });

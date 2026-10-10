@@ -55,13 +55,14 @@ test('the script never simulates a user interaction', () => {
   assert.deepStrictEqual(found, [], 'the script simulates interaction: ' + found.join(', '));
 });
 
-test('the only synthetic event is the input event a draft insert needs', () => {
-  // React owns its own textarea. Writing the value without telling React means
-  // the next render throws the text away, so this one event is load-bearing.
-  // It types into a box; it does not send anything. The user still presses Post.
+test('the only synthetic event is the paste a draft insert needs', () => {
+  // ADR 0002: Torn's reply box is TinyMCE, and one marked paste is how a
+  // formatted post reaches it. It types into a box; it does not send anything.
+  // The user still presses Post.
   const dispatches = SOURCE.match(/dispatchEvent\s*\([^)]*\)/g) || [];
   assert.strictEqual(dispatches.length, 1, 'unexpected dispatchEvent calls: ' + dispatches.join(' | '));
-  assert.match(dispatches[0], /new EventCtor\('input'/);
+  assert.match(dispatches[0], /new CE\('paste'/);
+  assert.ok(!/new\s+(?:window\.)?ClipboardEvent\s*\(\s*'(?:copy|cut)'/.test(SOURCE), 'no synthetic copy or cut');
 });
 
 test('every request is a GET', () => {
@@ -278,7 +279,7 @@ test('the only focus call is on the reply box, after the user asked for it', () 
   assert.match(restore, /el\.focus\(\{ preventScroll: true \}\)/, 'the second is restoreFocus, inside the panel');
   assert.match(restore, /panel\.querySelector\(plan\[i\]\)/, 'and it only ever looks inside the panel');
 
-  const insert = SOURCE.slice(SOURCE.indexOf('function insertDraft'), SOURCE.indexOf('// ---- theme'));
+  const insert = SOURCE.slice(SOURCE.indexOf('function insertPost'), SOURCE.indexOf('// ---- theme'));
   assert.match(insert, /if \(typeof box\.focus === 'function'\) box\.focus\(\);/,
-    'the one focus call must be the reply box inside insertDraft');
+    'the one focus call must be the reply box inside insertPost');
 });

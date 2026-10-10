@@ -41,7 +41,10 @@ function bounded(promise) {
 // an empty string no matter what the test typed.
 function replyBox(env) {
   const box = env.makeElement('textarea');
-  env.doc.querySelector = (sel) => (sel === 'textarea[name="postText"]' ? box : null);
+  // Torn's reply box is a TinyMCE body now (ADR 0002); autosave's read of it
+  // is rewritten in a later task, so this stand-in only has to be found.
+  box.getBoundingClientRect = () => ({ width: 600, height: 160 });
+  env.doc.querySelectorAll = (sel) => (sel === '#editor-wrapper .editor-content.mce-content-body' ? [box] : []);
   return box;
 }
 
