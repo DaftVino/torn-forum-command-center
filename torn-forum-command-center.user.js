@@ -4858,13 +4858,14 @@
     return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
   }
 
-  // The themes a custom color is hard to read in (WCAG AA, 4.5:1), against the
-  // editor backgrounds the owner measured.
+  // The themes a custom color is near-invisible in: under 2.5:1 against the
+  // editor backgrounds the owner measured, fainter than every Torn text color
+  // except the grays. Anything stronger is the player's choice.
   function colorWarnings(hex) {
     var out = [];
     ['light', 'dark'].forEach(function (theme) {
       var r = contrastRatio(hex, EDITOR_BG[theme]);
-      if (r && r < 4.5) out.push({ theme: theme, ratio: Math.floor(r * 10) / 10 });
+      if (r && r < 2.5) out.push({ theme: theme, ratio: Math.floor(r * 10) / 10 });
     });
     return out;
   }
@@ -7022,8 +7023,11 @@
       '#' + PANEL_ID + ' .tfcc-img-check { display: block; max-width: 100%; max-height: 160px; margin: 4px 0; }',
       '#' + PANEL_ID + ' .tfcc-key { border-collapse: collapse; width: 100%; }',
       '#' + PANEL_ID + ' .tfcc-key th, #' + PANEL_ID + ' .tfcc-key td { border: 1px solid var(--tm-border); padding: 2px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools button, #' + PANEL_ID + '.tfcc-narrow .tfcc-modes button { min-width: 44px; min-height: 44px; }',
-      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools { gap: 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-modes button { min-width: 44px; min-height: 44px; }',
+      // Symbol buttons: 40 x 44 with 4px gaps, so Undo B I U Color Link More
+      // (7 x 40 + 6 x 4 = 304) fit one row of the 343px panel; right-aligned.
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools button { min-width: 40px; width: 40px; min-height: 44px; padding: 0; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools { gap: 4px; justify-content: flex-end; }',
       '#' + PANEL_ID + '.tfcc-narrow .tfcc-draft, #' + PANEL_ID + '.tfcc-narrow .tfcc-picker input { font-size: 16px; }',
       '#' + PANEL_ID + ' .tfcc-hit { border-left: 3px solid var(--tm-accent-text); padding-left: 8px;',
       '  margin-bottom: var(--tfcc-gap-sm); }',
@@ -8147,18 +8151,18 @@
 
   // Toolbar items: [act, data, label, aria label, primary-when-narrow].
   var EDITOR_TOOLS = Object.freeze([
-    ['ed-mark', 'data-mark="bold"', 'B', 'Bold', true],
-    ['ed-mark', 'data-mark="italic"', 'I', 'Italic', true],
-    ['ed-mark', 'data-mark="underline"', 'U', 'Underline', true],
-    ['ed-picker', 'data-picker="color"', 'Color', 'Text color', true],
-    ['ed-picker', 'data-picker="link"', 'Link', 'Insert link', true],
-    ['ed-mark', 'data-mark="strike"', 'S', 'Strike through', false],
-    ['ed-picker', 'data-picker="size"', 'Size', 'Text size', false],
-    ['ed-picker', 'data-picker="align"', 'Align', 'Alignment', false],
-    ['ed-quote', '', 'Quote', 'Quote', false],
-    ['ed-picker', 'data-picker="image"', 'Image', 'Insert image', false],
-    ['ed-picker', 'data-picker="table"', 'Table', 'Insert table', false],
-    ['ed-picker', 'data-picker="emoji"', 'Emoji', 'Insert emoji', false],
+    ['ed-mark', 'data-mark="bold"', '<b>B</b>', 'Bold', true],
+    ['ed-mark', 'data-mark="italic"', '<i>I</i>', 'Italic', true],
+    ['ed-mark', 'data-mark="underline"', '<u>U</u>', 'Underline', true],
+    ['ed-picker', 'data-picker="color"', '<span style="border-bottom: 3px solid #e03131;">A</span>', 'Text color', true],
+    ['ed-picker', 'data-picker="link"', '<span class="tfcc-emo" aria-hidden="true">\uD83D\uDD17</span>', 'Insert link', true],
+    ['ed-mark', 'data-mark="strike"', '<s>S</s>', 'Strike through', false],
+    ['ed-picker', 'data-picker="size"', 'aA', 'Text size', false],
+    ['ed-picker', 'data-picker="align"', '\u2261', 'Alignment', false],
+    ['ed-quote', '', '\u201C', 'Quote', false],
+    ['ed-picker', 'data-picker="image"', '<span class="tfcc-emo" aria-hidden="true">\uD83D\uDDBC\uFE0F</span>', 'Insert image', false],
+    ['ed-picker', 'data-picker="table"', '\u25A6', 'Insert table', false],
+    ['ed-picker', 'data-picker="emoji"', '\u263A', 'Insert emoji', false],
     ['ed-fix-images', '', 'Fix image links', 'Fix image links in this draft', false],
     ['ed-picker', 'data-picker="help"', '?', 'Markdown help', false],
   ]);
@@ -8174,12 +8178,12 @@
 
   function toolButton(t, disabled) {
     return '<button type="button" data-act="' + t[0] + '"' + (t[1] ? ' ' + t[1] : '') + ' aria-label="' + escapeHtml(t[3])
-      + '" title="' + escapeHtml(t[3]) + '"' + (disabled ? ' disabled' : '') + '>' + escapeHtml(t[2]) + '</button>';
+      + '" title="' + escapeHtml(t[3]) + '"' + (disabled ? ' disabled' : '') + '>' + t[2] + '</button>';
   }
 
   // E2: Undo leads the toolbar, and is all of it in Text mode.
   function undoButton(e) {
-    return toolButton(['ed-undo', '', 'Undo', 'Undo the last change', true], e.mode === 'preview' || !(e.undo && e.undo.length));
+    return toolButton(['ed-undo', '', '\u21B6', 'Undo the last change', true], e.mode === 'preview' || !(e.undo && e.undo.length));
   }
 
   function renderEditorToolbar(model) {
@@ -8200,7 +8204,7 @@
     }
     if (model.narrow) {
       out.push('<button type="button" data-act="ed-more" aria-expanded="' + (e.moreOpen ? 'true' : 'false')
-        + '"' + (disabled ? ' disabled' : '') + '>More</button>');
+        + '" aria-label="More tools" title="More tools"' + (disabled ? ' disabled' : '') + '>\u22EF</button>');
     }
     out.push('</div>');
     if (model.narrow && e.moreOpen && !disabled) {
@@ -10457,8 +10461,8 @@
             var hex = String(field('ed-hex-input', '')).trim().toLowerCase();
             if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(hex)) { notice('Type a color like #ff8800.', 'warn'); redraw(); return; }
             var warns = colorWarnings(hex);
-            var warnText = warns.length ? 'This color is hard to read on Torn\'s ' + warns.map(function (w) { return w.theme; }).join(' and ')
-              + ' theme (contrast ' + warns.map(function (w) { return w.ratio; }).join(' and ') + ' to 1).' : '';
+            var warnText = warns.length ? 'This color may be hard to see on Torn\'s ' + warns.map(function (w) { return w.theme; }).join(' and ')
+              + ' theme.' : '';
             if (warnText && E.pickerWarn !== warnText) { E.pickerWarn = warnText; redraw(); return; }
             applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, 'color', hex), now); return;
           }

@@ -82,8 +82,13 @@ button yourself.
   Show images, so the panel does not contact image hosts on its own.
 - **Toolbar.** Bold, italic, underline, strike, Torn's 17 text colors or a
   custom color, size, alignment, quote, link, image, table, emoji (Torn's own
-  and Unicode) and a Markdown help card. On a narrow panel it shows Undo, B,
-  I, U, Color, Link and More, and wraps onto another row when they do not fit.
+  and Unicode) and a Markdown help card. The buttons are symbols (B, I, U, S,
+  A with a color bar, aA, an align glyph, a quote mark, a link, a picture, a
+  table, a smiley, ?, and a curved arrow for Undo); each keeps its full name
+  as its tooltip and screen-reader label. On a narrow panel it shows Undo, B,
+  I, U, Color, Link and More in one right-aligned row; More opens the rest.
+  A custom color is only questioned when it is nearly invisible on Torn's
+  light or dark theme.
 - **Markdown marks.**
 
 | You type | You get |

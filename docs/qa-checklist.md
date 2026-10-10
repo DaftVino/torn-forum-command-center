@@ -567,8 +567,11 @@ Walk on Torn PDA and on desktop, signed in to a real account.
       editor text and leaves the thread's draft unchanged.
 - [ ] 12. Status messages: only the latest shows, and it clears when you open
       another thread, forum page or panel view (Threads, Drafts, Settings).
-- [ ] 13. At 320px, the narrow toolbar (Undo, B, I, U, Color, Link, More)
-      wraps cleanly with 44px targets. The drafts `i` button sits beside
+- [ ] 13. At 320px on a phone, the narrow toolbar symbols (Undo, B, I, U,
+      Color, Link, More) sit on ONE row, right-aligned, 40px wide by 44px
+      tall, and More opens the rest (also right-aligned). Long-press shows
+      the full names. A custom color like #ff1111 gives no warning; #ffd43b
+      on the light theme does. The drafts `i` button sits beside
       "Draft for this thread" and beside a free draft's name, and opens its
       text under them.
 

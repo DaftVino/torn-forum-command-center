@@ -47,7 +47,7 @@ const literals = [
       // E2: in Text mode the toolbar row is just Undo, disabled until there
       // is something to undo.
       + '<div class="tfcc-tools" role="toolbar" aria-label="Formatting">'
-      + '<button type="button" data-act="ed-undo" aria-label="Undo the last change" title="Undo the last change" disabled>Undo</button>'
+      + '<button type="button" data-act="ed-undo" aria-label="Undo the last change" title="Undo the last change" disabled>\u21B6</button>'
       + '</div>'
       + '<textarea class="tfcc-draft" data-act="draft-text" data-id="101" maxlength="20000" aria-label="Draft text" style="height: 260px;">',
   },

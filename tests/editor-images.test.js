@@ -90,11 +90,13 @@ test('Fix image link rewrites every fixable image in a draft', () => {
     { text: '![a](https://imgur.com/AbC12dE)', changed: 0 });
 });
 
-test('a custom color hard to read in a theme is flagged there', () => {
+test('a custom color near-invisible in a theme is flagged there; merely weak colors are not (#58)', () => {
   assert.deepStrictEqual(api.colorWarnings('#ffd43b'), [{ theme: 'light', ratio: 1.4 }]);
   assert.deepStrictEqual(api.colorWarnings('#000000'), [{ theme: 'dark', ratio: 1.1 }]);
-  assert.deepStrictEqual(api.colorWarnings('#777777').map((w) => w.theme), ['light', 'dark']);
-  assert.deepStrictEqual(api.colorWarnings('#1c7ed6'), [{ theme: 'light', ratio: 4.1 }]);
+  assert.deepStrictEqual(api.colorWarnings('#222222').map((w) => w.theme), ['dark']);
+  assert.deepStrictEqual(api.colorWarnings('#ff1111'), []);
+  assert.deepStrictEqual(api.colorWarnings('#777777'), []);
+  assert.deepStrictEqual(api.colorWarnings('#1c7ed6'), []);
   assert.strictEqual(Math.round(api.contrastRatio('#000000', '#ffffff')), 21);
 });
 

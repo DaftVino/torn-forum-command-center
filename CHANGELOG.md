@@ -6,6 +6,14 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 
+- Drafts editor, owner round 2 (#58): toolbar buttons are symbols (B, I, U,
+  S, A, aA, align, quote, link, picture, table, smiley, ?, curved-arrow Undo,
+  and three dots for More) with the full name kept as the tooltip and
+  screen-reader label. On phones the primary row (Undo, B, I, U, Color, Link,
+  More) fits one line and is right-aligned, as is the More drawer.
+- A custom color is now questioned only when it is near-invisible on a theme
+  (under 2.5:1 contrast), with the line "This color may be hard to see on
+  Torn's light theme." Colors like #ff1111 no longer warn.
 - Drafts is now a post editor (#58).
   - **Modes:** Text, Markdown, HTML and Preview, switched with a pill.
     Switching converts the draft without losing anything. Preview shows the

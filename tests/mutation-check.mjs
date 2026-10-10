@@ -2035,6 +2035,21 @@ const MUTATIONS = [
     apply: (s) => s.replace('            if (!state.editor.typingAt || tnow - state.editor.typingAt > TYPING_BURST_MS) pushUndo(state.editor);', '            pushUndo(state.editor);'),
   },
   {
+    name: 'the contrast warning fires for merely weak colors again (old 4.5:1 threshold)',
+    suite: 'tests/editor-images.test.js',
+    apply: (s) => s.replace('if (r && r < 2.5) out.push', 'if (r && r < 4.5) out.push'),
+  },
+  {
+    name: 'the narrow toolbar is no longer right-aligned',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('.tfcc-narrow .tfcc-tools { gap: 4px; justify-content: flex-end; }', '.tfcc-narrow .tfcc-tools { gap: 4px; }'),
+  },
+  {
+    name: 'a toolbar button loses its full-word aria-label',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("' aria-label=\"' + escapeHtml(t[3])", "' aria-label=\"' + escapeHtml(t[2])"),
+  },
+  {
     name: 'the Undo stack grows past 50 steps',
     suite: 'tests/editor-undo.test.js',
     apply: (s) => s.replace('  var UNDO_MAX = 50;', '  var UNDO_MAX = 60;'),

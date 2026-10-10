@@ -269,13 +269,13 @@ test('a color from the picker wraps the selection it was opened on', () => {
 // A picker field typed into: the panel's input event, as the browser sends it.
 const typeInto = (h, act, value) => h.onInput(act, Object.assign(el({ 'data-act': act }), { value }));
 
-test('a hard-to-read custom color asks once, keeps the typed hex across the redraw, then applies', () => {
+test('a near-invisible custom color asks once, keeps the typed hex across the redraw, then applies', () => {
   const { api, h } = editorAt('x', 'md', [0, 1]);
   h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'color' }));
   typeInto(h, 'ed-hex-input', '#ffd43b');
   h.onAction('ed-color', el({ 'data-act': 'ed-color', 'data-value': 'custom' }));
   const html = api.panelHtml(api.buildPanelModel(NOW));
-  assert.match(html, /hard to read on Torn&#39;s light theme|hard to read on Torn's light theme/);
+  assert.match(html, /This color may be hard to see on Torn(&#39;|')s light theme\./);
   assert.match(html, /data-act="ed-hex-input"[^>]*value="#ffd43b"/, 'the redraw keeps what was typed');
   assert.strictEqual(api.state.editor.text, 'x');
   h.onAction('ed-color', el({ 'data-act': 'ed-color', 'data-value': 'custom' }));
@@ -538,4 +538,47 @@ test('a failed Save keeps its error: "Draft saved." never replaces it', () => {
   assert.strictEqual(api.state.notices.length, 1);
   assert.strictEqual(api.state.notices[0].kind, 'error');
   assert.ok(!api.state.notices.some((n) => /Draft saved/.test(n.text)));
+});
+
+// #58 (owner round 2, G2): symbol buttons, full names kept for assistive tech.
+test('toolbar buttons show symbols and keep their full names in aria-label and title', () => {
+  const { api } = editorAt('', 'md', [0, 0]);
+  api.state.editor.moreOpen = true;
+  api.state.narrow = false;
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  const names = {
+    'ed-undo': 'Undo the last change', 'ed-more': null,
+  };
+  void names;
+  const want = [
+    ['data-mark="bold"', '<b>B</b>', 'Bold'], ['data-mark="italic"', '<i>I</i>', 'Italic'],
+    ['data-mark="underline"', '<u>U</u>', 'Underline'], ['data-mark="strike"', '<s>S</s>', 'Strike through'],
+    ['data-picker="size"', '>aA', 'Text size'], ['data-picker="align"', '>\u2261', 'Alignment'],
+    ['data-act="ed-quote"', '>\u201C', 'Quote'], ['data-picker="table"', '>\u25A6', 'Insert table'],
+    ['data-picker="emoji"', '>\u263A', 'Insert emoji'], ['data-picker="link"', '\uD83D\uDD17', 'Insert link'],
+    ['data-picker="image"', '\uD83D\uDDBC\uFE0F', 'Insert image'], ['data-act="ed-undo"', '>\u21B6', 'Undo the last change'],
+    ['data-picker="color"', '>A</span>', 'Text color'], ['data-picker="help"', '>?', 'Markdown help'],
+  ];
+  for (const [marker, face, name] of want) {
+    const m = html.split('<button').filter((b) => b.includes(marker)).map((b) => b.split('</button>')[0]);
+    assert.strictEqual(m.length, 1, marker + ' renders once');
+    assert.ok(m[0].includes(face), marker + ' shows its symbol');
+    assert.ok(m[0].includes('aria-label="' + name + '"') && m[0].includes('title="' + name + '"'), marker + ' keeps its name');
+  }
+  api.state.narrow = true;
+  const nHtml = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(nHtml, /data-act="ed-more" aria-expanded="true" aria-label="More tools" title="More tools">\u22EF<\/button>/);
+});
+
+test('the narrow primary toolbar row fits one line at 343px and is right-aligned (#58)', () => {
+  const { api } = editorAt('', 'md', [0, 0]);
+  api.state.narrow = true;
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  const row = /<div class="tfcc-tools" role="toolbar"[^>]*>(.*?)<\/div>/.exec(html)[1];
+  const n = (row.match(/<button/g) || []).length;
+  assert.strictEqual(n, 7, 'Undo, B, I, U, Color, Link, More');
+  assert.ok(n * 40 + (n - 1) * 4 <= 319, 'the row fits the 343px panel minus its padding');
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'torn-forum-command-center.user.js'), 'utf8');
+  assert.match(src, /\.tfcc-narrow \.tfcc-tools \{ gap: 4px; justify-content: flex-end; \}/);
+  assert.match(src, /\.tfcc-narrow \.tfcc-tools button \{ min-width: 40px; width: 40px; min-height: 44px;/);
 });

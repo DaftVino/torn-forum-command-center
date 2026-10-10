@@ -137,7 +137,7 @@ test('E1: the new free draft starts with nothing to undo', () => {
 test('E2: Undo leads the toolbar and is disabled until there is something to undo', () => {
   const { env, api } = bootEditor({ text: 'hello' });
   const html = redraw(env);
-  assert.match(html, /<div class="tfcc-tools" role="toolbar" aria-label="Formatting"><button type="button" data-act="ed-undo"[^>]*disabled>Undo<\/button>/);
+  assert.match(html, /<div class="tfcc-tools" role="toolbar" aria-label="Formatting"><button type="button" data-act="ed-undo"[^>]*disabled>\u21B6<\/button>/);
   highlight(env, 0, 5);
   click(env, '[data-act="ed-mark"][data-mark="bold"]');
   redraw(env);
@@ -183,7 +183,7 @@ test('E2: in Text mode the toolbar is just Undo, and it reverses the confirmed s
   assert.strictEqual(api.state.editor.lang, 'text');
   assert.strictEqual(api.state.editor.text, 'hi');
   const html = redraw(env);
-  assert.match(html, /<div class="tfcc-tools" role="toolbar" aria-label="Formatting"><button type="button" data-act="ed-undo" aria-label="Undo the last change" title="Undo the last change">Undo<\/button><\/div>/);
+  assert.match(html, /<div class="tfcc-tools" role="toolbar" aria-label="Formatting"><button type="button" data-act="ed-undo" aria-label="Undo the last change" title="Undo the last change">\u21B6<\/button><\/div>/);
   assert.doesNotMatch(html, /data-act="ed-mark"/);
   click(env, '[data-act="ed-undo"]');
   assert.strictEqual(api.state.editor.lang, 'md');
