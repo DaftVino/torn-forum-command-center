@@ -328,7 +328,8 @@ path.
   `onerror=`, `javascript:` and `data:` URLs, nested `<style>`, `<img src=x
   onerror>`, unclosed tags, 20000-character input);
 - the contrast warning;
-- image URL classification;
+- image URL classification, and `fixImageUrl` for every row of the host-rules
+  file: each input shape, each refusal, and the rewritten output exactly;
 - the storage rules in section 6.
 
 **Runtime tests:**
@@ -373,6 +374,13 @@ account:
 4. Old drafts and settings from v0.2.2 load with no damage notice.
 5. At 320px in PDA, the pill, toolbar, More drawer and pickers fit, with 44px
    targets.
+6. Fixed image links render after Post. Check each of these:
+   - a Drive file;
+   - a Dropbox file;
+   - an Imgur single image, as a JPG and as a GIF;
+   - a GitHub image;
+   - a Gyazo screenshot.
+   A host that fails is moved to "not derivable" before release.
 
 **Docs before release** (owner request, 2026-10-09). The release PR is blocked
 until these are done:
