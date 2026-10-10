@@ -6,6 +6,19 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 
+- Enter and blank lines keep paragraphs and gaps in every editor mode (#58,
+  owner round 2). HTML source now reads like Markdown: outside an open block
+  each line is a paragraph and an empty line is a gap (`<p>&nbsp;</p>`), so
+  `<p>one</p>`, `two`, an empty line and `three` post as four paragraphs
+  instead of merging into "two three". Lists, tables and quotes typed over
+  several lines stay whole. Preview, Insert, Copy and mode switches all use
+  the same rule, and the HTML this script lays out passes through unchanged.
+- Enter in the HTML editor splits the paragraph or list item at the caret and
+  keeps its alignment; Shift+Enter inserts `<br>`. Enter in Markdown continues
+  a `-`, `1.` or `>` line and ends the list or quote on an empty marker. Each
+  is one Undo step, edits the field in place (the caret and a phone's
+  keyboard stay put), leaves an IME's Enter alone, and ignores Ctrl, Cmd and
+  Alt+Enter. Text mode keeps the browser's Enter.
 - Image link fixer section (#58): "Fix image link" moves from the toolbar to
   the right end of the Save / Insert / Delete row and opens a section with a
   link field, Check (converted link, host note, thumbnail loaded only after

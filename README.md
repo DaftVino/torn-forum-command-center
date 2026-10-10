@@ -110,6 +110,14 @@ button yourself.
 | `\| a \| b \|` | a table row; a `---` row under the first makes it a header |
 | `\*` | a literal mark character |
 
+- **Enter and blank lines.** Enter starts a new paragraph, an empty line adds
+  a gap, in every mode, with no markup to learn. In HTML mode a line of text
+  outside a tag is a paragraph; Enter inside `<p ...>` splits it and keeps
+  its alignment, Enter inside `<li>` starts a new item, and Shift+Enter is a
+  line break (`<br>`). Inside an open list, table or quote a new line is only
+  a space, so a list can be typed over several lines. In Markdown, Enter on a
+  `- item`, `1. item` or `> quote` line continues the list or quote, and
+  Enter on a line holding only the marker ends it.
 - **Help key.** The `?` button opens a compact key of what you type and what
   you get, for the current mode (Markdown or HTML). While it is open the
   button reads `X` and the picker's bottom button reads Close.

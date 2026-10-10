@@ -579,6 +579,17 @@ Walk on Torn PDA and on desktop, signed in to a real account.
       on the light theme does. The drafts `i` button sits beside
       "Draft for this thread" and beside a free draft's name, and opens its
       text under them.
+- [ ] 14. Enter and blank lines (owner round 2). In HTML mode type
+      `<p>one</p>`, press Enter, type `two`, press Enter twice, type `three`.
+      Preview shows one, two, a gap, three; Insert and Post keep the gap.
+      Inside `<p style="text-align: center;">ab</p>`, Enter between a and b
+      gives two centered paragraphs; Shift+Enter gives a line break. In a list
+      item Enter starts a new item. In Markdown, Enter on `- item` starts
+      `- `, on `1. item` starts `2. `, and Enter on an empty `- ` ends the
+      list. Text mode: each line a paragraph, an empty line a gap. Check with
+      a phone keyboard (Torn PDA, Gboard and iOS) and with an IME (Japanese or
+      Chinese input): composing Enter picks the candidate and adds nothing;
+      after Enter the keyboard stays up and the caret stays in view.
 
 ## Sign-off
 
