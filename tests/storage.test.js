@@ -459,3 +459,12 @@ test('a stored karma pair reloads unchanged; a half pair is dropped', () => {
   const half = Object.assign(api.freshMine(), { karma: 5 });
   assert.ok(!('karma' in api.normaliseMine(JSON.parse(JSON.stringify(half)))), 'karma without karmaAt');
 });
+
+test('two damaged stores at load are both named in the one notice', () => {
+  const env = loadUserscript({ gmStore: [['tfcc:settings', '{not json'], ['tfcc:organizer', '{not json']] });
+  env.exports.loadAll(1700000000000);
+  const n = env.exports.state.notices;
+  assert.strictEqual(n.length, 1);
+  assert.match(n[0].text, /Settings/);
+  assert.match(n[0].text, /Folders and tags/);
+});

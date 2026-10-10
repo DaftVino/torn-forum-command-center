@@ -527,3 +527,15 @@ test('Copy reports through the guarded redraw: it never lands on a player typing
   assert.ok(api.state.notices.some((n) => /Post copied/.test(n.text)));
   assert.strictEqual(count(), before, 'the copy result forced a redraw over the typing');
 });
+
+test('a failed Save keeps its error: "Draft saved." never replaces it', () => {
+  const env = loadUserscript({ location: THREAD, now: NOW, gmWriteErrors: new Set(['tfcc:drafts']) });
+  const api = drafts(env);
+  api.panelHtml(api.buildPanelModel(NOW));
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onInput('draft-text', Object.assign(el({ 'data-act': 'draft-text', 'data-id': '42' }), { value: 'words', selectionStart: 0, selectionEnd: 0 }));
+  h.onAction('draft-save', el({ 'data-act': 'draft-save', 'data-id': '42' }));
+  assert.strictEqual(api.state.notices.length, 1);
+  assert.strictEqual(api.state.notices[0].kind, 'error');
+  assert.ok(!api.state.notices.some((n) => /Draft saved/.test(n.text)));
+});

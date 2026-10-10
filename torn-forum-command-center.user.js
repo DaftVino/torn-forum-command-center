@@ -5571,11 +5571,14 @@
     state.badges = b.value;
     // A key that failed normalisation is reported rather than silently reset,
     // because a user who loses their folders deserves to know it happened.
+    var damaged = [];
     [['Settings', s], ['Folders and tags', o], ['Drafts', d], ['Cached thread list', f], ['Post cache', p], ['My posts list', m],
       ['Badges', b]]
       .forEach(function (pair) {
-        if (pair[1].recovered) notice(pair[0] + ' were damaged and have been reset.', 'warn');
+        if (pair[1].recovered) damaged.push(pair[0]);
       });
+    // One slot for messages: every damaged store is named in a single notice.
+    if (damaged.length) notice(damaged.join(' and ') + ' were damaged and have been reset.', 'warn');
   }
 
   function persist(which) {
@@ -8411,9 +8414,12 @@
     } else state.drafts = saveDraft(state.drafts, e.key, e.text, now, '', e.lang);
     e.dirty = false;
     e.src = draftSig(draftFor(state.drafts, e.key));
-    persist('drafts');
+    editorSaveFailed = !persist('drafts').ok;
     return true;
   }
+  // True when the last saveEditor could not write; the error notice it raised
+  // must not be replaced by a success message.
+  var editorSaveFailed = false;
 
   // Spec section 4a: nothing is ever silently cut. An action whose result
   // would pass the draft limit is refused with this.
@@ -10431,10 +10437,11 @@
         if (act === 'draft-save' && id) {
           // Saved only if it stored: an open draft is written now; one not open
           // must still exist.
+          editorSaveFailed = false;
           if (state.editor.key === id ? !saveEditor(now) : !draftFor(state.drafts, id)) {
             notice('This draft no longer exists. Copy your text, then use + New draft.', 'warn'); redraw(); return;
           }
-          recompute(now); notice('Draft saved.', 'info'); redraw(); return;
+          recompute(now); if (!editorSaveFailed) notice('Draft saved.', 'info'); redraw(); return;
         }
         if (act === 'draft-delete' && id) {
           if (/^n[0-9]+$/.test(id)) state.drafts = deleteFreeDraft(state.drafts, id);
@@ -10452,9 +10459,10 @@
           return;
         }
         if (act === 'draft-insert' && id) {
+          editorSaveFailed = false;
           if (state.editor.key === id && state.editor.text.trim()) saveEditor(now);
           var ins = insertPost(doc, win, editorPostHtml());
-          notice(ins.ok ? 'Post inserted. Check it, then press Post.' : (ins.detail || 'Could not insert.'), ins.ok ? 'info' : 'warn');
+          if (!editorSaveFailed) notice(ins.ok ? 'Post inserted. Check it, then press Post.' : (ins.detail || 'Could not insert.'), ins.ok ? 'info' : 'warn');
           redraw(); return;
         }
         if (act === 'folder-add') {
