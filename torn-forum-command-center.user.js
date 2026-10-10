@@ -4975,6 +4975,16 @@
       : '<img src="' + escAttr(url) + '"' + (a ? ' alt="' + escAttr(a) + '"' : '') + '>';
   }
 
+  // An inline snippet (an emoji, an image) in place of the selection, with the
+  // caret after it.
+  function insertAtCaret(text, start, end, snippet) {
+    var t = String(text || '');
+    var s = clampSel(t, start, end);
+    var next = t.slice(0, s[0]) + snippet + t.slice(s[1]);
+    var caret = s[0] + snippet.length;
+    return { text: next, start: caret, end: caret };
+  }
+
   // Common Unicode emoji, for the picker's second tab. Code points, not
   // characters, so the source stays ASCII (constraint 4). A pair is an emoji
   // and its variation selector.
@@ -6801,6 +6811,16 @@
       '#' + PANEL_ID + ' .tfcc-pv th, #' + PANEL_ID + ' .tfcc-pv td { border: 1px solid currentColor; padding: 2px 6px; }',
       '#' + PANEL_ID + ' .tfcc-pv blockquote { margin: 0 0 0 8px; padding-left: 8px; border-left: 3px solid currentColor; }',
       '#' + PANEL_ID + ' .tfcc-confirm { margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-tools button { min-width: 32px; min-height: 32px; }',
+      '#' + PANEL_ID + ' .tfcc-picker { border: 1px solid var(--tm-border); border-radius: 4px; padding: 8px; margin-bottom: var(--tfcc-gap-sm); }',
+      '#' + PANEL_ID + ' .tfcc-swatches, #' + PANEL_ID + ' .tfcc-emoji { display: flex; flex-wrap: wrap; gap: 4px; }',
+      '#' + PANEL_ID + ' .tfcc-swatch { display: block; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--tm-border); }',
+      '#' + PANEL_ID + ' .tfcc-img-check { display: block; max-width: 100%; max-height: 160px; margin: 4px 0; }',
+      '#' + PANEL_ID + ' .tfcc-help dt { margin-top: 4px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools button, #' + PANEL_ID + '.tfcc-narrow .tfcc-pill button { min-width: 44px; min-height: 44px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-tools { gap: 8px; }',
+      '#' + PANEL_ID + '.tfcc-narrow .tfcc-draft, #' + PANEL_ID + '.tfcc-narrow .tfcc-picker input { font-size: 16px; }',
       '#' + PANEL_ID + ' .tfcc-hit { border-left: 3px solid var(--tm-accent-text); padding-left: 8px;',
       '  margin-bottom: var(--tfcc-gap-sm); }',
       '#' + PANEL_ID + ' .tfcc-hit-text { white-space: pre-wrap; overflow-wrap: anywhere;',
@@ -6989,6 +7009,9 @@
       state.editor.mode = keep.mode;
       state.editor.previewTheme = keep.previewTheme;
       state.editor.showImages = keep.showImages;
+      // An open picker and what was typed into it are the player's, not the
+      // stored draft's: a reload never wipes them mid-edit.
+      ['picker', 'fields', 'imageCheck', 'pickerWarn', 'emojiTab', 'moreOpen'].forEach(function (k) { state.editor[k] = keep[k]; });
     }
     var rows = state.rows;
     var query = parseQuery(state.searchQuery);
@@ -7910,8 +7933,145 @@
     return out.join('');
   }
 
-  // Task 11 replaces this stub with the toolbar.
-  function renderEditorToolbar(model) { void model; return ''; }
+  // Toolbar items: [act, data, label, aria label, primary-when-narrow].
+  var EDITOR_TOOLS = Object.freeze([
+    ['ed-mark', 'data-mark="bold"', 'B', 'Bold', true],
+    ['ed-mark', 'data-mark="italic"', 'I', 'Italic', true],
+    ['ed-mark', 'data-mark="underline"', 'U', 'Underline', true],
+    ['ed-picker', 'data-picker="color"', 'Colour', 'Text colour', true],
+    ['ed-picker', 'data-picker="link"', 'Link', 'Insert link', true],
+    ['ed-mark', 'data-mark="strike"', 'S', 'Strike through', false],
+    ['ed-picker', 'data-picker="size"', 'Size', 'Text size', false],
+    ['ed-picker', 'data-picker="align"', 'Align', 'Alignment', false],
+    ['ed-quote', '', 'Quote', 'Quote', false],
+    ['ed-picker', 'data-picker="image"', 'Image', 'Insert image', false],
+    ['ed-picker', 'data-picker="table"', 'Table', 'Insert table', false],
+    ['ed-picker', 'data-picker="emoji"', 'Emoji', 'Insert emoji', false],
+    ['ed-fix-images', '', 'Fix image links', 'Fix image links in this draft', false],
+    ['ed-picker', 'data-picker="help"', '?', 'Markdown marks', false],
+  ]);
+
+  function toolButton(t, disabled) {
+    return '<button type="button" data-act="' + t[0] + '"' + (t[1] ? ' ' + t[1] : '') + ' aria-label="' + escapeHtml(t[3])
+      + '" title="' + escapeHtml(t[3]) + '"' + (disabled ? ' disabled' : '') + '>' + escapeHtml(t[2]) + '</button>';
+  }
+
+  function renderEditorToolbar(model) {
+    var e = model.editor;
+    if (e.lang === 'text' && e.mode === 'source') return '';
+    var disabled = e.mode === 'preview';
+    var out = ['<div class="tfcc-tools" role="toolbar" aria-label="Formatting">'];
+    for (var i = 0; i < EDITOR_TOOLS.length; i += 1) {
+      var t = EDITOR_TOOLS[i];
+      if (model.narrow && !t[4]) continue;
+      if (t[2] === '?' && e.lang !== 'md') continue;
+      out.push(toolButton(t, disabled));
+    }
+    if (model.narrow) {
+      out.push('<button type="button" data-act="ed-more" aria-expanded="' + (e.moreOpen ? 'true' : 'false')
+        + '"' + (disabled ? ' disabled' : '') + '>More</button>');
+    }
+    out.push('</div>');
+    if (model.narrow && e.moreOpen && !disabled) {
+      out.push('<div class="tfcc-tools tfcc-tools-more">');
+      for (var k = 0; k < EDITOR_TOOLS.length; k += 1) {
+        if (!EDITOR_TOOLS[k][4] && !(EDITOR_TOOLS[k][2] === '?' && e.lang !== 'md')) out.push(toolButton(EDITOR_TOOLS[k], false));
+      }
+      out.push('</div>');
+    }
+    if (e.picker && !disabled) out.push(renderPicker(model));
+    return out.join('');
+  }
+
+  var MD_HELP = Object.freeze([
+    ['**bold**', 'bold'], ['*italic*', 'italic'], ['++underline++', 'underline'], ['~~strike~~', 'strike through'],
+    ['{red}text{/}', 'a Torn colour (red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange, gray1 to gray5)'],
+    ['{#ff8800}text{/}', 'any colour'], ['{18}text{/}', 'text size, 8 to 36'], ['# Title', 'a big bold line (## and ### are smaller)'],
+    [':::center', 'centre the lines up to the next :::'], ['> text', 'a quote'], ['- item', 'a list (1. for numbers)'],
+    // No literal URLs here: read-only.test.js audits every http(s) host in the source.
+    ['[text](link address)', 'a link (https only)'], ['![description](image link)', 'an image'], [':grin:', 'a Torn emoji'],
+    ['| a | b |', 'a table row; a --- row under the first makes it a header'], ['\\*', 'a literal mark character'],
+  ]);
+
+  function pickerClose() { return btn('ed-picker-close', 'Cancel'); }
+
+  function renderPicker(model) {
+    var e = model.editor;
+    // Typed fields live in the editor state (onInput), so a redraw re-renders
+    // what was typed instead of emptying it.
+    var F = e.fields || {};
+    var fv = function (k, d) { return escapeHtml(Object.prototype.hasOwnProperty.call(F, k) ? F[k] : d); };
+    var out = ['<div class="tfcc-picker" role="group" aria-label="' + escapeHtml(e.picker) + '">'];
+    if (e.picker === 'color') {
+      var theme = model.themeResolved || 'dark';
+      out.push('<div class="tfcc-swatches">');
+      for (var i = 0; i < TORN_COLORS.length; i += 1) {
+        var c = TORN_COLORS[i];
+        out.push('<button type="button" data-act="ed-color" data-value="' + c.name + '" aria-label="' + c.name
+          + (c.name === 'gray5' ? ', matches the page background' : '') + '" title="' + c.name + '">'
+          + '<span class="tfcc-swatch" style="background: ' + c[theme] + ';" aria-hidden="true"></span></button>');
+      }
+      out.push('</div><label for="tfcc-ed-hex" class="tfcc-note">Custom colour</label>'
+        + '<input id="tfcc-ed-hex" type="text" data-act="ed-hex-input" placeholder="#ff8800" maxlength="7" value="' + fv('ed-hex-input', '') + '">'
+        + btn('ed-color', 'Use custom colour', ' data-value="custom"'));
+      if (e.pickerWarn) {
+        out.push('<p class="tfcc-note" role="alert">' + escapeHtml(e.pickerWarn) + ' Tap Use custom colour again to use it anyway.</p>');
+      }
+    } else if (e.picker === 'size') {
+      for (var s = 0; s < SIZE_PICKS.length; s += 1) out.push(btn('ed-size', SIZE_PICKS[s] + 'px', ' data-value="' + SIZE_PICKS[s] + '"'));
+    } else if (e.picker === 'align') {
+      ['left', 'center', 'right', 'justify'].forEach(function (a) { out.push(btn('ed-align', a.charAt(0).toUpperCase() + a.slice(1), ' data-value="' + a + '"')); });
+    } else if (e.picker === 'link') {
+      out.push('<label for="tfcc-ed-link" class="tfcc-note">Link address (https)</label>'
+        + '<input id="tfcc-ed-link" type="url" data-act="ed-link-input" value="' + fv('ed-link-input', '') + '">' + btn('ed-link-apply', 'Add link'));
+    } else if (e.picker === 'image') {
+      out.push('<label for="tfcc-ed-img" class="tfcc-note">Image link</label>'
+        + '<input id="tfcc-ed-img" type="url" data-act="ed-img-url" value="' + fv('ed-img-url', '') + '">'
+        + '<label for="tfcc-ed-alt" class="tfcc-note">Description (optional)</label>'
+        + '<input id="tfcc-ed-alt" type="text" data-act="ed-img-alt" maxlength="200" value="' + fv('ed-img-alt', '') + '">'
+        + btn('ed-img-check', 'Check link'));
+      var r = e.imageCheck;
+      if (r) {
+        if (r.status === 'fixed') out.push('<p class="tfcc-note">Fixed for Torn: <code>' + escapeHtml(r.url) + '</code></p>');
+        if (r.note) out.push('<p class="tfcc-note">' + escapeHtml(r.note) + '</p>');
+        if (r.status === 'ok' || r.status === 'fixed') {
+          // Loaded because the player tapped Check link; no referrer (spec 4a).
+          out.push('<img class="tfcc-img-check" referrerpolicy="no-referrer" src="' + escapeHtml(r.url) + '" alt="Preview of the image">'
+            + btn('ed-img-insert', 'Insert image'));
+        }
+      }
+      out.push('<p class="tfcc-note">Have the file, not a link? Upload it with Torn\'s own Insert Image button after Insert.</p>');
+    } else if (e.picker === 'table') {
+      out.push('<label for="tfcc-ed-cols" class="tfcc-note">Columns</label><input id="tfcc-ed-cols" type="number" min="1" max="8" value="' + fv('ed-cols', '2') + '" data-act="ed-cols">'
+        + '<label for="tfcc-ed-rows" class="tfcc-note">Rows</label><input id="tfcc-ed-rows" type="number" min="1" max="30" value="' + fv('ed-rows', '2') + '" data-act="ed-rows">'
+        + '<label for="tfcc-ed-head" class="tfcc-note">Header row</label><input id="tfcc-ed-head" type="checkbox"'
+        + (F['ed-header'] === false ? '' : ' checked') + ' data-act="ed-header">'
+        + btn('ed-table-insert', 'Insert table'));
+    } else if (e.picker === 'emoji') {
+      out.push('<div class="tfcc-pill" role="group" aria-label="Emoji set">'
+        + '<button type="button" data-act="ed-emoji-tab" data-tab="torn" aria-pressed="' + (e.emojiTab !== 'unicode') + '">Torn</button>'
+        + '<button type="button" data-act="ed-emoji-tab" data-tab="unicode" aria-pressed="' + (e.emojiTab === 'unicode') + '">Unicode</button></div>');
+      out.push('<div class="tfcc-emoji">');
+      if (e.emojiTab === 'unicode') {
+        for (var u = 0; u < UNICODE_EMOJI.length; u += 1) {
+          out.push('<button type="button" data-act="ed-emoji" data-value="u' + u + '" aria-label="Emoji ' + (u + 1) + '">' + UNICODE_EMOJI[u] + '</button>');
+        }
+      } else {
+        for (var k = 0; k < TORN_EMOJI.length; k += 1) {
+          var nm = TORN_EMOJI[k];
+          out.push('<button type="button" data-act="ed-emoji" data-value="' + nm + '" aria-label="' + nm.replace(/_/g, ' ') + '" title="' + nm + '">'
+            + '<img src="/images/emotions/svg/' + nm + '.svg" alt="" width="24" height="24"></button>');
+        }
+      }
+      out.push('</div><p class="tfcc-note">More emoji: press Win + . (Windows) or Ctrl + Cmd + Space (Mac) while typing.</p>');
+    } else if (e.picker === 'help') {
+      out.push('<dl class="tfcc-help">');
+      MD_HELP.forEach(function (h) { out.push('<dt><code>' + escapeHtml(h[0]) + '</code></dt><dd>' + escapeHtml(h[1]) + '</dd>'); });
+      out.push('</dl>');
+    }
+    out.push('<div class="tfcc-actions">' + pickerClose() + '</div></div>');
+    return out.join('');
+  }
 
   function renderEditorPane(model) {
     var e = model.editor;
@@ -9630,6 +9790,34 @@
       return el && el.value !== undefined ? String(el.value) : '';
     }
 
+    // #58: the panel's own draft textarea, for the selection at click time.
+    // The editor's handlers never call valueOf.
+    function editorField() {
+      var panel = doc.getElementById(PANEL_ID);
+      try { return panel && typeof panel.querySelector === 'function' ? panel.querySelector('[data-act="draft-text"]') : null; } catch (e) { return null; }
+    }
+    function captureSelection() {
+      var f = editorField();
+      if (f && typeof f.selectionStart === 'number') {
+        state.editor.text = String(f.value); state.editor.selStart = f.selectionStart; state.editor.selEnd = f.selectionEnd;
+      }
+    }
+    // A picker's typed value, from the editor state (onInput), never from a
+    // document query: Torn's page could hold the same data-act.
+    function field(k, d) {
+      var f = state.editor.fields || {};
+      return Object.prototype.hasOwnProperty.call(f, k) ? f[k] : d;
+    }
+    function applyEdit(r, now) {
+      // Spec 4a: never silently cut, never store past the limit.
+      if (r.text.length > DRAFT_MAX_CHARS) { overLimitNotice(r.text.length); redraw(); return; }
+      state.editor.text = r.text; state.editor.selStart = r.start; state.editor.selEnd = r.end;
+      state.editor.picker = null; state.editor.pickerWarn = null; state.editor.imageCheck = null;
+      state.focusIntent = [attrSel('data-act', 'draft-text')];
+      if (state.editor.text.trim()) saveEditor(now);
+      redraw();
+    }
+
     // #43: the popup's typed text: the field on screen, else the mirror. A
     // read of this script's own panel, never of the document.
     function valueOfEditor(id, field) {
@@ -9844,6 +10032,83 @@
           state.focusIntent = [attrSel('data-act', 'draft-text')];
           redraw(); return;
         }
+        // #58: the toolbar and its pickers. A picker applies to the selection
+        // it was opened on; its typed fields come from the editor state.
+        var E = state.editor;
+        if (act === 'ed-more') { E.moreOpen = !E.moreOpen; redraw(); return; }
+        if (act === 'ed-mark') {
+          captureSelection();
+          applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, el.getAttribute('data-mark')), now); return;
+        }
+        if (act === 'ed-quote') { captureSelection(); applyEdit(applyBlockMark(E.lang, E.text, E.selStart, E.selEnd, 'quote'), now); return; }
+        if (act === 'ed-picker') {
+          captureSelection();
+          var which = el.getAttribute('data-picker');
+          E.picker = E.picker === which ? null : which; E.pickerWarn = null; E.imageCheck = null;
+          redraw(); return;
+        }
+        if (act === 'ed-picker-close') { E.picker = null; E.pickerWarn = null; E.imageCheck = null; redraw(); return; }
+        if (act === 'ed-color') {
+          var colV = el.getAttribute('data-value');
+          if (colV === 'custom') {
+            var hex = String(field('ed-hex-input', '')).trim().toLowerCase();
+            if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(hex)) { notice('Type a colour like #ff8800.', 'warn'); redraw(); return; }
+            var warns = colorWarnings(hex);
+            var warnText = warns.length ? 'This colour is hard to read on Torn\'s ' + warns.map(function (w) { return w.theme; }).join(' and ')
+              + ' theme (contrast ' + warns.map(function (w) { return w.ratio; }).join(' and ') + ' to 1).' : '';
+            if (warnText && E.pickerWarn !== warnText) { E.pickerWarn = warnText; redraw(); return; }
+            applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, 'color', hex), now); return;
+          }
+          if (TORN_COLOR_NAMES.indexOf(colV) === -1) return;
+          applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, 'color', colV), now); return;
+        }
+        if (act === 'ed-size') {
+          var sz = toInt(el.getAttribute('data-value'), 16);
+          if (SIZE_PICKS.indexOf(sz) === -1) return;
+          applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, 'size', sz), now); return;
+        }
+        if (act === 'ed-align') {
+          var av = el.getAttribute('data-value');
+          if (['left', 'center', 'right', 'justify'].indexOf(av) === -1) return;
+          applyEdit(applyBlockMark(E.lang, E.text, E.selStart, E.selEnd, 'align', av), now); return;
+        }
+        if (act === 'ed-link-apply') {
+          var href = safeHref(field('ed-link-input', ''));
+          if (!href) { notice('A link needs a full web address, starting with https or http.', 'warn'); redraw(); return; }
+          // A Markdown destination ends at ')' or a space: encode them, so a
+          // link like a wiki page's Foo_(bar) survives the round trip.
+          if (E.lang === 'md') href = href.replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/ /g, '%20');
+          applyEdit(applyMark(E.lang, E.text, E.selStart, E.selEnd, 'link', href), now); return;
+        }
+        if (act === 'ed-img-check') {
+          E.imageCheck = fixImageUrl(field('ed-img-url', ''));
+          redraw(); return;
+        }
+        if (act === 'ed-img-insert') {
+          var ic = E.imageCheck;
+          if (!ic || (ic.status !== 'ok' && ic.status !== 'fixed')) return;
+          applyEdit(insertAtCaret(E.text, E.selStart, E.selEnd, imageSnippet(E.lang, ic.url, String(field('ed-img-alt', '')))), now); return;
+        }
+        if (act === 'ed-table-insert') {
+          var tbl = tableSkeleton(E.lang, toInt(field('ed-cols', 2), 2), toInt(field('ed-rows', 2), 2), field('ed-header', true) !== false);
+          applyEdit(insertBlock(E.text, E.selStart, E.selEnd, tbl), now); return;
+        }
+        if (act === 'ed-emoji-tab') { E.emojiTab = el.getAttribute('data-tab') === 'unicode' ? 'unicode' : 'torn'; redraw(); return; }
+        if (act === 'ed-emoji') {
+          var ev = el.getAttribute('data-value') || '';
+          var snip = /^u[0-9]+$/.test(ev) ? (UNICODE_EMOJI[toInt(ev.slice(1), -1)] || '') : emojiSnippet(E.lang, ev);
+          if (!snip) return;
+          applyEdit(insertAtCaret(E.text, E.selStart, E.selEnd, snip), now); return;
+        }
+        if (act === 'ed-fix-images') {
+          captureSelection();
+          var fx = fixAllImages(E.lang, E.text);
+          if (fx.text.length > DRAFT_MAX_CHARS) { overLimitNotice(fx.text.length); redraw(); return; }
+          E.text = fx.text;
+          if (fx.changed && E.text.trim()) saveEditor(now);
+          notice(fx.changed ? 'Fixed ' + fx.changed + ' image link' + (fx.changed === 1 ? '' : 's') + ' for Torn.' : 'No image links needed fixing.', 'info');
+          redraw(); return;
+        }
         if (act === 'draft-new') {
           var made = newFreeDraft(state.drafts, now, state.settings.draftLang);
           if (!made.id) { notice('You have ' + FREE_DRAFTS_MAX + ' free drafts. Delete one to make another.', 'warn'); redraw(); return; }
@@ -10033,6 +10298,10 @@
           state.settings.autoHideOnOpen = !!el.checked;
           persist('settings'); redraw(); return;
         }
+        if (act === 'ed-header') {
+          state.editor.fields = Object.assign({}, state.editor.fields, { 'ed-header': !!el.checked });
+          return;
+        }
         if (act === 'see-through') {
           state.settings.seeThrough = !!el.checked;
           persist('settings'); redraw(); return;
@@ -10086,6 +10355,13 @@
         if (act === 'ed-name') {
           state.editor.name = el && el.value !== undefined ? String(el.value).slice(0, FREE_NAME_MAX) : '';
           state.editor.dirty = true;
+          return;
+        }
+        // #58: a picker's typed fields live in the editor state, so a redraw
+        // re-renders them and the handlers never query the document.
+        if (['ed-hex-input', 'ed-link-input', 'ed-img-url', 'ed-img-alt', 'ed-cols', 'ed-rows'].indexOf(act) !== -1) {
+          state.editor.fields = Object.assign({}, state.editor.fields);
+          state.editor.fields[act] = el && el.value !== undefined ? String(el.value).slice(0, URL_MAX_CHARS) : '';
           return;
         }
         if (act !== 'note-input' && act !== 'tag-input') return;

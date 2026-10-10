@@ -135,6 +135,7 @@ const EXPORT_NAMES = [
   // #58: Drafts rich editor
   'editorKeyFor', 'loadEditor', 'editorPostHtml', 'saveEditor', 'overLimitNotice', 'previewImages',
   'renderEditorPane', 'renderDraftList', 'renderModePill', 'renderPreview', 'teVars', 'EDITOR_MODES',
+  'insertAtCaret', 'renderEditorToolbar', 'renderPicker', 'EDITOR_TOOLS',
   'TORN_COLORS', 'TORN_COLOR_NAMES', 'TORN_EMOJI', 'DRAFT_LANGS', 'FONT_SIZE_MIN', 'FONT_SIZE_MAX',
   'SIZE_PICKS', 'HEADING_PX', 'PASTE_MARKER', 'EDITOR_BG', 'CLEAN_MAX_CHARS', 'URL_MAX_CHARS',
   'mdInline', 'mdBlocks', 'mdToHtml', 'MD_ESCAPABLE',

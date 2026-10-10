@@ -166,6 +166,9 @@ test('every querySelector call site in the source is one of the known ones', () 
     'panel(sel)',
     'panel(sel)',
     'panel(sel)',
+    // #58: the Drafts editor's own textarea, for the selection a toolbar
+    // button applies to.
+    "panel('[data-act=\"draft-text\"]')",
   ].sort());
 });
 

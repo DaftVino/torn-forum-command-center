@@ -45,3 +45,7 @@ test('the Unicode emoji set is single emoji, built from code points', () => {
   assert.ok(api.UNICODE_EMOJI.length >= 36);
   for (const e of api.UNICODE_EMOJI) assert.ok([...e].length <= 2 && e.codePointAt(0) > 0x2000, JSON.stringify(e));
 });
+
+test('insertAtCaret replaces the selection and puts the caret after', () => {
+  assert.deepStrictEqual(api.insertAtCaret('ab', 1, 1, ':grin:'), { text: 'a:grin:b', start: 7, end: 7 });
+});

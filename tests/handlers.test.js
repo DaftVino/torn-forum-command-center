@@ -81,6 +81,20 @@ function renderedActions() {
             const rr = /data-act="([a-z-]+)"/g;
             while ((mm = rr.exec(hh))) actions.add(mm[1]);
           }
+          // #58 Task 11: every picker, both emoji tabs, a fixed image check (so
+          // Insert image renders) and, narrow, the More drawer open.
+          const fixed = { url: 'https://i.imgur.com/x.png', host: 'imgur', status: 'fixed', note: '' };
+          const pickerPatches = ['color', 'size', 'align', 'link', 'image', 'table', 'emoji', 'help']
+            .map((picker) => ({ picker }))
+            .concat([{ picker: 'emoji', emojiTab: 'torn' }, { picker: 'emoji', emojiTab: 'unicode' }, { picker: 'image', imageCheck: fixed }]);
+          for (const patch of pickerPatches) {
+            Object.assign(api.state.editor, { mode: 'source', lang: 'md', moreOpen: narrow, imageCheck: null, emojiTab: 'torn' }, patch);
+            const hp = api.panelHtml(api.buildPanelModel(NOW));
+            let mp;
+            const rp = /data-act="([a-z-]+)"/g;
+            while ((mp = rp.exec(hp))) actions.add(mp[1]);
+          }
+          Object.assign(api.state.editor, { picker: null, imageCheck: null, moreOpen: false, emojiTab: 'torn' });
           Object.assign(api.state.editor, { mode: 'source', dirty: false });
           api.state.draftFocusId = freeMade.id;
           const hf = api.panelHtml(api.buildPanelModel(NOW));
@@ -132,7 +146,8 @@ test('every control the panel renders has a handler', () => {
   const handled = handledActions();
 
   // These carry data only; they are read by valueOf() rather than dispatched.
-  const dataOnly = ['key-input', 'draft-text', 'import-text', 'folder-name', 'ed-name'];
+  const dataOnly = ['key-input', 'draft-text', 'import-text', 'folder-name', 'ed-name',
+    'ed-hex-input', 'ed-link-input', 'ed-img-url', 'ed-img-alt', 'ed-cols', 'ed-rows', 'ed-header'];
 
   const dead = actions.filter((a) => handled.indexOf(a) === -1 && dataOnly.indexOf(a) === -1);
   assert.deepStrictEqual(dead, [], 'controls that render but do nothing: ' + dead.join(', '));

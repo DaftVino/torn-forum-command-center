@@ -232,3 +232,155 @@ test('typing past the draft limit keeps the limit and says so once per crossing'
   assert.strictEqual(warned(), 2, 'again after dropping below and crossing again');
   assert.match(api.panelHtml(api.buildPanelModel(NOW)), /at the 20000-character limit/);
 });
+
+// ---- Task 11: toolbar and pickers ----------------------------------------
+
+function editorAt(text, lang, sel) {
+  const env = loadUserscript({ location: THREAD, now: NOW });
+  const api = drafts(env);
+  api.state.settings.draftLang = lang;
+  api.panelHtml(api.buildPanelModel(NOW));
+  // No panel is mounted in the harness, so captureSelection finds no field and
+  // keeps the selection the editor state already holds: the one set here.
+  Object.assign(api.state.editor, { text, selStart: sel[0], selEnd: sel[1] });
+  return { env, api, h: api.makeHandlers(env.doc, env.win) };
+}
+
+test('Bold wraps the selection in the draft\'s language', () => {
+  const { api, h } = editorAt('hello world', 'md', [6, 11]);
+  h.onAction('ed-mark', el({ 'data-act': 'ed-mark', 'data-mark': 'bold' }));
+  assert.strictEqual(api.state.editor.text, 'hello **world**');
+});
+
+test('a colour from the picker wraps the selection it was opened on', () => {
+  const { api, h } = editorAt('hi there', 'html', [3, 8]);
+  h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'color' }));
+  h.onAction('ed-color', el({ 'data-act': 'ed-color', 'data-value': 'red' }));
+  assert.strictEqual(api.state.editor.text, 'hi <span style="color: var(--te-text-color-red);">there</span>');
+  assert.strictEqual(api.state.editor.picker, null);
+});
+
+// A picker field typed into: the panel's input event, as the browser sends it.
+const typeInto = (h, act, value) => h.onInput(act, Object.assign(el({ 'data-act': act }), { value }));
+
+test('a hard-to-read custom colour asks once, keeps the typed hex across the redraw, then applies', () => {
+  const { api, h } = editorAt('x', 'md', [0, 1]);
+  h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'color' }));
+  typeInto(h, 'ed-hex-input', '#ffd43b');
+  h.onAction('ed-color', el({ 'data-act': 'ed-color', 'data-value': 'custom' }));
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /hard to read on Torn&#39;s light theme|hard to read on Torn's light theme/);
+  assert.match(html, /data-act="ed-hex-input"[^>]*value="#ffd43b"/, 'the redraw keeps what was typed');
+  assert.strictEqual(api.state.editor.text, 'x');
+  h.onAction('ed-color', el({ 'data-act': 'ed-color', 'data-value': 'custom' }));
+  assert.strictEqual(api.state.editor.text, '{#ffd43b}x{/}');
+});
+
+test('picker fields are read from the editor state, never from the page', () => {
+  const { env, api, h } = editorAt('x', 'md', [0, 1]);
+  // Torn's page (or another script) holding an element with the same data-act
+  // must not be read.
+  env.doc.querySelector = (s) => (s === '[data-act="ed-link-input"]' ? { value: 'https://evil.example/' } : null);
+  h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'link' }));
+  typeInto(h, 'ed-link-input', 'https://a.b');
+  h.onAction('ed-link-apply', el({ 'data-act': 'ed-link-apply' }));
+  assert.strictEqual(api.state.editor.text, '[x](https://a.b)');
+});
+
+test('a toolbar edit that would pass the draft limit is refused', () => {
+  const { api, h } = editorAt('y'.repeat(19995), 'md', [0, 19995]);
+  h.onAction('ed-mark', el({ 'data-act': 'ed-mark', 'data-mark': 'bold' }));
+  h.onAction('ed-mark', el({ 'data-act': 'ed-mark', 'data-mark': 'bold' }));
+  h.onAction('ed-mark', el({ 'data-act': 'ed-mark', 'data-mark': 'bold' }));
+  assert.ok(api.state.editor.text.length <= api.DRAFT_MAX_CHARS);
+  assert.ok(api.state.notices.some((n) => /over the 20000 limit/.test(n.text)));
+});
+
+test('the image picker fixes a Drive link and inserts it; a page link shows how to fix it', () => {
+  const { api, h } = editorAt('', 'md', [0, 0]);
+  h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'image' }));
+  typeInto(h, 'ed-img-url', 'https://drive.google.com/file/d/1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h/view?usp=sharing');
+  typeInto(h, 'ed-img-alt', 'pic');
+  h.onAction('ed-img-check', el({ 'data-act': 'ed-img-check' }));
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /thumbnail\?id=1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h&amp;sz=w1000/);
+  assert.match(html, /Anyone with the link/);
+  h.onAction('ed-img-insert', el({ 'data-act': 'ed-img-insert' }));
+  assert.strictEqual(api.state.editor.text, '![pic](https://drive.google.com/thumbnail?id=1GfhII9A5yDKVLFVv0F1SEPivpxvREb-h&sz=w1000)');
+  h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'image' }));
+  typeInto(h, 'ed-img-url', 'https://ibb.co/8P0808s');
+  h.onAction('ed-img-check', el({ 'data-act': 'ed-img-check' }));
+  const html2 = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html2, /Direct link/);
+  assert.doesNotMatch(html2, /data-act="ed-img-insert"/);
+  assert.match(html2, /Insert Image button/);
+});
+
+test('emoji: a Torn emoji inserts its shortcode; the tip names the system picker', () => {
+  const { api, h } = editorAt('a', 'md', [1, 1]);
+  h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'emoji' }));
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /src="\/images\/emotions\/svg\/grin.svg"/);
+  assert.match(html, /Win \+ \./);
+  h.onAction('ed-emoji', el({ 'data-act': 'ed-emoji', 'data-value': 'grin' }));
+  assert.strictEqual(api.state.editor.text, 'a:grin:');
+});
+
+test('Fix image link rewrites the whole draft and says how many', () => {
+  const { api, h } = editorAt('![a](https://imgur.com/AbC12dE)', 'md', [0, 0]);
+  h.onAction('ed-fix-images', el({ 'data-act': 'ed-fix-images' }));
+  assert.strictEqual(api.state.editor.text, '![a](https://i.imgur.com/AbC12dE.png)');
+  assert.ok(api.state.notices.some((n) => /1 image link/.test(n.text)));
+});
+
+test('narrow shows five tools and More; the rest are in the drawer', () => {
+  const { env, api } = editorAt('', 'md', [0, 0]);
+  void env;
+  api.state.narrow = true;
+  let html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /data-act="ed-more"/);
+  assert.doesNotMatch(html, /data-mark="strike"/);
+  api.state.editor.moreOpen = true;
+  html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.match(html, /data-mark="strike"/);
+});
+
+test('a Markdown link percent-encodes the parentheses that would end its destination', () => {
+  const md = editorAt('x', 'md', [0, 1]);
+  md.h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'link' }));
+  typeInto(md.h, 'ed-link-input', 'https://a.b/Foo_(bar)');
+  md.h.onAction('ed-link-apply', el({ 'data-act': 'ed-link-apply' }));
+  assert.strictEqual(md.api.state.editor.text, '[x](https://a.b/Foo_%28bar%29)');
+  // HTML keeps the address as typed: an attribute value has no such syntax.
+  const html = editorAt('x', 'html', [0, 1]);
+  html.h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'link' }));
+  typeInto(html.h, 'ed-link-input', 'https://a.b/Foo_(bar)');
+  html.h.onAction('ed-link-apply', el({ 'data-act': 'ed-link-apply' }));
+  assert.strictEqual(html.api.state.editor.text, '<a href="https://a.b/Foo_(bar)">x</a>');
+});
+
+test('a stored draft changing behind a clean editor keeps the open picker and what was typed in it', () => {
+  const { api, h } = editorAt('x', 'md', [0, 1]);
+  h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'color' }));
+  typeInto(h, 'ed-hex-input', '#ffd43b');
+  h.onAction('ed-color', el({ 'data-act': 'ed-color', 'data-value': 'custom' }));
+  const warn = api.state.editor.pickerWarn;
+  assert.ok(warn, 'the contrast warning is showing');
+  // Autosave (or another tab) stores a new text for this thread.
+  api.state.drafts = api.saveDraft(api.state.drafts, '42', 'from Torn', NOW + 1, '', 'md');
+  const html = api.panelHtml(api.buildPanelModel(NOW + 2));
+  assert.strictEqual(api.state.editor.text, 'from Torn', 'the clean editor shows what is stored');
+  assert.strictEqual(api.state.editor.picker, 'color');
+  assert.strictEqual(api.state.editor.pickerWarn, warn);
+  assert.match(html, /data-act="ed-hex-input"[^>]*value="#ffd43b"/);
+  // The image picker's check result survives the same reload.
+  h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'image' }));
+  typeInto(h, 'ed-img-url', 'https://i.imgur.com/AbC12dE.png');
+  h.onAction('ed-img-check', el({ 'data-act': 'ed-img-check' }));
+  api.state.drafts = api.saveDraft(api.state.drafts, '42', 'again', NOW + 3, '', 'md');
+  api.buildPanelModel(NOW + 4);
+  assert.strictEqual(api.state.editor.text, 'again');
+  assert.strictEqual(api.state.editor.picker, 'image');
+  assert.ok(api.state.editor.imageCheck && api.state.editor.imageCheck.url === 'https://i.imgur.com/AbC12dE.png');
+  assert.strictEqual(api.state.editor.fields['ed-img-url'], 'https://i.imgur.com/AbC12dE.png');
+});
