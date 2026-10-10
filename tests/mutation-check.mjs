@@ -2108,12 +2108,12 @@ const MUTATIONS = [
   {
     name: 'Enter inside an HTML paragraph splits it but drops its alignment',
     suite: 'tests/editor-enter.test.js',
-    apply: (s) => s.replace("      return ctx ? put(ctx.close + '</' + ctx.tag + '>\\n' + ctx.src + ctx.reopen) : null;", "      return ctx ? put(ctx.close + '</' + ctx.tag + '>\\n<' + ctx.tag + '>' + ctx.reopen) : null;"),
+    apply: (s) => s.replace("      return put(ctx.close + '</' + ctx.tag + '>\\n' + ctx.src + ctx.reopen);", "      return put(ctx.close + '</' + ctx.tag + '>\\n<' + ctx.tag + '>' + ctx.reopen);"),
   },
   {
     name: 'Enter inside an HTML paragraph or list item no longer splits it',
     suite: 'tests/editor-enter.test.js',
-    apply: (s) => s.replace("      return ctx ? put(ctx.close + '</' + ctx.tag + '>\\n' + ctx.src + ctx.reopen) : null;", '      return null;'),
+    apply: (s) => s.replace("      return put(ctx.close + '</' + ctx.tag + '>\\n' + ctx.src + ctx.reopen);", '      return null;'),
   },
   {
     name: 'Enter on a Markdown bullet line no longer continues the list',
@@ -2143,7 +2143,7 @@ const MUTATIONS = [
   {
     name: 'Ctrl or Cmd+Enter in the draft field is taken by the editor',
     suite: 'tests/editor-enter.test.js',
-    apply: (s) => s.replace("          if (ev.key !== 'Enter' || ev.ctrlKey || ev.metaKey || ev.altKey) return;", "          if (ev.key !== 'Enter') return;"),
+    apply: (s) => s.replace("          if (ev.ctrlKey || ev.metaKey || ev.altKey) return;\n", ''),
   },
   {
     name: 'an Enter edit takes no Undo snapshot',
@@ -2154,6 +2154,47 @@ const MUTATIONS = [
     name: 'an Enter edit redraws the panel, replacing the field under the caret',
     suite: 'tests/editor-enter.test.js',
     apply: (s) => s.replace('        if (!writeDraftField(el, before, r)) {', '        if (writeDraftField(el, before, r) || true) {'),
+  },
+  // Batch I fix round 1.
+  {
+    name: 'a blank line inside an open top-level paragraph no longer ends it (lines merge for good)',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('          if (gap) {\n            block.html += raw.slice(0, gap.index);', '          if (false) {\n            block.html += raw.slice(0, gap.index);'),
+  },
+  {
+    name: 'Enter reads only the caret line, so a paragraph opened on an earlier line never splits',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('    var head = before.slice(info.open);', "    var head = before.slice(before.lastIndexOf('\\n') + 1);"),
+  },
+  {
+    name: 'the HTML line rule reopens every unclosed inline tag on every line (quadratic)',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('      while (inl.length > LINE_REOPEN_MAX_TAGS || inlChars > LINE_REOPEN_MAX_CHARS) inlChars -= inl.shift().src.length;\n', ''),
+  },
+  {
+    name: 'a phone keyboard line break (beforeinput) is not handled',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("        if (handlers.onDraftEnter(t, false) && typeof ev.preventDefault === 'function') ev.preventDefault();\n      });", '      });'),
+  },
+  {
+    name: 'one Enter is handled twice: keydown and then its beforeinput',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('        if (draftEnterDecided) { draftEnterDecided = false; return; }\n', ''),
+  },
+  {
+    name: 'a beforeinput mark outlives its press, so the next phone Enter is ignored',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace("        if (t && t.getAttribute && t.getAttribute('data-act') === 'draft-text') draftEnterDecided = false;\n", ''),
+  },
+  {
+    name: 'Enter at the end of a heading starts another heading',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('      if (heading && atEnd) {', '      if (false) {'),
+  },
+  {
+    name: 'an Enter edit that reaches the limit does not mark the draft at the limit',
+    suite: 'tests/editor-enter.test.js',
+    apply: (s) => s.replace('        E.atLimit = r.text.length >= DRAFT_MAX_CHARS;\n', ''),
   },
   {
     name: 'an Enter edit past the draft limit is stored anyway',

@@ -18,7 +18,11 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   a `-`, `1.` or `>` line and ends the list or quote on an empty marker. Each
   is one Undo step, edits the field in place (the caret and a phone's
   keyboard stay put), leaves an IME's Enter alone, and ignores Ctrl, Cmd and
-  Alt+Enter. Text mode keeps the browser's Enter.
+  Alt+Enter. Text mode keeps the browser's Enter. A phone keyboard that
+  reports Enter only as a line break (Gboard) gets the same handling. Enter
+  splits a paragraph even when it runs over several lines, Enter at the end
+  of a heading starts a plain paragraph, and a blank line inside a top-level
+  paragraph ends it, so a missed Enter can never merge paragraphs for good.
 - Image link fixer section (#58): "Fix image link" moves from the toolbar to
   the right end of the Save / Insert / Delete row and opens a section with a
   link field, Check (converted link, host note, thumbnail loaded only after

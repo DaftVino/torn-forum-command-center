@@ -173,7 +173,7 @@ test('I2: elsewhere Enter is the browser\'s newline, which the line rule makes a
   assert.strictEqual(enter('html', '<p>ab</p>', 9), null, 'after the closing tag');
   assert.strictEqual(enter('html', 'plain', 2), null, 'loose text');
   assert.strictEqual(enter('html', '<p style="text-align: center;">a</p>', 10), null, 'inside the tag\'s own markup');
-  assert.strictEqual(enter('html', '<p>a\nb</p>', 7), null, 'a paragraph opened on an earlier line');
+  assert.strictEqual(enter('html', '<p>a\nb</p>', 7), null, 'inside the closing tag\'s markup');
 });
 
 test('I2: Shift+Enter in HTML is a line break, <br>, with no newline', () => {
@@ -225,6 +225,78 @@ test('I3: Enter on a line that is only the marker removes it, which ends the lis
   }
   // The emptied line is a gap: the list ended.
   assert.strictEqual(api.postHtml('- a\n', 'md'), '<ul><li>a</li></ul>' + GAP);
+});
+
+// ---- fix round 1: Enter never stops working inside a paragraph ----------------
+
+test('fix 1: Enter inside a paragraph opened on an earlier line still splits it', () => {
+  // A raw newline before </p> (a missed Enter, a paste, an old draft).
+  const src = '<p style="text-align: center;">hello\n</p>';
+  const r = enter('html', src, src.indexOf('</p>'));
+  assert.ok(r, 'the editor still acts');
+  assert.strictEqual(r.text, '<p style="text-align: center;">hello\n</p>\n<p style="text-align: center;"></p>');
+  assert.strictEqual(r.start, r.text.length - 4);
+  const typed = r.text.slice(0, r.start) + 'world' + r.text.slice(r.start);
+  assert.strictEqual(html(typed), '<p style="text-align: center;">hello</p><p style="text-align: center;">world</p>');
+  // Over several lines, with inline elements opened on earlier lines.
+  const multi = '<p><strong>one\ntwo\nthree</strong></p>';
+  assert.strictEqual(enter('html', multi, multi.indexOf('three')).text,
+    '<p><strong>one\ntwo\n</strong></p>\n<p><strong>three</strong></p>');
+  const item = '<ul>\n<li>a\nb</li>\n</ul>';
+  assert.strictEqual(enter('html', item, item.indexOf('b') + 1).text, '<ul>\n<li>a\nb</li>\n<li></li>\n</ul>');
+});
+
+test('fix 1: a blank line inside an open top-level paragraph ends it, so lines can never merge for good', () => {
+  assert.strictEqual(html('<p style="text-align: center;">hello\n\nworld</p>'),
+    '<p style="text-align: center;">hello</p>' + GAP + '<p>world</p>');
+  assert.strictEqual(html('<p>a\n\n\nb\nc</p>'), '<p>a</p>' + GAP + GAP + '<p>b</p><p>c</p>');
+  assert.strictEqual(html('<p>a\n   \nb</p>'), '<p>a</p>' + GAP + '<p>b</p>', 'a line of spaces is blank');
+  assert.strictEqual(html('<h2>T\n\nbody</h2>'), api.cleanTornHtml('<h2>T</h2>') + GAP + '<p>body</p>');
+  // A pasted multi-line paragraph with blank lines.
+  assert.strictEqual(html('<p>first line\nstill first\n\nsecond para\n\nthird</p>'),
+    '<p>first line still first</p>' + GAP + '<p>second para</p>' + GAP + '<p>third</p>');
+  // Only a top-level paragraph: inside a quote or a list a blank line is whitespace.
+  assert.strictEqual(html('<blockquote><p>a\n\nb</p></blockquote>'), '<blockquote><p>a b</p></blockquote>');
+  assert.strictEqual(html('<ul><li>a\n\nb</li></ul>'), '<ul><li>a b</li></ul>');
+  // After the blank line the paragraph is closed, so Enter is the browser's newline.
+  assert.strictEqual(enter('html', '<p>a\n\nb</p>', 8), null);
+  // Preview agrees, with the tap offset on the new line.
+  const src = '<p>a\n\nb</p>';
+  assert.deepStrictEqual(preview('html', src).map((b) => [b.html, b.offset]), [['<p>a</p>', 0], [GAP, 5], ['<p>b</p>', 6]]);
+});
+
+test('fix 1: Enter at the end of a heading starts a plain paragraph', () => {
+  const h = '<p><span style="font-size: 24px;"><strong>Title</strong></span></p>';
+  const r = enter('html', h, h.indexOf('</strong>'));
+  assert.strictEqual(r.text, h + '\n<p></p>');
+  assert.strictEqual(r.start, r.text.length - 4);
+  // In the middle of a heading the heading splits as any paragraph does.
+  assert.strictEqual(enter('html', h, h.indexOf('tle')).text,
+    '<p><span style="font-size: 24px;"><strong>Ti</strong></span></p>\n<p><span style="font-size: 24px;"><strong>tle</strong></span></p>');
+  // Bold text that is not a heading keeps its bold on the new line.
+  const b = '<p><strong>bold</strong></p>';
+  assert.strictEqual(enter('html', b, b.indexOf('</strong>')).text, '<p><strong>bold</strong></p>\n<p><strong></strong></p>');
+});
+
+test('fix 1: unclosed inline tags over thousands of lines stay linear and bounded', () => {
+  const M = api.DRAFT_MAX_CHARS;
+  let spans = '';
+  for (let i = 0; spans.length < M; i += 1) spans += '<span style="color: #' + String(100000 + i).slice(0, 6) + ';">x\n';
+  for (const src of [
+    '<b>x\n'.repeat(M / 5),
+    '<b><i><u><s><em><strong>x\n'.repeat(Math.ceil(M / 27)).slice(0, M),
+    spans.slice(0, M),
+  ]) {
+    const t0 = Date.now();
+    const out = html(src);
+    const pv = preview('html', src);
+    const ms = Date.now() - t0;
+    assert.ok(ms < 2000, 'took ' + ms + 'ms');
+    assert.ok(out.length < 16 * src.length, 'output ' + out.length + ' for ' + src.length + ' typed');
+    assert.strictEqual(pv.map((b) => b.html).join(''), out);
+  }
+  // What is reopened is still right for ordinary nesting.
+  assert.strictEqual(html('<b><i>a\nb</i></b>'), '<p><strong><em>a</em></strong></p><p><strong><em>b</em></strong></p>');
 });
 
 test('I3: other lines, a caret before the marker, and Shift+Enter keep the browser\'s newline', () => {
@@ -418,4 +490,90 @@ test('Insert after typing in HTML with Enter and blank lines keeps the gaps', ()
   ta.selectionStart = ta.selectionEnd = ta.value.length;
   panelOf(env).dispatchEvent({ type: 'input', target: ta });
   assert.strictEqual(a.editorPostHtml(), '<p>one</p><p>two</p>' + GAP + '<p>three</p>');
+});
+
+// ---- fix round 1: runtime ----------------------------------------------------
+
+// The field's beforeinput, as a phone keyboard delivers a line break.
+function beforeInput(env, at, inputType, end) {
+  const ta = fieldOf(env);
+  if (ta.value === undefined) ta.value = env.exports.state.editor.text;
+  ta.selectionStart = at;
+  ta.selectionEnd = end === undefined ? at : end;
+  let prevented = 0;
+  panelOf(env).dispatchEvent({ type: 'beforeinput', inputType, target: ta, preventDefault() { prevented += 1; } });
+  return { ta, prevented };
+}
+const keyup = (env) => panelOf(env).dispatchEvent({ type: 'keyup', key: 'Enter', target: fieldOf(env) });
+
+test('fix 1: Enter after a raw newline inside a paragraph still splits it in the panel', () => {
+  const src = '<p style="text-align: center;">hello\n</p>';
+  const { env, api: a } = bootEditor('html', src);
+  const { ta, prevented } = press(env, src.indexOf('</p>'));
+  assert.strictEqual(prevented, 1);
+  assert.strictEqual(ta.value, '<p style="text-align: center;">hello\n</p>\n<p style="text-align: center;"></p>');
+  assert.strictEqual(a.editorPostHtml(), '<p style="text-align: center;">hello</p><p style="text-align: center;">&nbsp;</p>');
+});
+
+test('fix 1: a pasted multi-line paragraph with blank lines inserts as paragraphs and gaps', () => {
+  const { env, api: a } = bootEditor('html', '');
+  const ta = fieldOf(env);
+  ta.value = '<p>first line\nstill first\n\nsecond para</p>';
+  ta.selectionStart = ta.selectionEnd = ta.value.length;
+  panelOf(env).dispatchEvent({ type: 'input', target: ta });
+  assert.strictEqual(a.editorPostHtml(), '<p>first line still first</p>' + GAP + '<p>second para</p>');
+});
+
+test('phone keyboards: an Enter reported as keyCode 229 is handled by the field\'s beforeinput', () => {
+  const src = '<p>ab</p>';
+  const { env, api: a } = bootEditor('html', src);
+  const down = press(env, 4, { keyCode: 229 });
+  assert.strictEqual(down.prevented, 0, 'the keydown is left alone');
+  const bi = beforeInput(env, 4, 'insertLineBreak');
+  assert.strictEqual(bi.prevented, 1);
+  assert.strictEqual(bi.ta.value, '<p>a</p>\n<p>b</p>');
+  assert.strictEqual(a.state.editor.text, '<p>a</p>\n<p>b</p>');
+  assert.strictEqual(a.state.editor.undo.length, 1, 'one Undo step');
+  keyup(env);
+  // insertParagraph is handled the same way; other input types are not.
+  const { env: env2, api: a2 } = bootEditor('md', '- one');
+  assert.strictEqual(beforeInput(env2, 5, 'insertText').prevented, 0);
+  assert.strictEqual(a2.state.editor.text, '- one');
+  assert.strictEqual(beforeInput(env2, 5, 'insertParagraph').prevented, 1);
+  assert.strictEqual(a2.state.editor.text, '- one\n- ');
+});
+
+test('one Enter is never handled twice: a keydown that decided it leaves its beforeinput alone', () => {
+  // Shift+Enter in Markdown is the browser's newline: its beforeinput must not continue the list.
+  const { env, api: a } = bootEditor('md', '- one');
+  assert.strictEqual(press(env, 5, { shiftKey: true }).prevented, 0);
+  assert.strictEqual(beforeInput(env, 5, 'insertLineBreak').prevented, 0);
+  assert.strictEqual(a.state.editor.text, '- one');
+  keyup(env);
+  // After the press ends, a keyboard that sends only beforeinput is handled again.
+  assert.strictEqual(beforeInput(env, 5, 'insertLineBreak').prevented, 1);
+  assert.strictEqual(a.state.editor.text, '- one\n- ');
+  // Ctrl+Enter inserts nothing, so no beforeinput consumes its mark: the
+  // keyup ends the press, and a later lone line break is handled.
+  const { env: env3, api: a3 } = bootEditor('md', '- one');
+  assert.strictEqual(press(env3, 5, { ctrlKey: true }).prevented, 0);
+  keyup(env3);
+  assert.strictEqual(beforeInput(env3, 5, 'insertLineBreak').prevented, 1);
+  assert.strictEqual(a3.state.editor.text, '- one\n- ');
+  // A keydown the editor handled (no beforeinput follows) leaves no stale mark
+  // for the next press from a phone keyboard.
+  const { env: env2, api: a2 } = bootEditor('html', '<p>ab</p>');
+  assert.strictEqual(press(env2, 4).prevented, 1);
+  press(env2, 12, { keyCode: 229 });
+  assert.strictEqual(beforeInput(env2, 12, 'insertLineBreak').prevented, 1);
+  assert.strictEqual(a2.state.editor.text, '<p>a</p>\n<p></p>\n<p>b</p>');
+});
+
+test('an Enter edit that reaches the limit marks the draft at the limit, as typing does', () => {
+  const big = '<p>' + 'x'.repeat(api.DRAFT_MAX_CHARS - 15) + '</p>';
+  const { env, api: a } = bootEditor('html', big);
+  assert.strictEqual(a.state.editor.atLimit, false);
+  press(env, 5);
+  assert.strictEqual(a.state.editor.text.length, api.DRAFT_MAX_CHARS);
+  assert.strictEqual(a.state.editor.atLimit, true);
 });

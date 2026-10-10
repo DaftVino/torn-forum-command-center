@@ -589,7 +589,9 @@ Walk on Torn PDA and on desktop, signed in to a real account.
       list. Text mode: each line a paragraph, an empty line a gap. Check with
       a phone keyboard (Torn PDA, Gboard and iOS) and with an IME (Japanese or
       Chinese input): composing Enter picks the candidate and adds nothing;
-      after Enter the keyboard stays up and the caret stays in view.
+      after Enter the keyboard stays up and the caret stays in view. With
+      Gboard, Enter inside `<p>ab</p>` splits it exactly once. Enter at the
+      end of a `# Title` heading switched to HTML starts a plain paragraph.
 
 ## Sign-off
 

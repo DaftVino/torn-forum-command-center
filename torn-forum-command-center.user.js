@@ -4098,15 +4098,26 @@
   // address).
   function lineContentTag(tag) { return VOID_TAGS[tag] === true || tag === 'a'; }
 
+  // An inline element open at a line break is reopened on each later line, so
+  // the reopened set is bounded (oldest dropped first): a hostile draft of
+  // unclosed tags over thousands of lines stays linear.
+  var LINE_REOPEN_MAX_TAGS = 8;
+  var LINE_REOPEN_MAX_CHARS = 256;
+
   // The typed source cut into top-level pieces, each with the offset it starts
   // at: a block as typed, a line of loose text wrapped in <p>, or a gap.
-  function htmlLineSegments(src) {
+  // A blank line inside an open top-level paragraph or heading ends it, so a
+  // newline that missed the editor's Enter can never merge paragraphs for
+  // good. With info, info.open is where the top-level block still open at the
+  // end of src starts, or -1.
+  function htmlLineSegments(src, info) {
     var s = String(src || '').replace(/\r\n?/g, '\n').slice(0, CLEAN_MAX_CHARS);
     if (s === '') return [];
     var toks = tokenizeHtml(s);
     var segs = [];
     var block = null; // the top-level block being copied: { start, html, stack }
     var inl = [];     // inline elements open at the top level: { tag, src }
+    var inlChars = 0;
     var run = null;   // the loose text of the current line: { start, html, content }
     var lineStart = 0;
     var lineUsed = false;
@@ -4135,6 +4146,30 @@
       segs.push({ html: block.html, offset: block.start });
       block = null;
     };
+    var setInl = function (n) {
+      inl.length = n;
+      inlChars = 0;
+      for (var k = 0; k < inl.length; k += 1) inlChars += inl[k].src.length;
+    };
+    var pushInl = function (tag, attrs, html) {
+      // Only what the cleaner keeps is worth reopening, and only once: the
+      // same tag nested in itself looks no different.
+      if (html.length > LINE_REOPEN_MAX_CHARS || !cleanElementFor(tag, attrs)) return;
+      for (var k = 0; k < inl.length; k += 1) if (inl[k].src === html) return;
+      inl.push({ tag: tag, src: html });
+      inlChars += html.length;
+      while (inl.length > LINE_REOPEN_MAX_TAGS || inlChars > LINE_REOPEN_MAX_CHARS) inlChars -= inl.shift().src.length;
+    };
+    var topText = function (text, pos) {
+      var pieces = text.split('\n');
+      var p = pos;
+      for (var k = 0; k < pieces.length; k += 1) {
+        var piece = pieces[k];
+        if (/[^ \t\f]/.test(piece)) { runAdd(p, piece, true); lineUsed = true; } else if (run) run.html += piece;
+        p += piece.length;
+        if (k < pieces.length - 1) { endLine(p + 1); p += 1; }
+      }
+    };
     var seen = 0; // where the last token ended: anything between is a comment
     for (var i = 0; i < toks.length; i += 1) {
       var t = toks[i];
@@ -4151,6 +4186,14 @@
             || ((t.tag === 'td' || t.tag === 'th') && (top === 'td' || top === 'th'))
             || (t.tag === 'tr' && top === 'tr')) st.pop();
           if (!st.length) endBlock();
+        } else if (t.type === 'text' && !t.raw && st.length === 1 && (st[0] === 'p' || HEADING_TAGS[st[0]])) {
+          var gap = /\n[ \t\f]*\n/.exec(raw);
+          if (gap) {
+            block.html += raw.slice(0, gap.index);
+            endBlock();
+            topText(raw.slice(gap.index), t.pos + gap.index);
+            continue;
+          }
         } else if (t.type === 'close') {
           var at = st.lastIndexOf(t.tag);
           if (at !== -1) st.length = at;
@@ -4164,17 +4207,7 @@
           continue;
         }
       }
-      if (t.type === 'text') {
-        var pieces = raw.split('\n');
-        var p = t.pos;
-        for (var k = 0; k < pieces.length; k += 1) {
-          var piece = pieces[k];
-          if (/[^ \t\f]/.test(piece)) { runAdd(p, piece, true); lineUsed = true; } else if (run) run.html += piece;
-          p += piece.length;
-          if (k < pieces.length - 1) { endLine(p + 1); p += 1; }
-        }
-        continue;
-      }
+      if (t.type === 'text') { topText(raw, t.pos); continue; }
       lineUsed = true;
       if (t.type === 'open' && (LINE_BLOCK_TAGS[t.tag] || DROP_WITH_CONTENT[t.tag])) {
         flushRun();
@@ -4184,7 +4217,7 @@
       }
       if (t.type === 'open') {
         runAdd(t.pos, raw, lineContentTag(t.tag));
-        if (!t.selfClose) inl.push({ tag: t.tag, src: raw });
+        if (!t.selfClose) pushInl(t.tag, t.attrs, raw);
         continue;
       }
       // A close tag at the top level ends the inline elements it closes; a
@@ -4192,11 +4225,12 @@
       for (var c = inl.length - 1; c >= 0; c -= 1) {
         if (inl[c].tag !== t.tag) continue;
         if (run) run.html += closers(c);
-        inl.length = c;
+        setInl(c);
         break;
       }
     }
     if (s.length > seen && !block) lineUsed = true;
+    if (info) info.open = block ? block.start : -1;
     if (block) endBlock();
     endLine(s.length);
     return segs;
@@ -5359,10 +5393,17 @@
     return { text: next, start: caret, end: caret };
   }
 
-  // The paragraph or list item the caret is inside on its own line, from the
-  // line's text before the caret: its opening tag as typed, and the inline
-  // elements open inside it, to close before the break and reopen after.
-  function enterContext(head) {
+  // The paragraph or list item the caret is inside, from the text before the
+  // caret: its opening tag as typed, and the inline elements open inside it,
+  // to close before the break and reopen after. It is read from the start of
+  // the top-level block still open at the caret (by the same line rule
+  // Preview and Insert use), not from the caret's line, so a paragraph that
+  // runs over several lines still splits.
+  function enterContext(before) {
+    var info = {};
+    htmlLineSegments(before, info);
+    if (info.open < 0) return null;
+    var head = before.slice(info.open);
     var toks = tokenizeHtml(head);
     var stack = [];
     for (var i = 0; i < toks.length; i += 1) {
@@ -5376,7 +5417,7 @@
       if (stack[j].tag !== 'p' && stack[j].tag !== 'li') continue;
       var inner = stack.slice(j + 1);
       return {
-        tag: stack[j].tag, src: stack[j].src,
+        tag: stack[j].tag, src: stack[j].src, inner: inner.slice(),
         reopen: inner.map(function (x) { return x.src; }).join(''),
         close: inner.reverse().map(function (x) { return '</' + x.tag + '>'; }).join(''),
       };
@@ -5408,8 +5449,23 @@
       if (shift) return put('<br>');
       // The caret inside a tag's own markup: the browser's newline.
       if (head.lastIndexOf('<') > head.lastIndexOf('>')) return null;
-      var ctx = enterContext(head);
-      return ctx ? put(ctx.close + '</' + ctx.tag + '>\n' + ctx.src + ctx.reopen) : null;
+      var ctx = enterContext(before.replace(/\r\n?/g, '\n'));
+      if (!ctx) return null;
+      // Enter at the end of a heading (a size span holding bold) starts a
+      // plain paragraph, not another heading.
+      var closing = /^(?:<\/[a-zA-Z][a-zA-Z0-9]*[ \t]*>)*/.exec(after)[0];
+      var atEnd = /<\/p[ \t]*>/i.test(closing) || /^[ \t]*(\n|$)/.test(after.slice(closing.length));
+      var heading = ctx.tag === 'p' && ctx.inner.length === 2 && ctx.inner[0].tag === 'span'
+        && /font-size/i.test(ctx.inner[0].src) && (ctx.inner[1].tag === 'strong' || ctx.inner[1].tag === 'b');
+      if (heading && atEnd) {
+        // The heading's own closing tags after the caret are replaced, so the
+        // new paragraph holds none of them.
+        var pEnd = /<\/p[ \t]*>/i.exec(closing);
+        var ins = ctx.close + '</p>\n<p>';
+        var c = before.length + ins.length;
+        return { text: before + ins + (pEnd ? '</p>' : '') + after.slice(pEnd ? pEnd.index + pEnd[0].length : closing.length), start: c, end: c };
+      }
+      return put(ctx.close + '</' + ctx.tag + '>\n' + ctx.src + ctx.reopen);
     }
     if (shift) return null;
     var nl = after.indexOf('\n');
@@ -9660,6 +9716,9 @@
   var PRESS_FLUSH_MS = 300;
   var pressTimer = null;
   var pressWinBound = false;
+  // #58 round 2: a keydown in the draft field already decided this Enter, so
+  // the beforeinput of the same press is not handled twice.
+  var draftEnterDecided = false;
 
   // #58 B1: a tap anywhere in the Preview edits there. The nearest preview
   // block above the tapped node (a paragraph, a bold run, an image inside
@@ -9966,13 +10025,20 @@
       // #58 round 2: in the draft field, Enter keeps paragraphs (editorEnter).
       // A real key on this script's own textarea, never a synthetic event; the
       // browser's newline is cancelled only when the editor makes the edit.
+      // A phone keyboard (Gboard) often reports Enter as keyCode 229, so the
+      // field's beforeinput line break is handled too. A keydown that already
+      // decided an Enter (handled, or left to the browser) marks it, and the
+      // beforeinput that follows the same press is then left alone.
       panel.addEventListener('keydown', function (ev) {
         var t = ev && ev.target;
         var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
         if (act === 'draft-text') {
+          draftEnterDecided = false;
           // An IME's Enter accepts a candidate; Ctrl, Cmd or Alt+Enter is not typing.
           if (ev.isComposing === true || ev.keyCode === 229) return;
-          if (ev.key !== 'Enter' || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+          if (ev.key !== 'Enter') return;
+          draftEnterDecided = true;
+          if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
           if (typeof handlers.onDraftEnter !== 'function') return;
           if (handlers.onDraftEnter(t, ev.shiftKey === true) && typeof ev.preventDefault === 'function') ev.preventDefault();
           return;
@@ -9986,6 +10052,19 @@
         if (typeof handlers.onAction !== 'function') return;
         if (typeof ev.preventDefault === 'function') ev.preventDefault();
         handlers.onAction(key === 'Enter' ? 'editor-save' : 'editor-cancel', editorButtonFor(panel, t, key === 'Enter'));
+      });
+      panel.addEventListener('beforeinput', function (ev) {
+        var t = ev && ev.target;
+        var act = t && t.getAttribute ? t.getAttribute('data-act') : null;
+        if (act !== 'draft-text') return;
+        if (ev.inputType !== 'insertLineBreak' && ev.inputType !== 'insertParagraph') return;
+        if (draftEnterDecided) { draftEnterDecided = false; return; }
+        if (typeof handlers.onDraftEnter !== 'function') return;
+        if (handlers.onDraftEnter(t, false) && typeof ev.preventDefault === 'function') ev.preventDefault();
+      });
+      panel.addEventListener('keyup', function (ev) {
+        var t = ev && ev.target;
+        if (t && t.getAttribute && t.getAttribute('data-act') === 'draft-text') draftEnterDecided = false;
       });
       panel.addEventListener('input', function (ev) {
         var t = ev && ev.target;
@@ -11163,6 +11242,7 @@
         pushUndo(E);
         E.text = r.text; E.selStart = r.start; E.selEnd = r.end;
         E.dirty = true;
+        E.atLimit = r.text.length >= DRAFT_MAX_CHARS;
         lastSelField = el;
         if (!writeDraftField(el, before, r)) { state.focusIntent = [attrSel('data-act', 'draft-text')]; redraw(); }
         return true;

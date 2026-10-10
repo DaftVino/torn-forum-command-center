@@ -115,7 +115,8 @@ button yourself.
   outside a tag is a paragraph; Enter inside `<p ...>` splits it and keeps
   its alignment, Enter inside `<li>` starts a new item, and Shift+Enter is a
   line break (`<br>`). Inside an open list, table or quote a new line is only
-  a space, so a list can be typed over several lines. In Markdown, Enter on a
+  a space, so a list can be typed over several lines; an empty line inside a
+  paragraph ends the paragraph. In Markdown, Enter on a
   `- item`, `1. item` or `> quote` line continues the list or quote, and
   Enter on a line holding only the marker ends it.
 - **Help key.** The `?` button opens a compact key of what you type and what
