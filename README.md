@@ -116,8 +116,8 @@ button yourself.
   cannot be rewritten, so the editor says how to copy the direct image address.
   Discord links expire and plain http links are refused, and unsafe hosts are
   refused.
-- **Default editor.** Settings, Drafts, Default editor: Markdown (the default),
-  HTML or Text. It applies to new drafts only.
+- **Default editor.** In Settings, "Default editor for new drafts": Markdown
+  (the default), HTML or Text. It applies to new drafts only.
 
 ### Reactions, karma, and badges
 

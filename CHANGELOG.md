@@ -32,8 +32,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   into a hidden Report reason box since Torn's editor change (#60). Insert
   adds to what is already in the editor and never replaces it, and you
   still press Post yourself.
-- Autosave reads Torn's editor again, and never overwrites a draft you
-  wrote in the panel.
+- Autosave reads Torn's editor again, and never overwrites a Markdown or
+  Text draft you wrote in the panel.
 
 ## [0.2.2] - 2026-10-09
 

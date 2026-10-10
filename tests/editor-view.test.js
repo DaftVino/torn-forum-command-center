@@ -401,3 +401,123 @@ test('Settings offers the Default editor, and a change applies to new drafts onl
   api.panelHtml(api.buildPanelModel(NOW));
   assert.strictEqual(api.state.editor.lang, 'md', 'the saved draft keeps its own mode');
 });
+
+// ---- final review fixes (#58) ---------------------------------------------
+
+const HTML_TWO = '<p>first</p>\n<p style="text-align: right;">second</p>';
+
+test('ed-align in HTML aligns the selected paragraphs in place', () => {
+  const { api, h } = editorAt(HTML_TWO, 'html', [0, HTML_TWO.length]);
+  h.onAction('ed-align', el({ 'data-act': 'ed-align', 'data-value': 'center' }));
+  assert.strictEqual(api.editorPostHtml(), '<p style="text-align: center;">first</p><p style="text-align: center;">second</p>');
+});
+
+test('ed-quote in HTML quotes the paragraphs without nesting them', () => {
+  const { api, h } = editorAt(HTML_TWO, 'html', [0, HTML_TWO.length]);
+  h.onAction('ed-quote', el({ 'data-act': 'ed-quote' }));
+  assert.strictEqual(api.editorPostHtml(), '<blockquote><p>first</p><p style="text-align: right;">second</p></blockquote>');
+});
+
+test('Bold across two HTML paragraphs keeps them two', () => {
+  const { api, h } = editorAt(HTML_TWO, 'html', [0, HTML_TWO.length]);
+  h.onAction('ed-mark', el({ 'data-act': 'ed-mark', 'data-mark': 'bold' }));
+  assert.strictEqual(api.editorPostHtml(), '<p><strong>first</strong></p><p style="text-align: right;"><strong>second</strong></p>');
+});
+
+test('Reset all closes the open free draft; Save after it stores nothing and says so', () => {
+  const env = loadUserscript({ location: FORUMS_LOCATION, now: NOW });
+  const api = drafts(env);
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onAction('draft-new', el({ 'data-act': 'draft-new' }));
+  const key = api.state.draftFocusId;
+  api.panelHtml(api.buildPanelModel(NOW));
+  h.onInput('draft-text', Object.assign(el({ 'data-act': 'draft-text', 'data-id': key }), { value: 'old words', selectionStart: 0, selectionEnd: 0 }));
+  h.onAction('reset-all', el({ 'data-act': 'reset-all' }));
+  assert.strictEqual(api.state.draftFocusId, null);
+  assert.strictEqual(api.state.editor.key, null);
+  assert.strictEqual(api.state.editor.text, '');
+  assert.strictEqual(api.state.editor.dirty, false);
+  api.state.settings.view = 'drafts';
+  const html = api.panelHtml(api.buildPanelModel(NOW));
+  assert.doesNotMatch(html, new RegExp('data-act="draft-text" data-id="' + key + '"'));
+  assert.deepStrictEqual(Object.keys(api.state.drafts.free || {}), []);
+  // A Save carrying the old draft's id (a stale button) stores nothing and
+  // never claims it saved.
+  h.onAction('draft-save', el({ 'data-act': 'draft-save', 'data-id': key }));
+  assert.strictEqual(api.draftFor(api.state.drafts, key), null);
+  assert.ok(!api.state.notices.some((n) => /Draft saved/.test(n.text)));
+});
+
+test('Save on a free draft that no longer exists warns, keeps the text dirty, and stores nothing', () => {
+  const env = loadUserscript({ location: FORUMS_LOCATION, now: NOW });
+  const api = drafts(env);
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onAction('draft-new', el({ 'data-act': 'draft-new' }));
+  const key = api.state.draftFocusId;
+  api.panelHtml(api.buildPanelModel(NOW));
+  // The draft goes behind the open editor (another tab, an import).
+  api.state.drafts = api.deleteFreeDraft(api.state.drafts, key);
+  h.onInput('draft-text', Object.assign(el({ 'data-act': 'draft-text', 'data-id': key }), { value: 'typed', selectionStart: 0, selectionEnd: 0 }));
+  h.onAction('draft-save', el({ 'data-act': 'draft-save', 'data-id': key }));
+  assert.strictEqual(api.draftFor(api.state.drafts, key), null);
+  assert.strictEqual(api.state.editor.dirty, true);
+  assert.ok(!api.state.notices.some((n) => /Draft saved/.test(n.text)));
+  assert.ok(api.state.notices.some((n) => n.kind === 'warn' && /no longer exists/.test(n.text)));
+});
+
+test('a dirty thread draft does not come back after Reset all and a navigation', () => {
+  const env = loadUserscript({ location: THREAD, now: NOW });
+  const api = drafts(env);
+  api.panelHtml(api.buildPanelModel(NOW));
+  const h = api.makeHandlers(env.doc, env.win);
+  h.onInput('draft-text', Object.assign(el({ 'data-act': 'draft-text', 'data-id': '42' }), { value: 'unsaved', selectionStart: 0, selectionEnd: 0 }));
+  h.onAction('reset-all', el({ 'data-act': 'reset-all' }));
+  api.state.settings.view = 'drafts';
+  api.panelHtml(api.buildPanelModel(NOW));
+  api.state.route = api.parseForumRoute(FORUMS_LOCATION);
+  api.panelHtml(api.buildPanelModel(NOW));
+  assert.strictEqual(api.draftFor(api.state.drafts, '42'), null);
+});
+
+test('a pending Text-switch question does not survive another mode choice', () => {
+  const { api, h } = editorAt('**b**', 'md', [0, 0]);
+  h.onAction('ed-mode', el({ 'data-act': 'ed-mode', 'data-mode': 'text' }));
+  assert.strictEqual(api.state.editor.confirmText, 'md');
+  h.onAction('ed-mode', el({ 'data-act': 'ed-mode', 'data-mode': 'preview' }));
+  assert.strictEqual(api.state.editor.confirmText, null);
+  h.onAction('ed-mode', el({ 'data-act': 'ed-mode', 'data-mode': 'text' }));
+  h.onAction('ed-mode', el({ 'data-act': 'ed-mode', 'data-mode': 'md' }));
+  assert.strictEqual(api.state.editor.confirmText, null);
+  assert.doesNotMatch(api.panelHtml(api.buildPanelModel(NOW)), /Plain text drops the formatting/);
+});
+
+test('changing the image address drops the old check, so Insert never inserts an old URL', () => {
+  const { api, h } = editorAt('', 'md', [0, 0]);
+  h.onAction('ed-picker', el({ 'data-act': 'ed-picker', 'data-picker': 'image' }));
+  typeInto(h, 'ed-img-url', 'https://i.imgur.com/AbC12dE.png');
+  h.onAction('ed-img-check', el({ 'data-act': 'ed-img-check' }));
+  assert.ok(api.state.editor.imageCheck);
+  typeInto(h, 'ed-img-url', 'https://i.imgur.com/Other99.png');
+  assert.strictEqual(api.state.editor.imageCheck, null);
+  h.onAction('ed-img-insert', el({ 'data-act': 'ed-img-insert' }));
+  assert.strictEqual(api.state.editor.text, '');
+  assert.ok(api.state.notices.some((n) => /Check the image link first/.test(n.text)));
+});
+
+test('Copy reports through the guarded redraw: it never lands on a player typing', async () => {
+  const env = loadUserscript({ location: THREAD, now: NOW });
+  const api = drafts(env);
+  const handlers = api.makeHandlers(env.doc, env.win);
+  api.draw(env.doc, env.win, handlers, true);
+  const panel = env.doc.getElementById('tfcc-panel');
+  const count = () => panel.renderCount || 0;
+  handlers.onAction('draft-copy', el({ 'data-act': 'draft-copy', 'data-id': '42' }));
+  const input = env.makeElement('textarea');
+  input.setAttribute('data-act', 'draft-text');
+  env.doc.activeElement = input;
+  panel.contains = () => true;
+  const before = count();
+  await new Promise((r) => setImmediate(r));
+  assert.ok(api.state.notices.some((n) => /Post copied/.test(n.text)));
+  assert.strictEqual(count(), before, 'the copy result forced a redraw over the typing');
+});

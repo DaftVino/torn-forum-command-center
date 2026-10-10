@@ -4327,7 +4327,7 @@
       var h = /^(#{1,3})[ \t]+(.*)$/.exec(line);
       if (h && h[2].trim()) {
         out.push({ line: start, html: '<p' + alignAttr() + '><span style="font-size: ' + HEADING_PX[h[1].length]
-          + 'px;"><strong>' + mdInline(h[2]) + '</strong></span></p>' });
+          + 'px;"><strong>' + mdInline(h[2].trim()) + '</strong></span></p>' });
         continue;
       }
       if (BLOCK_HTML_LINE.test(line)) { out.push({ line: start, html: line }); continue; }
@@ -4916,13 +4916,71 @@
     }
   }
 
+  // A block tag in HTML source. An inline mark never spans one, so a selection
+  // across two paragraphs is marked inside each, and the paragraphs stay two.
+  var HTML_BLOCK_TAG = /<\/?(?:p|h[1-6]|li|ul|ol|blockquote|table|thead|tbody|tfoot|tr|td|th|div)(?:\s[^>]*)?>/gi;
+
   function applyMark(lang, text, start, end, mark, value) {
     var pair = markPair(lang, mark, value);
     var placeholder = mark === 'link' ? 'link text' : 'text';
-    return wrapSelection(text, start, end, pair[0], pair[1], placeholder);
+    var t = String(text || '');
+    var s = clampSel(t, start, end);
+    var sel = t.slice(s[0], s[1]);
+    HTML_BLOCK_TAG.lastIndex = 0;
+    if (lang !== 'html' || s[0] === s[1] || !HTML_BLOCK_TAG.test(sel)) {
+      return wrapSelection(t, s[0], s[1], pair[0], pair[1], placeholder);
+    }
+    var out = '';
+    var last = 0;
+    var wrap = function (part) { return part.trim() === '' ? part : pair[0] + part + pair[1]; };
+    HTML_BLOCK_TAG.lastIndex = 0;
+    var m;
+    while ((m = HTML_BLOCK_TAG.exec(sel)) !== null) {
+      out += wrap(sel.slice(last, m.index)) + m[0];
+      last = m.index + m[0].length;
+    }
+    out += wrap(sel.slice(last));
+    return { text: t.slice(0, s[0]) + out + t.slice(s[1]), start: s[0], end: s[0] + out.length };
   }
 
-  // Quote and alignment act on whole lines.
+  var HTML_P_LINE = /^\s*<(?:p|h[1-6])(?:\s[^>]*)?>/i;
+  var HTML_BLOCK_LINE = /^\s*<(?:p|h[1-6]|ul|ol|blockquote|table|div)(?:\s[^>]*)?>/i;
+  var HTML_P_OPEN = /<(p|h[1-6])((?:\s[^>]*)?)>/gi;
+
+  // Sets text-align on each paragraph opening tag in a line, replacing any it
+  // had.
+  function alignOpenTag(line, value) {
+    return line.replace(HTML_P_OPEN, function (all, tag, attrs) {
+      var decl = 'text-align: ' + value + ';';
+      var sm = /\sstyle\s*=\s*("([^"]*)"|'([^']*)')/i.exec(attrs);
+      if (!sm) return '<' + tag + attrs + ' style="' + decl + '">';
+      var kept = String(sm[2] !== undefined ? sm[2] : sm[3]).split(';')
+        .filter(function (d) { return d.trim() !== '' && !/^\s*text-align\s*:/i.test(d); })
+        .map(function (d) { return d.trim() + ';'; });
+      var style = [decl].concat(kept).join(' ');
+      return '<' + tag + attrs.slice(0, sm.index) + ' style="' + style + '"' + attrs.slice(sm.index + sm[0].length) + '>';
+    });
+  }
+
+  // HTML lines, split into block lines and runs of loose text between them.
+  function htmlLineGroups(body, isBlock) {
+    var groups = [];
+    body.split('\n').forEach(function (l) {
+      var block = isBlock(l);
+      var prev = groups[groups.length - 1];
+      if (!block && prev && !prev.block) prev.lines.push(l);
+      else groups.push({ block: block, lines: [l] });
+    });
+    return groups;
+  }
+
+  function looseRun(lines) {
+    return lines.map(function (l) { return l.trim() === '' ? '' : l; }).join('\n');
+  }
+
+  // Quote and alignment act on whole lines. In HTML a line that is already a
+  // paragraph is aligned in place or quoted as it is, never put inside another
+  // paragraph; loose text is wrapped in one.
   function applyBlockMark(lang, text, start, end, mark, value) {
     var t = String(text || '');
     var s = clampSel(t, start, end);
@@ -4933,11 +4991,20 @@
       replaced = mark === 'quote'
         ? body.split('\n').map(function (l) { return l.trim() === '' ? '>' : '> ' + l; }).join('\n')
         : ':::' + value + '\n' + body + '\n:::';
+    } else if (mark === 'quote') {
+      replaced = '<blockquote>' + htmlLineGroups(body, function (l) { return HTML_BLOCK_LINE.test(l); })
+        .map(function (g) {
+          if (g.block) return g.lines[0].trim();
+          var run = looseRun(g.lines);
+          return run.trim() === '' && body.trim() !== '' ? '' : '<p>' + run + '</p>';
+        }).join('') + '</blockquote>';
     } else {
-      var paras = body.split('\n').map(function (l) { return l.trim() === '' ? '' : l; }).join('\n');
-      replaced = mark === 'quote'
-        ? '<blockquote><p>' + paras + '</p></blockquote>'
-        : '<p style="text-align: ' + value + ';">' + paras + '</p>';
+      replaced = htmlLineGroups(body, function (l) { return HTML_P_LINE.test(l); })
+        .map(function (g) {
+          if (g.block) return alignOpenTag(g.lines[0], value);
+          var run = looseRun(g.lines);
+          return run.trim() === '' && body.trim() !== '' ? run : '<p style="text-align: ' + value + ';">' + run + '</p>';
+        }).join('\n');
     }
     var next = t.slice(0, b[0]) + replaced + t.slice(b[1]);
     return { text: next, start: b[0], end: b[0] + replaced.length };
@@ -8180,15 +8247,20 @@
   function editorPostHtml() { return postHtml(state.editor.text, state.editor.lang); }
 
   // Saves the open draft. A blank thread draft is deleted, as before; a free
-  // draft keeps its name even when empty.
+  // draft keeps its name even when empty. Returns whether it stored: a free
+  // draft that no longer exists (deleted, or gone in Reset all) is not
+  // recreated, and the editor stays dirty so the text is not taken for saved.
   function saveEditor(now) {
     var e = state.editor;
-    if (!e.key) return;
-    if (/^n[0-9]+$/.test(e.key)) state.drafts = saveFreeDraft(state.drafts, e.key, e.text, now, e.name, e.lang);
-    else state.drafts = saveDraft(state.drafts, e.key, e.text, now, '', e.lang);
+    if (!e.key) return false;
+    if (/^n[0-9]+$/.test(e.key)) {
+      if (!state.drafts.free || !state.drafts.free[e.key]) return false;
+      state.drafts = saveFreeDraft(state.drafts, e.key, e.text, now, e.name, e.lang);
+    } else state.drafts = saveDraft(state.drafts, e.key, e.text, now, '', e.lang);
     e.dirty = false;
     e.src = draftSig(draftFor(state.drafts, e.key));
     persist('drafts');
+    return true;
   }
 
   // Spec section 4a: nothing is ever silently cut. An action whose result
@@ -10010,6 +10082,8 @@
         if (act === 'ed-mode') {
           var mode = el.getAttribute('data-mode');
           var ed = state.editor;
+          // Any mode choice answers a pending Text-switch question.
+          ed.confirmText = null;
           if (mode === 'preview') { ed.mode = 'preview'; ed.picker = null; redraw(); return; }
           if (DRAFT_LANGS.indexOf(mode) === -1) return;
           if (mode === ed.lang) { ed.mode = 'source'; redraw(); return; }
@@ -10091,7 +10165,8 @@
         }
         if (act === 'ed-img-insert') {
           var ic = E.imageCheck;
-          if (!ic || (ic.status !== 'ok' && ic.status !== 'fixed')) return;
+          if (!ic) { notice('Check the image link first.', 'warn'); redraw(); return; }
+          if (ic.status !== 'ok' && ic.status !== 'fixed') return;
           applyEdit(insertAtCaret(E.text, E.selStart, E.selEnd, imageSnippet(E.lang, ic.url, String(field('ed-img-alt', '')))), now); return;
         }
         if (act === 'ed-table-insert') {
@@ -10123,7 +10198,11 @@
         }
         if (act === 'draft-edit' && id) { state.draftFocusId = id; state.settings.view = 'drafts'; redraw(); return; }
         if (act === 'draft-save' && id) {
-          if (state.editor.key === id) saveEditor(now);
+          // Saved only if it stored: an open draft is written now; one not open
+          // must still exist.
+          if (state.editor.key === id ? !saveEditor(now) : !draftFor(state.drafts, id)) {
+            notice('This draft no longer exists. Copy your text, then use + New draft.', 'warn'); redraw(); return;
+          }
           recompute(now); notice('Draft saved.', 'info'); redraw(); return;
         }
         if (act === 'draft-delete' && id) {
@@ -10136,7 +10215,8 @@
           var cd = state.editor.key === id ? null : draftFor(state.drafts, id);
           copyPost(doc, win, cd ? postHtml(cd.text, draftLangOf(cd)) : editorPostHtml(), function (r) {
             notice(r.ok ? 'Post copied. Paste it into Torn\'s reply box.' : 'Copy failed. Switch to HTML, select the text and copy it yourself.', r.ok ? 'info' : 'warn');
-            redraw();
+            // The copy finishes later: redraw through the guarded path.
+            if (isForumsPage(win.location)) quietRedraw();
           });
           return;
         }
@@ -10225,6 +10305,9 @@
           // A real reset: no backfill, nothing re-awarded until a new event earns it.
           state.badges = freshBadges(); state.badgeShelfOpen = false; state.badgeCatalogueOpen = false;
           state.badgeToast = null; state.dwell = freshDwell();
+          // The open editor goes too: its draft is gone, and a dirty one must
+          // not be saved back on the next draw or navigation.
+          state.draftFocusId = null; loadEditor(null, now);
           persist('settings'); persist('organizer'); persist('drafts'); persist('feed'); persist('postCache');
           persist('mine');
           persist('badges');
@@ -10371,6 +10454,8 @@
         if (['ed-hex-input', 'ed-link-input', 'ed-img-url', 'ed-img-alt', 'ed-cols', 'ed-rows'].indexOf(act) !== -1) {
           state.editor.fields = Object.assign({}, state.editor.fields);
           state.editor.fields[act] = el && el.value !== undefined ? String(el.value).slice(0, URL_MAX_CHARS) : '';
+          // A changed address needs a new check: Insert never uses an old one.
+          if (act === 'ed-img-url') state.editor.imageCheck = null;
           return;
         }
         if (act !== 'note-input' && act !== 'tag-input') return;

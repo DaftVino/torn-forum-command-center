@@ -1887,6 +1887,60 @@ const MUTATIONS = [
     suite: 'tests/editor-view.test.js',
     apply: (s) => s.replace('          if (converted.length > DRAFT_MAX_CHARS) { overLimitNotice(converted.length); redraw(); return; }\n', ''),
   },
+
+  // ---- #58 final review: HTML-mode blocks and Reset all ----------------------
+  {
+    name: 'HTML Align wraps a paragraph inside another paragraph again',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace('          if (g.block) return alignOpenTag(g.lines[0], value);',
+      "          if (g.block) return '<p style=\"text-align: ' + value + ';\">' + g.lines[0] + '</p>';"),
+  },
+  {
+    name: 'HTML Quote puts each paragraph inside another paragraph again',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace('          if (g.block) return g.lines[0].trim();', "          if (g.block) return '<p>' + g.lines[0].trim() + '</p>';"),
+  },
+  {
+    name: 'an inline mark across two paragraphs merges them into one',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace("    if (lang !== 'html' || s[0] === s[1] || !HTML_BLOCK_TAG.test(sel)) {", '    if (true) {'),
+  },
+  {
+    name: 'a Markdown heading keeps its trailing space inside the bold',
+    suite: 'tests/editor-ops.test.js',
+    apply: (s) => s.replace("mdInline(h[2].trim()) + '</strong>", "mdInline(h[2]) + '</strong>"),
+  },
+  {
+    name: 'Reset all leaves the old draft open in the editor',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('          state.draftFocusId = null; loadEditor(null, now);\n', ''),
+  },
+  {
+    name: 'Save recreates nothing yet reports a gone free draft as saved',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("      if (!state.drafts.free || !state.drafts.free[e.key]) return false;\n", ''),
+  },
+  {
+    name: 'Save says Draft saved whether or not it stored',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('          if (state.editor.key === id ? !saveEditor(now) : !draftFor(state.drafts, id)) {',
+      '          if (state.editor.key === id && (saveEditor(now), false)) {'),
+  },
+  {
+    name: 'a pending Text-switch question survives another mode choice',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('          ed.confirmText = null;\n', ''),
+  },
+  {
+    name: 'a changed image address keeps the old check, so Insert uses the old URL',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace("          if (act === 'ed-img-url') state.editor.imageCheck = null;\n", ''),
+  },
+  {
+    name: 'the Copy result forces a redraw over the player typing',
+    suite: 'tests/editor-view.test.js',
+    apply: (s) => s.replace('            if (isForumsPage(win.location)) quietRedraw();\n          });\n          return;', '            redraw();\n          });\n          return;'),
+  },
 ];
 
 let failures = 0;
