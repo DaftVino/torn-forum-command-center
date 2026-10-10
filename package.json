@@ -1,6 +1,6 @@
 {
   "name": "torn-forum-command-center",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "type": "commonjs",
   "description": "Development tooling for the Torn Forum Command Center userscript. Not shipped; adds no runtime dependencies.",

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Forum Command Center
 // @namespace    https://github.com/DaftVino/torn-forum-command-center
-// @version      0.2.2
+// @version      0.3.0
 // @description  TORN PDA COMPATIBLE. Replaces Torn's small subscribed-threads box with a full forum workspace: folders, tags, pins, read/unread tracking, catch-up since your last visit, local reply drafts, and author-aware search across the threads you follow.
 // @author       DaftVino
 // @license      MIT
@@ -38,7 +38,7 @@
 (function () {
   'use strict';
 
-  var SCRIPT_VERSION = '0.2.2';
+  var SCRIPT_VERSION = '0.3.0';
 
   var PANEL_ID = 'tfcc-panel';
   var FALLBACK_ID = 'tfcc-fallback-mount';
