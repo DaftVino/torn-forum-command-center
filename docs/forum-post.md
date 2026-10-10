@@ -41,7 +41,7 @@
 <li><strong>Catch up</strong> gathers threads with new activity and groups them by folder.</li>
 <li><strong>My posts</strong> shows threads you started or posted in, including ones you do not follow.</li>
 <li><strong>Search</strong> searches thread details and, when requested, post bodies.</li>
-<li><strong>Drafts</strong> is a post editor: collects saved replies and posts that belong to no thread, and helps put them back into Torn's reply box.</li>
+<li><strong>Drafts</strong> is a post editor: write a formatted reply or a new thread's opening post, then insert it into Torn's reply box.</li>
 <li><strong>Settings</strong> controls the key, refreshing, appearance, folders, backup, storage and badges.</li>
 </ul>
 
@@ -95,10 +95,12 @@
 
 <ul>
 <li>Reply drafts stay on your device. Reply-box autosave is on by default and can be disabled in Settings.</li>
-<li>The Drafts editor has Text, Markdown, HTML and Preview modes, a toolbar for bold, italic, underline, strike, Torn's text colors, size, alignment, quote, link, image, table and emoji, and a Preview that shows the post the way Torn will in its light or dark theme. Switching modes converts the draft without losing anything.</li>
-<li>Paste a Google Drive, Dropbox, GitHub, Giphy, Gyazo, Imgur or Reddit image link and the editor rewrites it into a link Torn can show.</li>
-<li>Free drafts are not tied to a thread, which suits a new thread's opening post. The Default editor setting picks the mode new drafts open in.</li>
-<li>Insert places a saved draft into Torn's reply box when it is available. If FCC cannot find the box, it offers Copy and explains why.</li>
+<li>The Drafts editor has Text, Markdown, HTML and Preview modes. Switching modes converts the draft without losing anything, and Preview shows the post the way Torn will in its light or dark theme; tap any paragraph to jump back to it.</li>
+<li>A compact symbol toolbar covers Undo, bold, italic, underline, strike, Torn's text colors, size, alignment, quote, link, image, table and emoji, with a quick Markdown or HTML help key. Align works on the highlighted lines, and on a table it aligns the whole table. On a phone the toolbar sits on the right and always fits one row.</li>
+<li>Enter starts a new paragraph and an empty line adds a gap, in every mode, so you never have to type paragraph codes. Lists and quotes continue on Enter and end on an empty item.</li>
+<li>The image link fixer turns a Google Drive, Dropbox, GitHub, Giphy, Gyazo, Imgur or Reddit page link into a direct image link Torn can show, with a preview. Fix all links does the same for every image link in a draft, including a bare link on its own line. Nothing is uploaded; for an image file, use Torn's own Insert Image button.</li>
+<li>Free drafts are not tied to a thread, which suits a new thread's opening post, and Save as free draft moves what you are writing on a thread into one. Settings picks the mode new drafts open in and the editor's height on desktop and on phone.</li>
+<li>Insert adds the formatted post to the end of Torn's reply box and never replaces what you typed there; you still press Post. If FCC cannot find the box, it offers Copy, which pastes into Torn's editor with the formatting intact.</li>
 <li>Search covers titles, authors, forums, tags and notes. Deep search can fetch post bodies for chosen threads, cache them locally and combine text with filters such as author, folder, tag, unread, pinned or draft.</li>
 <li>Search on Torn passes the query to Torn's own forum search as an ordinary link.</li>
 <li>Export carries your organization, read markers, drafts and badges as a portable string. It never includes the API key or post cache. Import merges it in and reports what it added; a damaged string is refused without changing anything.</li>
@@ -112,7 +114,7 @@
 <li>FCC asks for <strong>Minimal Access</strong>. The key is stored on this device, masked in the panel, stripped from errors and debug reports, and never included in an export.</li>
 <li>Every network request is a GET to api.torn.com. FCC makes no non-API Torn request and sends no telemetry.</li>
 <li>A Threads refresh is at most 13 requests and My posts at most 17 at the default lookup setting; the limiter never allows more than 40 requests in a minute.</li>
-<li>FCC does not scrape Torn's page data. Route capture uses the address and title of the page you are viewing. Beyond that it reads only the reply box, solely to save or insert drafts, and, for the default Match Torn theme, the page's background color.</li>
+<li>FCC does not scrape Torn's page data. Route capture uses the address and title of the page you are viewing. Beyond that it touches only the reply box, to autosave what you type there and to insert a draft when you press Insert, and, for the default Match Torn theme, the page's background color. Images from other sites in a draft are shown in Preview only after you tap Show images or Check, and are loaded without telling that site which Torn page you are on.</li>
 <li>FCC never automates gameplay. It does not post, reply, vote, subscribe, navigate on its own or submit a form. You remain the person who opens threads and presses Torn's Post button.</li>
 </ul>
 
