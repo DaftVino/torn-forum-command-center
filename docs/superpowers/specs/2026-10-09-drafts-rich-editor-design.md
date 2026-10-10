@@ -62,9 +62,7 @@ Out of scope, by owner decision:
 
 Back in scope (owner, 2026-10-09):
 - **The image link fixer** (section 8).
-- **Torn's emoji** (section 8). The emoji list comes from the owner's emoji
-  check.
-- The emoji data is added to this spec before the plan is written.
+- **Emoji**: Torn's 30 and Unicode (sections 3 and 8).
 
 Still out of scope:
 - **YouTube embeds** (owner, 2026-10-09: not needed).
@@ -96,6 +94,7 @@ in Torn's editor.
 | `[t](https://...)` | `<a href="..." target="_blank" rel="noopener">t</a>`; `http(s)` only |
 | `![alt](https://...)` | `<img src="..." alt="alt">` |
 | a GFM pipe table, with `:--:` alignment | `<div><div><div class="table-wrap"><table><tbody>`. The first row is `<th>` when a delimiter row follows it. An aligned column puts `style="text-align: ..."` on its cells |
+| `:grin:` (any of Torn's 30 emoji names) | `<img src="/images/emotions/svg/grin.svg">`, exactly as Torn's editor inserts it. An unknown name stays literal text |
 | `\*` and the like | a literal character |
 | inline HTML | kept, then cleaned (section 5) |
 
@@ -154,7 +153,7 @@ panel on torn.com.
 | `ul`, `ol`, `li` | none |
 | `blockquote` | none |
 | `a` | `href`, `http://` or `https://` only, with `target="_blank" rel="noopener"` forced |
-| `img` | `src` (`https://`, or site-relative `/images/...` for Torn's emoji), `alt` |
+| `img` | `src`: `https://`, or exactly `/images/emotions/svg/<one of the 30 names>.svg`. Also `alt` |
 | `div` | only the `table-wrap` trio around a table, which the cleaner itself emits; other `div`s unwrap to their children |
 | `table`, `tbody`, `tr`, `th`, `td` | `width` / `height` in `px` or `%`, `text-align` |
 
@@ -311,6 +310,14 @@ path.
   - **A Fix image link button** also sits in the Drafts toolbar's More drawer.
     It rewrites every fixable image URL already in the draft and reports how
     many it changed.
+- **Emoji:** a toolbar button (in More when narrow) with two tabs.
+  - **Torn:** the 30 emoji, drawn from Torn's own same-origin SVGs. In MD a tap
+    inserts `:name:`; in HTML it inserts the `<img>`. The names are a frozen
+    engine constant, `TORN_EMOJI`, from the owner's emoji check: `angel`, `angry`, `authority`, `beard`, `beaten_up`, `blushing`, `bored_sleepy`, `confused`, `cool`, `cry`, `disappointed`, `dizzy`, `evil`, `grin`, `hushed`, `kissing`, `laughing`, `love_chemistry`, `money`, `moustache`, `mugger_masked`, `nerd`, `party`, `pirate`, `sick`, `smiley`, `tired`, `tongue`, `wink`, `zip_mouth`.
+  - **Unicode:** a curated set of about 40 common emoji, inserted as
+    characters. Each is written as a JS escape, so the source stays ASCII.
+  - **A tip** under the tabs: "More emoji: press Win + . (Windows) or
+    Ctrl + Cmd + Space (Mac) while typing."
 - **Table:** columns 1 to 8, rows 1 to 30, header row on or off. It inserts a
   skeleton in the current mode's language.
 
@@ -327,6 +334,8 @@ path.
   `onerror=`, `javascript:` and `data:` URLs, nested `<style>`, `<img src=x
   onerror>`, unclosed tags, 20000-character input);
 - the contrast warning;
+- emoji shortcodes, including an unknown name staying literal, and the
+  cleaner refusing any other site-relative image;
 - image URL classification, and `fixImageUrl` for every row of the host-rules
   file: each input shape, each refusal, and the rewritten output exactly;
 - the storage rules in section 6.

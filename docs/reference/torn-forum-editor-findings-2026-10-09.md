@@ -234,6 +234,15 @@ Read with `tinymce.get(id).options.get(...)`:
   `i.imgur.com/....png` or a GitHub raw PNG.
 - Whether Torn rehosts external images on save.
 
+## Torn's emoji (owner-observed)
+
+- **What the emoji dialog holds:** 30 images, each at
+  `/images/emotions/svg/<name>.svg`, with no `alt` or `title`.
+- **The names:** `angel`, `angry`, `authority`, `beard`, `beaten_up`, `blushing`, `bored_sleepy`, `confused`, `cool`, `cry`, `disappointed`, `dizzy`, `evil`, `grin`, `hushed`, `kissing`, `laughing`, `love_chemistry`, `money`, `moustache`, `mugger_masked`, `nerd`, `party`, `pirate`, `sick`, `smiley`, `tired`, `tongue`, `wink`, `zip_mouth`.
+- **What the editor inserts:** a bare `<img src="/images/emotions/svg/<name>.svg">`.
+- **Unicode emoji** (for example from Windows' Win+. panel) also work in posts.
+  They are plain text characters.
+
 ## Q4. The colour variables
 
 Owner-observed in both themes. There are 17 text colours. The values come from
