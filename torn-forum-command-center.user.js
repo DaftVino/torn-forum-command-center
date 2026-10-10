@@ -4744,6 +4744,134 @@
     return out;
   }
 
+
+  // ---- editor operations (#58) -----------------------------------------------
+  // Pure edits on the source text and its selection. Each returns the new text
+  // and the selection to restore, so the runtime only reads and writes the
+  // panel's own textarea.
+
+  function clampSel(text, start, end) {
+    var n = text.length;
+    var a = Math.max(0, Math.min(n, start | 0));
+    var b = Math.max(0, Math.min(n, end | 0));
+    return a <= b ? [a, b] : [b, a];
+  }
+
+  function wrapSelection(text, start, end, open, close, placeholder) {
+    var t = String(text || '');
+    var s = clampSel(t, start, end);
+    var inner = s[0] === s[1] ? (placeholder || '') : t.slice(s[0], s[1]);
+    var next = t.slice(0, s[0]) + open + inner + close + t.slice(s[1]);
+    return { text: next, start: s[0] + open.length, end: s[0] + open.length + inner.length };
+  }
+
+  // Puts a block on lines of its own: a line break before it unless the caret
+  // starts a line, and after it unless the caret ends one.
+  function insertBlock(text, start, end, block) {
+    var t = String(text || '');
+    var s = clampSel(t, start, end);
+    var before = s[0] > 0 && t.charAt(s[0] - 1) !== '\n' ? '\n' : '';
+    var after = s[1] < t.length && t.charAt(s[1]) !== '\n' ? '\n' : '';
+    var next = t.slice(0, s[0]) + before + block + after + t.slice(s[1]);
+    var caret = s[0] + before.length + block.length;
+    return { text: next, start: caret, end: caret };
+  }
+
+  function lineBounds(t, start, end) {
+    var a = t.lastIndexOf('\n', start - 1) + 1;
+    var nl = t.indexOf('\n', Math.max(end - (end > start && t.charAt(end - 1) === '\n' ? 1 : 0), start));
+    return [a, nl === -1 ? t.length : nl];
+  }
+
+  function colorValue(value) {
+    return TORN_COLOR_NAMES.indexOf(value) !== -1 ? 'var(--te-text-color-' + value + ')' : String(value).toLowerCase();
+  }
+
+  // The open and close marks for a toolbar button, in the draft's language.
+  function markPair(lang, mark, value) {
+    var md = lang === 'md';
+    switch (mark) {
+      case 'bold': return md ? ['**', '**'] : ['<strong>', '</strong>'];
+      case 'italic': return md ? ['*', '*'] : ['<em>', '</em>'];
+      case 'underline': return md ? ['++', '++'] : ['<span style="text-decoration: underline;">', '</span>'];
+      case 'strike': return md ? ['~~', '~~'] : ['<span style="text-decoration: line-through;">', '</span>'];
+      case 'color': return md ? ['{' + String(value).toLowerCase() + '}', '{/}'] : ['<span style="color: ' + colorValue(value) + ';">', '</span>'];
+      case 'size': return md ? ['{' + (value | 0) + '}', '{/}'] : ['<span style="font-size: ' + (value | 0) + 'px;">', '</span>'];
+      case 'link': return md ? ['[', '](' + value + ')'] : ['<a href="' + escAttr(value) + '">', '</a>'];
+      default: return ['', ''];
+    }
+  }
+
+  function applyMark(lang, text, start, end, mark, value) {
+    var pair = markPair(lang, mark, value);
+    var placeholder = mark === 'link' ? 'link text' : 'text';
+    return wrapSelection(text, start, end, pair[0], pair[1], placeholder);
+  }
+
+  // Quote and alignment act on whole lines.
+  function applyBlockMark(lang, text, start, end, mark, value) {
+    var t = String(text || '');
+    var s = clampSel(t, start, end);
+    var b = lineBounds(t, s[0], s[1]);
+    var body = t.slice(b[0], b[1]);
+    var replaced;
+    if (lang === 'md') {
+      replaced = mark === 'quote'
+        ? body.split('\n').map(function (l) { return l.trim() === '' ? '>' : '> ' + l; }).join('\n')
+        : ':::' + value + '\n' + body + '\n:::';
+    } else {
+      var paras = body.split('\n').map(function (l) { return l.trim() === '' ? '' : l; }).join('\n');
+      replaced = mark === 'quote'
+        ? '<blockquote><p>' + paras + '</p></blockquote>'
+        : '<p style="text-align: ' + value + ';">' + paras + '</p>';
+    }
+    var next = t.slice(0, b[0]) + replaced + t.slice(b[1]);
+    return { text: next, start: b[0], end: b[0] + replaced.length };
+  }
+
+  function tableSkeleton(lang, cols, rows, header) {
+    var c = Math.max(1, Math.min(8, cols | 0));
+    var r = Math.max(1, Math.min(30, rows | 0));
+    var heads = [];
+    var cells = [];
+    for (var k = 0; k < c; k += 1) { heads.push('Column ' + (k + 1)); cells.push('Cell'); }
+    if (lang === 'md') {
+      var lines = [];
+      if (header) {
+        lines.push('| ' + heads.join(' | ') + ' |');
+        lines.push('| ' + heads.map(function () { return '---'; }).join(' | ') + ' |');
+      }
+      for (var i = 0; i < r; i += 1) lines.push('| ' + cells.join(' | ') + ' |');
+      return lines.join('\n');
+    }
+    var html = '<table><tbody>';
+    if (header) html += '<tr>' + heads.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
+    for (var j = 0; j < r; j += 1) html += '<tr>' + cells.map(function (x) { return '<td>' + x + '</td>'; }).join('') + '</tr>';
+    return html + '</tbody></table>';
+  }
+
+  function emojiSnippet(lang, name) {
+    if (TORN_EMOJI.indexOf(name) === -1) return '';
+    return lang === 'md' ? ':' + name + ':' : '<img src="/images/emotions/svg/' + name + '.svg">';
+  }
+
+  function imageSnippet(lang, url, alt) {
+    var a = String(alt || '').replace(/[\[\]\n]/g, ' ').trim();
+    return lang === 'md' ? '![' + a + '](' + url + ')'
+      : '<img src="' + escAttr(url) + '"' + (a ? ' alt="' + escAttr(a) + '"' : '') + '>';
+  }
+
+  // Common Unicode emoji, for the picker's second tab. Code points, not
+  // characters, so the source stays ASCII (constraint 4). A pair is an emoji
+  // and its variation selector.
+  var UNICODE_EMOJI = Object.freeze([
+    [0x1F600], [0x1F602], [0x1F642], [0x1F609], [0x1F60D], [0x1F60E], [0x1F914], [0x1F605],
+    [0x1F622], [0x1F621], [0x1F631], [0x1F634], [0x1F923], [0x1F644], [0x1F62C], [0x1F91D],
+    [0x1F44D], [0x1F44E], [0x1F44F], [0x1F64F], [0x1F4AA], [0x1F440], [0x1F525], [0x1F4AF],
+    [0x1F389], [0x1F4B0], [0x1F480], [0x1F48A], [0x1F3C6], [0x2B50], [0x2705], [0x274C],
+    [0x26A0, 0xFE0F], [0x2764, 0xFE0F], [0x1F494], [0x2708, 0xFE0F], [0x1F680], [0x23F0], [0x1F4CC],
+  ].map(function (cps) { return String.fromCodePoint.apply(String, cps); }));
+
   // ---- ENGINE END ------------------------------------------------------
 
   // -- storage runtime -----------------------------------------------------

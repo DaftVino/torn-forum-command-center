@@ -27,6 +27,8 @@ const SOURCE_PATH = path.join(__dirname, '..', 'torn-forum-command-center.user.j
 // Every name a test needs to reach. A function missing from this list is
 // invisible to tests - add it here in the same commit that adds the function.
 const EXPORT_NAMES = [
+  // #58 editor operations
+  'wrapSelection', 'insertBlock', 'markPair', 'applyMark', 'applyBlockMark', 'tableSkeleton', 'emojiSnippet', 'imageSnippet', 'UNICODE_EMOJI',
   // #58 image link fixer and colour contrast
   'fixImageUrl', 'fixAllImages', 'hexRgb', 'contrastRatio', 'colorWarnings', 'IMAGE_HOWTO',
   // identity and routing
