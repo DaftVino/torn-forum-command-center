@@ -213,3 +213,37 @@ test('the mount selector list is ordered most specific first', () => {
   assert.strictEqual(api.MOUNT_SELECTORS[0], '#forums-page-wrap');
   assert.ok(api.MOUNT_SELECTORS.length >= 3, 'one guess is not a fallback strategy');
 });
+
+// ---- one status message at a time (#58) ----------------------------------
+
+test('a new notice replaces the previous one, and an info after an error shows only the info', () => {
+  const env = loadUserscript({ location: forums() });
+  const api = env.exports;
+  api.state.notices = [];
+  api.notice('first', 'warn');
+  api.notice('boom', 'error');
+  assert.strictEqual(api.state.notices.map((n) => n.text).join('|'), 'boom');
+  api.notice('all fine', 'info');
+  assert.strictEqual(api.state.notices.map((n) => n.text).join('|'), 'all fine');
+  assert.strictEqual(api.state.notices.length, 1);
+});
+
+test('navigating to another thread clears the notice, a re-sync of the same route keeps it', () => {
+  const env = loadUserscript({ location: forums({ hash: '#/p=threads&f=1&t=1' }) });
+  const api = env.exports;
+  api.notice('stale words', 'warn');
+  api.syncToRoute(env.doc, env.win);
+  assert.strictEqual(api.state.notices.length, 1, 'same route');
+  env.win.location.hash = '#/p=threads&f=1&t=2';
+  api.syncToRoute(env.doc, env.win);
+  assert.strictEqual(api.state.notices.length, 0, 'another thread');
+});
+
+test('leaving the forums page clears the notice', () => {
+  const env = loadUserscript({ location: forums() });
+  const api = env.exports;
+  api.notice('stale words', 'error');
+  env.win.location.pathname = '/index.php';
+  api.syncToRoute(env.doc, env.win);
+  assert.strictEqual(api.state.notices.length, 0);
+});

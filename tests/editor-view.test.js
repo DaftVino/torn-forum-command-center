@@ -219,7 +219,13 @@ test('typing past the draft limit keeps the limit and says so once per crossing'
   api.panelHtml(api.buildPanelModel(NOW));
   const h = api.makeHandlers(env.doc, env.win);
   const type = (v) => h.onInput('draft-text', Object.assign(el({ 'data-act': 'draft-text', 'data-id': '42' }), { value: v, selectionStart: 0, selectionEnd: 0 }));
-  const warned = () => api.state.notices.filter((n) => n.kind === 'warn' && /at the 20000-character limit; anything past it was not added/.test(n.text)).length;
+  // Only the latest notice is kept, so count each crossing by reading and clearing it.
+  let total = 0;
+  const warned = () => {
+    total += api.state.notices.filter((n) => n.kind === 'warn' && /at the 20000-character limit; anything past it was not added/.test(n.text)).length;
+    api.state.notices = [];
+    return total;
+  };
   type('a'.repeat(19999));
   assert.strictEqual(warned(), 0);
   type('a'.repeat(20500));
@@ -229,8 +235,8 @@ test('typing past the draft limit keeps the limit and says so once per crossing'
   assert.strictEqual(warned(), 1, 'not on every keystroke at the limit');
   type('a'.repeat(19990));
   type('a'.repeat(20001));
-  assert.strictEqual(warned(), 2, 'again after dropping below and crossing again');
   assert.match(api.panelHtml(api.buildPanelModel(NOW)), /at the 20000-character limit/);
+  assert.strictEqual(warned(), 2, 'again after dropping below and crossing again');
 });
 
 // ---- Task 11: toolbar and pickers ----------------------------------------

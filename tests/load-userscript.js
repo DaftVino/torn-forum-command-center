@@ -40,7 +40,7 @@ const EXPORT_NAMES = [
   'DEFAULT_ENRICH_BUDGET', 'MAX_ENRICH_BUDGET', 'CATEGORY_TTL_MS', 'ENRICH_TTL_MS',
   'DEEP_SEARCH_MAX_PAGES', 'DEEP_SEARCH_MAX_THREADS', 'POSTS_PER_PAGE',
   // orchestration and live state
-  'state', 'init', 'syncToRoute', 'refreshAll', 'enrichThreads', 'runDeepSearch',
+  'state', 'notice', 'init', 'syncToRoute', 'refreshAll', 'enrichThreads', 'runDeepSearch',
   'loadAll', 'persist', 'recompute', 'makeHandlers', 'readRaw', 'writeRaw',
   'ambientTransports', 'transportName', 'injectStyleOnce', 'copyText', 'threadUrl',
   'THREAD_LINK_ATTR', 'THREAD_LINK_MAX_DEPTH', 'threadLinkAttr', 'threadLinkOf',

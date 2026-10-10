@@ -5550,8 +5550,8 @@
   }
 
   function notice(text, kind) {
-    state.notices.push({ text: safeString(text, 300), kind: kind || 'info' });
-    if (state.notices.length > 5) state.notices.shift();
+    // One status message at a time: a new one replaces the previous.
+    state.notices = [{ text: safeString(text, 300), kind: kind || 'info' }];
   }
 
   function loadAll(now) {
@@ -10719,6 +10719,10 @@
   var booted = false;
   var autoTimer = null;
 
+  function routeKey(r) {
+    return r ? String(r.view) + '|' + String(r.forumId) + '|' + String(r.threadId) : '';
+  }
+
   function syncToRoute(doc, win) {
     if (!isForumsPage(win.location)) {
       if (state.mounted) unmountPanel(doc);
@@ -10728,11 +10732,14 @@
       detachAutosave();
       stopDwell();
       state.route = null;
+      state.notices = [];
       return;
     }
     var now = Date.now();
     var capture = captureVisit(win.location, doc.title, now);
     if (capture.changed) { persist('organizer'); recompute(now); }
+    // A message belongs to the place it was raised; navigating clears it.
+    if (routeKey(state.route) !== routeKey(capture.route)) state.notices = [];
     state.route = capture.route;
     startDwell(doc, win);
     sampleDwell(doc, win, now);
