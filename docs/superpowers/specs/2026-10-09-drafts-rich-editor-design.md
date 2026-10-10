@@ -64,11 +64,10 @@ Back in scope (owner, 2026-10-09):
 - **The image link fixer** (section 8).
 - **Torn's emoji** (section 8). The emoji list comes from the owner's emoji
   check.
-- **YouTube embeds**, provided the owner's check shows the markup Torn's
-  `EmbedYoutubePlugin` produces.
-- Both data items are added to this spec before the plan is written.
+- The emoji data is added to this spec before the plan is written.
 
 Still out of scope:
+- **YouTube embeds** (owner, 2026-10-09: not needed).
 - **Uploading image files to Torn.** It needs Torn's undocumented upload
   endpoint, which ADR 0001 rules out and which Torn's scripting rules put at
   risk. The image picker points to Torn's own Insert Image button for files.
