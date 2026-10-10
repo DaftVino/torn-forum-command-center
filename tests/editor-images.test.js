@@ -97,3 +97,20 @@ test('a custom colour hard to read in a theme is flagged there', () => {
   assert.deepStrictEqual(api.colorWarnings('#1c7ed6'), [{ theme: 'light', ratio: 4.1 }]);
   assert.strictEqual(Math.round(api.contrastRatio('#000000', '#ffffff')), 21);
 });
+
+test('an image link can never break out of Markdown or HTML', () => {
+  for (const u of ['https://a"b.com/x.png', 'https://a<b>.com/x.png', 'https://u@x.y/a.png',
+    'https://a`b.com/x.png', 'https://x.y/a\\b.png']) {
+    const r = fix(u);
+    assert.strictEqual(r.status, 'refused', u);
+    assert.match(r.note, /not a web link/, u);
+  }
+  assert.deepStrictEqual([fix('https://x.y/a).png').status, fix('https://x.y/a).png').url], ['ok', 'https://x.y/a%29.png']);
+  assert.strictEqual(fix('https://x.y/a(1).png').url, 'https://x.y/a%281%29.png');
+  assert.strictEqual(fix('https://x.y:8080/a.png').status, 'ok');
+  const box = fix('https://www.dropbox.com/s/a)b/p.png?dl=0');
+  assert.deepStrictEqual([box.status, box.url], ['fixed', 'https://www.dropbox.com/s/a%29b/p.png?raw=1']);
+  const gh = fix('https://github.com/o/r/blob/main/a).png');
+  assert.deepStrictEqual([gh.status, gh.url], ['fixed', 'https://raw.githubusercontent.com/o/r/main/a%29.png']);
+  for (const r of [fix('https://x.y/a).png'), box, gh]) assert.doesNotMatch(r.url, /[()"'<>`\\\s]/);
+});

@@ -1139,6 +1139,8 @@
   });
 
   function imageResult(status, url, host, note) {
+    // Parentheses are encoded so a link can never close a Markdown ![alt](url) early.
+    if (url && (status === 'ok' || status === 'fixed')) url = url.replace(/\(/g, '%28').replace(/\)/g, '%29');
     return { status: status, url: url, host: host, note: note || '' };
   }
 
@@ -1154,7 +1156,7 @@
     if (!u) return imageResult('refused', '', '', 'Paste an image link.');
     if (u.length > URL_MAX_CHARS) return imageResult('refused', '', '', 'That link is too long.');
     if (/^http:\/\//i.test(u)) return imageResult('refused', '', '', 'Torn needs an https link. Try the same link with https.');
-    var m = /^https:\/\/([^\/?#\s]+)([^\s"'<>`]*)$/i.exec(u);
+    var m = /^https:\/\/([a-z0-9.-]+(?::[0-9]{1,5})?)(?=[\/?#]|$)([^\s"'<>`\\]*)$/i.exec(u);
     if (!m) return imageResult('refused', '', '', 'That is not a web link.');
     var host = m[1].toLowerCase().replace(/^www\./, '');
     var rest = m[2];
